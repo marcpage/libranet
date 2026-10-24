@@ -576,9 +576,10 @@ before then (`CarriedTransactions` in `src/libranet/karma/carried.py`, Phase
 what it held.
 
 `payments.json` is the node's own payments, queued to be put up together as
-one transaction (KarmaLedger §4.6, Phase 6 Step 132): each a recipient and
-an amount, `karma.payment_percent` of the node's balance at the head when it
-was queued; the
+one transaction (KarmaLedger §4.6, Phase 6 Step 132): each a recipient, as
+the servers the node rates highest every `karma.rating_interval_seconds`
+are (Phase 6 Step 133), and an amount, `karma.payment_percent` of the
+node's balance at the head when it was queued; the
 `created` of the node's last transaction, or `null` before it has made one;
 and the transaction made of the queue, as its sender writes it, its nonce
 not yet searched for, until it is put up, or `null`:

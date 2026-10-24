@@ -36,6 +36,7 @@ The payloads it consumes, by event:
 ``node.trust``         ``{"trusted": [...], "untrusted": [...], "only_trusted"}``
                        (Phase 5 Step 113)
 ``node.trust_requested`` ``{}`` (Phase 5 Step 113)
+``karma.ratings_requested`` ``{}`` (Phase 6 Step 133)
 
 A miss on ``GET /data/{algorithm}/{hash}`` and a ``GET /data/search/{prefix}``
 are both requests this node could not answer, so each becomes an entry in
@@ -121,6 +122,13 @@ web server to go by until its own scores are built again
 (:class:`~libranet.messaging.node_trust.NodeTrust`)::
 
     node.trust_stored      {"trusted": ["sha256/<hex>", ...], "untrusted": [...]}
+
+Asked by the Karma module, every ``karma.rating_interval_seconds``, it
+answers with each node connected outbound since it last answered, and how
+much each served the node since then, for the Karma module to pay the best
+(:class:`~libranet.stats.ratings.RatingCounts`, Phase 6 Step 133)::
+
+    karma.ratings          {"servers": [{"node_id", "bytes_received", "requests_fulfilled"}, ...]}
 """
 
 from __future__ import annotations
@@ -136,7 +144,7 @@ from libranet.config.models import LibranetConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.connected_peers import ConnectedPeers
 from libranet.messaging.envelope import Message
-from libranet.messaging.events import AddressSource, EventType
+from libranet.messaging.events import AddressSource, ConnectionDirection, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.node_trust import NodeTrust
 from libranet.messaging.queues import ModuleQueues
@@ -145,6 +153,7 @@ from libranet.protocol.search import SearchCache, normalize_prefix
 from libranet.stats.database import StatsDatabase
 from libranet.stats.derivation import ListDeriver
 from libranet.stats.enrichment import SearchEnricher
+from libranet.stats.ratings import RatingCounts
 from libranet.stats.schema import SeekKind
 
 _Component = TypeVar("_Component")
@@ -165,12 +174,13 @@ class _Running:
     database: StatsDatabase
     deriver: ListDeriver
     enricher: SearchEnricher
+    ratings: RatingCounts
 
     @classmethod
     def open(
         cls, config: LibranetConfig, connected: ConnectedPeers, clock: Callable[[], float]
     ) -> _Running:
-        """Read the node identity and open the database and what works on it."""
+        """Read the node identity, open the database and what works on it, and count from now."""
         storage = config.storage
         identity = NodeIdentity.load(config)
         database = StatsDatabase(storage.database_path, clock=clock)
@@ -187,6 +197,7 @@ class _Running:
                 clock=clock,
             ),
             SearchEnricher(database, SearchCache.of(storage, clock=clock), storage.search_min_bits),
+            RatingCounts(database.all_node_stats()),
         )
 
 
@@ -218,6 +229,7 @@ class StatsModule(ModuleBase):
             EventType.PEERS_CONNECTED,
             EventType.NODE_TRUST,
             EventType.NODE_TRUST_REQUESTED,
+            EventType.KARMA_RATINGS_REQUESTED,
         }
     )
 
@@ -269,6 +281,7 @@ class StatsModule(ModuleBase):
                 EventType.PEERS_CONNECTED: self._on_peers_connected,
                 EventType.NODE_TRUST: self._on_node_trust,
                 EventType.NODE_TRUST_REQUESTED: self._on_node_trust_requested,
+                EventType.KARMA_RATINGS_REQUESTED: self._on_ratings_requested,
             }
         )
 
@@ -501,8 +514,11 @@ class StatsModule(ModuleBase):
         self.logger.info("Shunned %s", content_id)
 
     def _on_peers_connected(self, message: Message) -> None:
-        """Keep the peers now connected one way, in place of those named before."""
+        """Keep the peers connected one way, in place of those named before, to list and rate."""
         self._connected.named_in(message)
+        _started(self._running).ratings.connected(
+            self._connected.node_ids(ConnectionDirection.OUTBOUND)
+        )
 
     def _on_node_trust(self, message: Message) -> None:
         """Keep the state of each identity the node trusts or distrusts, in place of the last."""
@@ -513,6 +529,14 @@ class StatsModule(ModuleBase):
         """Tell the web server the state kept of each identity the node trusts or distrusts."""
         kept = NodeTrust(_started(self._running).node_id, self.database.trust_states())
         self.publish(EventType.NODE_TRUST_STORED, kept.stored_payload())
+
+    def _on_ratings_requested(self, _message: Message) -> None:
+        """Tell the Karma module how each server dialed since it last asked served the node."""
+        ratings = _started(self._running).ratings.answer(
+            self.database.all_node_stats(), self._connected.node_ids(ConnectionDirection.OUTBOUND)
+        )
+        self.publish(EventType.KARMA_RATINGS, ratings.payload())
+        self.logger.debug("Rated %d servers for the Karma module", len(ratings.servers))
 
     def _on_reclaim_requested(self, _message: Message) -> None:
         """Tell the unbundler whose resolved files to keep: those of applications used lately."""

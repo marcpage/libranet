@@ -403,6 +403,11 @@ karma:
   # other work.
   transaction_seconds: 10.0
 
+  # How often, in seconds, the Karma module rates the servers the node is
+  # connected to as a client, by the data each sent it, and by the requests
+  # each fulfilled, since it last rated them, and pays the best by each.
+  rating_interval_seconds: 3600.0
+
 local:
   # The folders on this machine that a browser on it may list, and import
   # files from, through /data/directory (HTTP API §12.2). Nothing outside

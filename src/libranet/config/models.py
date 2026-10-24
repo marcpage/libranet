@@ -846,6 +846,12 @@ class KarmaConfig(_Section):
     # 132). The search holds up the module's other work.
     transaction_seconds: float = Field(default=10.0, ge=0)
 
+    # How often the Karma module rates the servers the node is connected to
+    # as a client, by the data each sent it, and by the requests each
+    # fulfilled, since it last rated them, and pays the best by each
+    # (KarmaLedger §4.6, Phase 6 Step 133).
+    rating_interval_seconds: float = Field(default=3600.0, gt=0)
+
 
 class LocalConfig(_Section):
     """What clients on this machine may reach of it (HttpApi §2.4, Phase 3 Step 68)."""

@@ -1,4 +1,4 @@
-"""The Karma module process (Phase 6 Steps 123 to 132).
+"""The Karma module process (Phase 6 Steps 123 to 133).
 
 Every step that has the node act on the Karma ledger (KarmaLedger.md) runs
 here: reading what is placed at a target, following the chain, and
@@ -89,6 +89,16 @@ transaction, makes them one transaction, mines it for
 ``karma.transaction_seconds``, signs it as the node, and puts it up as it
 does one it is given (:class:`~libranet.karma.payments.NodePayments`, Phase
 6 Step 132).
+
+Every ``karma.rating_interval_seconds``, it asks the stats module how the
+servers the node is connected to as a client served it since stats last
+answered, and queues a payment to the one rated highest by data received,
+and to the one rated highest by requests fulfilled, once if they are one
+(:class:`~libranet.messaging.server_ratings.ServerRatings`, Phase 6 Step
+133)::
+
+    karma.ratings_requested  {}
+    karma.ratings            {"servers": [{"node_id", "bytes_received", "requests_fulfilled"}]}
 """
 
 from __future__ import annotations
@@ -123,6 +133,7 @@ from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.node_trust import NodeTrust
 from libranet.messaging.queues import ModuleQueues
+from libranet.messaging.server_ratings import ServerRatings
 from libranet.modules import ModuleName
 from libranet.protocol.search import normalize_prefix
 
@@ -143,6 +154,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             EventType.NODE_TRUST,
             EventType.KARMA_HEAD_TOLD,
             EventType.KARMA_TRANSACTION,
+            EventType.KARMA_RATINGS,
         }
     )
 
@@ -172,6 +184,8 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         # and when to look, whether it idles or not.
         self._look_again = False
         self._next_look_at = 0.0
+        # When to ask the stats module to rate the servers next.
+        self._next_rating_at = 0.0
         # The head last said, for the connection manager to tell the peers.
         self._head_said: ContentId | None = None
         self._trust: NodeTrust | None = None
@@ -188,6 +202,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 EventType.NODE_TRUST: self._on_node_trust,
                 EventType.KARMA_HEAD_TOLD: self._on_head_told,
                 EventType.KARMA_TRANSACTION: self._on_transaction,
+                EventType.KARMA_RATINGS: self._on_ratings,
             }
         )
 
@@ -225,7 +240,8 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         """Read the history of the chain followed, and write its head.
 
         It looks at the head's targets, and writes the balances stated at the
-        head, as it first idles.
+        head, as it first idles, and asks for the servers to be rated once
+        ``karma.rating_interval_seconds`` have passed.
         """
         karma_dir = self._config.storage.karma_dir
         carried = CarriedTransactions(karma_dir, self._config.karma.carry_generations)
@@ -266,6 +282,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         )
         self._look_again = True
         self._next_look_at = self._clock() + self._config.karma.look_seconds
+        self._next_rating_at = self._clock() + self._config.karma.rating_interval_seconds
         head = self._history.head
 
         if head is None:
@@ -281,18 +298,20 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     def handle(self, message: Message) -> None:
         """React to one subscribed broadcast, then look at the head's targets if it is time to.
 
-        It looks here as well as when it idles, since content stored, which
-        it hears of, may keep it from idling. A malformed message raises,
-        and :meth:`run` logs it.
+        It looks, and asks for the servers to be rated, here as well as when
+        it idles, since content stored, which it hears of, may keep it from
+        idling. A malformed message raises, and :meth:`run` logs it.
         """
         super().handle(message)
         self._look(idle=False)
+        self._ask_ratings()
 
     def on_idle(self) -> None:
         """Give up on what has been waited for long enough, and look at the head's targets.
 
         A head being weighed that waits for what is given up on is given up
-        on too. It looks if it is time to, or if what it waited for has come.
+        on too. It looks if it is time to, or if what it waited for has come,
+        and asks for the servers to be rated if it is time to.
         """
         given_up = self._reader.given_up()
 
@@ -300,6 +319,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             self._changes.given_up(given_up)
 
         self._look(idle=True)
+        self._ask_ratings()
 
     def on_stop(self) -> None:
         """Stop the processes that search for nonces."""
@@ -363,6 +383,27 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             return
 
         self._putting.take(signed)
+
+    def _on_ratings(self, message: Message) -> None:
+        """Queue a payment to the server rated highest by each measure, once if they are one.
+
+        Raises:
+            RuntimeError: the module has not started.
+            ValueError: the message's ``servers`` is not what it must be.
+            FileNotFoundError: the node has no key yet.
+            KeyFileError: the node's private key cannot be loaded.
+        """
+        if self._payments is None:
+            raise RuntimeError("The Karma module is not running")
+
+        best = ServerRatings.from_payload(message).best()
+
+        if not best:
+            self.logger.debug("No server the node is a client of served it since last rated")
+
+        for node_id in best:
+            self.logger.info("Rated %s highest of the servers the node is a client of", node_id)
+            self._payments.pay(node_id)
 
     def _on_node_trust(self, message: Message) -> None:
         """Keep whom the node trusts and distrusts, in place of what was kept before.
@@ -464,6 +505,16 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._write_balances()
         payments.put_up()
         putting.put_up()
+
+    def _ask_ratings(self) -> None:
+        """Ask the stats module to rate the servers, every ``karma.rating_interval_seconds``."""
+        now = self._clock()
+
+        if self._payments is None or now < self._next_rating_at:
+            return
+
+        self._next_rating_at = now + self._config.karma.rating_interval_seconds
+        self.publish(EventType.KARMA_RATINGS_REQUESTED)
 
     def _say_head(self) -> None:
         """Say the head followed, for the connection manager to tell the peers, if it is new."""
