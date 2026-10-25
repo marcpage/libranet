@@ -1,4 +1,4 @@
-"""The Karma module process (Phase 6 Steps 123 to 134).
+"""The Karma module process (Phase 6 Steps 123 to 135).
 
 Every step that has the node act on the Karma ledger (KarmaLedger.md) runs
 here: reading what is placed at a target, following the chain, and
@@ -106,6 +106,14 @@ the transactions it carries, into one block, as full as it can be, and
 places it there as it places a block of its own, unless a block it holds
 there holds them all (:class:`~libranet.karma.building.BlockBuilder`, Phase 6
 Step 134).
+
+After each look and each build, it shuns each transaction block at its
+head's transaction target whose transactions are all in another it holds
+there, which holds more of them, or as many and shares more bits with the
+target: never one a validation block names, nor one full (§3.7, Phase 6
+Step 135)::
+
+    data.shunned  {"algorithm", "hash"}
 """
 
 from __future__ import annotations
@@ -533,6 +541,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._write_balances()
         payments.put_up()
         putting.put_up()
+        self._shun()
 
     def _ask_ratings(self) -> None:
         """Ask the stats module to rate the servers, every ``karma.rating_interval_seconds``."""
@@ -553,6 +562,18 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         self._next_build_at = now + self._config.karma.build_interval_seconds
         self._building.build()
+        self._shun()
+
+    def _shun(self) -> None:
+        """Shun each block at the head's transaction target that another held there supersedes."""
+        if self._building is None:
+            return
+
+        for block_id, keeper in self._building.superseded().items():
+            self.logger.info(
+                "Shunning Karma transaction block %s, whose transactions %s holds", block_id, keeper
+            )
+            self.publish(EventType.DATA_SHUNNED, block_id.fields())
 
     def _say_head(self) -> None:
         """Say the head followed, for the connection manager to tell the peers, if it is new."""

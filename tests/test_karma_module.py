@@ -1,8 +1,8 @@
 """Tests for the Karma module process, which keeps the history of the chain it follows.
 
 And makes a root, from ``/config``, follows the chain, puts transactions up,
-pays the servers it rates highest, and combines the blocks at its head's
-targets.
+pays the servers it rates highest, combines the blocks at its head's targets,
+and shuns those superseded.
 """
 
 # pylint: disable=too-many-lines
@@ -33,6 +33,7 @@ from libranet.karma.blocks import (
     TransactionBlock,
     ValidationBlock,
 )
+from libranet.karma.building import CombinedBlock, FilledBlock
 from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
@@ -238,6 +239,21 @@ def heads_said(queues: ModuleQueues) -> list[dict[str, object]]:
         {name: message[name] for name in ("head", "generation", "weight")}
         for message in published(queues)
         if event_of(message) is EventType.KARMA_HEAD
+    ]
+
+
+def shunned_of(messages: list[Message], among: list[ContentId]) -> list[ContentId]:
+    """The content of ``among`` that ``messages`` shun.
+
+    What else they shun the follower read at a target by chance: what the
+    node holds that shares the few bits these tests search for with a
+    target's hash, which it reads as an unsigned block.
+    """
+    return [
+        content_id
+        for message in messages
+        if event_of(message) is EventType.DATA_SHUNNED
+        and (content_id := ContentId.from_fields(message)) in among
     ]
 
 
@@ -731,7 +747,14 @@ def test_a_module_following_a_chain_reads_the_target_its_head_was_chosen_from_to
 
     assert head is not None
     after = GenerationTargets.after(head.validation)
-    assert searched(queues) == [after.transaction.hex, after.validation.hex, ROOT.validation.hex]
+    # The head's targets are read again to shun what is superseded there.
+    assert searched(queues) == [
+        after.transaction.hex,
+        after.validation.hex,
+        ROOT.validation.hex,
+        after.transaction.hex,
+        after.validation.hex,
+    ]
 
 
 def test_the_head_followed_is_said_as_the_module_first_looks_and_not_again_while_the_same(
@@ -959,6 +982,73 @@ def test_the_module_combines_the_blocks_at_the_heads_target_every_build_interval
     module.on_idle()
 
     assert stored_ids(queues) == []
+
+
+def test_the_module_shuns_the_blocks_at_the_heads_target_that_the_one_it_builds_supersedes(
+    storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    clock = Clock()
+    module = rooting_module(storage, queues, clock)
+    module.handle(root_requested())
+    published(queues)
+
+    for seconds in (1, 2):
+        module.handle(given(paid_by_node(storage, seconds)))
+
+    put_up = stored_ids(queues)
+    clock.now += LibranetConfig().karma.build_interval_seconds
+
+    with caplog.at_level(INFO):
+        module.on_idle()
+
+    messages = published(queues)
+    (built,) = [
+        ContentId.from_fields(message)
+        for message in messages
+        if event_of(message) is EventType.DATA_STORED
+    ]
+    assert sorted(shunned_of(messages, [*put_up, built])) == sorted(put_up)
+    assert f"Shunning Karma transaction block {put_up[0]}, whose transactions {built} holds" in (
+        caplog.text
+    )
+
+
+def test_the_module_shuns_the_blocks_at_the_heads_target_that_one_it_comes_to_hold_supersedes(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    module = rooting_module(storage, queues)
+    module.handle(root_requested())
+    published(queues)
+    signed = [paid_by_node(storage, seconds) for seconds in (1, 2)]
+
+    for each in signed:
+        module.handle(given(each))
+
+    put_up = stored_ids(queues)
+    module.on_idle()
+
+    assert shunned_of(published(queues), put_up) == []
+
+    # The block another node builds of them, held with its builder's key,
+    # which a peer names.
+    builder = new_identity()
+    head = module.history.head
+    assert head is not None
+    target = GenerationTargets.after(head.validation).transaction
+    combined = CombinedBlock.of(
+        signed, head.validation, HeldChain(module.history, module.reader), bounds=BOUNDS
+    )
+    filled = FilledBlock.of(combined, builder, bounds=BOUNDS)
+    assert filled is not None
+    drop = target.placed(filled.drop.content(), 0.0, minimum_bits=SEARCH_MIN_BITS)
+    keeper = ContentId.for_data(drop.data, "sha256")
+    truth = CasStore.source_of_truth(storage)
+    truth.write(builder.node_id, builder.public_key)
+    truth.write(keeper, drop.data)
+    module.handle(answered(keeper, at=target))
+    module.on_idle()
+
+    assert sorted(shunned_of(published(queues), [*put_up, keeper])) == sorted(put_up)
 
 
 def test_the_module_asks_for_the_servers_to_be_rated_every_rating_interval(

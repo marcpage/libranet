@@ -579,7 +579,11 @@ or reported, nor is the key a kept archive's bundle may carry.
     target it reads as it follows the chain (`karma/following.py`), or on a
     heavier chain it weighs, and for a block of such a chain stating its
     `generation` or `weight` falsely, which is no block of the ledger
-    (`karma/changing.py`, Phase 6 Step 129).
+    (`karma/changing.py`, Phase 6 Step 129); and, after each look and each
+    build, for a transaction block at its head's transaction target whose
+    transactions another it holds there holds, more of them, or as many
+    sharing more bits with the target (`karma/building.py`, Phase 6 Step
+    135).
 - **Received by:**
   - Stats, which records the shunning, stops seeking the content, and writes the
     shunned list (`cas/shunned`) at once for the modules that refuse shunned

@@ -119,7 +119,7 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   Step 122 is #440, Step 123 is #441, Step 124 is #442, Step 125 is #443,
   Step 126 is #444, Step 127 is #445, Step 128 is #446, Step 129 is #447,
   Step 130 is #448, Step 131 is #449, Step 132 is #450, Step 133 is #451,
-  Step 134 is #452, and none after it has one yet.
+  Step 134 is #452, Step 135 is #453, and none after it has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -2393,7 +2393,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 134 — Combining Transaction Blocks
+## Step 134 — Combining Transaction Blocks ✅
 
 **Kind:** improvement in behavior. **Issue:** #452, under #87.
 **Depends on:** Steps 129 and 131.
@@ -2509,8 +2509,8 @@ My calls, not yet reviewed:
 
 ## Step 135 — Shunning What Is Superseded
 
-**Kind:** improvement in behavior. **Issue:** none yet; planned under
-#87. **Depends on:** Step 134.
+**Kind:** improvement in behavior. **Issue:** #453, under #87.
+**Depends on:** Step 134.
 
 A small block whose transactions are all in a larger one is no longer
 needed, and a node may shun it, so that searches carry less of the same
@@ -2532,6 +2532,46 @@ block names, or one full, never; one of another generation never.
 
 My call, not yet reviewed: **"near 1 MiB" is full** (§3.7's SHOULD NOT),
 measured on the copy held.
+
+It came to 140 added lines of non-test Python, with 12 changed or removed,
+and 236 lines of tests, so it was built as one change set.
+
+What was built:
+
+- **`BlockBuilder.superseded()`** (`karma/building.py`): each transaction
+  block held at the head's transaction target, built on the head, whose
+  transactions are all in another held there, correct but perhaps for being
+  full, holding more of them, or as many and sharing more bits with the
+  target, and the block of most transactions, then most bits, that
+  supersedes it. One that a validation block held at the head's validation
+  target names is not, nor one full, as the copy held measures it. Each is
+  named once at a head. It reads the head's transaction target as `build()`
+  does, now through `_at_target`, and shares its check of which blocks there
+  are correct.
+- **`KarmaModule`** shuns each, with `data.shunned`, after each look and each
+  build, logging the block that holds its transactions.
+- Messages §4.10, the Module System, and the Operator Guide's §4.8.
+
+My calls, not yet reviewed:
+
+- **The block that keeps the transactions must be correct**, but perhaps for
+  being full, as Step 134's check of a block holding every transaction is.
+  A transaction is known by its hash, which a forged signature keeps, so a
+  block not checked could name a transaction it does not hold whole; and a
+  false block may itself be shunned (§3.7), and the data with it.
+- **A block is of the head's generation when it is built on the head**: its
+  `previous` names the head. One built on another validation block, as a
+  false start copied to the head's target, or on an earlier one, is passed
+  over (§5.1). The blocks at the targets of false starts are not shunned:
+  they may be validated on a rival chain (§3.6).
+- **The validation blocks that keep a block from being shunned are those
+  held at the head's validation target**, read without being checked; one
+  that is no validation block names none. A validation block not yet held
+  that names a small block is incorrect, since only a full block is
+  validated, and a full one is never shunned.
+- **Transactions are compared by hash, and counted, the payout aside**: a
+  block's data is its transactions (§3.7), and every block built on one head
+  holds the same payout.
 
 ---
 

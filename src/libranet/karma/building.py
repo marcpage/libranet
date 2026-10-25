@@ -33,6 +33,14 @@ Nothing is built while one block held at the head's transaction target,
 correct but perhaps for not being full, holds every transaction that would
 be taken: the same blocks build the same block, so each new transaction
 builds one more.
+
+A block held at the head's transaction target whose transactions are all in
+another held there of the same generation, correct but perhaps for not
+being full, is superseded by it, so that the node may shun it (§3.7, Phase 6
+Step 135): if the other holds more of them, or as many and shares more bits
+with the target. One that a validation block held at the head's validation
+target names is never superseded, nor one full, as the copy held measures it
+(§5.4).
 """
 
 from __future__ import annotations
@@ -45,7 +53,8 @@ from zlib import compress
 from libranet.bundle.errors import BundleError, BundleSignatureError, MissingContentError
 from libranet.bundle.storing import HASH_ALGORITHM, STORAGE_COMPRESSION_LEVEL
 from libranet.cas.content_id import ContentId
-from libranet.cas.drops import DROP_SEPARATOR, NONCE_SEARCHERS, NonceSearchers
+from libranet.cas.drops import DROP_SEPARATOR, NONCE_SEARCHERS, DropTarget, NonceSearchers
+from libranet.cas.prefix import matching_bits
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import (
@@ -324,7 +333,9 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
     ``searchers`` for ``block_seconds``, and after that until it shares
     ``drop_bits`` with its target, and handed to ``store``, with the node's
     id, to be stored and announced. It is filled within ``bounds``: the
-    specification's, unless a test gives others.
+    specification's, unless a test gives others. It also finds the blocks held
+    at the head's transaction target that another held there supersedes, for
+    the node to shun (§3.7).
     """
 
     def __init__(
@@ -351,11 +362,13 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
         self._bounds = bounds
         self._chain = HeldChain(history, reader)
         # The head these were found at: the blocks and transactions passed
-        # over, each logged once, and whether each block held at the head's
-        # transaction target is correct, but perhaps for being full.
+        # over, each logged once, whether each block held at the head's
+        # transaction target is correct, but perhaps for being full, and the
+        # blocks found superseded there, each named once.
         self._head: ContentId | None = None
         self._passed_over: set[ContentId | str] = set()
         self._correct: dict[ContentId, bool] = {}
+        self._superseded: set[ContentId] = set()
 
     def build(self) -> None:
         """Build a block at the head's transaction target, unless one held there holds it all.
@@ -371,13 +384,7 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
         if head is None:
             return
 
-        if head.validation != self._head:
-            self._head = head.validation
-            self._passed_over.clear()
-            self._correct.clear()
-
-        target = GenerationTargets.after(head.validation).transaction
-        at_target = self._parsed(self._reader.read(target, TransactionBlock))
+        at_target = self._at_target(head)
         offered = [
             signed
             for _, drop in [*at_target, *self._parsed(self._false_starts(head))]
@@ -416,6 +423,106 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
 
         except (BundleError, ValueError) as error:
             _LOGGER.warning("Cannot build a Karma transaction block: %s", error)
+
+    def superseded(self) -> dict[ContentId, ContentId]:
+        """The blocks held at the head's transaction target that another held there supersedes.
+
+        Each is a transaction block built on the head, whose transactions
+        are all in another built on it, correct but perhaps for being full,
+        holding more of them, or as many and sharing more bits with the
+        target (§3.7). One that a validation block held at the head's
+        validation target names is not, nor one full, as the copy held
+        measures it. Each is named once at a head.
+
+        Returns:
+            Each block superseded, and the block of most transactions, and of
+            those, most bits, that supersedes it.
+        """
+        head = self._history.head
+
+        if head is None:
+            return {}
+
+        targets = GenerationTargets.after(head.validation)
+        # Each block built on the head, those of most transactions, and of
+        # as many, most bits, first.
+        ranked = sorted(
+            (
+                (
+                    (
+                        len(drop.block.signed),
+                        matching_bits(targets.transaction.hex, held.block_id.hash),
+                    ),
+                    held,
+                    frozenset(signed.hash for signed in drop.block.signed),
+                )
+                for held, drop in self._at_target(head)
+                if drop.block.previous == head.validation
+            ),
+            key=lambda each: each[0],
+            reverse=True,
+        )
+        named = self._named(targets.validation)
+        superseded: dict[ContentId, ContentId] = {}
+
+        for rank, held, hashes in ranked:
+            if (
+                held.block_id in self._superseded
+                or held.block_id in named
+                or self._bounds.is_full(held.compressed_bytes)
+            ):
+                continue
+
+            keeper = next(
+                (
+                    other.block_id
+                    for other_rank, other, kept in ranked
+                    if other_rank > rank and hashes <= kept and self._is_correct(other)
+                ),
+                None,
+            )
+
+            if keeper is not None:
+                self._superseded.add(held.block_id)
+                superseded[held.block_id] = keeper
+
+        return superseded
+
+    def _at_target(
+        self, head: ChainGeneration
+    ) -> list[tuple[HeldBlock, BlockDrop[TransactionBlock]]]:
+        """The transaction blocks held at ``head``'s transaction target, read (:meth:`_parsed`).
+
+        What was found at another head is forgotten.
+        """
+        if head.validation != self._head:
+            self._head = head.validation
+            self._passed_over.clear()
+            self._correct.clear()
+            self._superseded.clear()
+
+        target = GenerationTargets.after(head.validation).transaction
+        return self._parsed(self._reader.read(target, TransactionBlock))
+
+    def _named(self, target: DropTarget) -> set[ContentId]:
+        """The transaction blocks the validation blocks held at ``target`` stake on, unchecked.
+
+        One that is no validation block names none.
+        """
+        named: set[ContentId] = set()
+
+        for held in self._reader.read(target, ValidationBlock):
+            try:
+                drop = BlockDrop.parsed(held.data, ValidationBlock)
+
+            except (BundleError, ValueError) as error:
+                # Not logged as a warning: the chain followed checks each block at the target.
+                _LOGGER.debug("Karma block %s names no transaction block: %s", held.block_id, error)
+                continue
+
+            named.update(signed.stake.transaction_block for signed in drop.block.stakes)
+
+        return named
 
     def _false_starts(self, head: ChainGeneration) -> list[HeldBlock]:
         """The transaction blocks held at the transaction targets of ``head``'s rivals (§3.4).
