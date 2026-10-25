@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from itertools import count
 from logging import INFO, WARNING
+from typing import Iterable
 
 from pytest import LogCaptureFixture, fixture
 
@@ -43,24 +44,48 @@ MINIMUM_BITS = 8
 BOUNDS = BlockBounds(most_bytes=4_000, room_bytes=3_900, transaction_bits=0)
 
 
-def placed(target: DropTarget, content: bytes, bits: int | None = None) -> bytes:
+def apart(hex_id: str, targets: Iterable[DropTarget]) -> bool:
+    """Whether ``hex_id`` shares fewer than :data:`MINIMUM_BITS` with each of ``targets``."""
+    return all(matching_bits(target.hex, hex_id) < MINIMUM_BITS for target in targets)
+
+
+def names_apart(validation_id: ContentId) -> bool:
+    """Whether the targets of the generation after ``validation_id`` are apart from both roots'."""
+    after = GenerationTargets.after(validation_id)
+    roots = (ROOT.transaction, ROOT.validation)
+    return apart(after.transaction.hex, roots) and apart(after.validation.hex, roots)
+
+
+def placed(
+    target: DropTarget, content: bytes, bits: int | None = None, *, naming_apart: bool = False
+) -> bytes:
     """``content`` as a drop at ``target``, sharing exactly ``bits`` with it.
 
     Without ``bits``, it shares at least :data:`MINIMUM_BITS`. It shares
     fewer than that with each root target but ``target``, so that a node
     following no chain does not find it there by chance: as a root of its
     own, or as an unsigned block it shuns as it reads the root's targets,
-    and again as it reads generation 1's.
+    and again as it reads generation 1's. With ``naming_apart``, the
+    targets of the generation after it, as a validation block, share fewer
+    than that with each root target too, so that a drop can be placed at
+    each of them.
+
+    Raises:
+        AssertionError: ``target`` shares :data:`MINIMUM_BITS` or more with
+            another root target, so no drop at it is apart from that one.
     """
     others = [root for root in (ROOT.transaction, ROOT.validation) if root != target]
+
+    if not apart(target.hex, others):
+        raise AssertionError(f"No drop at {target.hex} is apart from the other root targets")
 
     for nonce in count():
         data = content + b"\x00" + str(nonce).encode("ascii")
         digest = sha256(data).hexdigest()
         shared = matching_bits(target.hex, digest)
-        apart = all(matching_bits(other.hex, digest) < MINIMUM_BITS for other in others)
+        sharing = shared == bits or (bits is None and shared >= MINIMUM_BITS)
 
-        if apart and (shared == bits or (bits is None and shared >= MINIMUM_BITS)):
+        if sharing and apart(digest, others) and (not naming_apart or names_apart(id_of(data))):
             return data
 
     raise AssertionError("Every nonce was tried")
@@ -71,9 +96,11 @@ def signed_at(
     builder: NodeIdentity,
     block: TransactionBlock | ValidationBlock,
     bits: int | None = None,
+    *,
+    naming_apart: bool = False,
 ) -> bytes:
     """``block``, as ``builder`` signs it, as a drop at ``target`` sharing ``bits`` with it."""
-    return placed(target, builder.signed(block.text()).encoded(), bits)
+    return placed(target, builder.signed(block.text()).encoded(), bits, naming_apart=naming_apart)
 
 
 def copied_to(target: DropTarget, data: bytes) -> bytes:
@@ -122,14 +149,21 @@ class Root:
         transaction_bits: int | None = None,
         validation_bits: int | None = None,
     ) -> Root:
-        """The root ``creator`` places, each drop sharing the bits given with its target."""
+        """The root ``creator`` places, each drop sharing the bits given with its target.
+
+        Its validation drop names generation 1 targets apart from both root
+        targets, so that drops can be placed at them.
+        """
         own = creator.node_id
         sent = Transaction(own, {own: Kismet(0)}, Kismet(0), 0, CREATED)
         signed = SignedTransaction.of(creator.signed(sent.text()))
         block = TransactionBlock(0, None, ChainWeight(0), 0, (signed,), {own: NO_BALANCE})
         transaction = signed_at(ROOT.transaction, creator, block, transaction_bits)
         validation = ValidationBlock(0, None, (staked(creator, id_of(transaction), 0),), ())
-        return cls(transaction, signed_at(ROOT.validation, creator, validation, validation_bits))
+        return cls(
+            transaction,
+            signed_at(ROOT.validation, creator, validation, validation_bits, naming_apart=True),
+        )
 
     @property
     def next(self) -> GenerationTargets:
