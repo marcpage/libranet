@@ -494,6 +494,14 @@ a block there already holds every transaction it would take.
 `libranet-karma.log` says each block it builds, how many transactions it
 holds, and whether it is full.
 
+Each time it looks and each time it builds, the node shuns each smaller block
+at its head's target whose transactions are all in a correct block it holds
+there, so that searches carry less of the same data: one holding fewer of
+them, or as many with a drop sharing fewer bits with the target. It never
+shuns one that a validation block names, nor one that is full.
+`libranet-karma.log` names each it shuns, and the block that holds its
+transactions.
+
 What the chain says, any client may read (HTTP API §10.10): the head the
 node follows, and the Karma the chain states the node holds, at
 `/data/karma`; anyone's, by their id, at `/data/karma/balances/{id}`; and the

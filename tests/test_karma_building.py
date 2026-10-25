@@ -42,6 +42,10 @@ from tests.karma_chains import (
 # 100 bytes compressed, up to 64 KiB, is full.
 ROOMY = BlockBounds(most_bytes=64 * KIB, room_bytes=64 * KIB - 100, transaction_bits=0)
 
+# Bounds in which every transaction meets the work, and a block is full only
+# from 63 KiB compressed, which no test's few transactions fill.
+LARGE = BlockBounds(most_bytes=64 * KIB, room_bytes=KIB, transaction_bits=0)
+
 # Identities paid, whose keys no test holds.
 PAID = tuple(ContentId("sha256", f"{byte:02x}" * 32) for byte in range(0xD1, 0xD5))
 
@@ -185,6 +189,18 @@ def builder(
     placed: Placed,
 ) -> BlockBuilder:
     return building(history, reader, carried, carol, placed)
+
+
+@fixture
+def shunning(
+    history: ChainHistory,
+    reader: TargetReader,
+    carried: CarriedTransactions,
+    carol: NodeIdentity,
+    placed: Placed,
+) -> BlockBuilder:
+    """What builds blocks as Carol, in which a block of a few transactions is not full."""
+    return building(history, reader, carried, carol, placed, LARGE)
 
 
 def following(follower: ChainFollower, truth: CasStore, chain: Chain) -> None:
@@ -721,3 +737,138 @@ def test_what_is_no_transaction_block_at_a_target_is_passed_over_and_logged_once
 
     assert placed.drops == []
     assert caplog.text.count(f"Taking no Karma transactions from {id_of(misplaced)}") == 1
+
+
+def test_blocks_whose_transactions_a_block_held_holds_more_of_are_superseded_by_it(
+    shunning: BlockBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    small = [
+        put_up(truth, first, dave, sent(alice, {bob.node_id: 1}, seconds)) for seconds in (1, 2)
+    ]
+
+    assert shunning.superseded() == {}
+
+    shunning.build()
+    (built,) = placed.drops
+
+    assert shunning.superseded() == {id_of(data): id_of(built) for data in small}
+    # Each is named once at a head.
+    assert shunning.superseded() == {}
+
+
+def test_of_blocks_holding_the_same_transactions_those_sharing_fewer_bits_are_superseded(
+    shunning: BlockBuilder,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    block = first.block_after(sent(alice, {bob.node_id: 1}, 1))
+    fewer = [signed_at(first.targets.transaction, builder, block, 8) for builder in (bob, dave)]
+    hold(truth, *fewer)
+
+    assert shunning.superseded() == {}
+
+    more = signed_at(first.targets.transaction, alice, block, 9)
+    hold(truth, more)
+
+    assert shunning.superseded() == {id_of(data): id_of(more) for data in fewer}
+
+
+def test_a_block_a_validation_block_names_is_never_superseded(
+    shunning: BlockBuilder,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    signed = [sent(alice, {bob.node_id: 1}, seconds) for seconds in (1, 2)]
+    named, unnamed = (put_up(truth, first, dave, each) for each in signed)
+    keeper = put_up(truth, first, dave, *signed)
+    hold(truth, validating(first.targets.validation, bob, named))
+
+    assert shunning.superseded() == {id_of(unnamed): id_of(keeper)}
+
+
+def test_a_full_block_is_never_superseded(
+    builder: BlockBuilder,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    signed = [sent(alice, {bob.node_id: 1}, seconds) for seconds in (1, 2)]
+
+    for each in signed:
+        put_up(truth, first, dave, each)
+
+    put_up(truth, first, dave, *signed)
+
+    assert builder.superseded() == {}
+
+
+def test_a_block_of_another_generation_or_built_on_another_head_is_never_superseded(
+    shunning: BlockBuilder,
+    follower: ChainFollower,
+    truth: CasStore,
+    root: Chain,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    signed = [sent(alice, {bob.node_id: 1}, seconds) for seconds in (1, 2, 3)]
+    # A block of the generation before, built on the root, and one built on
+    # Bob's rival to the head, each copied to the head's target.
+    rival = validating(root.targets.validation, bob, first.generations[1].transaction)
+    started = Chain((root.generations[0], Generation(first.generations[1].transaction, rival)))
+    elsewhere = [
+        signed_at(first.targets.transaction, dave, root.block_after(signed[0])),
+        signed_at(first.targets.transaction, dave, started.block_after(signed[1])),
+    ]
+    hold(truth, *elsewhere)
+    small = put_up(truth, first, dave, signed[2])
+    keeper = put_up(truth, first, dave, *signed)
+
+    assert shunning.superseded() == {id_of(small): id_of(keeper)}
+
+
+def test_a_block_is_never_superseded_by_one_that_is_not_correct(
+    shunning: BlockBuilder,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    signed = sent(alice, {bob.node_id: 1}, 1)
+    put_up(truth, first, dave, signed)
+    true = first.block_after(signed, sent(alice, {bob.node_id: 1}, 2))
+    false = replace(true, balances={**true.balances, bob.node_id: Balance(Kismet(7))})
+    hold(truth, signed_at(first.targets.transaction, dave, false))
+
+    assert shunning.superseded() == {}
+
+
+def test_nothing_is_superseded_while_no_chain_is_followed(shunning: BlockBuilder) -> None:
+    assert shunning.superseded() == {}
