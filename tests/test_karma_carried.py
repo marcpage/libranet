@@ -143,6 +143,17 @@ def test_a_file_that_cannot_be_read_is_logged_and_written_again(
     assert carried.read() == collected
 
 
+def test_those_carried_that_cannot_be_read_are_none_to_build_with_and_logged(
+    carried: CarriedTransactions, tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    (tmp_path / CARRIED_FILE).write_bytes(b"Not JSON")
+
+    with caplog.at_level(WARNING):
+        assert carried.readable_at(chain_of(tmp_path, 3)) == []
+
+    assert "Cannot read the Karma transactions carried" in caplog.text
+
+
 def test_nothing_is_written_while_nothing_is_carried(
     carried: CarriedTransactions, tmp_path: Path
 ) -> None:

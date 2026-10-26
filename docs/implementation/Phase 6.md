@@ -119,7 +119,8 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   Step 122 is #440, Step 123 is #441, Step 124 is #442, Step 125 is #443,
   Step 126 is #444, Step 127 is #445, Step 128 is #446, Step 129 is #447,
   Step 130 is #448, Step 131 is #449, Step 132 is #450, Step 133 is #451,
-  Step 134 is #452, Step 135 is #453, and none after it has one yet.
+  Step 134 is #452, Step 135 is #453, Step 136 is #454, and none after it
+  has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -2507,7 +2508,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 135 — Shunning What Is Superseded
+## Step 135 — Shunning What Is Superseded ✅
 
 **Kind:** improvement in behavior. **Issue:** #453, under #87.
 **Depends on:** Step 134.
@@ -2577,8 +2578,8 @@ My calls, not yet reviewed:
 
 ## Step 136 — Staking and Building Validation Blocks
 
-**Kind:** improvement in behavior. **Issue:** none yet; planned under
-#87. **Depends on:** Steps 122, 127, and 134.
+**Kind:** improvement in behavior. **Issue:** #454, under #87.
+**Depends on:** Steps 122, 127, and 134.
 
 Once a full, correct transaction block is placed at its head's target, the
 node stakes on it, and builds validation blocks from the stakes it has, so
@@ -2625,6 +2626,100 @@ block are each a change set.
   package, that puts up that many from identities of its own, rather than
   a setting that lowers what is full, which would fork a node that used it
   from the network.
+
+Neither question had been ruled when it was built, so the first was built
+as recommended: `karma.stake_percent`, 10 by default, from 0, which stakes
+nothing, to 100. No setting lowers what is full; the tests fill blocks
+within small bounds, as every Karma step's do. No live check was run, and
+the script the second recommends is not written.
+
+It came to 754 added lines of non-test Python, with 42 changed or removed,
+against an estimate of 450, and 769 lines of tests, so it was built as two
+change sets: the stakes a validation block takes, at 373 lines, with 16
+changed, and 451 lines of tests; and the block built of them, and the
+module building it, at 396, with 41 changed, and 321 lines of tests.
+
+What was built:
+
+- **`StakeCover`** (`karma/staking.py`, new): what covers each identity's
+  stakes on a transaction block, its Kismet as that block leaves it, less
+  its fees there (`balances_left`, now shared with Step 122's check);
+  `taken` takes of each staker's stakes the largest first while covered
+  together, and `runner_up` the first rival whose stakes the block's reward
+  would take are covered.
+- **`HeadStakes`** (`karma/staking.py`, new): `staked()` takes the best
+  scored correct block at the head's transaction target that no distrusted
+  identity built, the stakes on it in the validation blocks held at the
+  head's validation target, each whose signature checks with its staker's
+  key, but distrusted stakers', and the node's own, `karma.stake_percent`
+  of what covers it, signed once at a head unless one of its own is held
+  there already. A stake whose signature fails is logged once at a head.
+- **`ValidationBuilder`** (`karma/staking.py`, new): `build()` builds a
+  validation block of those stakes, naming a runner-up, and listing as
+  witnesses the hashes of what the node carries, then of the transactions
+  in the blocks at the head's transaction target, that the chain has not
+  witnessed and the block validated does not hold, as many as fit in 1 MiB.
+  It is signed by the node, its nonce searched for for `karma.block_seconds`
+  and after that until it shares `storage.search_min_bits`, and stored and
+  announced. Nothing is built while a correct validation block held there
+  holds every stake taken.
+- **`ChainFollower.checked()`** (`karma/following.py`): the blocks at the
+  head's two targets, checked as a look checks them, none followed.
+- **`BlockDrop.measured_bytes()`** (`karma/blocks.py`), what Step 134's
+  filling measured, now shared, and **`CarriedTransactions.readable_at`**
+  (`karma/carried.py`), what Step 134 read of what is carried, moved there
+  to be shared. **`NodeTrust.distrusts`** (`messaging/node_trust.py`).
+- **`karma.stake_percent`** (`KarmaConfig`), 10 by default.
+- **`KarmaModule`** builds a validation block every
+  `karma.build_interval_seconds`, after the transaction block, so that one
+  just built full is staked on, and follows the chain through it as it next
+  looks.
+- Messages §3, the Module System, File Layout §3.11, the Operator Guide's
+  §3 and §4.8, and the example configuration.
+
+My calls, not yet reviewed:
+
+- **The blocks staked on and the rivals are those the chain followed
+  checks** (`ChainFollower.checked()`), so each block at the head's targets
+  is checked once at a head, and what is found false is said as a look says
+  it.
+- **The node's stake is signed once at a head for each block it stakes
+  on**, and kept in memory; one of its own held at the target is its stake,
+  so a node started again does not stake again. A better block found later
+  is staked on too, each stake covered on its own (§6.3).
+- **Others' stakes are read from every validation block at the head's
+  validation target, unchecked**, each stake's signature checked with its
+  staker's key, as Step 134 reads transactions: a block found false for one
+  stake still gives the others. Of each staker's, the largest are taken
+  first while covered together, not the set that covers the most.
+- **"Signed" by a distrusted identity is the block's builder**, its signer,
+  not the senders of the transactions in it, whose transactions a block of
+  any builder takes (Step 134).
+- **The runner-up is chosen of the rivals that state nothing false**, the
+  correct ones first, by §6.5's best, and then the rest by the bits they
+  share with the target. A correct rival at the head's validation target is
+  followed as soon as the module looks (Step 126), so by the time it builds,
+  a rival there is mostly one not correct as held, such as one validating a
+  block not full in the node's copy. §6.5 lets a runner-up be any validation
+  block at the target validating another block.
+- **Stakes take the room first, and witnesses what is left**: a block whose
+  stakes alone do not fit in 1 MiB is not built, and that is logged.
+  Witnesses are those carried, then the rest sorted by hash; those the
+  validated block holds are left out, since listing them changes nothing
+  (§6.4), as are the transactions of false starts.
+- **A block is built again only while no correct validation block held
+  there holds every stake taken**, as Step 134 does with transactions: a
+  false one holding them all does not stop it, and another runner-up alone
+  does not start it.
+- **A node staking 0% still builds validation blocks of others' stakes**,
+  and is paid what rounding leaves over when one wins (§6.6).
+
+Noted, not changed: the module follows the first correct validation block it
+sees as it next looks, and changes to another only for a heavier chain (Step
+129), where effective stake does not count (KarmaLedger §9). So once any
+validation block of a generation is placed, the nodes that see it move on,
+and stakes are combined from several blocks (Karma §21) only while one is
+not yet followed.
 
 ---
 
@@ -2866,7 +2961,8 @@ ones that cut across more than one step:
   `karma.mining_processes`, 1 by default, bounds the mining, and
   `karma.build_interval_seconds` the building. Whether a node builds
   blocks at all unless its operator says so is open with Step 136's
-  question of whether it stakes.
+  question of whether it stakes, which it built as recommended: 10% by
+  default, not yet ruled.
 - **Keeping clients by Karma** (Step 142) — it waits on Phase 8 Step 84,
   and may move to Phase 8 with it, should that phase be built after this
   one.

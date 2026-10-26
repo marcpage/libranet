@@ -232,7 +232,7 @@ through the dispatcher.
 | 7 | Unbundler | `unbundler` | `UnbundlerModule` | Resolves application files' entries from their bundles on demand, and deletes unused ones |
 | 8 | Eviction | `eviction` | `EvictionModule` | Keeps storage within its limits |
 | 9 | Backup | `backup` | `BackupModule` | Backs directories up as bundles; restores, builds, and exports bundles |
-| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger; for now, follows the chain, keeping its history, makes a root when asked, puts up the transactions it is given, pays the servers it rates highest, puts up the node's payments together, combines the blocks at its head's targets, and shuns those superseded |
+| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger; for now, follows the chain, keeping its history, makes a root when asked, puts up the transactions it is given, pays the servers it rates highest, puts up the node's payments together, combines the blocks at its head's targets, shuns those superseded, and stakes and builds validation blocks |
 
 The supervisor launches them in this order, taken from `SPAWNED_MODULES`,
 but waits only for the dispatcher to be ready. No module waits for another
@@ -490,7 +490,16 @@ already holds every transaction it would take (`BlockBuilder`,
 shuns (`data.shunned`) each transaction block at its head's transaction
 target whose transactions are all in another it holds there, correct, holding
 more of them, or as many and sharing more bits with the target: never one a
-validation block there names, nor one full (Phase 6 Step 135).
+validation block there names, nor one full (Phase 6 Step 135). After each
+build, it stakes `karma.stake_percent` of what covers the node on the best
+correct transaction block at its head's transaction target that no identity
+the node distrusts built, and builds a validation block of its stake and
+the others' on that block held at its head's validation target, but those of
+whom the node distrusts, naming a runner-up whose stakes it would take are
+covered, and listing the transactions not yet witnessed, as many as fit. It
+places it as it places a block of its own, unless a correct one it holds
+there holds every stake (`ValidationBuilder`, `karma/staking.py`, Phase 6
+Step 136), and follows the chain through it as it next looks.
 
 ### 3.3 What Each Module Owns
 
@@ -744,7 +753,7 @@ What each module does in them:
 | Unbundler | — | — | — |
 | Eviction | Read the node id; count storage; ask which peers are connected; say whether storage is full; evict if over | Say whether storage is full, if that changed; time out hand-offs and questions; resume after a pause | — |
 | Backup | Read the node id; ask whether storage is full; read the jobs; report state | Carry on the next restore, build, export, import, or backup due | — |
-| Karma | Read the history; write its head | Give up on content waited for too long; follow the chain on, if it is time to look, or what it waited for came, or a peer told of a head it does not follow, and say the head and write the balances there if it changed; make the node's payments one transaction, if they are due; put up the transactions carried that are valid at the head; ask for the servers to be rated, every `karma.rating_interval_seconds`; combine the blocks at the head's targets into one, every `karma.build_interval_seconds`; after looking or building, shun the blocks at the head's transaction target that another held there supersedes | Stop the processes searching for nonces |
+| Karma | Read the history; write its head | Give up on content waited for too long; follow the chain on, if it is time to look, or what it waited for came, or a peer told of a head it does not follow, and say the head and write the balances there if it changed; make the node's payments one transaction, if they are due; put up the transactions carried that are valid at the head; ask for the servers to be rated, every `karma.rating_interval_seconds`; combine the blocks at the head's targets into one, every `karma.build_interval_seconds`, and then stake on the best block there and build a validation block of the stakes; after looking or building, shun the blocks at the head's transaction target that another held there supersedes | Stop the processes searching for nonces |
 
 ### 5.3 Writing a Module
 
@@ -1048,7 +1057,9 @@ The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
 leave it out. The Karma module publishes searches and misses as it reads a
 target (Phase 6 Step 124), `data.stored` only for a root it makes (Phase 6
-Step 125) and a block it puts up for a transaction (Phase 6 Step 131), and
+Step 125), a block it puts up for a transaction (Phase 6 Step 131), a block
+it builds of others (Phase 6 Step 134), and a validation block it builds of
+stakes (Phase 6 Step 136), and
 `data.shunned` and `karma.false_block` for blocks it finds unsigned or false
 as it follows the chain (Phase 6 Step 126), or weighs a heavier one (Phase 6
 Step 129), and `data.shunned` for transaction blocks another it holds

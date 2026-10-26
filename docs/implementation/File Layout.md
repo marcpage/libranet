@@ -570,7 +570,9 @@ One is carried into the blocks of the generations up to
 witnessed until it is; one whose key the chain holds is carried no more. One
 the module puts up itself it tries at each head, and puts up there if it is
 valid. Every one it builds into the block it combines at the head, every
-`karma.build_interval_seconds` (Phase 6 Step 134). The module writes the
+`karma.build_interval_seconds` (Phase 6 Step 134), and lists each the chain
+has not yet witnessed in the validation blocks it builds (Phase 6 Step 136),
+so that a winning one starts its count. The module writes the
 file whole each time its head changes, leaving those out, and once it has
 carried something, and the file is not there before then
 (`CarriedTransactions` in `src/libranet/karma/carried.py`, Phase 6 Steps 129

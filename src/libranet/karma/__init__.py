@@ -18,7 +18,8 @@ carrying over the transactions of the chain left (Phase 6 Step 129);
 putting a transaction up as a block of its own (Phase 6 Step 131);
 queuing the node's payments, and putting them up together (Phase 6 Step
 132); combining transaction blocks into one, as full as it can be (Phase 6
-Step 134); and staking on the best of them (Phase 6 Step 136).
+Step 134); and staking on the best of them, and building validation blocks
+of the stakes (Phase 6 Step 136).
 """
 
 from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet
@@ -79,7 +80,7 @@ from libranet.karma.putting import OwnBlock, TransactionsPutUp
 from libranet.karma.reading import ChainGenerations, HeldBlock, HeldChain, TargetReader
 from libranet.karma.root import ChainRoot
 from libranet.karma.stakes import SignedStake, Stake
-from libranet.karma.staking import HeadStakes, StakeCover, StakedBlock
+from libranet.karma.staking import HeadStakes, StakeCover, StakedBlock, ValidationBuilder
 from libranet.karma.transactions import Payout, SignedTransaction, Transaction, TransactionKey
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore, balances_left
 from libranet.karma.weight import ChainWeight
@@ -153,6 +154,7 @@ __all__ = [
     "TransactionsPutUp",
     "ValidationBlock",
     "ValidationBlockCheck",
+    "ValidationBuilder",
     "ValidationScore",
     "amounts_member",
     "balances_left",

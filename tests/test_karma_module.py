@@ -181,15 +181,22 @@ def paid_by_node(storage: StorageConfig, seconds: int = 0) -> SignedTransaction:
 
 
 def paying_module(
-    storage: StorageConfig, queues: ModuleQueues, clock: Callable[[], float]
+    storage: StorageConfig,
+    queues: ModuleQueues,
+    clock: Callable[[], float],
+    karma: KarmaConfig | None = None,
 ) -> KarmaModule:
     """The Karma module of a node, started, following its own root and a generation on it.
 
     The node holds the root's reward, 20 Karma, so pays 0.01% of it,
-    200,000,000,000 Kismet, a payment.
+    200,000,000,000 Kismet, a payment. Its Karma is configured as ``karma``
+    says, or by default.
     """
     config = with_node_key(
-        LibranetConfig(storage=storage.model_copy(update={"search_min_bits": MINIMUM_BITS}))
+        LibranetConfig(
+            storage=storage.model_copy(update={"search_min_bits": MINIMUM_BITS}),
+            karma=karma or KarmaConfig(),
+        )
     )
     node = NodeIdentity.load(config)
     truth = CasStore.source_of_truth(storage)
@@ -1049,6 +1056,38 @@ def test_the_module_shuns_the_blocks_at_the_heads_target_that_one_it_comes_to_ho
     module.on_idle()
 
     assert sorted(shunned_of(published(queues), [*put_up, keeper])) == sorted(put_up)
+
+
+def test_the_module_stakes_on_a_full_block_at_its_heads_target_and_follows_the_block_it_builds(
+    storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    clock = Clock()
+    karma = KarmaConfig(block_seconds=0.0)
+    module = paying_module(storage, queues, clock, karma)
+    published(queues)
+    # Put up as a block of its own, which is full in the bounds the chain is
+    # checked against, a second after the root's transaction, whose key it
+    # would share.
+    module.handle(given(paid_by_node(storage, 1)))
+    (put_up,) = stored_ids(queues)
+    clock.now += karma.build_interval_seconds
+
+    with caplog.at_level(INFO):
+        module.on_idle()
+
+    (built,) = stored_ids(queues)
+    validation = BlockDrop.parsed(module.reader.held(built), ValidationBlock).block
+    node = NodeIdentity.load(LibranetConfig(storage=storage))
+    assert [(each.staker, each.stake.transaction_block) for each in validation.stakes] == [
+        (node.node_id, put_up)
+    ]
+    assert f"Built Karma validation block {built} of 1 stakes" in caplog.text
+
+    clock.now += karma.look_seconds
+    module.on_idle()
+
+    head = module.history.head
+    assert head is not None and (head.generation, head.validation) == (2, built)
 
 
 def test_the_module_asks_for_the_servers_to_be_rated_every_rating_interval(

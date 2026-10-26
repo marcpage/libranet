@@ -182,6 +182,22 @@ class CarriedTransactions:
             if (now := each.on(history, self._carry_generations)) is not None
         ]
 
+    def readable_at(self, history: ChainHistory) -> list[CarriedTransaction]:
+        """Those carried, as :meth:`at` reads them, or none if they cannot be read, which is logged.
+
+        What is built goes on without them.
+        """
+        try:
+            return self.at(history)
+
+        except OSError as error:
+            _LOGGER.error("Cannot read the Karma transactions carried: %s", error)
+
+        except (BundleError, ValueError) as error:
+            _LOGGER.warning("Cannot read the Karma transactions carried: %s", error)
+
+        return []
+
     def to_put_up(self, history: ChainHistory) -> list[CarriedTransaction]:
         """Those carried that the node puts up itself, each as carried at the head of ``history``.
 

@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 from re import compile as compile_pattern
 from typing import Any, Final, Generic, Mapping, Sequence, TypeVar
+from zlib import compress
 
 from libranet.bundle.errors import (
     BundleError,
@@ -42,6 +43,7 @@ from libranet.bundle.errors import (
     MissingContentError,
 )
 from libranet.bundle.signing import SignedBundle
+from libranet.bundle.storing import STORAGE_COMPRESSION_LEVEL
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DROP_SEPARATOR
 from libranet.cas.errors import UnknownAlgorithmError
@@ -86,6 +88,11 @@ _HASH: Final = compile_pattern(r"[0-9a-f]{64}")
 # The most balances a block may state, for each identity its transactions
 # name as sender or recipient (§5.3).
 _BALANCES_PER_IDENTITY: Final = 2
+
+# The room left in a block's drop, compressed, for its nonce, which is
+# searched for once the block is filled: a count in decimal, which takes
+# fewer bytes than this, compressed, however long the search.
+_NONCE_ROOM_BYTES: Final = 32
 
 
 @dataclass(frozen=True)
@@ -651,6 +658,15 @@ class BlockDrop(Generic[_Block]):
     def content(self) -> bytes:
         """The drop's content: the signed bundle's JSON, which a null byte and a nonce follow."""
         return self.bundle.encoded()
+
+    def measured_bytes(self) -> int:
+        """What its drop measures once placed, as its builder fills it (§5.4).
+
+        That is its content and null byte, compressed as the node stores
+        what it stores, with room for the nonce searched for after.
+        """
+        compressed = compress(self.content() + DROP_SEPARATOR, STORAGE_COMPRESSION_LEVEL)
+        return len(compressed) + _NONCE_ROOM_BYTES
 
     @property
     def builder(self) -> ContentId:

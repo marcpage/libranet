@@ -147,7 +147,8 @@ The settings an operator is most likely to change:
 | `karma.payment_interval_seconds` | `3600.0` | How long after the node's last transaction Karma puts up the payments it has queued, however few (§4.8) |
 | `karma.transaction_seconds` | `10.0` | How long Karma mines a transaction of the node's payments before taking the best nonce found (§4.8) |
 | `karma.rating_interval_seconds` | `3600.0` | How often Karma rates the servers the node is a client of, and pays the best (§4.8) |
-| `karma.build_interval_seconds` | `60.0` | How often Karma combines the transactions put up for the next generation into one block, as full as it can be (§4.8) |
+| `karma.build_interval_seconds` | `60.0` | How often Karma combines the transactions put up for the next generation into one block, as full as it can be, and stakes on a full one (§4.8) |
+| `karma.stake_percent` | `10.0` | What share of the Karma that covers its stakes the node stakes on each generation's best full block, in percent; `0` stakes nothing (§4.8) |
 | `local.folders` | Your desktop, documents, downloads, music, pictures, and videos folders | The folders offered to trusted applications (§6.3) |
 | `logging.level` | `INFO` | What is logged (§7.2) |
 
@@ -501,6 +502,26 @@ them, or as many with a drop sharing fewer bits with the target. It never
 shuns one that a validation block names, nor one that is full.
 `libranet-karma.log` names each it shuns, and the block that holds its
 transactions.
+
+Once a full block is placed at its head's target, so that the generation
+may close, the node stakes on it as it next builds: `karma.stake_percent`,
+10% by default, of the Karma it holds as that block leaves it, less the fees
+it pays there, rounded down to whole Kismet. It stakes on the best full block
+there, by the bits its drop shares with the target, then the shortest reach,
+then the oldest transactions, and never on one built by an identity it
+distrusts (§4.7). It builds a validation block of its stake, and of the
+stakes of others on the same block that it holds there, leaving out those of
+identities it distrusts, and of each staker's only as much as the staker's
+Karma covers. The block names as its runner-up a rival validation block for
+another full block, if one is held whose stakers hold what it would take of
+them, and lists the transactions not yet witnessed: those the node carries,
+then others it has seen at its head's target. It places the block, searching
+for its nonce for `karma.block_seconds`, and follows the chain through it as
+it next looks. It builds another only once stakes come that the blocks there
+lack. A stake in a block another names as its runner-up is lost to that
+block's stakers: at `0`, the node stakes nothing, and builds validation
+blocks of others' stakes alone. `libranet-karma.log` says each stake the
+node makes, and each validation block it builds.
 
 What the chain says, any client may read (HTTP API §10.10): the head the
 node follows, and the Karma the chain states the node holds, at

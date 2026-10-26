@@ -859,6 +859,14 @@ class KarmaConfig(_Section):
     # karma.block_seconds.
     build_interval_seconds: float = Field(default=60.0, gt=0)
 
+    # What share of what covers the node's stakes the Karma module stakes on
+    # the best transaction block of each generation, in percent, rounded down
+    # to whole Kismet, as it builds a validation block (KarmaLedger §6.3,
+    # Phase 6 Step 136). It is read as the decimal it is written as. At 0, the
+    # node stakes nothing, and builds validation blocks of others' stakes
+    # alone.
+    stake_percent: float = Field(default=10.0, ge=0, le=100)
+
 
 class LocalConfig(_Section):
     """What clients on this machine may reach of it (HttpApi §2.4, Phase 3 Step 68)."""

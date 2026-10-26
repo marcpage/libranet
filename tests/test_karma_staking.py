@@ -1,4 +1,4 @@
-"""Tests for staking on the best block at the head's target (KarmaLedger §6.2, §6.3)."""
+"""Tests for staking, and building validation blocks of the stakes (KarmaLedger §6)."""
 
 from __future__ import annotations
 from datetime import UTC, datetime, timedelta
@@ -13,12 +13,13 @@ from libranet.cas.store import CasStore
 from libranet.config.models import KIB, MIB, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.amounts import Kismet
-from libranet.karma.blocks import BlockBounds, ValidationBlock
+from libranet.karma.blocks import BlockBounds, BlockDrop, ValidationBlock
+from libranet.karma.carried import CarriedTransaction, CarriedTransactions
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.stakes import SignedStake, Stake
-from libranet.karma.staking import HeadStakes, StakeCover
+from libranet.karma.staking import HeadStakes, StakeCover, ValidationBuilder
 from libranet.karma.transactions import SignedTransaction, Transaction
 from libranet.protocol.search import LocalSearch
 from tests.helpers import new_identity
@@ -40,6 +41,22 @@ ROOMY = BlockBounds(most_bytes=64 * KIB, room_bytes=64 * KIB - 100, transaction_
 
 # When the node signs a stake.
 NOW = datetime(2026, 10, 26, 12, 0, 0, tzinfo=UTC)
+
+
+class Placed:
+    """Stands in for the Karma module's storing, keeping each drop in the node's store."""
+
+    def __init__(self, truth: CasStore) -> None:
+        self.truth = truth
+        self.drops: list[bytes] = []
+
+    def __call__(self, data: bytes, node_id: ContentId) -> None:
+        self.truth.write(id_of(data), data)
+        self.drops.append(data)
+
+    def blocks(self) -> list[ValidationBlock]:
+        """The validation blocks placed, in the order they were."""
+        return [BlockDrop.parsed(data, ValidationBlock).block for data in self.drops]
 
 
 @fixture(scope="module")
@@ -414,3 +431,241 @@ def test_of_a_stakers_stakes_the_largest_are_taken_first_while_covered_together(
     assert cover.taken([*offered, offered[0]]) == tuple(
         sorted(offered[:2], key=lambda each: each.hash)
     )
+
+
+@fixture
+def carried(storage: StorageConfig) -> CarriedTransactions:
+    return CarriedTransactions(storage.karma_dir, 3)
+
+
+@fixture
+def placed(truth: CasStore) -> Placed:
+    return Placed(truth)
+
+
+def building(
+    history: ChainHistory,
+    follower: ChainFollower,
+    reader: TargetReader,
+    carried: CarriedTransactions,
+    node: NodeIdentity,
+    placed: Placed,
+    bounds: BlockBounds = ROOMY,
+) -> ValidationBuilder:
+    """What builds validation blocks as ``node``, staking a tenth, placing each drop in moments."""
+    return ValidationBuilder(
+        history,
+        follower,
+        reader,
+        carried,
+        lambda: node,
+        store=placed,
+        distrusts=lambda identity: False,
+        stake_percent=10.0,
+        block_seconds=0.0,
+        drop_bits=MINIMUM_BITS,
+        clock=NOW.timestamp,
+        bounds=bounds,
+    )
+
+
+@fixture
+def builder(
+    history: ChainHistory,
+    follower: ChainFollower,
+    reader: TargetReader,
+    carried: CarriedTransactions,
+    alice: NodeIdentity,
+    placed: Placed,
+) -> ValidationBuilder:
+    return building(history, follower, reader, carried, alice, placed)
+
+
+def test_a_validation_block_of_the_stakes_is_built_and_the_chain_followed_through_it(
+    builder: ValidationBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+    caplog: LogCaptureFixture,
+) -> None:
+    following(follower, truth, first)
+    data = put_up(truth, first, dave, sent(alice, {bob.node_id: 100}, 1))
+
+    with caplog.at_level(INFO):
+        builder.build()
+
+    (drop,) = placed.drops
+    built = BlockDrop.parsed(drop, ValidationBlock)
+    assert built.builder == alice.node_id
+    assert (built.block.generation, built.block.runner_up, built.block.witnessed) == (2, None, ())
+    assert [signed.stake.transaction_block for signed in built.block.stakes] == [id_of(data)]
+    assert f"Built Karma validation block {id_of(drop)} of 1 stakes and 0 witnesses" in caplog.text
+    (followed,) = follower.look()
+    assert (followed.validation, followed.transaction) == (id_of(drop), id_of(data))
+
+
+def test_nothing_is_built_while_no_stake_is_taken(
+    history: ChainHistory,
+    reader: TargetReader,
+    carried: CarriedTransactions,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    carol: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    put_up(truth, first, dave, sent(alice, {bob.node_id: 100}, 1))
+
+    building(history, follower, reader, carried, carol, placed).build()
+
+    assert placed.drops == []
+
+
+def test_nothing_is_built_while_no_chain_is_followed(
+    builder: ValidationBuilder, placed: Placed
+) -> None:
+    builder.build()
+
+    assert placed.drops == []
+
+
+def test_a_block_is_built_again_only_once_stakes_come_that_those_held_lack(
+    builder: ValidationBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    data = put_up(truth, first, dave, sent(alice, {bob.node_id: 100}, 1))
+    builder.build()
+    builder.build()
+
+    assert len(placed.drops) == 1
+
+    hold(truth, validating(first.targets.validation, bob, data))
+    builder.build()
+    builder.build()
+
+    assert [stakers(block.stakes) for block in placed.blocks()] == [
+        [alice.node_id],
+        sorted([alice.node_id, bob.node_id]),
+    ]
+
+
+def test_a_rival_whose_stakes_the_block_would_take_covered_is_named_its_runner_up(
+    builder: ValidationBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    put_up(truth, first, dave, sent(alice, {bob.node_id: 100}, 1), bits=10)
+    other = put_up(truth, first, dave, sent(alice, {bob.node_id: 100}, 2), bits=8)
+    rival = validating(first.targets.validation, bob, other)
+    hold(truth, rival)
+
+    builder.build()
+
+    (drop,) = placed.drops
+    assert BlockDrop.parsed(drop, ValidationBlock).block.runner_up == id_of(rival)
+    # Step 122 finds it correct.
+    assert id_of(drop) in [check.block_id for check in follower.checked()[1] if check.is_correct]
+
+
+def test_no_runner_up_is_named_when_no_rival_is_covered(
+    builder: ValidationBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    # Bob holds nothing as the block staked on leaves him.
+    put_up(truth, first, dave, sent(alice, {dave.node_id: 100}, 1), bits=10)
+    other = put_up(truth, first, dave, sent(alice, {bob.node_id: 100}, 2), bits=8)
+    hold(truth, validating(first.targets.validation, bob, other))
+
+    builder.build()
+
+    (block,) = placed.blocks()
+    assert block.runner_up is None
+
+
+def test_the_block_lists_what_is_carried_and_seen_that_the_chain_has_not_witnessed(
+    builder: ValidationBuilder,
+    placed: Placed,
+    carried: CarriedTransactions,
+    history: ChainHistory,
+    follower: ChainFollower,
+    truth: CasStore,
+    root: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    # pylint: disable=too-many-locals
+    old = sent(alice, {bob.node_id: 1}, 1)
+    witnessing = root.then(bob, alice, bits=9, witnessed=(old.hash,))
+    following(follower, truth, witnessing)
+    taken, seen, unseen = (sent(alice, {bob.node_id: 1}, seconds) for seconds in (2, 3, 4))
+    put_up(truth, witnessing, dave, taken, bits=10)
+    put_up(truth, witnessing, dave, seen, bits=8)
+    carried.carry([CarriedTransaction(each) for each in (unseen, old, taken)], history)
+
+    builder.build()
+
+    (block,) = placed.blocks()
+    assert block.witnessed == tuple(sorted([seen.hash, unseen.hash]))
+
+
+def test_witnesses_are_listed_as_room_allows_those_carried_first(
+    history: ChainHistory,
+    reader: TargetReader,
+    carried: CarriedTransactions,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    # pylint: disable=too-many-locals
+    following(follower, truth, first)
+    taken = sent(alice, {bob.node_id: 1}, 1)
+    seen, unseen = sorted(
+        (sent(alice, {bob.node_id: 1}, seconds) for seconds in (2, 3)),
+        key=lambda signed: signed.hash,
+    )
+    data = put_up(truth, first, dave, taken, bits=10)
+    put_up(truth, first, dave, seen, bits=8)
+    carried.carry([CarriedTransaction(unseen)], history)
+    covering = first.block_after(taken).balances[alice.node_id].kismet.count
+    own = Stake(alice.node_id, id_of(data), Kismet(covering // 10), NOW)
+    one = ValidationBlock(2, None, (SignedStake.of(alice.signed(own.text())),), (unseen.hash,))
+    # Room for one witness, and not two.
+    most = BlockDrop(alice.signed(one.text()), one).measured_bytes()
+    bounds = BlockBounds(most_bytes=most, room_bytes=most, transaction_bits=0)
+
+    building(history, follower, reader, carried, alice, placed, bounds).build()
+
+    assert placed.blocks() == [one]

@@ -47,13 +47,13 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, replace
 from logging import getLogger
-from typing import Callable, Final, Iterable, Mapping, Sequence
+from typing import Callable, Iterable, Mapping, Sequence
 from zlib import compress
 
 from libranet.bundle.errors import BundleError, BundleSignatureError, MissingContentError
 from libranet.bundle.storing import HASH_ALGORITHM, STORAGE_COMPRESSION_LEVEL
 from libranet.cas.content_id import ContentId
-from libranet.cas.drops import DROP_SEPARATOR, NONCE_SEARCHERS, DropTarget, NonceSearchers
+from libranet.cas.drops import NONCE_SEARCHERS, DropTarget, NonceSearchers
 from libranet.cas.prefix import matching_bits
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.amounts import Kismet
@@ -74,11 +74,6 @@ from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
 from libranet.karma.transactions import Payout, SignedTransaction, TransactionKey
 
 _LOGGER = getLogger(__name__)
-
-# The room left in a block's drop, compressed, for its nonce, which is
-# searched for once the block is filled: a count in decimal, which takes
-# fewer bytes than this, compressed, however long the search.
-_NONCE_ROOM_BYTES: Final = 32
 
 
 def _most_bits_first(signed: SignedTransaction) -> tuple[int, str]:
@@ -320,8 +315,7 @@ class FilledBlock:
     def _signed(cls, block: TransactionBlock, identity: NodeIdentity) -> FilledBlock:
         """``block``, signed by ``identity``, and measured."""
         drop = BlockDrop(identity.signed(block.text()), block)
-        compressed = compress(drop.content() + DROP_SEPARATOR, STORAGE_COMPRESSION_LEVEL)
-        return cls(drop, len(compressed) + _NONCE_ROOM_BYTES)
+        return cls(drop, drop.measured_bytes())
 
 
 class BlockBuilder:  # pylint: disable=too-many-instance-attributes
@@ -390,7 +384,7 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
             for _, drop in [*at_target, *self._parsed(self._false_starts(head))]
             for signed in drop.block.signed
         ]
-        offered.extend(self._carried_now())
+        offered.extend(each.signed for each in self._carried.readable_at(self._history))
 
         try:
             combined = CombinedBlock.of(
@@ -545,19 +539,6 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
                 GenerationTargets.after(rival.block_id).transaction, TransactionBlock
             )
         ]
-
-    def _carried_now(self) -> list[SignedTransaction]:
-        """The transactions carried at the head; none if they cannot be read, which is logged."""
-        try:
-            return [each.signed for each in self._carried.at(self._history)]
-
-        except OSError as error:
-            _LOGGER.error("Cannot read the Karma transactions carried: %s", error)
-
-        except (BundleError, ValueError) as error:
-            _LOGGER.warning("Cannot read the Karma transactions carried: %s", error)
-
-        return []
 
     def _parsed(
         self, held: Iterable[HeldBlock]
