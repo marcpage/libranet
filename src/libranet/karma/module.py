@@ -154,7 +154,6 @@ from libranet.karma.putting import TransactionsPutUp
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.root import ChainRoot
 from libranet.karma.staking import ValidationBuilder
-from libranet.karma.transactions import SignedTransaction
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
@@ -162,6 +161,7 @@ from libranet.messaging.node_trust import NodeTrust
 from libranet.messaging.queues import ModuleQueues
 from libranet.messaging.server_ratings import ServerRatings
 from libranet.modules import ModuleName
+from libranet.protocol.karma_transactions import SignedTransaction
 from libranet.protocol.search import normalize_prefix
 
 

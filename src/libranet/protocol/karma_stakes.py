@@ -25,8 +25,8 @@ from typing import Any, Final
 from libranet.bundle.signing import SignedBundle
 from libranet.cas.content_id import ContentId
 from libranet.json_format import MOMENT_FORMAT, compact_json
-from libranet.karma.amounts import Kismet
-from libranet.karma.members import (
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_members import (
     CREATED_MEMBER,
     check_moment,
     contents_value,

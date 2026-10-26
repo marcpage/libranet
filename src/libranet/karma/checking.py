@@ -36,7 +36,6 @@ from typing import Collection, Mapping, Protocol
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import matching_bits
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import (
     BLOCK_BOUNDS,
     Balance,
@@ -49,8 +48,9 @@ from libranet.karma.blocks import (
 )
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.ledger import NO_BALANCE, BalanceSheet, Reward, reach_of
-from libranet.karma.transactions import Payout, SignedTransaction, TransactionKey
 from libranet.karma.weight import ChainWeight
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_transactions import Payout, SignedTransaction, TransactionKey
 
 
 @dataclass(frozen=True)

@@ -11,8 +11,8 @@ from pytest import fixture, mark, raises
 from libranet.bundle.errors import BundleSignatureError, MalformedBundleError
 from libranet.cas.content_id import ContentId
 from libranet.identity.node_identity import NodeIdentity
-from libranet.karma.amounts import Kismet
-from libranet.karma.stakes import SignedStake, Stake
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_stakes import SignedStake, Stake
 from tests.helpers import new_identity
 
 CREATED = datetime(2026, 10, 21, 14, 3, 22, tzinfo=UTC)

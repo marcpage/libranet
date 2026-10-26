@@ -25,7 +25,6 @@ from libranet.cas.store import CasStore
 from libranet.config.models import KarmaConfig, LibranetConfig, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.trust import TrustState
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
@@ -40,7 +39,6 @@ from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.module import KarmaModule
 from libranet.karma.payments import Payment, PaymentQueue
 from libranet.karma.reading import HeldChain
-from libranet.karma.transactions import SignedTransaction, Transaction
 from libranet.karma.validating import ValidationBlockCheck
 from libranet.karma.weight import ChainWeight
 from libranet.messaging.envelope import Message, event_of, make_message
@@ -49,6 +47,8 @@ from libranet.messaging.node_trust import NodeTrust
 from libranet.messaging.queues import ModuleQueues
 from libranet.messaging.server_ratings import ServerRating, ServerRatings
 from libranet.modules import SPAWNED_MODULES, ModuleName
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from libranet.supervision.registry import default_module_specs
 from libranet.supervision.specs import ModuleSpec
 from tests.helpers import new_identity, published, with_node_key

@@ -19,9 +19,14 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.drops import TRIES_PER_CLOCK_READ, NonceSearchers
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.people import PersonKey
-from libranet.karma.amounts import MAX_KISMET, Kismet
-from libranet.karma.generations import TRANSACTION_WORK_TARGET
-from libranet.karma.transactions import Payout, SignedTransaction, Transaction, TransactionKey
+from libranet.protocol.karma_amounts import MAX_KISMET, Kismet
+from libranet.protocol.karma_transactions import (
+    TRANSACTION_WORK_TARGET,
+    Payout,
+    SignedTransaction,
+    Transaction,
+    TransactionKey,
+)
 from tests.helpers import new_identity
 
 CREATED = datetime(2026, 10, 21, 14, 3, 22, tzinfo=UTC)

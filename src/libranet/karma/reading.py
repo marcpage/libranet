@@ -73,9 +73,9 @@ from libranet.config.models import LibranetConfig
 from libranet.karma.blocks import Balance, BlockDrop, TransactionBlock, ValidationBlock
 from libranet.karma.history import ChainGeneration
 from libranet.karma.ledger import NO_BALANCE, WEIGHT_GENERATIONS
-from libranet.karma.transactions import TransactionKey
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
+from libranet.protocol.karma_transactions import TransactionKey
 from libranet.protocol.search import LocalSearch
 
 _LOGGER = getLogger(__name__)

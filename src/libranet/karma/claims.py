@@ -40,9 +40,9 @@ from libranet.karma.blocks import (
 from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.reading import HeldChain, TargetReader
-from libranet.karma.transactions import TransactionKey
 from libranet.karma.validating import ValidationBlockCheck
 from libranet.karma.weight import ChainWeight
+from libranet.protocol.karma_transactions import TransactionKey
 
 
 @dataclass(frozen=True)

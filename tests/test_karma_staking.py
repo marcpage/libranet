@@ -12,15 +12,15 @@ from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import KIB, MIB, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import BlockBounds, BlockDrop, ValidationBlock
 from libranet.karma.carried import CarriedTransaction, CarriedTransactions
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
 from libranet.karma.reading import HeldChain, TargetReader
-from libranet.karma.stakes import SignedStake, Stake
 from libranet.karma.staking import HeadStakes, StakeCover, ValidationBuilder
-from libranet.karma.transactions import SignedTransaction, Transaction
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_stakes import SignedStake, Stake
+from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from libranet.protocol.search import LocalSearch
 from tests.helpers import new_identity
 from tests.karma_chains import (

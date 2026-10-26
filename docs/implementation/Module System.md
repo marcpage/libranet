@@ -208,7 +208,7 @@ The modules communicate in three ways:
 | `src/libranet/messaging/module.py` | `ModuleBase`: publishing, filtering, and the receive loop |
 | `src/libranet/messaging/dispatcher.py` | `Dispatcher`: the hub that delivers each message to its subscribers |
 | `src/libranet/messaging/publishing.py` | `Publish`, the signature of `publish` that code outside a module class is handed |
-| `src/libranet/protocol/` | What is said over HTTP, shared by the modules that say or act on it: HTTP syntax, node and seek lists, search, `localhost` resolution, whether a client is local, and the request bodies of `/config`, of making bundles and drops, and of identities and signing in |
+| `src/libranet/protocol/` | What is said over HTTP, shared by the modules that say or act on it: HTTP syntax, node and seek lists, search, `localhost` resolution, whether a client is local, the request bodies of `/config`, of making bundles and drops, and of identities and signing in, the Karma files the web server reads, and the amounts, transactions, payouts, and stakes of the Karma ledger, which it makes for whoever is signed in |
 | `src/libranet/{module}/module.py` | Each module's class and factory |
 
 ## 3. The Modules

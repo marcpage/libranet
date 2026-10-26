@@ -37,13 +37,13 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.drops import NONCE_SEARCHERS, NonceSearchers
 from libranet.identity.node_identity import NodeIdentity
 from libranet.json_format import MOMENT_FORMAT, compact_json
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds
 from libranet.karma.history import ChainHistory
-from libranet.karma.members import id_member, moment_member
 from libranet.karma.putting import TransactionsPutUp
 from libranet.karma.reading import HeldChain, TargetReader
-from libranet.karma.transactions import SignedTransaction, Transaction
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_members import id_member, moment_member
+from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 
 _LOGGER = getLogger(__name__)
 

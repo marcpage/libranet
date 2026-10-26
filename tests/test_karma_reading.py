@@ -20,7 +20,6 @@ from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB, KarmaConfig, LibranetConfig, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import (
     Balance,
     BlockBounds,
@@ -34,12 +33,18 @@ from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.ledger import NO_BALANCE
 from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
-from libranet.karma.stakes import SignedStake, Stake
-from libranet.karma.transactions import Payout, SignedTransaction, Transaction, TransactionKey
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore
 from libranet.karma.weight import ChainWeight
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_stakes import SignedStake, Stake
+from libranet.protocol.karma_transactions import (
+    Payout,
+    SignedTransaction,
+    Transaction,
+    TransactionKey,
+)
 from libranet.protocol.search import LocalSearch
 from tests.helpers import new_identity
 

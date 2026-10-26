@@ -32,7 +32,7 @@ from libranet.bundle.errors import BundleError
 from libranet.json_fields import is_integer
 from libranet.json_format import compact_json
 from libranet.karma.history import ChainHistory
-from libranet.karma.transactions import SignedTransaction, TransactionKey
+from libranet.protocol.karma_transactions import SignedTransaction, TransactionKey
 
 _LOGGER = getLogger(__name__)
 
@@ -71,7 +71,7 @@ class CarriedTransaction:
 
         Raises:
             BundleError: its ``transaction`` is not a signed transaction, as
-                :meth:`~libranet.karma.transactions.SignedTransaction.from_value`
+                :meth:`~libranet.protocol.karma_transactions.SignedTransaction.from_value`
                 says.
             ValueError: ``value`` is not an object, its ``transaction`` is no
                 transaction, its ``witnessed`` is neither a generation nor

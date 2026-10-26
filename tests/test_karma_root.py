@@ -10,12 +10,12 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.drops import NonceSearchers
 from libranet.cas.prefix import matching_bits
 from libranet.identity.node_identity import NodeIdentity
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import BlockDrop, TransactionBlock, ValidationBlock
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.ledger import NO_BALANCE
 from libranet.karma.root import ChainRoot
 from libranet.karma.weight import ChainWeight
+from libranet.protocol.karma_amounts import Kismet
 from tests.helpers import new_identity
 
 CREATED = datetime(2026, 10, 22, 9, 30, 0, tzinfo=UTC)

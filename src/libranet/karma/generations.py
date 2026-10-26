@@ -20,7 +20,7 @@ from typing import Final
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
-from libranet.karma.amounts import Kismet
+from libranet.protocol.karma_amounts import Kismet
 
 #: The new Kismet of generation 0, the root's: 20 Karma (§2).
 FIRST_NEW_KISMET: Final = 2_000_000_000_000_000
@@ -30,14 +30,6 @@ NEW_KISMET_DECREASE: Final = 200
 
 #: The last generation that issues any new Kismet, 200 of it (§2).
 LAST_ISSUING_GENERATION: Final = 9_999_999_999_999
-
-#: The fewest leading bits a transaction's ``hash`` may share with
-#: :data:`TRANSACTION_WORK_TARGET` (§4.3).
-MIN_TRANSACTION_BITS: Final = 24
-
-#: What a transaction's work is measured against: the SHA-256 of
-#: ``transaction``, which is no block's target (§4.3).
-TRANSACTION_WORK_TARGET: Final = DropTarget.of("transaction")
 
 # The target strings of a generation's two blocks, before the id of the
 # winning validation block before it, or before ``0`` for the root (§3.1).

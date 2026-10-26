@@ -22,7 +22,7 @@ from typing import Final
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 from libranet.json_format import MOMENT_FORMAT
-from libranet.karma.amounts import Kismet
+from libranet.protocol.karma_amounts import Kismet
 
 #: The member of a transaction or a stake saying when it was made (§4.1, §6.2).
 CREATED_MEMBER: Final = "created"
