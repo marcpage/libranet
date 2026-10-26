@@ -173,6 +173,25 @@ class ChainFollower:
 
         return followed
 
+    def checked(self) -> tuple[dict[ContentId, TransactionBlockCheck], list[ValidationBlockCheck]]:
+        """The blocks held at the targets of the generation after the head's, stating nothing false.
+
+        They are read and checked as :meth:`look` checks them, each not
+        checked before at the head, and what is found of one said, but none
+        is followed. One whose check lacks what is not held is left out.
+
+        Returns:
+            The transaction blocks, by id, and the validation blocks, each
+            correct or not.
+        """
+        checks = self._checked_at(self._named_for())
+        transactions = {
+            block_id: check
+            for block_id, check in self._looking.transactions.items()
+            if isinstance(check, TransactionBlockCheck)
+        }
+        return transactions, checks
+
     def _named_for(self) -> ContentId | None:
         """The head, which the next generation's targets are named for, or ``None`` if none."""
         head = self._history.head
@@ -185,13 +204,7 @@ class ChainFollower:
         and after the head, its best correct validation block (§6.5).
         """
         named_for = self._named_for()
-        targets = GenerationTargets.built_on(named_for)
-
-        if targets != self._looking.targets:
-            self._looking = _Looking(targets)
-
-        transactions = self._transactions(named_for, targets.transaction)
-        checks = self._validations(named_for, targets.validation, transactions)
+        checks = self._checked_at(named_for)
 
         if named_for is None:
             roots = [root for check in checks if (root := self._generation(check)) is not None]
@@ -199,6 +212,21 @@ class ChainFollower:
 
         best = ValidationBlockCheck.best(checks)
         return None if best is None else self._generation(best)
+
+    def _checked_at(self, named_for: ContentId | None) -> list[ValidationBlockCheck]:
+        """The checks of the validation blocks held at the targets named for ``named_for``.
+
+        The transaction blocks held at the same generation's transaction
+        target are checked first. What was found at other targets is
+        forgotten.
+        """
+        targets = GenerationTargets.built_on(named_for)
+
+        if targets != self._looking.targets:
+            self._looking = _Looking(targets)
+
+        transactions = self._transactions(named_for, targets.transaction)
+        return self._validations(named_for, targets.validation, transactions)
 
     def _transactions(self, named_for: ContentId | None, target: DropTarget) -> _AtTarget:
         """The checks of the transaction blocks held at ``target``, named for ``named_for``."""

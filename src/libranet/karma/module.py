@@ -1,4 +1,4 @@
-"""The Karma module process (Phase 6 Steps 123 to 135).
+"""The Karma module process (Phase 6 Steps 123 to 136).
 
 Every step that has the node act on the Karma ledger (KarmaLedger.md) runs
 here: reading what is placed at a target, following the chain, and
@@ -114,6 +114,16 @@ target: never one a validation block names, nor one full (§3.7, Phase 6
 Step 135)::
 
     data.shunned  {"algorithm", "hash"}
+
+After each build, it stakes ``karma.stake_percent`` of what covers the node
+on the best correct transaction block at its head's transaction target that
+no identity the node distrusts built, and builds a validation block of its
+stake and the others' on that block held at its head's validation target,
+but those of whom the node distrusts, naming a runner-up whose stakes it
+would take are covered, and listing the transactions not yet witnessed. It
+places it as it places a block of its own, unless a correct one it holds
+there holds every stake (:class:`~libranet.karma.staking.ValidationBuilder`,
+Phase 6 Step 136), and follows the chain through it as it next looks.
 """
 
 from __future__ import annotations
@@ -143,6 +153,7 @@ from libranet.karma.payments import NodePayments
 from libranet.karma.putting import TransactionsPutUp
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.root import ChainRoot
+from libranet.karma.staking import ValidationBuilder
 from libranet.karma.transactions import SignedTransaction
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
@@ -197,6 +208,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._putting: TransactionsPutUp | None = None
         self._payments: NodePayments | None = None
         self._building: BlockBuilder | None = None
+        self._validating: ValidationBuilder | None = None
         # Whether to look at the head's targets as the module next idles,
         # and when to look, whether it idles or not.
         self._look_again = False
@@ -305,6 +317,21 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             self._stored,
             block_seconds=self._config.karma.block_seconds,
             drop_bits=self._config.storage.search_min_bits,
+            searchers=self._searchers,
+            bounds=self._bounds,
+        )
+        self._validating = ValidationBuilder(
+            self._history,
+            self._follower,
+            self._reader,
+            carried,
+            partial(NodeIdentity.load, self._config),
+            store=self._stored,
+            distrusts=self._distrusts,
+            stake_percent=self._config.karma.stake_percent,
+            block_seconds=self._config.karma.block_seconds,
+            drop_bits=self._config.storage.search_min_bits,
+            clock=self._clock,
             searchers=self._searchers,
             bounds=self._bounds,
         )
@@ -554,15 +581,24 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self.publish(EventType.KARMA_RATINGS_REQUESTED)
 
     def _build(self) -> None:
-        """Combine the blocks at the head's targets into one, every build interval."""
+        """Combine the blocks at the head's targets into one, and stake, every build interval.
+
+        A validation block is built after the transaction block, so that one
+        just built full may be staked on.
+        """
         now = self._clock()
 
-        if self._building is None or now < self._next_build_at:
+        if self._building is None or self._validating is None or now < self._next_build_at:
             return
 
         self._next_build_at = now + self._config.karma.build_interval_seconds
         self._building.build()
         self._shun()
+        self._validating.build()
+
+    def _distrusts(self, identity: ContentId) -> bool:
+        """Whether the node distrusts ``identity``, as the web server last said (§3.8)."""
+        return self._trust is not None and self._trust.distrusts(identity)
 
     def _shun(self) -> None:
         """Shun each block at the head's transaction target that another held there supersedes."""

@@ -414,6 +414,14 @@ karma:
   # the block holds up the module's other work for block_seconds.
   build_interval_seconds: 60.0
 
+  # What share of what covers the node's stakes the Karma module stakes on
+  # the best transaction block of each generation, in percent, rounded down
+  # to whole Kismet, as it builds a validation block every
+  # build_interval_seconds. It is read as the decimal it is written as. A
+  # stake in a block another names as its runner-up is lost. At 0, the node
+  # stakes nothing, and builds validation blocks of others' stakes alone.
+  stake_percent: 10.0
+
 local:
   # The folders on this machine that a browser on it may list, and import
   # files from, through /data/directory (HTTP API §12.2). Nothing outside

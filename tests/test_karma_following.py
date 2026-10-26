@@ -342,6 +342,30 @@ def test_a_generation_is_followed_once_its_blocks_are_stored(
     )
 
 
+def test_the_blocks_at_the_heads_targets_are_checked_without_any_being_followed(
+    follower: ChainFollower,
+    history: ChainHistory,
+    truth: CasStore,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    root: Root,
+    first: bytes,
+    first_validation: bytes,
+) -> None:
+    hold(truth, root.transaction, root.validation)
+    hold_keys(truth, alice, bob)
+    follower.look()
+    hold(truth, first, first_validation)
+
+    transactions, validations = follower.checked()
+
+    assert list(transactions) == [id_of(first)]
+    assert [(check.block_id, check.is_correct) for check in validations] == [
+        (id_of(first_validation), True)
+    ]
+    assert len(history) == 1
+
+
 def test_every_generation_held_is_followed_in_one_look(
     follower: ChainFollower,
     truth: CasStore,
