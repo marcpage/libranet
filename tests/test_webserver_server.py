@@ -2430,6 +2430,8 @@ def test_a_signed_in_local_client_reads_the_scores_its_change_gives(
         (f"/data/trust/{CONTENT_ID}", "GET"),
         (f"/data/trust/{CONTENT_ID}", "PUT"),
         (f"/data/trust/{CONTENT_ID}", "DELETE"),
+        ("/data/karma/payments", "POST"),
+        ("/data/karma/stakes", "POST"),
     ],
 )
 def test_another_client_is_refused_identities_and_sessions(
@@ -2455,6 +2457,44 @@ def test_another_client_is_refused_identities_and_sessions(
 
     assert response.status == 403
     assert _published(queues) == []
+
+
+def test_a_signed_in_local_client_waits_to_pay_and_stake_while_no_karma_chain_is_followed(
+    local_connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    page = _from_page(local_connection, "/movie/")
+    local_connection.request(
+        "POST",
+        "/data/users",
+        body=b'{"username": "alice", "password": "correct horse", '
+        b'"fallback_password": "battery staple", "key_bits": 2048, "seconds": 0}',
+        headers={"Content-Type": JSON_CONTENT_TYPE, **page},
+    )
+    made = local_connection.getresponse()
+    made.read()
+    cookie = {"Cookie": (made.getheader("Set-Cookie") or "").partition(";")[0]}
+    statuses = []
+
+    for path, asked in (
+        ("/data/karma/payments", {"to": {str(CONTENT_ID): "1"}, "seconds": 0}),
+        ("/data/karma/stakes", {"transaction_block": str(CONTENT_ID), "kismet": "1"}),
+    ):
+        local_connection.request(
+            "POST",
+            path,
+            body=dumps(asked).encode(),
+            headers={"Content-Type": JSON_CONTENT_TYPE, **page, **cookie},
+        )
+        answered = local_connection.getresponse()
+        answered.read()
+        statuses.append((answered.status, answered.getheader("Retry-After")))
+
+    assert statuses == [(503, str(RETRY_AFTER_SECONDS))] * 2
+    assert not [
+        message
+        for message in _published(queues)
+        if message["event"] in {EventType.KARMA_TRANSACTION, EventType.KARMA_STAKE}
+    ]
 
 
 def test_a_signed_in_local_client_opens_a_drop_encrypted_for_them(

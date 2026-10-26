@@ -399,7 +399,8 @@ for itself.
 
 These endpoints serve only local clients: shunning content (§5.5), what the
 node knows of its peers (§10.8), making an identity, a fallback taking over,
-and the session (§11.3, §11.4), making a signed drop (§11.5),
+and the session (§11.3, §11.4), making a signed drop (§11.5), paying and
+staking as a person (§10.10),
 opening an encrypted block (§11.6), reading trust scores and changing a trust
 list (§11.7), listing the folders a node offers and
 importing a file from one (§12.2), making and changing bundles (§12.3),
@@ -408,9 +409,10 @@ keeping content offline (§12.4), and changing an application's store
 a username and password (§11.6).
 A request to one of them from any other client MUST be refused with
 `403 Forbidden`. Shunning, the peers, the identities, fallbacks, session,
-signed drops, encrypted blocks, trust, folders, imports, bundles, and
-archives are served only from a page of a trusted application, and an
-application's store is changed only from a page of its own (§2.5).
+signed drops, payments and stakes, encrypted blocks, trust, folders,
+imports, bundles, and archives are served only from a page of a trusted
+application, and an application's store is changed only from a page of its
+own (§2.5).
 
 A local source does not show that the person at the machine made the
 request. Any site's page that a browser on the machine has open can send
@@ -451,7 +453,8 @@ another node:
 - on the main port: whether the client is local (§2.4), shunning content
   (§5.5), making a drop (§9.6), what the node knows of its peers (§10.8),
   making an identity, a fallback taking over, and the session (§11.3,
-  §11.4), making a signed drop (§11.5), opening an encrypted block (§11.6),
+  §11.4), making a signed drop (§11.5), paying and staking as a person
+  (§10.10), opening an encrypted block (§11.6),
   trust (§11.7), the folders and imports (§12.2), making bundles (§12.3),
   keeping content offline (§12.4), an application's store (§13.3), and the
   list of applications (§13.4);
@@ -1770,6 +1773,67 @@ its head, which waits for any transaction block they are read from that it
 does not hold, and may name the head before the one `/data/karma/head`
 names until then. None of them is to be cached (`Cache-Control: no-store`),
 since each changes as the head does.
+
+#### Paying and Staking as a Person
+
+A person pays others, and stakes, through the node they are signed in on
+(§11.4), which signs for them, as it signs a drop for them (§11.5). A page
+has the node pay as whoever is signed in with:
+
+```http
+POST /data/karma/payments
+Content-Type: application/json
+
+{"to": {"sha256/…": "250"}, "fee_kismet": "0", "seconds": 10}
+```
+
+`to` maps each recipient's id to the Kismet paid them, and `fee_kismet` is
+the fee, each in decimal digits (Karma Ledger §4.1), the fee `"0"` if it is
+left out. The node makes the transaction: `from` the person, `generation`
+its head's (§10.9), and `created` now, or a second after the last it made
+for the person, should that be now or later, so that two payments a page
+makes at once are two (Karma Ledger §4.2). It searches for the nonce for
+`seconds`, as it does for a drop (§9.6), under the same limit and in the
+same turns, and after that until the transaction has the work it needs
+(Karma Ledger §4.3). It signs the transaction with the person's key, puts
+it up (Karma Ledger §5.6), and answers `202 Accepted`:
+
+```json
+{"hash": "<hex>", "from": "sha256/…", "created": "2026-10-26T12:00:00Z", "covered": true}
+```
+
+`hash` is the transaction's (Karma Ledger §4.2), and `covered` whether the
+person's balance, as the chain states it at the head (above), covers all it
+sends now. One not covered is put up all the same, and is pending until it
+is (Karma Ledger §4.4). A payment that moves nothing, or whose `seconds` is
+more than a drop may search for, is `400 Bad Request`, with the problem type
+`invalid-request` (§17.2).
+
+A page has the node stake as whoever is signed in with:
+
+```http
+POST /data/karma/stakes
+Content-Type: application/json
+
+{"transaction_block": "sha256/…", "kismet": "1000000000000000"}
+```
+
+The node signs the stake (Karma Ledger §6.2), its `staker` the person and
+its `created` as a payment's, and takes it into the validation blocks it
+builds on that transaction block while its head stays the same, if what
+covers the person covers it (Karma Ledger §6.3). It answers `202 Accepted`
+with `{"hash": "<hex>"}`, the stake's hash. A stake of `"0"` is `400 Bad
+Request`.
+
+Each stores the person's public key again, should the node no longer hold
+it, so that a reader can check what was signed. Each is refused as making a
+signed drop is (§11.5): `401 Unauthorized`, with the problem type
+`session-required`, from a browser no one is signed in on, and `403
+Forbidden` from one signed in as a fallback that has not taken over. Each
+serves only local clients, from a page of a trusted application (§2.4,
+§2.5). Each is `503 Service Unavailable` with `Retry-After` while the node
+follows no chain, and a payment also until the node has read the balances
+at its head.
 
 ---
 
@@ -3812,6 +3876,8 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/karma`                        | `GET`        | The head followed, and the node's own Karma (§10.10)       | Defined |
 | `/data/karma/balances/{alg}/{hash}`  | `GET`        | An identity's Karma, as the chain followed states (§10.10) | Defined |
 | `/data/karma/generations`            | `GET`        | The generations of the chain followed (§10.10)             | Defined |
+| `/data/karma/payments`               | `POST`       | Pay as whoever is signed in, locally (§10.10)              | Defined |
+| `/data/karma/stakes`                 | `POST`       | Stake as whoever is signed in, locally (§10.10)            | Defined |
 | `/data/{algorithm}/{hash}/{path}`    | `GET`/`HEAD` | Read into a bundle (§12.1)                                 | Defined |
 | `/data/client`                       | `GET`        | Whether the client is local (§2.4)                         | Defined |
 | `/data/drop`                         | `POST`       | Make a drop, from a page of the node (§9.6)                | Defined |

@@ -296,6 +296,7 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
 | `/data/archives` | `GET`, `POST` | Local | A trusted application's | Keep content offline, and follow the archives kept (§6.19) |
 | `/data/archives/{archive_id}` | `DELETE` | Local | A trusted application's | Stop keeping an archive (§6.19) |
 | `/data/karma`, `/data/karma/balances/{id}`, `/data/karma/generations` | `GET` | Any | Any, or none | The Karma chain the node follows, and the Karma it states of the node, or of anyone (§6.20) |
+| `/data/karma/payments`, `/data/karma/stakes` | `POST` | Local | A trusted application's | Pay, and stake, as whoever is signed in (§6.20) |
 
 ### 5.3 Waiting for Content
 
@@ -1444,6 +1445,44 @@ Each answers `503` while the node follows no chain, which is usual on a new
 network, so show that rather than waiting. What the chain states changes
 with each generation the node follows, so read it again rather than keeping
 it.
+
+A person pays others, and stakes, through the node they are signed in on,
+which signs for them, as it signs a drop (§6.13). Pay with:
+
+```js
+const response = await fetch("/data/karma/payments", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ to: { [recipient]: "250" }, fee_kismet: "0", seconds: 10 }),
+});
+const { hash, from, created, covered } = await response.json();
+```
+
+The node makes the transaction, searches for its proof of work for
+`seconds`, and on until it has the 24 bits a transaction needs, in turn with
+the drops being made, so the answer takes at least that long. It signs the
+transaction as whoever is signed in, and puts it up. `202` says it was put
+up, not that the chain holds it yet: `covered` says whether the person's
+balance, as the node last read it, covers it now. One not covered waits for
+a while to be. Leave `fee_kismet` out to pay none. Stake on a transaction
+block with:
+
+```js
+const response = await fetch("/data/karma/stakes", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ transaction_block: block, kismet: "1000" }),
+});
+const { hash } = await response.json();
+```
+
+The node takes the stake into the validation blocks it builds on that block,
+while the head it follows stays the same, if what the person holds covers
+it. Each is refused as signing is (§6.13): `401` with no one signed in, `403`
+for a fallback that has not taken over, and `400` for a payment that moves
+nothing, or a stake of nothing. Each is `503` while the node follows no
+chain. Only a local client, from a trusted application's page, pays or
+stakes.
 
 ## 7. Patterns From the Movie Library
 

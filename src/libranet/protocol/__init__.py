@@ -9,9 +9,9 @@ encrypted, or neither, the identities and sign-ins local clients ask for,
 the changes to a trust list they ask for, the addresses an operator asks
 the node to connect to, the head of the Karma chain the node follows, its
 generations, and every holder's balance, as the Karma module writes them,
-and the amounts, transactions, payouts, and stakes the chain is made of,
-which the web server makes for whoever is signed in, are each defined once,
-here.
+the amounts, transactions, payouts, and stakes the chain is made of, and
+the payments and stakes a page asks the web server to make for whoever is
+signed in, are each defined once, here.
 No module package imports another; what two modules share is here, in
 :mod:`libranet.messaging`, or in a library package below them both.
 """
@@ -95,6 +95,7 @@ from libranet.protocol.karma_members import (
     id_member,
     moment_member,
 )
+from libranet.protocol.karma_requests import PaymentRequest, StakeRequest
 from libranet.protocol.karma_stakes import SignedStake, Stake
 from libranet.protocol.karma_transactions import (
     MIN_TRANSACTION_BITS,
@@ -189,6 +190,7 @@ __all__ = [
     "NodeMetadataRequest",
     "Password",
     "PasswordEncryption",
+    "PaymentRequest",
     "Payout",
     "PersonEncryption",
     "PrefixSource",
@@ -200,6 +202,7 @@ __all__ = [
     "SignedStake",
     "SignedTransaction",
     "Stake",
+    "StakeRequest",
     "ToldHead",
     "Transaction",
     "TransactionKey",
