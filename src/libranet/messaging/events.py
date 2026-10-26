@@ -121,6 +121,7 @@ class EventType(StrEnum):
     KARMA_HEAD = "karma.head"  # karma → connections (Step 130)
     KARMA_HEAD_TOLD = "karma.head_told"  # webserver, connections → karma (Step 130)
     KARMA_TRANSACTION = "karma.transaction"  # webserver (Step 137) → karma (Step 131)
+    KARMA_STAKE = "karma.stake"  # webserver → karma (Step 137)
     KARMA_RATINGS_REQUESTED = "karma.ratings_requested"  # karma → stats (Step 133)
     KARMA_RATINGS = "karma.ratings"  # stats → karma (Step 133)
 
