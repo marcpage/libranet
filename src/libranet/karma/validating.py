@@ -34,7 +34,7 @@ than judging.
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Iterable, Mapping
+from typing import Collection, Iterable, Mapping
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import matching_bits
@@ -52,6 +52,25 @@ from libranet.karma.blocks import (
 from libranet.karma.checking import ChainView, TransactionBlockCheck
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.ledger import Reward, StakeWeight
+
+
+def balances_left(
+    validated: TransactionBlock, identities: Collection[ContentId], chain: ChainView
+) -> dict[ContentId, Balance]:
+    """Each of ``identities``' balance as transaction block ``validated``, on ``chain``, leaves it.
+
+    That is the one ``validated`` states, or else the latest stated through
+    the block before it (§5.3), as what covers a stake is read (§6.3).
+
+    Raises:
+        MissingContentError: names the blocks within reach that ``chain``
+            lacks.
+    """
+    stated = set(identities) & set(validated.balances)
+    return {
+        **chain.balances(set(identities) - stated, validated.generation - 1),
+        **{identity: validated.balances[identity] for identity in stated},
+    }
 
 
 @dataclass(frozen=True, order=True)
@@ -220,11 +239,7 @@ class _Validating:
         if runner_up is not None:
             identities.update(stake.staker for stake in runner_up.stakes)
 
-        stated = identities & set(validated.balances)
-        return {
-            **self.chain.balances(identities - stated, self.generation - 1),
-            **{identity: validated.balances[identity] for identity in stated},
-        }
+        return balances_left(validated, identities, self.chain)
 
     def false_cover(self, reward: Reward) -> BlockFinding | None:
         """What it states falsely of what covers its stakes and its runner-up's, or ``None`` (§6.3).

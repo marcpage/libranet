@@ -71,6 +71,10 @@ class NodeTrust:
 
         return self.states.get(identity, TrustState.UNKNOWN)
 
+    def distrusts(self, identity: ContentId) -> bool:
+        """Whether ``node`` distrusts ``identity``, which it never does itself."""
+        return self.of(identity) == TrustState.UNTRUSTED
+
     def allows(self, identity: ContentId) -> bool:
         """Whether ``node`` connects to ``identity``, and serves it."""
         state = self.of(identity)

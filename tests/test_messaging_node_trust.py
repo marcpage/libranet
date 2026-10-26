@@ -45,6 +45,17 @@ def test_the_untrusted_are_never_allowed_and_the_unknown_unless_only_the_trusted
     assert [trust.allows(identity) for identity in (BOB, CAROL, DAVE)] == allowed
 
 
+def test_only_the_untrusted_are_distrusted_and_never_the_node_itself() -> None:
+    trust = NodeTrust(NODE, {**STATES, NODE: TrustState.UNTRUSTED})
+
+    assert [trust.distrusts(identity) for identity in (NODE, BOB, CAROL, DAVE)] == [
+        False,
+        False,
+        True,
+        False,
+    ]
+
+
 def test_a_refusal_says_why() -> None:
     trust = NodeTrust(NODE, STATES, only_trusted=True)
 
