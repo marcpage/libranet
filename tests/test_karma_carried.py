@@ -10,10 +10,11 @@ from pytest import LogCaptureFixture, fixture, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.identity.node_identity import NodeIdentity
-from libranet.karma.carried import CARRIED_FILE, CarriedTransaction, CarriedTransactions
+from libranet.karma.carried import CarriedTransactions
 from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_carried import CARRIED_FILE, CarriedTransaction
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from tests.helpers import new_identity
 

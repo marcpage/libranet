@@ -15,10 +15,11 @@ from libranet.karma.blocks import BlockDrop, TransactionBlock
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
-from libranet.karma.payments import PAYMENTS_FILE, NodePayments, Payment, PaymentQueue
+from libranet.karma.payments import NodePayments
 from libranet.karma.putting import TransactionsPutUp
 from libranet.karma.reading import TargetReader
 from libranet.protocol.karma_amounts import MAX_KISMET, Kismet
+from libranet.protocol.karma_payments import PAYMENTS_FILE, Payment, PaymentQueue
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from libranet.protocol.search import LocalSearch
 from tests.helpers import new_identity

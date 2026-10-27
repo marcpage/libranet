@@ -34,13 +34,14 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.drops import NONCE_SEARCHERS, NonceSearchers
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds, BlockDrop, TransactionBlock
-from libranet.karma.carried import CarriedTransaction, CarriedTransactions
+from libranet.karma.carried import CarriedTransactions
 from libranet.karma.checking import ChainBefore, ChainView, TransactionVerdict
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainHistory
 from libranet.karma.ledger import BalanceSheet
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_carried import CarriedTransaction
 from libranet.protocol.karma_transactions import SignedTransaction, TransactionKey
 
 _LOGGER = getLogger(__name__)

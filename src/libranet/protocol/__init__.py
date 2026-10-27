@@ -8,8 +8,9 @@ clients ask the web server to make, the drops pages ask it to make, signed,
 encrypted, or neither, the identities and sign-ins local clients ask for,
 the changes to a trust list they ask for, the addresses an operator asks
 the node to connect to, the head of the Karma chain the node follows, its
-generations, and every holder's balance, as the Karma module writes them,
-the amounts, transactions, payouts, and stakes the chain is made of, and
+generations, every holder's balance, the node's payments queued, and the
+transactions it carries, as the Karma module writes them, the amounts,
+transactions, payouts, and stakes the chain is made of, and
 the payments and stakes a page asks the web server to make for whoever is
 signed in, are each defined once, here.
 No module package imports another; what two modules share is here, in
@@ -74,6 +75,7 @@ from libranet.protocol.karma_balances import (
     KarmaBalance,
     KarmaBalances,
 )
+from libranet.protocol.karma_carried import CARRIED_FILE, CarriedTransaction
 from libranet.protocol.karma_head import (
     GENERATION_FIELD,
     GENERATIONS_DIR,
@@ -95,6 +97,7 @@ from libranet.protocol.karma_members import (
     id_member,
     moment_member,
 )
+from libranet.protocol.karma_payments import PAYMENTS_FILE, Payment, PaymentQueue
 from libranet.protocol.karma_requests import PaymentRequest, StakeRequest
 from libranet.protocol.karma_stakes import SignedStake, Stake
 from libranet.protocol.karma_transactions import (
@@ -134,6 +137,7 @@ __all__ = [
     "API_PREFIX",
     "BALANCES_FIELD",
     "BODILESS_STATUSES",
+    "CARRIED_FILE",
     "CREATED_MEMBER",
     "CRLF",
     "DEFAULT_PORTS",
@@ -153,6 +157,7 @@ __all__ = [
     "NODES_PATH",
     "OCTET_STREAM",
     "ONLY_TRUSTED_FIELD",
+    "PAYMENTS_FILE",
     "REQUEST_PATH_HEADER",
     "RESULTS_FIELD",
     "SEARCH_PATH",
@@ -167,6 +172,7 @@ __all__ = [
     "BuildRequest",
     "BundleEditRequest",
     "BytesSource",
+    "CarriedTransaction",
     "ConnectingRequest",
     "CopySource",
     "DialRequest",
@@ -190,6 +196,8 @@ __all__ = [
     "NodeMetadataRequest",
     "Password",
     "PasswordEncryption",
+    "Payment",
+    "PaymentQueue",
     "PaymentRequest",
     "Payout",
     "PersonEncryption",

@@ -37,7 +37,6 @@ from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.module import KarmaModule
-from libranet.karma.payments import Payment, PaymentQueue
 from libranet.karma.reading import HeldChain
 from libranet.karma.validating import ValidationBlockCheck
 from libranet.karma.weight import ChainWeight
@@ -48,6 +47,7 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.messaging.server_ratings import ServerRating, ServerRatings
 from libranet.modules import SPAWNED_MODULES, ModuleName
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_payments import Payment, PaymentQueue
 from libranet.protocol.karma_stakes import SignedStake
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from libranet.supervision.registry import default_module_specs

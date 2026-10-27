@@ -17,115 +17,23 @@ One is carried into the blocks of the generations up to
 witnessed until it is. One whose key the chain followed holds, from the
 transaction's own ``generation`` on, is accounted for, and is carried no
 more. Each time the head changes, those are left out, and the file is
-written whole.
+written whole. Each entry, and the file, are
+:class:`~libranet.protocol.karma_carried.CarriedTransaction`'s, since the
+web server reads them too (Phase 6 Step 138).
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, replace
-from json import loads
+from dataclasses import replace
 from logging import getLogger
 from pathlib import Path
-from typing import Any, Final, Iterable
+from typing import Iterable
 
-from libranet.atomic_file import write_atomically
 from libranet.bundle.errors import BundleError
-from libranet.json_fields import is_integer
-from libranet.json_format import compact_json
 from libranet.karma.history import ChainHistory
-from libranet.protocol.karma_transactions import SignedTransaction, TransactionKey
+from libranet.protocol.karma_carried import CARRIED_FILE, CarriedTransaction
+from libranet.protocol.karma_transactions import TransactionKey
 
 _LOGGER = getLogger(__name__)
-
-#: The file of the Karma module's history holding the transactions it carries.
-CARRIED_FILE: Final = "carried.json"
-
-# The members of the file, and of each transaction carried.
-_TRANSACTIONS: Final = "transactions"
-_TRANSACTION: Final = "transaction"
-_WITNESSED: Final = "witnessed"
-_PUT_UP: Final = "put_up"
-
-
-@dataclass(frozen=True)
-class CarriedTransaction:
-    """``signed``, carried, witnessed in generation ``witnessed``, or ``None`` (§4.5).
-
-    It is ``put_up`` when the node puts it up itself, as a block of its own
-    (Phase 6 Step 131), and otherwise only put into the blocks it builds.
-
-    Raises:
-        ValueError: ``witnessed`` is negative.
-    """
-
-    signed: SignedTransaction
-    witnessed: int | None = None
-    put_up: bool = False
-
-    def __post_init__(self) -> None:
-        if self.witnessed is not None and self.witnessed < 0:
-            raise ValueError(f"A generation must not be negative, got {self.witnessed}")
-
-    @classmethod
-    def from_value(cls, value: object) -> CarriedTransaction:
-        """The transaction carried that ``value``, an entry of ``carried.json``, is.
-
-        Raises:
-            BundleError: its ``transaction`` is not a signed transaction, as
-                :meth:`~libranet.protocol.karma_transactions.SignedTransaction.from_value`
-                says.
-            ValueError: ``value`` is not an object, its ``transaction`` is no
-                transaction, its ``witnessed`` is neither a generation nor
-                ``null``, or its ``put_up`` is not ``true`` or ``false``.
-        """
-        if not isinstance(value, dict):
-            raise ValueError(f"A transaction carried must be an object, got {type(value).__name__}")
-
-        witnessed = value.get(_WITNESSED)
-        put_up = value.get(_PUT_UP, False)
-
-        if witnessed is not None and not is_integer(witnessed):
-            raise ValueError(f'"{_WITNESSED}" must be a generation or null, got {witnessed!r}')
-
-        if not isinstance(put_up, bool):
-            raise ValueError(f'"{_PUT_UP}" must be true or false, got {put_up!r}')
-
-        return cls(SignedTransaction.from_value(value.get(_TRANSACTION)), witnessed, put_up)
-
-    def value(self) -> dict[str, Any]:
-        """This transaction carried, as ``carried.json`` holds it."""
-        return {
-            _TRANSACTION: self.signed.value(),
-            _WITNESSED: self.witnessed,
-            _PUT_UP: self.put_up,
-        }
-
-    def on(self, history: ChainHistory, carry_generations: int) -> CarriedTransaction | None:
-        """This transaction as it is carried at the head of ``history``, or ``None`` if it is not.
-
-        It is witnessed in the generation it was before, or else in that of
-        the chain's winning validation block listing its hash, if one does.
-        It is carried no more once the chain holds its key, or once the
-        block built at the head's target is more than ``carry_generations``
-        after the one it was witnessed in.
-        """
-        head = history.head
-        transaction = self.signed.transaction
-
-        if head is None:
-            return self
-
-        if history.has_key(transaction.key, transaction.generation, head.generation):
-            return None
-
-        witnessed = self.witnessed
-
-        if witnessed is None:
-            witnessed = history.witnessed(self.signed.hash)
-
-        if witnessed is not None and head.generation + 1 > witnessed + carry_generations:
-            return None
-
-        return replace(self, witnessed=witnessed)
 
 
 class CarriedTransactions:
@@ -136,6 +44,7 @@ class CarriedTransactions:
     """
 
     def __init__(self, directory: Path, carry_generations: int) -> None:
+        self._directory = directory
         self._path = directory / CARRIED_FILE
         self._carry_generations = carry_generations
 
@@ -149,19 +58,7 @@ class CarriedTransactions:
             ValueError: it is not JSON, or not what it must be, as the error
                 names.
         """
-        try:
-            value = loads(self._path.read_bytes())
-
-        except FileNotFoundError:
-            # Not logged: nothing has been carried yet.
-            return []
-
-        entries = value.get(_TRANSACTIONS) if isinstance(value, dict) else None
-
-        if not isinstance(entries, list):
-            raise ValueError(f'"{_TRANSACTIONS}" must be a list, got {entries!r}')
-
-        return [CarriedTransaction.from_value(entry) for entry in entries]
+        return CarriedTransaction.kept(self._directory)
 
     def at(self, history: ChainHistory) -> list[CarriedTransaction]:
         """Those carried, each as carried at the head of ``history``, to build into a block.
@@ -176,11 +73,7 @@ class CarriedTransactions:
             ValueError: it is not JSON, or not what it must be, as the error
                 names.
         """
-        return [
-            now
-            for each in self.read()
-            if (now := each.on(history, self._carry_generations)) is not None
-        ]
+        return [now for each in self.read() if (now := self._on(each, history)) is not None]
 
     def readable_at(self, history: ChainHistory) -> list[CarriedTransaction]:
         """Those carried, as :meth:`at` reads them, or none if they cannot be read, which is logged.
@@ -241,13 +134,40 @@ class CarriedTransactions:
         carried: dict[TransactionKey, CarriedTransaction] = {}
 
         for each in [*kept, *collected]:
-            now = each.on(history, self._carry_generations)
+            now = self._on(each, history)
 
             if now is not None:
                 carried.setdefault(now.signed.transaction.key, now)
 
         if carried or kept or self._path.exists():
-            value = {_TRANSACTIONS: [each.value() for each in carried.values()]}
-            write_atomically(self._path, compact_json(value))
+            CarriedTransaction.keep(self._directory, carried.values())
 
         return list(carried.values())
+
+    def _on(self, carried: CarriedTransaction, history: ChainHistory) -> CarriedTransaction | None:
+        """``carried`` as it is carried at the head of ``history``, or ``None`` if it is not.
+
+        It is witnessed in the generation it was before, or else in that of
+        the chain's winning validation block listing its hash, if one does.
+        It is carried no more once the chain holds its key, or once the
+        block built at the head's target is more than ``carry_generations``
+        after the one it was witnessed in.
+        """
+        head = history.head
+        transaction = carried.signed.transaction
+
+        if head is None:
+            return carried
+
+        if history.has_key(transaction.key, transaction.generation, head.generation):
+            return None
+
+        witnessed = carried.witnessed
+
+        if witnessed is None:
+            witnessed = history.witnessed(carried.signed.hash)
+
+        if witnessed is not None and head.generation + 1 > witnessed + self._carry_generations:
+            return None
+
+        return replace(carried, witnessed=witnessed)

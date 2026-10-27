@@ -13,13 +13,14 @@ from libranet.cas.store import CasStore
 from libranet.config.models import MIB, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import BlockBounds, BlockDrop, TransactionBlock
-from libranet.karma.carried import CARRIED_FILE, CarriedTransaction, CarriedTransactions
+from libranet.karma.carried import CarriedTransactions
 from libranet.karma.checking import TransactionBlockCheck, TransactionVerdict
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
 from libranet.karma.putting import OwnBlock, TransactionsPutUp
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_carried import CARRIED_FILE, CarriedTransaction
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from libranet.protocol.search import LocalSearch
 from tests.helpers import new_identity
