@@ -38,7 +38,6 @@ from typing import Collection, Iterable, Mapping
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import matching_bits
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import (
     BLOCK_BOUNDS,
     Balance,
@@ -52,6 +51,7 @@ from libranet.karma.blocks import (
 from libranet.karma.checking import ChainView, TransactionBlockCheck
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.ledger import Reward, StakeWeight
+from libranet.protocol.karma_amounts import Kismet
 
 
 def balances_left(

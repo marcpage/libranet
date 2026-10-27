@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pytest import mark, raises
 
-from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet
+from libranet.protocol.karma_amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet
 
 
 @mark.parametrize("text", ["0", "1", "250", "1250000", str(MAX_KISMET)])

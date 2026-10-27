@@ -17,17 +17,17 @@ from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import BlockBounds, BlockDrop, TransactionBlock, ValidationBlock
 from libranet.karma.following import ChainFollower
 from libranet.karma.generations import FIRST_NEW_KISMET, GenerationTargets
 from libranet.karma.history import ChainHistory
 from libranet.karma.ledger import NO_BALANCE, BalanceSheet, Reward, reach_of
 from libranet.karma.reading import TargetReader
-from libranet.karma.stakes import SignedStake, Stake
-from libranet.karma.transactions import SignedTransaction, Transaction
 from libranet.karma.weight import ChainWeight
 from libranet.messaging.events import EventType
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_stakes import SignedStake, Stake
+from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from libranet.protocol.search import LocalSearch
 from tests.helpers import new_identity
 from tests.karma_chains import Recorder

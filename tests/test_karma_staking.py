@@ -12,15 +12,15 @@ from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import KIB, MIB, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import BlockBounds, BlockDrop, ValidationBlock
 from libranet.karma.carried import CarriedTransaction, CarriedTransactions
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
 from libranet.karma.reading import HeldChain, TargetReader
-from libranet.karma.stakes import SignedStake, Stake
 from libranet.karma.staking import HeadStakes, StakeCover, ValidationBuilder
-from libranet.karma.transactions import SignedTransaction, Transaction
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_stakes import SignedStake, Stake
+from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from libranet.protocol.search import LocalSearch
 from tests.helpers import new_identity
 from tests.karma_chains import (
@@ -433,6 +433,89 @@ def test_of_a_stakers_stakes_the_largest_are_taken_first_while_covered_together(
     )
 
 
+def test_a_stake_made_through_the_node_is_taken_with_those_held(
+    stakes: HeadStakes,
+    distrusted: set[ContentId],
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    carol: NodeIdentity,
+    dave: NodeIdentity,
+    caplog: LogCaptureFixture,
+) -> None:
+    following(follower, truth, first)
+    erin = new_identity()
+    truth.write(erin.node_id, erin.public_key)
+    paid = {bob.node_id: 100, dave.node_id: 100, erin.node_id: 100}
+    data = put_up(truth, first, carol, sent(alice, paid, 1))
+    hold(truth, validating(first.targets.validation, dave, data))
+    by_bob = staked(bob, id_of(data), 7)
+    distrusted.add(erin.node_id)
+
+    with caplog.at_level(INFO):
+        stakes.take(by_bob)
+        stakes.take(staked(erin, id_of(data), 1))
+        stakes.take(staked(dave, ContentId.for_data(b"another block", "sha256"), 5))
+
+    taken = stakes.staked(follower.checked()[0], alice)
+
+    assert taken is not None
+    assert stakers(taken.stakes) == sorted([alice.node_id, bob.node_id, dave.node_id])
+    assert by_bob in taken.stakes
+    assert (
+        f"Taking Karma stake {by_bob.hash} of 7 Kismet by {bob.node_id} on Karma transaction "
+        f"block {id_of(data)}"
+    ) in caplog.text
+
+
+def test_a_stake_made_through_the_node_whose_stakers_key_is_not_held_is_taken_once_it_is(
+    stakes: HeadStakes,
+    recorder: Recorder,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    erin = new_identity()
+    data = put_up(truth, first, dave, sent(alice, {erin.node_id: 100}, 1))
+    stakes.take(staked(erin, id_of(data), 5))
+
+    taken = stakes.staked(follower.checked()[0], alice)
+
+    assert taken is not None and stakers(taken.stakes) == [alice.node_id]
+    assert erin.node_id in recorder.asked_for()
+
+    truth.write(erin.node_id, erin.public_key)
+    taken = stakes.staked(follower.checked()[0], alice)
+
+    assert taken is not None and stakers(taken.stakes) == sorted([alice.node_id, erin.node_id])
+
+
+def test_a_stake_made_through_the_node_is_kept_only_until_the_head_changes(
+    stakes: HeadStakes,
+    follower: ChainFollower,
+    truth: CasStore,
+    root: Chain,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, root)
+    # At the target of the generation after the next, before the next is followed.
+    data = put_up(truth, first, dave, sent(alice, {bob.node_id: 100}, 1))
+    stakes.take(staked(bob, id_of(data), 5))
+    following(follower, truth, first)
+
+    taken = stakes.staked(follower.checked()[0], alice)
+
+    assert taken is not None and stakers(taken.stakes) == [alice.node_id]
+
+
 @fixture
 def carried(storage: StorageConfig) -> CarriedTransactions:
     return CarriedTransactions(storage.karma_dir, 3)
@@ -561,6 +644,27 @@ def test_a_block_is_built_again_only_once_stakes_come_that_those_held_lack(
     assert [stakers(block.stakes) for block in placed.blocks()] == [
         [alice.node_id],
         sorted([alice.node_id, bob.node_id]),
+    ]
+
+
+def test_a_block_is_built_of_a_stake_made_through_the_node(
+    builder: ValidationBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    data = put_up(truth, first, dave, sent(alice, {bob.node_id: 100}, 1))
+
+    builder.take(staked(bob, id_of(data), 5))
+    builder.build()
+
+    assert [stakers(block.stakes) for block in placed.blocks()] == [
+        sorted([alice.node_id, bob.node_id])
     ]
 
 

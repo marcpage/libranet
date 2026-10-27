@@ -11,7 +11,6 @@ from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import ValidationBlock
 from libranet.karma.carried import CARRIED_FILE, CarriedTransactions
 from libranet.karma.changing import HeadChanges
@@ -20,6 +19,7 @@ from libranet.karma.history import ChainHistory
 from libranet.karma.reading import TargetReader
 from libranet.karma.weight import ChainWeight
 from libranet.messaging.events import EventType
+from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.search import LocalSearch
 from tests.helpers import new_identity
 from tests.karma_chains import (

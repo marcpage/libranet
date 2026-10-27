@@ -11,7 +11,6 @@ from libranet.bundle.errors import MissingContentError
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.identity.node_identity import NodeIdentity
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import (
     Balance,
     BlockBounds,
@@ -24,10 +23,16 @@ from libranet.karma.blocks import (
 from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.ledger import NO_BALANCE, BalanceSheet, Reward, reach_of
-from libranet.karma.stakes import SignedStake, Stake
-from libranet.karma.transactions import Payout, SignedTransaction, Transaction, TransactionKey
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore
 from libranet.karma.weight import ChainWeight
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_stakes import SignedStake, Stake
+from libranet.protocol.karma_transactions import (
+    Payout,
+    SignedTransaction,
+    Transaction,
+    TransactionKey,
+)
 from tests.helpers import new_identity
 
 CREATED = datetime(2026, 10, 21, 14, 3, 22, tzinfo=UTC)

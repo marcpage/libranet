@@ -11,13 +11,13 @@ from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import BlockFinding, ValidationBlock
 from libranet.karma.claims import ClaimedChain, ClaimedGeneration, FalseStatement, HeadClaim
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.weight import ChainWeight
+from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.search import LocalSearch
 from tests.helpers import new_identity
 from tests.karma_chains import (

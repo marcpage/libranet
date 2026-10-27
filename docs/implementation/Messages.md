@@ -124,7 +124,8 @@ a root it makes, and a block it puts up for a transaction.
 | `karma.false_block` | Karma | Web server | A Karma block states something false |
 | `karma.head` | Karma | Connections | The Karma head followed changed |
 | `karma.head_told` | Web server, Connections | Karma | A peer follows this Karma head |
-| `karma.transaction` | None yet | Karma | Put this signed transaction up |
+| `karma.transaction` | Web server | Karma | Put this signed transaction up |
+| `karma.stake` | Web server | Karma | Take this stake into the validation blocks built |
 | `karma.ratings_requested` | Karma | Stats | Rate the servers this node is a client of |
 | `karma.ratings` | Stats | Karma | How each server served this node |
 
@@ -699,8 +700,9 @@ or reported, nor is the key a kept archive's bundle may carry.
 
 - **Payload:** `transaction`, a signed transaction as a transaction block
   holds it (KarmaLedger §5.1).
-- **Sent by:** none yet. The web server will, for each payment a person
-  signed in makes through the node (Phase 6 Step 137).
+- **Sent by:** Web server, for each payment a person signed in makes
+  through the node, mined and signed as the person (`karma_handlers.py`,
+  Phase 6 Step 137).
 - **Received by:** Karma, which logs and passes over one that is no signed
   transaction, or is invalid, or whose sender's key it does not hold, which
   it asks for. Any other it carries, in `karma/carried.json`, and puts up at
@@ -708,6 +710,20 @@ or reported, nor is the key a kept archive's bundle may carry.
   its own, signed by the node, stored and announced with `data.stored`
   (`karma/putting.py`, Phase 6 Step 131).
 - **Purpose:** have a transaction taken into the chain (KarmaLedger §5.6).
+
+#### `karma.stake`
+
+- **Payload:** `stake`, a signed stake as a validation block holds it
+  (KarmaLedger §6.1).
+- **Sent by:** Web server, for each stake a person signed in makes through
+  the node, signed as the person (`karma_handlers.py`, Phase 6 Step 137).
+- **Received by:** Karma, which logs and passes over one that is no signed
+  stake. Any other it keeps until its head changes, and takes into the
+  validation blocks it builds on the transaction block the stake names, as
+  it takes the stakes held at its head's validation target: its signature
+  checked with the staker's key, which it asks for if it does not hold it,
+  and none of whom the node distrusts (`karma/staking.py`).
+- **Purpose:** have a person's stake taken into the chain (KarmaLedger §6).
 
 #### `karma.ratings_requested`
 
@@ -738,7 +754,7 @@ or reported, nor is the key a kept archive's bundle may carry.
 
 | Module | Sends | Receives |
 | --- | --- | --- |
-| Web server | `data.requested`, `data.not_found`, `data.search_requested`, `data.put_completed`, `data.stored`, `nodes.received`, `seek.received`, `address.dial_requested`, `app.path_not_found`, `app.accessed`, `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested`, `karma.root_requested`, `karma.head_told` | `app.path_resolved`, `backup.state`, `peers.connected_requested`, `address.dialed`, `node.trust_stored`, `karma.false_block` |
+| Web server | `data.requested`, `data.not_found`, `data.search_requested`, `data.put_completed`, `data.stored`, `nodes.received`, `seek.received`, `address.dial_requested`, `app.path_not_found`, `app.accessed`, `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested`, `karma.root_requested`, `karma.head_told`, `karma.transaction`, `karma.stake` | `app.path_resolved`, `backup.state`, `peers.connected_requested`, `address.dialed`, `node.trust_stored`, `karma.false_block` |
 | Connections | `data.search_answered`, `data.put_completed`, `data.stored`, `nodes.received`, `address.verified`, `address.dialed`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `data.sent`, `fetch.attempted`, `fetch.succeeded`, `fetch.failed`, `eviction.acknowledged`, `peers.connected`, `karma.head_told` | `nodes.updated`, `nodes.received`, `fetch.requested`, `data.search_requested`, `eviction.notice`, `data.stored`, `peers.connected_requested`, `address.dial_requested`, `node.trust`, `karma.head` |
 | Validator | `data.stored`, `data.rejected` | `data.put_completed` |
 | Stats | `nodes.updated`, `eviction.candidates`, `resolved.reclaim`, `peers.connected_requested`, `node.trust_stored`, `karma.ratings` | `data.requested`, `data.not_found`, `data.search_requested`, `data.search_answered`, `data.stored`, `data.rejected`, `nodes.received`, `seek.received`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `address.verified`, `data.sent`, `fetch.attempted`, `data.deleted`, `eviction.candidates_requested`, `app.accessed`, `resolved.reclaim_requested`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested`, `karma.ratings_requested` |
@@ -746,6 +762,6 @@ or reported, nor is the key a kept archive's bundle may carry.
 | Unbundler | `data.not_found`, `app.path_resolved`, `resolved.reclaimed` | `app.path_not_found`, `data.stored`, `resolved.reclaim` |
 | Eviction | `eviction.notice`, `data.deleted`, `eviction.candidates_requested`, `resolved.reclaim_requested`, `peers.connected_requested`, `storage.full` | `data.stored`, `eviction.acknowledged`, `eviction.candidates`, `resolved.reclaimed`, `peers.connected`, `storage.full_requested`, `data.shunned` |
 | Backup | `data.not_found`, `data.stored`, `backup.state`, `storage.full_requested` | `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.stored`, `storage.full` |
-| Karma | `data.search_requested`, `data.not_found`, `data.stored`, `data.shunned`, `karma.false_block`, `karma.head`, `karma.ratings_requested` | `data.search_answered`, `data.stored`, `karma.root_requested`, `node.trust`, `karma.head_told`, `karma.transaction`, `karma.ratings` |
+| Karma | `data.search_requested`, `data.not_found`, `data.stored`, `data.shunned`, `karma.false_block`, `karma.head`, `karma.ratings_requested` | `data.search_answered`, `data.stored`, `karma.root_requested`, `node.trust`, `karma.head_told`, `karma.transaction`, `karma.stake`, `karma.ratings` |
 
 Every module also receives `shutdown`.

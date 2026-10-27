@@ -7,14 +7,9 @@ from pytest import raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
-from libranet.karma.amounts import KISMET_PER_KARMA, Kismet
-from libranet.karma.generations import (
-    LAST_ISSUING_GENERATION,
-    MIN_TRANSACTION_BITS,
-    TRANSACTION_WORK_TARGET,
-    GenerationTargets,
-    new_kismet,
-)
+from libranet.karma.generations import LAST_ISSUING_GENERATION, GenerationTargets, new_kismet
+from libranet.protocol.karma_amounts import KISMET_PER_KARMA, Kismet
+from libranet.protocol.karma_transactions import MIN_TRANSACTION_BITS, TRANSACTION_WORK_TARGET
 
 VALIDATION = ContentId("sha256", "0a1b" + "2" * 60)
 

@@ -119,8 +119,8 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   Step 122 is #440, Step 123 is #441, Step 124 is #442, Step 125 is #443,
   Step 126 is #444, Step 127 is #445, Step 128 is #446, Step 129 is #447,
   Step 130 is #448, Step 131 is #449, Step 132 is #450, Step 133 is #451,
-  Step 134 is #452, Step 135 is #453, Step 136 is #454, and none after it
-  has one yet.
+  Step 134 is #452, Step 135 is #453, Step 136 is #454, Step 137 is #455,
+  and none after it has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -2576,7 +2576,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 136 — Staking and Building Validation Blocks
+## Step 136 — Staking and Building Validation Blocks ✅
 
 **Kind:** improvement in behavior. **Issue:** #454, under #87.
 **Depends on:** Steps 122, 127, and 134.
@@ -2725,7 +2725,7 @@ not yet followed.
 
 ## Step 137 — Paying and Staking as a Person
 
-**Kind:** improvement in web API. **Issue:** none yet; planned under #87.
+**Kind:** improvement in web API. **Issue:** #455, under #87.
 **Depends on:** Steps 118, 128, 131, and 136; Phase 4 Step 79's signing
 in.
 
@@ -2760,6 +2760,88 @@ Work this implies:
 **Testable in isolation:** a payment mined to 24 bits, signed by the
 person, and published; `covered` each way; a stake signed and published;
 each refusal.
+
+It came to 675 added lines of non-test Python, with 186 changed or removed,
+against an estimate of 350, and 571 lines of tests, so it was built as three
+change sets. No module package imports another's code (Module System §2),
+and only the web server holds a person's key, so it must make their
+transactions and stakes itself, from types the Karma module shares. The
+first set moves those types to `protocol/`, whole: 123 lines, nearly all
+imports, with 106 changed or removed. The second has the Karma module take
+the stakes it is given, at 146 lines, with 58 changed, and 163 lines of
+tests, and the third adds the endpoints, at 406, with 22 changed, and 408
+lines of tests.
+
+What was built:
+
+- **`protocol/karma_amounts.py`, `karma_members.py`,
+  `karma_transactions.py`, and `karma_stakes.py`**: `karma/amounts.py`,
+  `members.py`, `transactions.py`, and `stakes.py` (Steps 116 and 117),
+  moved whole, with `MIN_TRANSACTION_BITS` and `TRANSACTION_WORK_TARGET`
+  from `karma/generations.py`. `libranet.protocol` exports them in place of
+  `libranet.karma`.
+- **`PaymentRequest` and `StakeRequest`** (`protocol/karma_requests.py`,
+  new): `{"to", "fee_kismet", "seconds"}`, the fee `"0"` if left out,
+  moving more than 0 Kismet, and `{"transaction_block", "kismet"}`, of more
+  than 0. `transaction()` and `stake()` make the person's.
+- **`KarmaSigning`** (`webserver/karma_handlers.py`): `pay()` stamps
+  `created` and the generation `head.json` names, searches for the nonce
+  for `seconds`, no longer than `network.drop_max_seconds` allows, in the
+  turns drops take, and after that until it shares 24 bits with the target
+  of a transaction's work, signs the transaction as the person, stores their
+  key again, publishes it as `karma.transaction`, and answers `202`
+  `{"hash", "from", "created", "covered"}`. `stake()` signs the stake,
+  stores the key, publishes it, and answers `202` `{"hash"}`.
+  **`CreatedMoments`** stamps each.
+- **`KarmaReads.balances_or_refusal`**, what was `_balances`, and the new
+  **`generation_or_refusal`**, which `GET /data/karma/generations` now reads
+  the head with, so that `KarmaSigning` refuses as the reads do.
+- **`karma.stake`** `{"stake": {…}}`, web server to Karma:
+  `ValidationBuilder.take` and **`HeadStakes.take`** keep each stake given
+  until the head changes, and offer those on the block staked on with the
+  stakes held at the head's validation target, checked as those are.
+  **`TargetReader.keys`** (`karma/reading.py`), what read a block's signers'
+  keys, now reads the stakers' of those given too.
+- The routes, each served as `/data/signed` is: to local clients alone, from
+  a page of a trusted application.
+- HttpApi §2.4, §2.5, §10.10, and §25, the App Developer Guide's §5.2 and
+  §6.20, Messages §3, §4, and §5, and the Module System.
+
+My calls, not yet reviewed:
+
+- **The types moved to `protocol/`, whole**, rather than the web server
+  writing a transaction's text itself, which would define it twice, or the
+  Karma module mining what the web server then signs, which would hold a
+  request while a message went there and back.
+- **Each is `503` while the node follows no chain**, and a payment also
+  until the balances at the head are read, as `/data/karma` is, since a
+  payment needs a generation and `covered` the balances. The generation is
+  `head.json`'s, which may be a head later than the balances'.
+- **`created` is a second past the last stamped for the person**, should
+  that be now or later, kept in memory, so that two payments a page makes in
+  one second are two (KarmaLedger §4.2), and two stakes of one amount are
+  two (§6.2). Payments and stakes share the count.
+- **A payment's search is held to `network.drop_max_seconds`, not to
+  `network.drop_max_minimum_bits`**: a payment asks for no bits, and a
+  transaction needs 24, whatever a drop may ask for.
+- **`fee_kismet` may be left out, for none**, and `to` may name the person.
+- **A payment moving nothing, and a stake of 0, are `400`**: the node
+  stakes nothing of its own while that is 0 (Step 136), though the ledger
+  takes a stake of 0, as the root's.
+- **The web server checks nothing of a stake but its body**: not that the
+  block it names is at the head's target, nor that it is covered. The Karma
+  module takes it only on the block it stakes on, while covered, and the
+  answer does not say whether it was taken.
+- **Stakes given are kept in memory until the head changes**: a module
+  started again has none of them, and one given on a block at the target
+  of a head the module does not follow yet is lost as it comes to follow it.
+
+Noted, not changed: a transaction whose sender's key the Karma module does
+not hold is passed over (Step 131), and the web server stores the person's
+key as an upload, which the validator stores, and announces, before the
+module can read it. A person's key is held from when their identity is
+made, so this reaches only a key evicted since, whose payment is then
+passed over, with a warning, though the page was answered `202`.
 
 ---
 

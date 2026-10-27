@@ -50,12 +50,18 @@ from libranet.cas.errors import UnknownAlgorithmError
 from libranet.config.models import KIB, MIB, TARGET_BITS
 from libranet.json_fields import integer_field, is_integer
 from libranet.json_format import compact_json
-from libranet.karma.amounts import Kismet
-from libranet.karma.generations import MIN_TRANSACTION_BITS, GenerationTargets
-from libranet.karma.members import contents_value, id_member
-from libranet.karma.stakes import SignedStake
-from libranet.karma.transactions import Payout, SignedTransaction, Transaction, TransactionKey
+from libranet.karma.generations import GenerationTargets
 from libranet.karma.weight import ChainWeight
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_members import contents_value, id_member
+from libranet.protocol.karma_stakes import SignedStake
+from libranet.protocol.karma_transactions import (
+    MIN_TRANSACTION_BITS,
+    Payout,
+    SignedTransaction,
+    Transaction,
+    TransactionKey,
+)
 
 #: The most a block's drop may be, compressed: 1 MiB (§5.4).
 MAX_BLOCK_BYTES: Final = 1 * MIB

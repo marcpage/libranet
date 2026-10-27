@@ -45,8 +45,6 @@ from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
 from libranet.json_format import compact_json
 from libranet.karma.blocks import TransactionBlock, ValidationBlock
-from libranet.karma.members import id_member
-from libranet.karma.transactions import TransactionKey
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_head import (
     KARMA_HEAD_FILE,
@@ -56,6 +54,8 @@ from libranet.protocol.karma_head import (
     KarmaGeneration,
     KarmaHead,
 )
+from libranet.protocol.karma_members import id_member
+from libranet.protocol.karma_transactions import TransactionKey
 
 _LOGGER = getLogger(__name__)
 

@@ -1,4 +1,4 @@
-"""The Karma module process (Phase 6 Steps 123 to 136).
+"""The Karma module process (Phase 6 Steps 123 to 137).
 
 Every step that has the node act on the Karma ledger (KarmaLedger.md) runs
 here: reading what is placed at a target, following the chain, and
@@ -70,8 +70,8 @@ Phase 6 Step 127)::
 
     node.trust  {"trusted": [...], "untrusted": [...], "only_trusted": false}
 
-It puts up each signed transaction it is given, as the web server will give
-one a person signs through the node (Phase 6 Step 137), as a block of its
+It puts up each signed transaction it is given, as the web server gives one
+a person signs through the node (Phase 6 Step 137), as a block of its
 own at the head's transaction target, signed by the node, searching for its
 nonce for ``karma.block_seconds``, and stores and announces it as it does a
 root (:class:`~libranet.karma.putting.TransactionsPutUp`, Phase 6 Step
@@ -123,7 +123,11 @@ but those of whom the node distrusts, naming a runner-up whose stakes it
 would take are covered, and listing the transactions not yet witnessed. It
 places it as it places a block of its own, unless a correct one it holds
 there holds every stake (:class:`~libranet.karma.staking.ValidationBuilder`,
-Phase 6 Step 136), and follows the chain through it as it next looks.
+Phase 6 Step 136), and follows the chain through it as it next looks. Among
+others' stakes, it takes each a person makes through the node, as the web
+server gives it, keeping it until its head changes (Phase 6 Step 137)::
+
+    karma.stake  {"stake": {"contents": "…", …}}
 """
 
 from __future__ import annotations
@@ -154,7 +158,6 @@ from libranet.karma.putting import TransactionsPutUp
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.root import ChainRoot
 from libranet.karma.staking import ValidationBuilder
-from libranet.karma.transactions import SignedTransaction
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
@@ -162,6 +165,8 @@ from libranet.messaging.node_trust import NodeTrust
 from libranet.messaging.queues import ModuleQueues
 from libranet.messaging.server_ratings import ServerRatings
 from libranet.modules import ModuleName
+from libranet.protocol.karma_stakes import SignedStake
+from libranet.protocol.karma_transactions import SignedTransaction
 from libranet.protocol.search import normalize_prefix
 
 
@@ -181,6 +186,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             EventType.NODE_TRUST,
             EventType.KARMA_HEAD_TOLD,
             EventType.KARMA_TRANSACTION,
+            EventType.KARMA_STAKE,
             EventType.KARMA_RATINGS,
         }
     )
@@ -233,6 +239,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 EventType.NODE_TRUST: self._on_node_trust,
                 EventType.KARMA_HEAD_TOLD: self._on_head_told,
                 EventType.KARMA_TRANSACTION: self._on_transaction,
+                EventType.KARMA_STAKE: self._on_stake,
                 EventType.KARMA_RATINGS: self._on_ratings,
             }
         )
@@ -446,6 +453,29 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             return
 
         self._putting.take(signed)
+
+    def _on_stake(self, message: Message) -> None:
+        """Take the stake the web server gives, made through the node, for the blocks built.
+
+        One that is no signed stake is logged, and passed over.
+
+        Raises:
+            RuntimeError: the module has not started.
+            KeyError: the message lacks the stake.
+        """
+        if self._validating is None:
+            raise RuntimeError("The Karma module is not running")
+
+        value = message["stake"]
+
+        try:
+            signed = SignedStake.from_value(value)
+
+        except (BundleError, ValueError) as error:
+            self.logger.warning("Passing over a Karma stake that is none: %s", error)
+            return
+
+        self._validating.take(signed)
 
     def _on_ratings(self, message: Message) -> None:
         """Queue a payment to the server rated highest by each measure, once if they are one.

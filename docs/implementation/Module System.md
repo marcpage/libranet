@@ -208,7 +208,7 @@ The modules communicate in three ways:
 | `src/libranet/messaging/module.py` | `ModuleBase`: publishing, filtering, and the receive loop |
 | `src/libranet/messaging/dispatcher.py` | `Dispatcher`: the hub that delivers each message to its subscribers |
 | `src/libranet/messaging/publishing.py` | `Publish`, the signature of `publish` that code outside a module class is handed |
-| `src/libranet/protocol/` | What is said over HTTP, shared by the modules that say or act on it: HTTP syntax, node and seek lists, search, `localhost` resolution, whether a client is local, and the request bodies of `/config`, of making bundles and drops, and of identities and signing in |
+| `src/libranet/protocol/` | What is said over HTTP, shared by the modules that say or act on it: HTTP syntax, node and seek lists, search, `localhost` resolution, whether a client is local, the request bodies of `/config`, of making bundles and drops, and of identities and signing in, the Karma files the web server reads, and the amounts, transactions, payouts, and stakes of the Karma ledger, which it makes for whoever is signed in |
 | `src/libranet/{module}/module.py` | Each module's class and factory |
 
 ## 3. The Modules
@@ -307,10 +307,13 @@ head, each identity's balance, and the generations, from what that module
 writes in `karma/` (`KarmaReads`, `webserver/karma_handlers.py`, Phase 6 Step
 128). A peer asks it for that head, and tells it the head the peer follows,
 which it publishes for the Karma module to weigh (`karma.head_told`,
-`KarmaHeadTold`, Phase 6 Step 130). It subscribes to only six events,
-`app.path_resolved`, `backup.state`, `peers.connected_requested`,
-`address.dialed`, `node.trust_stored`, and `karma.false_block`, and publishes
-twenty-five.
+`KarmaHeadTold`, Phase 6 Step 130). A person signed in pays, and stakes,
+through it: it mines a payment in the turns drops take, signs it, and the
+stake, as the person, and publishes each for the Karma module
+(`karma.transaction`, `karma.stake`, `KarmaSigning`, Phase 6 Step 137). It
+subscribes to only six events, `app.path_resolved`, `backup.state`,
+`peers.connected_requested`, `address.dialed`, `node.trust_stored`, and
+`karma.false_block`, and publishes twenty-seven.
 
 #### 3.2.3 Validator
 
@@ -462,9 +465,10 @@ balance the chain states at the head to `balances.json`, for the web server's
 `/data/karma` (`HeadBalances`, `karma/balances.py`, Phase 6 Step 128); a
 transaction block those are read from that it lacks it asks for, and writes
 them once it comes. Each signed transaction it is given to put up
-(`karma.transaction`, which the web server will publish from Phase 6 Step
-137) it checks against the chain (`TransactionsPutUp`, `karma/putting.py`,
-Phase 6 Step 131): one that is invalid it logs and passes over, and any other
+(`karma.transaction`, which the web server publishes for each payment a
+person makes through the node, Phase 6 Step 137) it checks against the chain
+(`TransactionsPutUp`, `karma/putting.py`, Phase 6 Step 131): one that is
+invalid it logs and passes over, and any other
 it carries in `carried.json`, marked as one it puts up itself. As it looks,
 it puts each it carries so up as a block of its own at the head's
 transaction target, where it is valid, and not put up there already: the
@@ -499,7 +503,9 @@ whom the node distrusts, naming a runner-up whose stakes it would take are
 covered, and listing the transactions not yet witnessed, as many as fit. It
 places it as it places a block of its own, unless a correct one it holds
 there holds every stake (`ValidationBuilder`, `karma/staking.py`, Phase 6
-Step 136), and follows the chain through it as it next looks.
+Step 136), and follows the chain through it as it next looks. Among others'
+stakes it takes those people make through the node (`karma.stake`, Phase 6
+Step 137), each kept until its head changes.
 
 ### 3.3 What Each Module Owns
 
@@ -1046,7 +1052,8 @@ to end its loop.
 | `karma.false_block` | S | | | | | | | | P |
 | `karma.head` | | S | | | | | | | P |
 | `karma.head_told` | P | P | | | | | | | S |
-| `karma.transaction` | | | | | | | | | S |
+| `karma.transaction` | P | | | | | | | | S |
+| `karma.stake` | P | | | | | | | | S |
 | `karma.ratings_requested` | | | | S | | | | | P |
 | `karma.ratings` | | | | P | | | | | S |
 | *Lifecycle* | | | | | | | | | |
@@ -1071,7 +1078,9 @@ post to the peers, and weighs the heads peers tell of, `karma.head_told`,
 whether a peer posted it to the web server or the connection manager asked
 for it (Phase 6 Step 130). It asks the stats module to rate the servers the
 node is a client of, `karma.ratings_requested`, and pays the best of those
-`karma.ratings` names (Phase 6 Step 133).
+`karma.ratings` names (Phase 6 Step 133). It puts up the transactions,
+`karma.transaction`, and takes the stakes, `karma.stake`, that people make
+through the web server (Phase 6 Step 137).
 
 ### 7.2 Payloads
 
@@ -1135,6 +1144,8 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `karma.false_block` | `block`, `builder`, `staker`, `statement` | A Karma block, signed by `builder`, states `statement` falsely; `staker`, unless `null`, signed a stake in it that alone exceeds what covers it |
 | `karma.head` | `head`, `generation`, `weight` | The Karma module follows a new head, the winning validation block of `generation`, through which the chain weighs `weight` (decimal digits); tell the peers |
 | `karma.head_told` | `head`, `node_id` | The peer `node_id` follows the Karma head `head`; weigh it |
+| `karma.transaction` | `transaction` | Put up this signed transaction, a person's made through the node |
+| `karma.stake` | `stake` | Take this signed stake, a person's made through the node, into the validation blocks built |
 | `shutdown` | — | Leave the receive loop |
 
 ### 7.3 Who Talks to Whom
@@ -1168,7 +1179,7 @@ flowchart TB
     web -->|"data.put_completed"| val
     web <-->|"data.search_requested, address.dial_requested, node.trust<br/>address.dialed"| conn
     web <-->|"node.trust_requested<br/>node.trust_stored"| stats
-    web <-->|"karma.root_requested, node.trust, karma.head_told<br/>karma.false_block"| karma
+    web <-->|"karma.root_requested, node.trust, karma.head_told, karma.transaction, karma.stake<br/>karma.false_block"| karma
     karma <-->|"data.search_requested, karma.head<br/>data.search_answered, karma.head_told"| conn
     karma -->|"data.shunned"| evict
     conn -->|"data.put_completed"| val

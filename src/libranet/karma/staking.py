@@ -16,10 +16,11 @@ it, rounded down to whole Kismet, and nothing while that is 0. It signs its
 stake once at a head, and none if a validation block held at the head's
 validation target holds one of its own on the block, as one it built before
 it was started again does. Others' stakes are those on the same block in the
-validation blocks held there, each whose signature checks with its staker's
-key, but those of every staker the node distrusts (§3.8). Of each staker's,
-the largest are taken first, while what covers the staker covers them
-together.
+validation blocks held there, and those people make through the node (Phase
+6 Step 137), kept until the head changes, each whose signature checks with
+its staker's key, but those of every staker the node distrusts (§3.8). Of
+each staker's, the largest are taken first, while what covers the staker
+covers them together.
 
 The block names as its runner-up the first of the other validation blocks
 held there that state nothing false, and so validate another transaction
@@ -55,7 +56,6 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.drops import NONCE_SEARCHERS, DropTarget, NonceSearchers
 from libranet.cas.prefix import matching_bits
 from libranet.identity.node_identity import NodeIdentity
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import (
     BLOCK_BOUNDS,
     Balance,
@@ -71,8 +71,9 @@ from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainHistory
 from libranet.karma.ledger import Reward
 from libranet.karma.reading import HeldChain, TargetReader
-from libranet.karma.stakes import SignedStake, Stake
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore, balances_left
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_stakes import SignedStake, Stake
 
 _LOGGER = getLogger(__name__)
 
@@ -178,7 +179,8 @@ class HeadStakes:  # pylint: disable=too-many-instance-attributes
     The chain is the one ``history`` keeps, its blocks read from what
     ``reader`` holds. Whom the node distrusts, ``distrusts`` says (§3.8).
     The node stakes ``stake_percent`` of what covers it, its stake created at
-    the time ``clock`` gives, in seconds since the epoch.
+    the time ``clock`` gives, in seconds since the epoch. The stakes people
+    make through the node it is given (:meth:`take`).
     """
 
     def __init__(
@@ -197,11 +199,29 @@ class HeadStakes:  # pylint: disable=too-many-instance-attributes
         self._clock = clock
         self._chain = HeldChain(history, reader)
         # The head these were found at: the node's stake on each transaction
-        # block, or None where it stakes nothing, and the stakes whose
-        # signatures fail, each logged once.
+        # block, or None where it stakes nothing, the stakes whose
+        # signatures fail, each logged once, and the stakes given, by hash.
         self._head: ContentId | None = None
         self._own: dict[ContentId, SignedStake | None] = {}
         self._passed_over: set[str] = set()
+        self._given: dict[str, SignedStake] = {}
+
+    def take(self, signed: SignedStake) -> None:
+        """Keep ``signed``, a stake a person made through the node, until the head changes.
+
+        It is checked as each stake held at the head's validation target is,
+        as it is taken (:meth:`staked`).
+        """
+        head = self._history.head
+        self._at(None if head is None else head.validation)
+        self._given[signed.hash] = signed
+        _LOGGER.info(
+            "Taking Karma stake %s of %s Kismet by %s on Karma transaction block %s",
+            signed.hash,
+            signed.stake.kismet.value(),
+            signed.staker,
+            signed.stake.transaction_block,
+        )
 
     def staked(
         self,
@@ -215,10 +235,10 @@ class HeadStakes:  # pylint: disable=too-many-instance-attributes
         transaction target, as the chain followed checks them, and the best
         is the best scored that is correct, and that no distrusted identity
         built (:meth:`_validated`). The stakes are those on it held at the
-        head's validation target (:meth:`_offered`), and ``identity``'s, the
-        node's (:meth:`_own_stake`), each staker's covered together
-        (:meth:`StakeCover.taken`). What covers ``also``, whose stakes a
-        runner-up may hold, is read with them.
+        head's validation target, and those given (:meth:`_offered`), and
+        ``identity``'s, the node's (:meth:`_own_stake`), each staker's
+        covered together (:meth:`StakeCover.taken`). What covers ``also``,
+        whose stakes a runner-up may hold, is read with them.
 
         Returns:
             Them, or ``None`` while no chain is followed, none of
@@ -233,11 +253,7 @@ class HeadStakes:  # pylint: disable=too-many-instance-attributes
         if head is None:
             return None
 
-        if head.validation != self._head:
-            self._head = head.validation
-            self._own.clear()
-            self._passed_over.clear()
-
+        self._at(head.validation)
         chosen = self._validated(transactions)
 
         if chosen is None:
@@ -276,13 +292,22 @@ class HeadStakes:  # pylint: disable=too-many-instance-attributes
         )
         return block_id, block
 
-    def _offered(self, validated_id: ContentId, target: DropTarget) -> list[SignedStake]:
-        """The stakes on ``validated_id`` in the validation blocks held at ``target``, once each.
+    def _at(self, head: ContentId | None) -> None:
+        """Forget what was found at the head before, and the stakes given, if ``head`` is new."""
+        if head != self._head:
+            self._head = head
+            self._own.clear()
+            self._passed_over.clear()
+            self._given.clear()
 
-        Each is signed by its staker, whom the node does not distrust (§3.8).
-        One whose staker's key is not held is passed over, and the key asked
-        for. One whose signature fails is passed over, and logged once at a
-        head. A block that is no validation block holds none.
+    def _offered(self, validated_id: ContentId, target: DropTarget) -> list[SignedStake]:
+        """The stakes on ``validated_id`` held at ``target``, and those given, once each.
+
+        Those held are in the validation blocks there. Each is signed by its
+        staker, whom the node does not distrust (§3.8). One whose staker's
+        key is not held is passed over, and the key asked for. One whose
+        signature fails is passed over, and logged once at a head. A block
+        that is no validation block holds none.
         """
         offered: dict[str, SignedStake] = {}
 
@@ -295,16 +320,39 @@ class HeadStakes:  # pylint: disable=too-many-instance-attributes
                 _LOGGER.debug("Karma block %s holds no stakes: %s", held.block_id, error)
                 continue
 
-            for signed in drop.block.stakes:
-                if (
-                    signed.stake.transaction_block == validated_id
-                    and signed.hash not in offered
-                    and not self._distrusts(signed.staker)
-                    and self._verified(signed, held.keys)
-                ):
-                    offered[signed.hash] = signed
+            self._offer(offered, validated_id, drop.block.stakes, held.keys)
 
+        given = [
+            signed
+            for signed in self._given.values()
+            if signed.stake.transaction_block == validated_id
+        ]
+        keys = self._reader.keys(
+            {signed.staker for signed in given}, named_by="a stake made through the node"
+        )
+        self._offer(offered, validated_id, given, keys)
         return list(offered.values())
+
+    def _offer(
+        self,
+        offered: dict[str, SignedStake],
+        validated_id: ContentId,
+        stakes: Iterable[SignedStake],
+        keys: Mapping[ContentId, bytes],
+    ) -> None:
+        """Add to ``offered`` each of ``stakes`` on ``validated_id`` it lacks that may be taken.
+
+        Each is signed by its staker, whom the node does not distrust, with
+        their key, of ``keys``.
+        """
+        for signed in stakes:
+            if (
+                signed.stake.transaction_block == validated_id
+                and signed.hash not in offered
+                and not self._distrusts(signed.staker)
+                and self._verified(signed, keys)
+            ):
+                offered[signed.hash] = signed
 
     def _verified(self, signed: SignedStake, keys: Mapping[ContentId, bytes]) -> bool:
         """Whether ``signed``'s signature checks with its staker's key, of ``keys``."""
@@ -409,6 +457,13 @@ class ValidationBuilder:  # pylint: disable=too-many-instance-attributes
         self._stakes = HeadStakes(
             history, reader, distrusts=distrusts, stake_percent=stake_percent, clock=clock
         )
+
+    def take(self, signed: SignedStake) -> None:
+        """Keep ``signed``, a stake a person made through the node, for the blocks built.
+
+        It is kept until the head changes (:meth:`HeadStakes.take`).
+        """
+        self._stakes.take(signed)
 
     def build(self) -> None:
         """Build a validation block at the head's validation target, if one is to be.

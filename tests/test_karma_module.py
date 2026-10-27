@@ -25,7 +25,6 @@ from libranet.cas.store import CasStore
 from libranet.config.models import KarmaConfig, LibranetConfig, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.trust import TrustState
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
@@ -40,7 +39,6 @@ from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.module import KarmaModule
 from libranet.karma.payments import Payment, PaymentQueue
 from libranet.karma.reading import HeldChain
-from libranet.karma.transactions import SignedTransaction, Transaction
 from libranet.karma.validating import ValidationBlockCheck
 from libranet.karma.weight import ChainWeight
 from libranet.messaging.envelope import Message, event_of, make_message
@@ -49,11 +47,14 @@ from libranet.messaging.node_trust import NodeTrust
 from libranet.messaging.queues import ModuleQueues
 from libranet.messaging.server_ratings import ServerRating, ServerRatings
 from libranet.modules import SPAWNED_MODULES, ModuleName
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_stakes import SignedStake
+from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from libranet.supervision.registry import default_module_specs
 from libranet.supervision.specs import ModuleSpec
 from tests.helpers import new_identity, published, with_node_key
 from tests.karma_chains import BOUNDS as CHAIN_BOUNDS
-from tests.karma_chains import MINIMUM_BITS, Chain, hold
+from tests.karma_chains import MINIMUM_BITS, Chain, hold, staked
 
 HEAD = ContentId("sha256", "c1" * 32)
 BLOCK = ContentId("sha256", "b1" * 32)
@@ -168,14 +169,21 @@ def given(signed: SignedTransaction) -> Message:
     )
 
 
-def paid_by_node(storage: StorageConfig, seconds: int = 0) -> SignedTransaction:
-    """The node's transaction paying PEER 5 Kismet, mined to the bounds' work.
+def staking(signed: SignedStake) -> Message:
+    """``signed``, as the web server gives the module a stake made through the node."""
+    return make_message(EventType.KARMA_STAKE, ModuleName.WEBSERVER, {"stake": signed.value()})
+
+
+def paid_by_node(
+    storage: StorageConfig, seconds: int = 0, to: ContentId = PEER
+) -> SignedTransaction:
+    """The node's transaction paying ``to`` 5 Kismet, mined to the bounds' work.
 
     It is created ``seconds`` after CREATED.
     """
     node = NodeIdentity.load(LibranetConfig(storage=storage))
     created = CREATED + timedelta(seconds=seconds)
-    sent = Transaction(node.node_id, {PEER: Kismet(5)}, Kismet(0), 0, created)
+    sent = Transaction(node.node_id, {to: Kismet(5)}, Kismet(0), 0, created)
     mined = sent.mined(0, minimum_bits=BOUNDS.transaction_bits)
     return SignedTransaction.of(node.signed(mined.text()))
 
@@ -344,6 +352,7 @@ def test_the_supervisor_runs_the_karma_module_last(
                 EventType.NODE_TRUST,
                 EventType.KARMA_HEAD_TOLD,
                 EventType.KARMA_TRANSACTION,
+                EventType.KARMA_STAKE,
                 EventType.KARMA_RATINGS,
             }
         ),
@@ -1088,6 +1097,52 @@ def test_the_module_stakes_on_a_full_block_at_its_heads_target_and_follows_the_b
 
     head = module.history.head
     assert head is not None and (head.generation, head.validation) == (2, built)
+
+
+def test_a_stake_made_through_the_node_is_in_the_validation_block_the_module_builds(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    clock = Clock()
+    karma = KarmaConfig(block_seconds=0.0)
+    module = paying_module(storage, queues, clock, karma)
+    published(queues)
+    erin = new_identity()
+    CasStore.source_of_truth(storage).write(erin.node_id, erin.public_key)
+    module.handle(given(paid_by_node(storage, 1, erin.node_id)))
+    (put_up,) = stored_ids(queues)
+
+    module.handle(staking(staked(erin, put_up, 5)))
+    clock.now += karma.build_interval_seconds
+    module.on_idle()
+
+    (built,) = stored_ids(queues)
+    validation = BlockDrop.parsed(module.reader.held(built), ValidationBlock).block
+    node = NodeIdentity.load(LibranetConfig(storage=storage))
+    assert sorted(each.staker for each in validation.stakes) == sorted([node.node_id, erin.node_id])
+
+
+def test_a_stake_given_that_is_none_is_logged_and_passed_over(
+    storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    module = paying_module(storage, queues, Clock())
+    published(queues)
+
+    with caplog.at_level(WARNING):
+        module.handle(
+            make_message(EventType.KARMA_STAKE, ModuleName.WEBSERVER, {"stake": {"hash": "?"}})
+        )
+
+    assert published(queues) == []
+    assert "Passing over a Karma stake that is none" in caplog.text
+
+
+def test_a_stake_is_taken_only_once_the_module_has_started(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    staker = new_identity()
+
+    with raises(RuntimeError, match="not running"):
+        module_over(storage, queues).handle(staking(staked(staker, BLOCK, 5)))
 
 
 def test_the_module_asks_for_the_servers_to_be_rated_every_rating_interval(

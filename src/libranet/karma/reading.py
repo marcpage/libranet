@@ -73,9 +73,9 @@ from libranet.config.models import LibranetConfig
 from libranet.karma.blocks import Balance, BlockDrop, TransactionBlock, ValidationBlock
 from libranet.karma.history import ChainGeneration
 from libranet.karma.ledger import NO_BALANCE, WEIGHT_GENERATIONS
-from libranet.karma.transactions import TransactionKey
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
+from libranet.protocol.karma_transactions import TransactionKey
 from libranet.protocol.search import LocalSearch
 
 _LOGGER = getLogger(__name__)
@@ -271,6 +271,30 @@ class TargetReader:  # pylint: disable=too-many-instance-attributes
         data, held_bytes = self._held(block_id)
         return self._block(block_id, data, held_bytes, kind)
 
+    def keys(self, signers: Iterable[ContentId], *, named_by: str) -> dict[ContentId, bytes]:
+        """The keys held of ``signers``, whom ``named_by`` names as signing what it holds.
+
+        Each not held is asked for (:meth:`held`). One the node shuns, or
+        holds otherwise than it is, is passed over.
+        """
+        keys: dict[ContentId, bytes] = {}
+
+        for signer in signers:
+            try:
+                keys[signer] = self.held(signer)
+
+            except MissingContentError:
+                # Not logged: it is asked for, and what it checks waits for it.
+                continue
+
+            except ShunnedContentError as error:
+                _LOGGER.debug("Not reading a key %s names: %s", named_by, error)
+
+            except BundleVerificationError as error:
+                _LOGGER.warning("Cannot read a key %s names: %s", named_by, error)
+
+        return keys
+
     def fetch(self, content_ids: Iterable[ContentId]) -> None:
         """Ask for each of ``content_ids`` the node lacks, and wait for it (HttpApi §5.2).
 
@@ -358,12 +382,13 @@ class TargetReader:  # pylint: disable=too-many-instance-attributes
     ) -> HeldBlock:
         """Block ``block_id``, the drop ``data``, held as is, or as a zlib stream of ``held_bytes``.
 
-        The keys of its signers not held are asked for (:meth:`_keys`).
+        The keys of its signers not held are asked for (:meth:`keys`).
         """
         compressed_bytes = (
             len(compress(data, STORAGE_COMPRESSION_LEVEL)) if held_bytes is None else held_bytes
         )
-        return HeldBlock(block_id, data, compressed_bytes, self._keys(block_id, data, kind))
+        keys = self.keys(self._signers(data, kind), named_by=str(block_id))
+        return HeldBlock(block_id, data, compressed_bytes, keys)
 
     def _read(self, content_id: ContentId) -> tuple[bytes, int | None]:
         """What is held of ``content_id``, and the size of the zlib stream it is held as, if it is.
@@ -394,29 +419,6 @@ class TargetReader:  # pylint: disable=too-many-instance-attributes
             raise BundleVerificationError(f"What is held decompresses to other than {content_id}")
 
         return data, len(stored)
-
-    def _keys(self, block_id: ContentId, data: bytes, kind: type[_Block]) -> dict[ContentId, bytes]:
-        """The keys held of everyone who signed what the drop ``data``, ``block_id``, holds.
-
-        Each not held is asked for (:meth:`held`).
-        """
-        keys: dict[ContentId, bytes] = {}
-
-        for signer in self._signers(data, kind):
-            try:
-                keys[signer] = self.held(signer)
-
-            except MissingContentError:
-                # Not logged: it is asked for, and its block's check waits for it.
-                continue
-
-            except ShunnedContentError as error:
-                _LOGGER.debug("Not reading a key %s names: %s", block_id, error)
-
-            except BundleVerificationError as error:
-                _LOGGER.warning("Cannot read a key %s names: %s", block_id, error)
-
-        return keys
 
     @staticmethod
     def _signers(data: bytes, kind: type[_Block]) -> list[ContentId]:

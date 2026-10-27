@@ -143,8 +143,11 @@ from libranet.webserver.karma_handlers import (
     KARMA_BALANCE_PATTERN,
     KARMA_GENERATIONS_PATH,
     KARMA_PATH,
+    KARMA_PAYMENTS_PATH,
+    KARMA_STAKES_PATH,
     KarmaHeadTold,
     KarmaReads,
+    KarmaSigning,
 )
 from libranet.webserver.list_handlers import (
     PEERS_PATH,
@@ -276,14 +279,18 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     writes them in ``storage``'s data directory (Phase 6 Step 128), and
     ``/data/karma/head`` says the head alone, for another node, and
     publishes a head a peer tells of (Phase 6 Step 130).
+    ``/data/karma/payments`` and ``/data/karma/stakes`` pay and stake as
+    whoever is signed in, for local clients alone, a payment's nonce searched
+    for as a drop's is, in its turns, and publish each for the Karma module
+    (Phase 6 Step 137).
 
     Each of those but reading into a bundle and checking signed content is
     served only to this node's own pages, as a request's ``Referer`` names
     them: an application's store to its own, and the folders, imports,
-    bundles, identities, session, signing, opening what is encrypted,
-    encrypting by a password, trust, shunning, and the peer list to those of
-    applications the operator trusts. An application the operator has not
-    trusted is served in a sandbox (Phase 3 Step 74).
+    bundles, identities, session, signing, paying and staking, opening what
+    is encrypted, encrypting by a password, trust, shunning, and the peer
+    list to those of applications the operator trusts. An application the
+    operator has not trusted is served in a sandbox (Phase 3 Step 74).
     """
     store = CasStore.source_of_truth(storage)
     content = LayeredSource(store) if content is None else content
@@ -431,6 +438,8 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
             builds=builds,
         )
         trust_reads = TrustReads(builds, sessions)
+        karma = KarmaReads(storage.karma_dir, node.node_id, retry_after_seconds)
+        signing = KarmaSigning(karma, drops, sessions, publish)
 
         # The encrypted routes before the bundle route, whose pattern they also
         # fit.
@@ -447,12 +456,13 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
             ("GET", TRUST_PATTERN, trust_reads.score),
             ("PUT", TRUST_PATTERN, trust.trust),
             ("DELETE", TRUST_PATTERN, trust.clear),
+            ("POST", KARMA_PAYMENTS_PATH, signing.pay),
+            ("POST", KARMA_STAKES_PATH, signing.stake),
         ):
             router.add(method, path, LocalOnly(OwnPageOnly(handler, pages, trusted=True), checks))
 
         # Before the bundle route, whose pattern it also fits.
         router.add("GET", SIGNED_PATTERN, signed.read)
-        karma = KarmaReads(storage.karma_dir, node.node_id, retry_after_seconds)
         router.add("GET", KARMA_PATH, karma.karma)
         router.add("GET", KARMA_BALANCE_PATTERN, karma.balance)
         router.add("GET", KARMA_GENERATIONS_PATH, karma.generations)

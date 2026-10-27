@@ -7,8 +7,8 @@ from pytest import mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import UnknownAlgorithmError
-from libranet.karma.amounts import Kismet
-from libranet.karma.members import (
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_members import (
     amounts_member,
     check_moment,
     contents_value,

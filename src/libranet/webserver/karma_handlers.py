@@ -1,4 +1,4 @@
-"""``/data/karma``: what the Karma chain the node follows states (HttpApi §10.9, §10.10).
+"""``/data/karma``: the Karma chain followed, and paying and staking in it (HttpApi §10.9, §10.10).
 
 An identity's Karma, to a node, is its balance as the chain the node follows
 states it (KarmaLedger §5.3, Phase 6 Step 128). Any client may read these,
@@ -44,22 +44,64 @@ the node follows no chain:
       karma.head_told  {"head": "sha256/…", "node_id": "sha256/…"}
 
   An unsigned one is ``401``, and a body that is not such a head ``400``.
+
+A person pays others, and stakes, through the node they are signed in on,
+which signs for them, as it does a signed drop (Phase 6 Step 137,
+:class:`KarmaSigning`). Each is published for the Karma module, which puts
+a transaction up and takes a stake into the validation blocks it builds:
+
+- ``POST /data/karma/payments`` ``{"to": {"sha256/…": "250"}, "fee_kismet":
+  "0", "seconds": 10}``: the node stamps ``created`` and its head's
+  ``generation``, searches for the nonce for ``seconds``, and after that
+  until it has a transaction's work, in the turns drops take, under their
+  ceiling of seconds, and signs the transaction as the person. It answers
+  ``202`` ``{"hash", "from", "created", "covered"}``, ``covered`` saying
+  whether the balance stated of the person covers it now::
+
+      karma.transaction  {"transaction": {"contents": "…", …}}
+
+- ``POST /data/karma/stakes`` ``{"transaction_block": "sha256/…", "kismet":
+  "…"}``: the node signs the stake as the person, and answers ``202``
+  ``{"hash"}``::
+
+      karma.stake  {"stake": {"contents": "…", …}}
+
+Each stamps ``created`` a second past the last it stamped for the person,
+should that be now or later, so that two a page makes at once are not taken
+as one (KarmaLedger §4.2, §6.2), and stores the person's public key again,
+should it have been evicted, so that a reader can check them. Each is
+refused as making a signed drop is: ``401`` with no one signed in, ``403``
+for a fallback that has not taken over, and ``400`` for a body that is no
+payment or stake. Each is ``503`` with ``Retry-After`` while the node
+follows no chain, and a payment also until the node has read the balances at
+its head.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass, field
+from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from logging import getLogger
 from pathlib import Path
-from typing import Final
+from threading import Lock
+from time import time
+from typing import Callable, Final
 
+from libranet.bundle.storing import store_object
 from libranet.cas.content_id import ContentId
+from libranet.config.models import TARGET_BITS
+from libranet.identity.people import PersonKey
 from libranet.json_fields import decimal_count
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
+from libranet.protocol.errors import InvalidRequestError
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.protocol.karma_balances import KarmaBalances
 from libranet.protocol.karma_head import KarmaGeneration, KarmaHead, ToldHead
+from libranet.protocol.karma_requests import PaymentRequest, StakeRequest
+from libranet.protocol.karma_stakes import SignedStake
+from libranet.protocol.karma_transactions import MIN_TRANSACTION_BITS, SignedTransaction
+from libranet.webserver.drop_handler import DropHandler
 from libranet.webserver.http_types import (
     NOT_STORED,
     Request,
@@ -73,6 +115,7 @@ from libranet.webserver.request_refusals import (
     parsed_or_refusal,
     signature_required_response,
 )
+from libranet.webserver.sessions import Sessions
 
 _LOGGER = getLogger(__name__)
 
@@ -84,6 +127,12 @@ KARMA_BALANCE_PATTERN: Final = KARMA_PATH + "/balances/(?P<algorithm>[^/]+)/(?P<
 
 #: Where a client reads the generations of the chain the node follows.
 KARMA_GENERATIONS_PATH: Final = KARMA_PATH + "/generations"
+
+#: Where a page has the node pay as whoever is signed in.
+KARMA_PAYMENTS_PATH: Final = KARMA_PATH + "/payments"
+
+#: Where a page has the node stake as whoever is signed in.
+KARMA_STAKES_PATH: Final = KARMA_PATH + "/stakes"
 
 #: The most generations ``GET /data/karma/generations`` lists at once.
 MAX_GENERATIONS_LISTED: Final = 100
@@ -116,7 +165,7 @@ class KarmaReads:
 
     def karma(self, request: Request) -> Response:
         """``GET /data/karma``: the head followed, and the node's own balance there."""
-        balances = self._balances(request)
+        balances = self.balances_or_refusal(request)
 
         if isinstance(balances, Response):
             return balances
@@ -136,7 +185,7 @@ class KarmaReads:
         if isinstance(identity, Response):
             return identity
 
-        balances = self._balances(request)
+        balances = self.balances_or_refusal(request)
 
         if isinstance(balances, Response):
             return balances
@@ -154,14 +203,15 @@ class KarmaReads:
             # Not logged: the refusal logs it.
             return invalid_request_response(request, error, _LOGGER)
 
+        followed = self.generation_or_refusal(request)
+
+        if isinstance(followed, Response):
+            return followed
+
+        newest = followed if before is None else min(before - 1, followed)
+        oldest = max(newest - MAX_GENERATIONS_LISTED + 1, 0)
+
         try:
-            head = KarmaHead.read(self.karma_dir)
-
-            if head.generation is None:
-                return self._not_following(request)
-
-            newest = head.generation if before is None else min(before - 1, head.generation)
-            oldest = max(newest - MAX_GENERATIONS_LISTED + 1, 0)
             listed = [
                 KarmaGeneration.read(self.karma_dir, generation).value()
                 for generation in range(newest, oldest - 1, -1)
@@ -195,8 +245,12 @@ class KarmaReads:
 
         return json_response(ToldHead(head.head).value()).with_headers(NOT_STORED)
 
-    def _balances(self, request: Request) -> KarmaBalances | Response:
-        """The balances stated at the head, or the response refusing to read them."""
+    def balances_or_refusal(self, request: Request) -> KarmaBalances | Response:
+        """The balances stated at the head, or the response refusing ``request`` for them.
+
+        It is ``503`` while the node follows no chain, or has not read the
+        balances at its head, and ``500`` when they cannot be read.
+        """
         try:
             balances = KarmaBalances.read(self.karma_dir)
 
@@ -208,6 +262,21 @@ class KarmaReads:
             return self._not_following(request)
 
         return balances
+
+    def generation_or_refusal(self, request: Request) -> int | Response:
+        """The generation of the head followed, or the response refusing ``request`` for it.
+
+        It is ``503`` while the node follows no chain, and ``500`` when the
+        head cannot be read.
+        """
+        try:
+            generation = KarmaHead.read(self.karma_dir).generation
+
+        except (OSError, ValueError) as error:
+            # Not logged: _unreadable logs it.
+            return self._unreadable(request, error)
+
+        return self._not_following(request) if generation is None else generation
 
     def _not_following(self, request: Request) -> Response:
         """The ``503`` while the node follows no chain, or has not read the balances there."""
@@ -261,3 +330,154 @@ class KarmaHeadTold:
             )
 
         return Response(HTTPStatus.ACCEPTED)
+
+
+class CreatedMoments:
+    """When what each person makes through the node is ``created``, by ``clock``.
+
+    Each is the second ``clock`` gives, or a second past the last stamped for
+    the same person, should that be now or later, so that a page that makes
+    two at once has two, not one (KarmaLedger §4.2, §6.2). Any number of
+    request threads may stamp at once.
+    """
+
+    def __init__(self, clock: Callable[[], float] = time) -> None:
+        self._clock = clock
+        self._last: dict[ContentId, datetime] = {}
+        self._lock = Lock()
+
+    def stamped(self, person: ContentId) -> datetime:
+        """When what ``person`` makes now is created: a UTC time to the second."""
+        with self._lock:
+            created = datetime.fromtimestamp(int(self._clock()), UTC)
+            last = self._last.get(person)
+
+            if last is not None and created <= last:
+                created = last + timedelta(seconds=1)
+
+            self._last[person] = created
+            return created
+
+
+@dataclass(frozen=True)
+class KarmaSigning:
+    """The endpoints paying and staking as the person ``sessions`` says is signed in.
+
+    What the chain followed states, ``reads`` reads. A payment's nonce is
+    searched for in the turns of ``drops``, no longer than its ceiling, and
+    after that until it shares ``transaction_bits`` with the target of a
+    transaction's work: a transaction's fewest, unless a test gives fewer.
+    The person's public key is stored in ``drops.uploads``, and what is
+    signed is published with ``publish``. ``moments`` says when each is
+    created.
+
+    Raises:
+        ValueError: ``transaction_bits`` is negative, or more than a hash
+            has.
+    """
+
+    reads: KarmaReads
+    drops: DropHandler
+    sessions: Sessions
+    publish: Publish
+    _: KW_ONLY
+    transaction_bits: int = MIN_TRANSACTION_BITS
+    moments: CreatedMoments = field(default_factory=CreatedMoments)
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.transaction_bits <= TARGET_BITS:
+            raise ValueError(
+                f"transaction_bits must be from 0 to {TARGET_BITS}, got {self.transaction_bits}"
+            )
+
+    def pay(self, request: Request) -> Response:
+        """``POST /data/karma/payments``: pay as who is signed in, in a transaction put up."""
+        session = self.sessions.signer_or_refusal(request, "Sign in to pay.")
+
+        if isinstance(session, Response):
+            return session
+
+        asked = parsed_or_refusal(request, PaymentRequest.from_value)
+
+        if isinstance(asked, Response):
+            return asked
+
+        try:
+            # A payment asks for no bits: it needs a transaction's, whatever a drop may ask.
+            self.drops.within_ceilings(asked.seconds, 0)
+
+        except InvalidRequestError as error:
+            # Not logged: the refusal logs it.
+            return invalid_request_response(request, error, _LOGGER)
+
+        generation = self.reads.generation_or_refusal(request)
+
+        if isinstance(generation, Response):
+            return generation
+
+        balances = self.reads.balances_or_refusal(request)
+
+        if isinstance(balances, Response):
+            return balances
+
+        person = session.key
+        made = asked.transaction(
+            person.person_id, generation, self.moments.stamped(person.person_id)
+        )
+
+        with self.drops.turns.turn():
+            mined = made.mined(asked.seconds, minimum_bits=self.transaction_bits)
+
+        signed = SignedTransaction.of(person.signed(mined.text()))
+        self._publish(person, EventType.KARMA_TRANSACTION, {"transaction": signed.value()})
+        sends = mined.sends()
+        covered = balances.balance(person.person_id).kismet >= sends.count
+        _LOGGER.info(
+            "Putting up Karma transaction %s, %s Kismet in all, for %s, %s",
+            signed.hash,
+            sends.value(),
+            person.person_id,
+            "covered" if covered else "not covered yet",
+        )
+        return json_response(
+            {"hash": signed.hash, **mined.key.value(), "covered": covered}, HTTPStatus.ACCEPTED
+        )
+
+    def stake(self, request: Request) -> Response:
+        """``POST /data/karma/stakes``: stake as who is signed in, in the blocks the node builds."""
+        session = self.sessions.signer_or_refusal(request, "Sign in to stake.")
+
+        if isinstance(session, Response):
+            return session
+
+        asked = parsed_or_refusal(request, StakeRequest.from_value)
+
+        if isinstance(asked, Response):
+            return asked
+
+        following = self.reads.generation_or_refusal(request)
+
+        if isinstance(following, Response):
+            return following
+
+        person = session.key
+        stake = asked.stake(person.person_id, self.moments.stamped(person.person_id))
+        signed = SignedStake.of(person.signed(stake.text()))
+        self._publish(person, EventType.KARMA_STAKE, {"stake": signed.value()})
+        _LOGGER.info(
+            "Staking %s Kismet on Karma transaction block %s for %s: stake %s",
+            stake.kismet.value(),
+            stake.transaction_block,
+            person.person_id,
+            signed.hash,
+        )
+        return json_response({"hash": signed.hash}, HTTPStatus.ACCEPTED)
+
+    def _publish(self, person: PersonKey, event: EventType, payload: dict[str, object]) -> None:
+        """Publish ``event`` with ``payload``, what ``person`` signed, their key held again first.
+
+        The key is stored, should it have been evicted since it was made, so
+        that a reader can check what they signed.
+        """
+        store_object(person.public_key, self.drops.uploads, self.drops.max_object_bytes)
+        self.publish(event, payload)

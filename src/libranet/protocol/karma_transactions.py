@@ -39,14 +39,13 @@ from libranet.bundle.errors import (
 from libranet.bundle.shapes import is_utf8
 from libranet.bundle.signing import SIGNED_HASH_ALGORITHM, SignedBundle
 from libranet.cas.content_id import ContentId
-from libranet.cas.drops import NONCE_SEARCHERS, NonceSearchers
+from libranet.cas.drops import NONCE_SEARCHERS, DropTarget, NonceSearchers
 from libranet.cas.nonce_search import NonceSearch
 from libranet.cas.prefix import matching_bits
 from libranet.json_fields import integer_field, string_field
 from libranet.json_format import MOMENT_FORMAT, compact_json
-from libranet.karma.amounts import MAX_KISMET, Kismet
-from libranet.karma.generations import MIN_TRANSACTION_BITS, TRANSACTION_WORK_TARGET
-from libranet.karma.members import (
+from libranet.protocol.karma_amounts import MAX_KISMET, Kismet
+from libranet.protocol.karma_members import (
     CREATED_MEMBER,
     amounts_member,
     check_moment,
@@ -54,6 +53,14 @@ from libranet.karma.members import (
     id_member,
     moment_member,
 )
+
+#: The fewest leading bits a transaction's ``hash`` may share with
+#: :data:`TRANSACTION_WORK_TARGET` (§4.3).
+MIN_TRANSACTION_BITS: Final = 24
+
+#: What a transaction's work is measured against: the SHA-256 of
+#: ``transaction``, which is no block's target (§4.3).
+TRANSACTION_WORK_TARGET: Final = DropTarget.of("transaction")
 
 # The members of a transaction (§4.1), and of a payout, which has the first
 # three (§5.2).
@@ -203,11 +210,10 @@ class Transaction:
         """This transaction, with the nonce, of those tried, that gives it the most work (§4.3).
 
         Its work is the leading bits its hash, that of its :meth:`text`,
-        shares with :data:`~libranet.karma.generations.TRANSACTION_WORK_TARGET`.
-        Nonces are tried for ``seconds``, by ``clock``, and after that until
-        the best gives at least ``minimum_bits``: by default
-        :data:`~libranet.karma.generations.MIN_TRANSACTION_BITS`, the fewest
-        a valid transaction has. ``searchers`` try them, as they do a drop's
+        shares with :data:`TRANSACTION_WORK_TARGET`. Nonces are tried for
+        ``seconds``, by ``clock``, and after that until the best gives at
+        least ``minimum_bits``: by default :data:`MIN_TRANSACTION_BITS`, the
+        fewest a valid transaction has. ``searchers`` try them, as they do a drop's
         (:meth:`~libranet.cas.drops.NonceSearchers.found`), hashing the text
         before the nonce once, and the ``"}`` after it with each. The nonce
         it had is not kept.
@@ -316,8 +322,7 @@ class SignedTransaction:
     def work_bits(self) -> int:
         """Its proof of work: the leading bits its :attr:`hash` shares with the target of its work.
 
-        That is the SHA-256 of ``transaction``,
-        :data:`~libranet.karma.generations.TRANSACTION_WORK_TARGET` (§4.3).
+        That is the SHA-256 of ``transaction``, :data:`TRANSACTION_WORK_TARGET` (§4.3).
         """
         return matching_bits(TRANSACTION_WORK_TARGET.hex, self.hash)
 

@@ -20,14 +20,18 @@ from libranet.bundle.storing import HASH_ALGORITHM
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import NONCE_SEARCHERS, Drop, NonceSearchers
 from libranet.identity.node_identity import NodeIdentity
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import BlockDrop, TransactionBlock, ValidationBlock
-from libranet.karma.generations import MIN_TRANSACTION_BITS, GenerationTargets
+from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration
 from libranet.karma.ledger import NO_BALANCE
-from libranet.karma.stakes import SignedStake, Stake
-from libranet.karma.transactions import SignedTransaction, Transaction
 from libranet.karma.weight import ChainWeight
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_stakes import SignedStake, Stake
+from libranet.protocol.karma_transactions import (
+    MIN_TRANSACTION_BITS,
+    SignedTransaction,
+    Transaction,
+)
 
 
 @dataclass(frozen=True)

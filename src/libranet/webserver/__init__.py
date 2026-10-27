@@ -21,7 +21,8 @@ connects to and serves, and distrusts whoever built a false Karma block (Phase
 6 Step 127). Any client may read what the Karma chain the node follows
 states: its head, any identity's balance, and its generations (Phase 6 Step
 128). Peers tell the node the Karma heads they follow, and ask for its own
-(Phase 6 Step 130).
+(Phase 6 Step 130). A person signed in pays, and stakes, through the node,
+which signs for them (Phase 6 Step 137).
 
 A few `/data` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
@@ -226,9 +227,13 @@ from libranet.webserver.karma_handlers import (
     KARMA_BALANCE_PATTERN,
     KARMA_GENERATIONS_PATH,
     KARMA_PATH,
+    KARMA_PAYMENTS_PATH,
+    KARMA_STAKES_PATH,
     MAX_GENERATIONS_LISTED,
+    CreatedMoments,
     KarmaHeadTold,
     KarmaReads,
+    KarmaSigning,
 )
 from libranet.webserver.list_handlers import (
     PEERS_PATH,
@@ -381,7 +386,9 @@ __all__ = [
     "KARMA_BALANCE_PATTERN",
     "KARMA_GENERATIONS_PATH",
     "KARMA_PATH",
+    "KARMA_PAYMENTS_PATH",
     "KARMA_ROOT_PATH",
+    "KARMA_STAKES_PATH",
     "KEY_BYTES",
     "LISTED_DIRECTORY",
     "LISTED_FILE",
@@ -454,6 +461,7 @@ __all__ = [
     "ConnectingRule",
     "ContentWait",
     "CostlyWork",
+    "CreatedMoments",
     "CredentialFileError",
     "DataReadHandler",
     "DataWriteHandler",
@@ -480,6 +488,7 @@ __all__ = [
     "KarmaHeadTold",
     "KarmaReads",
     "KarmaRootHandler",
+    "KarmaSigning",
     "KnownOutcome",
     "LibranetHTTPServer",
     "ListFileHandler",

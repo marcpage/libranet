@@ -14,7 +14,6 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.errors import UnknownAlgorithmError
 from libranet.identity.node_identity import NodeIdentity
 from libranet.json_format import compact_json
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import (
     BLOCK_BOUNDS,
     Balance,
@@ -26,9 +25,10 @@ from libranet.karma.blocks import (
     ValidationBlock,
 )
 from libranet.karma.generations import GenerationTargets, new_kismet
-from libranet.karma.stakes import SignedStake, Stake
-from libranet.karma.transactions import Payout, SignedTransaction, Transaction
 from libranet.karma.weight import ChainWeight
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_stakes import SignedStake, Stake
+from libranet.protocol.karma_transactions import Payout, SignedTransaction, Transaction
 from tests.helpers import new_identity
 
 CREATED = datetime(2026, 10, 21, 14, 3, 22, tzinfo=UTC)

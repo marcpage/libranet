@@ -21,10 +21,10 @@ from dataclasses import dataclass, replace
 from typing import Final, Mapping, Sequence
 
 from libranet.cas.content_id import ContentId
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import Balance, TransactionBlock, ValidationBlock
 from libranet.karma.generations import new_kismet
-from libranet.karma.transactions import Payout
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_transactions import Payout
 
 #: How many generations after a win a staker's weight takes to grow back
 #: whole, a tenth each generation (§6.6, Karma §23).

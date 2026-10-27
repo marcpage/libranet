@@ -56,7 +56,6 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.drops import NONCE_SEARCHERS, DropTarget, NonceSearchers
 from libranet.cas.prefix import matching_bits
 from libranet.identity.node_identity import NodeIdentity
-from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import (
     BLOCK_BOUNDS,
     Balance,
@@ -71,7 +70,8 @@ from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.ledger import BalanceSheet, reach_of
 from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
-from libranet.karma.transactions import Payout, SignedTransaction, TransactionKey
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_transactions import Payout, SignedTransaction, TransactionKey
 
 _LOGGER = getLogger(__name__)
 
