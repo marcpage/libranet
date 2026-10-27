@@ -12,7 +12,8 @@ generations, every holder's balance, the node's payments queued, and the
 transactions it carries, as the Karma module writes them, the amounts,
 transactions, payouts, and stakes the chain is made of, and
 the payments and stakes a page asks the web server to make for whoever is
-signed in, are each defined once, here.
+signed in, and how much the node stakes, as its operator sets it, are each
+defined once, here.
 No module package imports another; what two modules share is here, in
 :mod:`libranet.messaging`, or in a library package below them both.
 """
@@ -100,6 +101,12 @@ from libranet.protocol.karma_members import (
 from libranet.protocol.karma_payments import PAYMENTS_FILE, Payment, PaymentQueue
 from libranet.protocol.karma_requests import PaymentRequest, StakeRequest
 from libranet.protocol.karma_stakes import SignedStake, Stake
+from libranet.protocol.karma_staking import (
+    STAKE_PERCENT_FIELD,
+    STAKING_FILE,
+    StakingRequest,
+    StakingRule,
+)
 from libranet.protocol.karma_transactions import (
     MIN_TRANSACTION_BITS,
     TRANSACTION_WORK_TARGET,
@@ -162,6 +169,8 @@ __all__ = [
     "RESULTS_FIELD",
     "SEARCH_PATH",
     "SEEK_PATH",
+    "STAKE_PERCENT_FIELD",
+    "STAKING_FILE",
     "TOKEN",
     "TRANSACTION_FIELD",
     "TRANSACTION_WORK_TARGET",
@@ -211,6 +220,8 @@ __all__ = [
     "SignedTransaction",
     "Stake",
     "StakeRequest",
+    "StakingRequest",
+    "StakingRule",
     "ToldHead",
     "Transaction",
     "TransactionKey",

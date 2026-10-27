@@ -1,7 +1,7 @@
 """Tests for reading what the Karma chain the node follows states, through a router.
 
-And for the heads peers ask for and tell of, and for paying and staking as a
-person.
+And for the heads peers ask for and tell of, for paying and staking as a
+person, and for what the operator sees of the node's Karma on ``/config``.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from pytest import LogCaptureFixture, fixture, mark, raises
 from libranet.bundle.content import content_chunks
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
-from libranet.config.models import StorageConfig
+from libranet.config.models import KarmaConfig, StorageConfig
 from libranet.identity.authentication import AuthenticationResult, AuthenticationStatus
 from libranet.identity.people import NewIdentity, PersonKey, Username
 from libranet.messaging.events import EventType
@@ -26,14 +26,18 @@ from libranet.problems import SESSION_REQUIRED
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import KarmaBalance, KarmaBalances
+from libranet.protocol.karma_carried import CarriedTransaction
 from libranet.protocol.karma_head import KARMA_HEAD_PATH, KarmaGeneration, KarmaHead
+from libranet.protocol.karma_payments import Payment, PaymentQueue
 from libranet.protocol.karma_stakes import SignedStake, Stake
+from libranet.protocol.karma_staking import STAKING_FILE, StakingRule
 from libranet.protocol.karma_transactions import (
     MIN_TRANSACTION_BITS,
     SignedTransaction,
     Transaction,
 )
 from libranet.webserver.bundle_edits import OwnUploads
+from libranet.webserver.config_handlers import CONFIG_KARMA_PATH
 from libranet.webserver.drop_handler import DropHandler
 from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.karma_handlers import (
@@ -47,6 +51,7 @@ from libranet.webserver.karma_handlers import (
     KarmaHeadTold,
     KarmaReads,
     KarmaSigning,
+    OwnKarma,
 )
 from libranet.webserver.router import Router
 from libranet.webserver.sessions import Session, Sessions
@@ -614,3 +619,158 @@ def test_payments_must_be_searched_for_to_bits_a_hash_has(signing: KarmaSigning,
         KarmaSigning(
             signing.reads, signing.drops, signing.sessions, signing.publish, transaction_bits=bits
         )
+
+
+# What the operator sees of the node's Karma on /config (Phase 6 Step 138).
+
+OWN_CONFIG = KarmaConfig(payment_batch=3, payment_interval_seconds=3600.0, stake_percent=10.0)
+
+
+@fixture
+def own(karma_dir: Path) -> OwnKarma:
+    """What the operator reads of the node's Karma, at NOW."""
+    return OwnKarma(karma_dir, NODE, OWN_CONFIG, clock=NOW.timestamp)
+
+
+def asked_of(own: OwnKarma, value: object = None) -> tuple[int, Any]:
+    """The status of ``GET /config/api/karma``, or of ``PUT`` of ``value``, and the body."""
+    if value is None:
+        response = own.read(Request("GET", CONFIG_KARMA_PATH))
+
+    else:
+        body = RequestBody.of(dumps(value).encode("utf-8"))
+        headers = {"Content-Type": JSON_CONTENT_TYPE}
+        response = own.change(Request("PUT", CONFIG_KARMA_PATH, headers=headers, body=body))
+
+    return response.status, loads(response.body)
+
+
+def test_the_operator_reads_that_the_node_follows_no_chain_and_holds_nothing(
+    own: OwnKarma,
+) -> None:
+    assert asked_of(own) == (
+        200,
+        {
+            "head": None,
+            "generation": None,
+            "weight": None,
+            "node_id": str(NODE),
+            "balance": None,
+            "payments": [],
+            "payments_due": None,
+            "carried": [],
+            "stake_percent": 10.0,
+        },
+    )
+
+
+@mark.usefixtures("following")
+def test_the_operator_reads_the_chain_followed_and_the_nodes_balance_there(own: OwnKarma) -> None:
+    status, read = asked_of(own)
+
+    assert status == 200
+    assert (read["head"], read["generation"], read["weight"]) == (
+        str(validation_at(NEWEST)),
+        NEWEST,
+        str(10 * (NEWEST + 1)),
+    )
+    assert read["balance"] == {"kismet": "250", "last_won": 139}
+
+
+@mark.usefixtures("following")
+def test_the_nodes_balance_is_null_until_read_at_the_head_followed(
+    own: OwnKarma, karma_dir: Path
+) -> None:
+    KarmaBalances(head_at(NEWEST - 1), {NODE: KarmaBalance(250)}).write(karma_dir)
+
+    status, read = asked_of(own)
+
+    assert (status, read["generation"], read["balance"]) == (200, NEWEST, None)
+
+
+def test_the_payments_queued_are_read_with_when_they_go(own: OwnKarma, karma_dir: Path) -> None:
+    payments = (Payment(ALICE, Kismet(200)), Payment(CAROL, Kismet(300)))
+    PaymentQueue(payments, NOW - timedelta(minutes=20)).write(karma_dir)
+
+    status, read = asked_of(own)
+
+    assert status == 200
+    assert read["payments"] == [
+        {"to": str(ALICE), "kismet": "200"},
+        {"to": str(CAROL), "kismet": "300"},
+    ]
+    # An hour after the node's last transaction was created.
+    assert read["payments_due"] == "2026-10-26T12:40:00Z"
+
+    # Three are a batch, which goes as the node next looks.
+    PaymentQueue((*payments, payments[0]), NOW - timedelta(minutes=20)).write(karma_dir)
+
+    assert asked_of(own)[1]["payments_due"] == "2026-10-26T12:00:00Z"
+
+
+def test_the_transactions_carried_are_read(
+    own: OwnKarma, karma_dir: Path, person: PersonKey
+) -> None:
+    sent = Transaction(person.person_id, {ALICE: Kismet(5)}, Kismet(1), 4, NOW)
+    signed = SignedTransaction.of(person.signed(sent.text()))
+    CarriedTransaction.keep(
+        karma_dir, [CarriedTransaction(signed, 41, put_up=True), CarriedTransaction(signed)]
+    )
+
+    status, read = asked_of(own)
+
+    assert status == 200
+    assert read["carried"] == [
+        {"hash": signed.hash, "transaction": sent.value(), "witnessed": 41, "put_up": True},
+        {"hash": signed.hash, "transaction": sent.value(), "witnessed": None, "put_up": False},
+    ]
+
+
+@mark.parametrize("unreadable", ["head.json", "balances.json", "payments.json", "carried.json"])
+def test_karma_files_that_cannot_be_read_are_500_saying_why_and_logged(
+    own: OwnKarma, karma_dir: Path, caplog: LogCaptureFixture, unreadable: str
+) -> None:
+    (karma_dir / unreadable).write_text("not JSON", encoding="utf-8")
+
+    with caplog.at_level(ERROR):
+        status, problem = asked_of(own)
+
+    assert status == 500
+    assert problem["detail"].startswith("What the Karma module keeps cannot be read: ")
+    assert f"Cannot answer GET {CONFIG_KARMA_PATH} from the Karma files in {karma_dir}" in (
+        caplog.text
+    )
+
+
+def test_what_the_node_holds_is_not_stored_since_it_changes(own: OwnKarma) -> None:
+    response = own.read(Request("GET", CONFIG_KARMA_PATH))
+
+    assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_the_share_staked_is_kept_and_read_back(own: OwnKarma, karma_dir: Path) -> None:
+    assert asked_of(own, {"stake_percent": 2.5}) == (200, {"stake_percent": 2.5})
+    assert asked_of(own)[1]["stake_percent"] == 2.5
+    assert StakingRule(karma_dir, 10.0).percent() == 2.5
+
+
+def test_a_share_that_is_not_one_is_refused_and_not_kept(own: OwnKarma, karma_dir: Path) -> None:
+    status, problem = asked_of(own, {"stake_percent": 101})
+
+    assert status == 400
+    assert "stake_percent" in problem["detail"]
+    assert not (karma_dir / STAKING_FILE).exists()
+
+
+def test_a_share_that_cannot_be_kept_is_500_and_logged(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    blocked = tmp_path / "karma"
+    blocked.write_bytes(b"not a directory")
+
+    with caplog.at_level(ERROR):
+        status, problem = asked_of(OwnKarma(blocked, NODE, OWN_CONFIG), {"stake_percent": 5})
+
+    assert status == 500
+    assert problem["detail"].startswith("How much this node stakes could not be kept: ")
+    assert "Cannot keep how much this node stakes" in caplog.text

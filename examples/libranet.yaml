@@ -420,6 +420,8 @@ karma:
   # build_interval_seconds. It is read as the decimal it is written as. A
   # stake in a block another names as its runner-up is lost. At 0, the node
   # stakes nothing, and builds validation blocks of others' stakes alone.
+  # Once a share is saved on /config, karma/staking.json in the data
+  # directory says it instead.
   stake_percent: 10.0
 
 local:

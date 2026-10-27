@@ -12,15 +12,16 @@ whose id sorts first.
 What covers an identity's stakes on that block is its Kismet as the block
 leaves it, less the fees of its transactions there, which the next block's
 payout takes (§6.3). The node stakes ``karma.stake_percent`` of what covers
-it, rounded down to whole Kismet, and nothing while that is 0. It signs its
-stake once at a head, and none if a validation block held at the head's
-validation target holds one of its own on the block, as one it built before
-it was started again does. Others' stakes are those on the same block in the
-validation blocks held there, and those people make through the node (Phase
-6 Step 137), kept until the head changes, each whose signature checks with
-its staker's key, but those of every staker the node distrusts (§3.8). Of
-each staker's, the largest are taken first, while what covers the staker
-covers them together.
+it, or the share its operator sets on ``/config`` (Phase 6 Step 138), read
+each time it stakes, rounded down to whole Kismet, and nothing while that is
+0. It signs its stake once at a head, and none if a validation block held at
+the head's validation target holds one of its own on the block, as one it
+built before it was started again does. Others' stakes are those on the same
+block in the validation blocks held there, and those people make through the
+node (Phase 6 Step 137), kept until the head changes, each whose signature
+checks with its staker's key, but those of every staker the node distrusts
+(§3.8). Of each staker's, the largest are taken first, while what covers the
+staker covers them together.
 
 The block names as its runner-up the first of the other validation blocks
 held there that state nothing false, and so validate another transaction
@@ -178,9 +179,10 @@ class HeadStakes:  # pylint: disable=too-many-instance-attributes
 
     The chain is the one ``history`` keeps, its blocks read from what
     ``reader`` holds. Whom the node distrusts, ``distrusts`` says (§3.8).
-    The node stakes ``stake_percent`` of what covers it, its stake created at
-    the time ``clock`` gives, in seconds since the epoch. The stakes people
-    make through the node it is given (:meth:`take`).
+    The node stakes the share of what covers it ``stake_percent`` gives, in
+    percent, as it stakes, its stake created at the time ``clock`` gives, in
+    seconds since the epoch. The stakes people make through the node it is
+    given (:meth:`take`).
     """
 
     def __init__(
@@ -189,7 +191,7 @@ class HeadStakes:  # pylint: disable=too-many-instance-attributes
         reader: TargetReader,
         *,
         distrusts: Callable[[ContentId], bool],
-        stake_percent: float,
+        stake_percent: Callable[[], float],
         clock: Callable[[], float] = time,
     ) -> None:
         self._history = history
@@ -384,14 +386,15 @@ class HeadStakes:  # pylint: disable=too-many-instance-attributes
         """``identity``'s stake on ``validated_id``, signed once at a head, if it is more than 0."""
         if validated_id not in self._own:
             covering = cover.covering(identity.node_id)
-            kismet = Kismet(covering.count * Fraction(str(self._stake_percent)) // 100)
+            percent = self._stake_percent()
+            kismet = Kismet(covering.count * Fraction(str(percent)) // 100)
 
             if kismet == Kismet(0):
                 _LOGGER.info(
                     "Not staking on Karma transaction block %s: %s%% of the %s Kismet that "
                     "cover the node is none",
                     validated_id,
-                    self._stake_percent,
+                    percent,
                     covering.value(),
                 )
                 self._own[validated_id] = None
@@ -418,11 +421,11 @@ class ValidationBuilder:  # pylint: disable=too-many-instance-attributes
     The chain is the one ``history`` keeps, whose blocks at the head's
     targets ``follower`` checks, read from what ``reader`` holds, and what is
     carried is in ``carried``. The stakes are taken as :class:`HeadStakes`
-    takes them, of ``stake_percent``, as ``distrusts`` says whom the node
-    distrusts, at the time ``clock`` gives. A block is signed as ``identity``
-    gives the node, its nonce searched for by ``searchers`` for
-    ``block_seconds``, and after that until it shares ``drop_bits`` with its
-    target, and handed to ``store``, with the node's id, to be stored and
+    takes them, of the share ``stake_percent`` gives, as ``distrusts`` says
+    whom the node distrusts, at the time ``clock`` gives. A block is signed
+    as ``identity`` gives the node, its nonce searched for by ``searchers``
+    for ``block_seconds``, and after that until it shares ``drop_bits`` with
+    its target, and handed to ``store``, with the node's id, to be stored and
     announced. It fits within ``bounds``: the specification's, unless a test
     gives others.
     """
@@ -437,7 +440,7 @@ class ValidationBuilder:  # pylint: disable=too-many-instance-attributes
         *,
         store: Callable[[bytes, ContentId], None],
         distrusts: Callable[[ContentId], bool],
-        stake_percent: float,
+        stake_percent: Callable[[], float],
         block_seconds: float,
         drop_bits: int,
         clock: Callable[[], float] = time,

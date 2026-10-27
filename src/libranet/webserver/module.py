@@ -211,6 +211,7 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
                 dial_wait_seconds=self._config.peers.longest_dial_seconds() + DIAL_REPORT_SECONDS,
                 peers=peers,
                 trust=trust,
+                karma=self._config.karma,
             ),
             self.logger,
             signer,

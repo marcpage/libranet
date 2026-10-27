@@ -183,6 +183,13 @@
   }
 
   .node-details { margin: 0.35rem 0 0; padding: 0; list-style: none; color: var(--muted); }
+
+  /* What the node holds of Karma, its head's id cut short on a narrow screen. */
+  .karma-details { margin: 0.5rem 0 1rem; }
+  .karma-details dl { grid-template-columns: max-content minmax(0, 1fr); }
+  .karma-details .id { max-width: 100%; }
+  .karma-part { margin-top: 1.25rem; }
+  #karma-carried-table .id { max-width: 10rem; }
   .node-details li + li { margin-top: 0.1rem; }
 
   /* The node's trust: a mark before it to hover over or tap, and what it says
@@ -336,6 +343,81 @@
       <p class="hint">It never connects to a node it distrusts, nor serves one. Whom it trusts
       is worked out from its list outward, as a person's trust scores are: a node the nodes it
       trusts distrust is distrusted too, unless its own list says otherwise.</p>
+      <p class="result" role="status" hidden></p>
+    </form>
+  </section>
+
+  <section data-category="karma" aria-labelledby="karma-heading">
+    <h2 id="karma-heading">Karma</h2>
+    <p class="hint">The nodes of a network keep a ledger of Karma together, a chain of blocks each
+    generation adds to. This node follows the heaviest chain it finds, pays the nodes that serve
+    it from the Karma the chain says it holds, and stakes some of it on each generation's
+    blocks, which builds the chain, and earns it more.</p>
+    <p class="state" id="karma-state">Loading…</p>
+    <div class="karma-details" id="karma-details" hidden>
+      <dl>
+        <dt>Chain</dt>
+        <dd id="karma-chain"></dd>
+        <dt>This node holds</dt>
+        <dd id="karma-balance"></dd>
+      </dl>
+    </div>
+    <form id="karma-root-form" hidden>
+      <h3>Start a ledger</h3>
+      <p class="hint">A new network has no ledger until one node starts it, and every node then
+      follows the chain built on it. Start one on one node of a new network only, and only if no
+      node of it has: a node that starts a second follows that, apart from the rest, until one
+      chain outweighs the other. A node joining a network that has a ledger finds it on its
+      own.</p>
+      <div class="fields">
+        <button type="submit">Start a ledger</button>
+      </div>
+      <p class="result" role="status" hidden></p>
+    </form>
+    <h3 class="karma-part">Payments queued</h3>
+    <p class="state" id="karma-payments-state">Loading…</p>
+    <div class="table-wrap">
+      <table id="karma-payments-table" aria-label="Payments queued" hidden>
+        <thead>
+          <tr>
+            <th scope="col">To</th>
+            <th scope="col">Karma</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <h3 class="karma-part">Transactions carried</h3>
+    <p class="hint">Those this node puts up itself, its own payments among them, until the chain
+    holds them, and those of a chain it left that the chain it follows does not hold yet, which
+    it puts into the blocks it builds.</p>
+    <p class="state" id="karma-carried-state">Loading…</p>
+    <div class="table-wrap">
+      <table id="karma-carried-table" aria-label="Transactions carried" hidden>
+        <thead>
+          <tr>
+            <th scope="col">Transaction</th>
+            <th scope="col">From</th>
+            <th scope="col">Karma</th>
+            <th scope="col">Witnessed</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <form id="stake-form">
+      <h3>How much this node stakes</h3>
+      <div class="fields">
+        <label>Percent of its Karma
+          <input id="stake-percent" type="number" min="0" max="100" step="any" required>
+        </label>
+        <button type="submit">Save</button>
+      </div>
+      <p class="hint">Each generation, the node stakes this share of the Karma it holds, less the
+      fees it pays, on the best full block, and builds a validation block of its stake and
+      others'. A winning block's stakers share its reward, and a stake in a block the winner
+      names as its runner-up is lost to them. At 0, the node stakes nothing. Until this is saved,
+      it stakes <code>karma.stake_percent</code> of its configuration.</p>
       <p class="result" role="status" hidden></p>
     </form>
   </section>
@@ -1455,6 +1537,192 @@ onSubmit(connectingForm, async () => {
   return [connectingSaid(result.value.only_trusted), false];
 });
 
+// ---- Karma ----
+
+// How many Kismet make a Karma (Karma 4), and so how many decimals a Karma has.
+const KISMET_PER_KARMA = 10n ** 14n;
+const KARMA_DECIMALS = 14;
+
+const karmaState = byId("karma-state");
+const karmaRootForm = byId("karma-root-form");
+const stakeForm = byId("stake-form");
+const stakePercent = byId("stake-percent");
+
+// Whether the share staked has been read into the form, which is not read
+// again, so that it does not change while it is being changed.
+let stakeShown = false;
+
+// An amount the node writes in Kismet, decimal digits (KarmaLedger 4.1), in
+// Karma, its decimals cut short where they end in zeros.
+function formatKarma(kismet) {
+  let count;
+
+  try {
+    count = BigInt(kismet);
+  } catch (error) {
+    return "—";
+  }
+
+  const whole = (count / KISMET_PER_KARMA).toLocaleString();
+  const decimals = (count % KISMET_PER_KARMA).toString().padStart(KARMA_DECIMALS, "0");
+  const shown = decimals.replace(/0+$/, "");
+  return shown ? `${whole}.${shown}` : whole;
+}
+
+// A chain's weight, decimal digits (KarmaLedger 3.3), its digits grouped.
+function formatWeight(weight) {
+  try {
+    return BigInt(weight).toLocaleString();
+  } catch (error) {
+    return "—";
+  }
+}
+
+// An amount in Karma, its Kismet shown when hovered over.
+function amountCell(kismet) {
+  const node = make("td", formatKarma(kismet), "number");
+  node.title = `${kismet} Kismet`;
+  return node;
+}
+
+// What a transaction sends, its fee too, in Kismet, or null if it says
+// nothing this page can add up.
+function sends(transaction) {
+  try {
+    const amounts = [...Object.values(transaction.to), transaction.fee_kismet];
+    return String(amounts.reduce((sum, kismet) => sum + BigInt(kismet), 0n));
+  } catch (error) {
+    return null;
+  }
+}
+
+// When the payments queued go, said in words: a time still to come, or else
+// as the node next looks.
+function paymentsSaid(count, due) {
+  if (count === 0) {
+    return "No payments are queued.";
+  }
+
+  const at = Date.parse(due);
+  const queued = count === 1 ? "One payment is queued" : `${count} payments are queued`;
+  const when =
+    Number.isFinite(at) && at > Date.now()
+      ? `at ${new Date(at).toLocaleString()}, or sooner, once karma.payment_batch are queued`
+      : "as the node next looks";
+  return `${queued}, to be put up together, as one transaction, ${when}.`;
+}
+
+function paymentRow(payment) {
+  const row = make("tr");
+  row.append(cell(contentId(payment.to), nodeLink(payment.to)), amountCell(payment.kismet));
+  return row;
+}
+
+function carriedRow(entry) {
+  const transaction = entry.transaction || {};
+  const row = make("tr");
+  const how = entry.put_up ? "Put up by this node" : "In the blocks it builds";
+  row.append(
+    cell(contentId(entry.hash), make("div", how, "note")),
+    cell(contentId(transaction.from)),
+    amountCell(sends(transaction)),
+    make("td", typeof entry.witnessed === "number" ? `Generation ${entry.witnessed}` : "Not yet"),
+  );
+  return row;
+}
+
+// Shows what GET /karma answers, but the transactions carried, which it
+// returns for the view's table, or null if it is not what this page can show.
+function showKarma(value) {
+  if (!value || !Array.isArray(value.payments) || !Array.isArray(value.carried)) {
+    return null;
+  }
+
+  const follows = typeof value.head === "string";
+  byId("karma-details").hidden = !follows;
+  karmaRootForm.hidden = follows;
+  show(karmaState, follows ? "" : "This node follows no Karma chain yet.");
+
+  if (follows) {
+    byId("karma-chain").replaceChildren(
+      `Generation ${value.generation}, weighing ${formatWeight(value.weight)}, head `,
+      contentId(value.head),
+    );
+    byId("karma-balance").textContent = value.balance
+      ? `${formatKarma(value.balance.kismet)} Karma, ${value.balance.kismet} Kismet`
+      : "Not known yet: the blocks the chain states it in are asked for.";
+  }
+
+  const payments = byId("karma-payments-table");
+  payments.tBodies[0].replaceChildren(...value.payments.map(paymentRow));
+  payments.hidden = value.payments.length === 0;
+  show(byId("karma-payments-state"), paymentsSaid(value.payments.length, value.payments_due));
+
+  if (!stakeShown && typeof value.stake_percent === "number") {
+    stakePercent.value = String(value.stake_percent);
+    stakeShown = true;
+  }
+
+  return value.carried;
+}
+
+// The Karma the node holds, read whole from one endpoint, which a list view
+// reads for the transactions carried, the rest shown as it is read
+// (showKarma). What keeps it from being read is said above it all.
+class KarmaView extends ListView {
+  fail(message) {
+    this.table.hidden = true;
+    show(this.state, "");
+    show(karmaState, message, true);
+  }
+}
+
+const karma = new KarmaView({
+  path: "/karma",
+  table: byId("karma-carried-table"),
+  state: byId("karma-carried-state"),
+  entries: showKarma,
+  row: carriedRow,
+  empty: "This node carries no transactions.",
+  refresh: REFRESH_SECONDS,
+});
+
+onSubmit(karmaRootForm, async () => {
+  if (!confirm("Start a Karma ledger? Do so on one node of a new network only.")) {
+    return null;
+  }
+
+  const result = await call("POST", "/karma/root");
+
+  if (result.status !== 202) {
+    return [failure(result), true];
+  }
+
+  return [
+    "This node is making the ledger's root, which takes about half a minute, and may take " +
+      "several times that. This shows the chain once the node follows it.",
+    false,
+  ];
+});
+
+function stakeSaid(percent) {
+  return percent === 0
+    ? "This node stakes nothing, from its next stake on."
+    : `This node stakes ${percent}% of its Karma, from its next stake on.`;
+}
+
+onSubmit(stakeForm, async () => {
+  const result = await call("PUT", "/karma", { stake_percent: Number(stakePercent.value) });
+
+  if (!result.ok || !result.value || typeof result.value.stake_percent !== "number") {
+    return [failure(result), true];
+  }
+
+  stakePercent.value = String(result.value.stake_percent);
+  stakeShown = true;
+  return [stakeSaid(result.value.stake_percent), false];
+});
+
 // ---- Applications ----
 
 const applicationsMessage = byId("applications-message");
@@ -2082,7 +2350,7 @@ onSubmit(byId("restore-form"), async () => {
 
 // ---- Start ----
 
-const views = [trustList, applications, builds, exports, backups, restores];
+const views = [trustList, karma, applications, builds, exports, backups, restores];
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {

@@ -1,5 +1,7 @@
 """``/data/karma``: the Karma chain followed, and paying and staking in it (HttpApi §10.9, §10.10).
 
+And ``/config/api/karma``: what the node holds of it, and how much it stakes.
+
 An identity's Karma, to a node, is its balance as the chain the node follows
 states it (KarmaLedger §5.3, Phase 6 Step 128). Any client may read these,
 another node as well as a page, since what a chain states is public:
@@ -75,6 +77,30 @@ for a fallback that has not taken over, and ``400`` for a body that is no
 payment or stake. Each is ``503`` with ``Retry-After`` while the node
 follows no chain, and a payment also until the node has read the balances at
 its head.
+
+The operator sees what the node holds of Karma on ``/config``, and how much
+it stakes, served as every endpoint beneath ``/config/api`` is (Phase 6 Step
+138, :class:`OwnKarma`):
+
+- ``GET /config/api/karma``: the head followed, as ``head.json`` names it,
+  each member ``null`` while it follows none; the node's balance there,
+  ``null`` until the Karma module has read the balances at that head; the
+  payments queued, and when they are put up, ``null`` with none queued; the
+  transactions carried; and the share the node stakes::
+
+      {"head": "sha256/…", "generation": 41, "weight": "…",
+       "node_id": "sha256/…", "balance": {"kismet": "250", "last_won": 40},
+       "payments": [{"to": "sha256/…", "kismet": "200"}],
+       "payments_due": "2026-10-27T10:00:00Z",
+       "carried": [{"hash": "…", "transaction": {"from": "sha256/…", …},
+                    "witnessed": 41, "put_up": true}],
+       "stake_percent": 10}
+
+  Files of the module's that cannot be read are ``500``, saying why, since
+  only the operator asks.
+- ``PUT /config/api/karma`` ``{"stake_percent": 10}``: have the node stake
+  that share from its next stake on, kept in ``staking.json``
+  (:mod:`libranet.protocol.karma_staking`), and answered with it.
 """
 
 from __future__ import annotations
@@ -87,19 +113,24 @@ from threading import Lock
 from time import time
 from typing import Callable, Final
 
+from libranet.bundle.errors import BundleError
 from libranet.bundle.storing import store_object
 from libranet.cas.content_id import ContentId
-from libranet.config.models import TARGET_BITS
+from libranet.config.models import TARGET_BITS, KarmaConfig
 from libranet.identity.people import PersonKey
 from libranet.json_fields import decimal_count
+from libranet.json_format import MOMENT_FORMAT
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.errors import InvalidRequestError
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.protocol.karma_balances import KarmaBalances
+from libranet.protocol.karma_carried import CarriedTransaction
 from libranet.protocol.karma_head import KarmaGeneration, KarmaHead, ToldHead
+from libranet.protocol.karma_payments import PaymentQueue
 from libranet.protocol.karma_requests import PaymentRequest, StakeRequest
 from libranet.protocol.karma_stakes import SignedStake
+from libranet.protocol.karma_staking import StakingRequest, StakingRule
 from libranet.protocol.karma_transactions import MIN_TRANSACTION_BITS, SignedTransaction
 from libranet.webserver.drop_handler import DropHandler
 from libranet.webserver.http_types import (
@@ -481,3 +512,99 @@ class KarmaSigning:
         """
         store_object(person.public_key, self.drops.uploads, self.drops.max_object_bytes)
         self.publish(event, payload)
+
+
+@dataclass(frozen=True)
+class OwnKarma:
+    """The endpoints showing the operator what the node holds of Karma, and how much it stakes.
+
+    They read the files the Karma module keeps in ``karma_dir``: the head it
+    follows, ``node_id``'s balance there, the payments it queued, and the
+    transactions it carries, and the share it stakes, which they change. What
+    ``config`` says is how the payments queued go, and how much it stakes
+    until the operator says otherwise. When the payments go is told from the
+    time ``clock`` gives, in seconds since the epoch.
+    """
+
+    karma_dir: Path
+    node_id: ContentId
+    config: KarmaConfig
+    _: KW_ONLY
+    clock: Callable[[], float] = time
+
+    @property
+    def staking(self) -> StakingRule:
+        """How much the node stakes, as the operator keeps it."""
+        return StakingRule(self.karma_dir, self.config.stake_percent)
+
+    def read(self, request: Request) -> Response:
+        """``GET /config/api/karma``: the chain, the node's balance, payments, carried, and stake.
+
+        Its balance is ``null`` while the node follows no chain, and until
+        the Karma module has read the balances at its head.
+        """
+        try:
+            head = KarmaHead.read(self.karma_dir)
+            balances = KarmaBalances.read(self.karma_dir)
+            queue = PaymentQueue.read(self.karma_dir)
+            carried = CarriedTransaction.kept(self.karma_dir)
+
+        except (OSError, BundleError, ValueError) as error:
+            _LOGGER.error(
+                "Cannot answer %s %s from the Karma files in %s: %s",
+                request.method,
+                request.path,
+                self.karma_dir,
+                error,
+            )
+            return status_response(
+                request,
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                f"What the Karma module keeps cannot be read: {error}",
+            )
+
+        now = datetime.fromtimestamp(int(self.clock()), UTC)
+        due = queue.due_at(now, self.config.payment_batch, self.config.payment_interval_seconds)
+        return json_response(
+            {
+                **head.value(),
+                "node_id": str(self.node_id),
+                "balance": (
+                    balances.balance(self.node_id).value()
+                    if head.follows and balances.head == head
+                    else None
+                ),
+                "payments": [payment.value() for payment in queue.payments],
+                "payments_due": None if due is None else due.strftime(MOMENT_FORMAT),
+                "carried": [
+                    {
+                        "hash": each.signed.hash,
+                        "transaction": each.signed.transaction.value(),
+                        "witnessed": each.witnessed,
+                        "put_up": each.put_up,
+                    }
+                    for each in carried
+                ],
+                **StakingRequest(self.staking.percent()).value(),
+            }
+        ).with_headers(NOT_STORED)
+
+    def change(self, request: Request) -> Response:
+        """``PUT /config/api/karma``: have the node stake another share of what covers it."""
+        asked = parsed_or_refusal(request, StakingRequest.from_value)
+
+        if isinstance(asked, Response):
+            return asked
+
+        try:
+            self.staking.write(asked.stake_percent)
+
+        except OSError as error:
+            _LOGGER.error("Cannot keep how much this node stakes: %s", error)
+            return status_response(
+                request,
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                f"How much this node stakes could not be kept: {error}",
+            )
+
+        return json_response(asked.value())

@@ -94,6 +94,10 @@ endpoints have the backup module work: it publishes ``karma.root_requested``
 and answers ``202`` at once, as mining the root takes a minute or more. While
 the node follows a chain, as the head the Karma module writes says
 (:mod:`libranet.protocol.karma_head`), it is ``409``, and publishes nothing.
+``GET`` and ``PUT /config/api/karma`` read what the node holds of Karma, and
+change how much it stakes (Phase 6 Step 138). Their handlers are given to
+:func:`config_routes`
+(:class:`~libranet.webserver.karma_handlers.OwnKarma`).
 
 ``GET /config/api`` names the endpoints, so a client has somewhere to start.
 A browser has the ``/config`` application instead, served like any other
@@ -154,6 +158,7 @@ from libranet.webserver.http_types import (
     percent_decoded,
     status_response,
 )
+from libranet.webserver.karma_handlers import OwnKarma
 from libranet.webserver.metadata_handlers import OwnMetadata
 from libranet.webserver.node_trust_handlers import Connecting, OwnTrust
 from libranet.webserver.request_refusals import (
@@ -180,7 +185,8 @@ METADATA_PATH: Final = CONFIG_API_PATH + "/metadata"
 CONNECTIONS_PATH: Final = CONFIG_API_PATH + "/connections"
 CONFIG_TRUST_PATH: Final = CONFIG_API_PATH + "/trust"
 CONNECTING_PATH: Final = CONFIG_API_PATH + "/connecting"
-KARMA_ROOT_PATH: Final = CONFIG_API_PATH + "/karma/root"
+CONFIG_KARMA_PATH: Final = CONFIG_API_PATH + "/karma"
+KARMA_ROOT_PATH: Final = CONFIG_KARMA_PATH + "/root"
 BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-fA-F]{{{IDENTIFIER_LENGTH}}})"
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
 APPLICATION_PATTERN: Final = APPLICATIONS_PATH + "/(?P<name>[^/]+)"
@@ -255,6 +261,12 @@ ENDPOINTS: Final = (
         "path": KARMA_ROOT_PATH,
         "description": "Start a Karma ledger, making its root",
     },
+    {
+        "method": "GET",
+        "path": CONFIG_KARMA_PATH,
+        "description": "What this node holds of Karma, and how much it stakes",
+    },
+    {"method": "PUT", "path": CONFIG_KARMA_PATH, "description": "How much this node stakes"},
 )
 
 
@@ -660,14 +672,17 @@ def config_routes(  # pylint: disable=too-many-locals
     trust: OwnTrust | None = None,
     connecting: Connecting | None = None,
     karma_root: Handler | None = None,
+    karma: OwnKarma | None = None,
 ) -> tuple[tuple[str, str, Handler], ...]:
     """Every ``/config/api`` route, as ``(method, pattern, handler)`` in route order.
 
     ``users`` makes a person's identity, ``metadata`` reads and changes what
     this node says of itself, ``connect`` connects to a node at an address,
     ``trust`` reads and changes this node's trust list, ``connecting``
-    whether it connects only to the nodes it trusts, and ``karma_root``
-    starts a Karma ledger. Without one of them, no route does what it does.
+    whether it connects only to the nodes it trusts, ``karma_root`` starts a
+    Karma ledger, and ``karma`` reads what the node holds of Karma, and
+    changes how much it stakes. Without one of them, no route does what it
+    does.
     """
     configure = BackupRequestHandler(
         publish, BackupJobRequest.from_value, EventType.BACKUP_JOB_CONFIGURED, "job_id"
@@ -725,6 +740,11 @@ def config_routes(  # pylint: disable=too-many-locals
             )
         ),
         *(() if karma_root is None else (("POST", KARMA_ROOT_PATH, karma_root),)),
+        *(
+            ()
+            if karma is None
+            else (("GET", CONFIG_KARMA_PATH, karma.read), ("PUT", CONFIG_KARMA_PATH, karma.change))
+        ),
     )
     return tuple(
         (method, _CONFIG_SEGMENT + pattern.removeprefix(f"/{CONFIG_APPLICATION}"), handler)

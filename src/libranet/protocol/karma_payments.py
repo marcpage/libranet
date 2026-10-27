@@ -192,6 +192,21 @@ class PaymentQueue:
             seconds=interval_seconds
         )
 
+    def due_at(self, now: datetime, batch: int, interval_seconds: float) -> datetime | None:
+        """When the payments queued are to be made a transaction, as the node looks from then on.
+
+        It is ``now`` once they are due (:meth:`due`), ``None`` with none
+        queued, and otherwise ``interval_seconds`` after the node's last
+        transaction was created (Phase 6 Step 138).
+        """
+        if not self.payments:
+            return None
+
+        if self.due(now, batch, interval_seconds) or self.last_created is None:
+            return now
+
+        return self.last_created + timedelta(seconds=interval_seconds)
+
     def made(self, sender: ContentId, generation: int, now: datetime) -> Transaction:
         """The payments queued, made into one transaction by ``sender`` in ``generation``.
 

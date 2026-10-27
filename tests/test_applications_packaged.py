@@ -489,6 +489,7 @@ def test_the_config_page_calls_only_endpoints_the_node_serves(config_page: str) 
         "/connections",
         "/trust",
         "/connecting",
+        "/karma",
         "/applications",
         "/users",
         "/builds",
