@@ -40,8 +40,8 @@ PACKAGED_APPLICATIONS: Final = Path(__file__).resolve().parent
 #: application (HttpApi §13), ``config`` the one serving ``/config``
 #: (HttpApi §2.3), ``movie`` the movie library (Phase 3 Step 67),
 #: ``directory`` the user directory (Phase 4 Step 92), ``mail`` mail
-#: between people (Phase 4 Step 82), and ``nodes`` the nodes known (Phase 5
-#: Step 108).
+#: between people (Phase 4 Step 82), ``nodes`` the nodes known (Phase 5
+#: Step 108), and ``karma`` the Karma chain followed (Phase 6 Step 139).
 SHIPPED_APPLICATIONS: Final = MappingProxyType(
     {
         "/": "root",
@@ -50,6 +50,7 @@ SHIPPED_APPLICATIONS: Final = MappingProxyType(
         "directory": "directory",
         "mail": "mail",
         "nodes": "nodes",
+        "karma": "karma",
     }
 )
 

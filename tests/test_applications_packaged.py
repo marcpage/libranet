@@ -1,9 +1,11 @@
 """Tests for the applications shipped with the node, and the root, ``/config``, movie,
-directory, mail, and nodes pages.
+directory, mail, nodes, and Karma pages.
 
 Which way they were shipped, built into a wheel or run from source, is known
 only to the layered source, and is tested through it.
 """
+
+# pylint: disable=too-many-lines
 
 from __future__ import annotations
 from base64 import b64encode
@@ -39,9 +41,12 @@ from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.trust import TrustList
+from libranet.karma.blocks import FULL_BLOCK_ROOM_BYTES, MAX_BLOCK_BYTES
+from libranet.karma.generations import GenerationTargets
 from libranet.messaging.events import AddressSource, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
+from libranet.protocol.karma_amounts import KISMET_PER_KARMA
 from libranet.protocol.lists import NODES_PATH
 from libranet.stats.records import NodeAddress, NodeStats
 from libranet.unbundler.module import UnbundlerModule
@@ -57,6 +62,13 @@ from libranet.webserver.drop_handler import DROP_PATH
 from libranet.webserver.encrypted_handlers import ENCRYPTED_PATH, ENCRYPTED_PATTERN
 from libranet.webserver.http_types import Request
 from libranet.webserver.identity_handlers import FALLBACK_PATH, SESSION_PATH
+from libranet.webserver.karma_handlers import (
+    KARMA_BALANCE_PATTERN,
+    KARMA_GENERATIONS_PATH,
+    KARMA_PATH,
+    KARMA_PAYMENTS_PATH,
+    KARMA_STAKES_PATH,
+)
 from libranet.webserver.kept_archives import ARCHIVE_PATTERN, ARCHIVES_PATH
 from libranet.webserver.list_handlers import PEERS_PATH
 from libranet.webserver.local_folders import DIRECTORY_PATTERN
@@ -76,12 +88,14 @@ MOVIE_APPLICATION = "movie"
 DIRECTORY_APPLICATION = "directory"
 MAIL_APPLICATION = "mail"
 NODES_APPLICATION = "nodes"
+KARMA_APPLICATION = "karma"
 ROOT_PAGE_SOURCE = PACKAGED_APPLICATIONS / "root" / "index.html"
 CONFIG_PAGE_SOURCE = PACKAGED_APPLICATIONS / "config" / "index.html"
 MOVIE_PAGE_SOURCE = PACKAGED_APPLICATIONS / "movie" / "index.html"
 DIRECTORY_PAGE_SOURCE = PACKAGED_APPLICATIONS / "directory" / "index.html"
 MAIL_PAGE_SOURCE = PACKAGED_APPLICATIONS / "mail" / "index.html"
 NODES_PAGE_SOURCE = PACKAGED_APPLICATIONS / "nodes" / "index.html"
+KARMA_PAGE_SOURCE = PACKAGED_APPLICATIONS / "karma" / "index.html"
 # The details a person may give of themselves, as #259 names them, and those
 # an entry's first row shows, in order (Phase 4 Step 80).
 STANDARD_FIELDS = (
@@ -171,6 +185,11 @@ def nodes_page(content: LayeredSource, built: PackagedApplications) -> str:
     return index_page(built.bundles[NODES_APPLICATION], content).decode("utf-8")
 
 
+@fixture
+def karma_page(content: LayeredSource, built: PackagedApplications) -> str:
+    return index_page(built.bundles[KARMA_APPLICATION], content).decode("utf-8")
+
+
 def index_page(bundle_id: ContentId, content: LayeredSource) -> bytes:
     """The ``index.html`` of the application ``bundle_id``, read through ``content``."""
     bundle = load_bundle(bundle_id, content)
@@ -224,7 +243,7 @@ def router_for(
     )
 
 
-def test_the_node_ships_the_root_config_movie_directory_mail_and_nodes_applications(
+def test_the_node_ships_the_root_config_movie_directory_mail_nodes_and_karma_applications(
     built: PackagedApplications,
 ) -> None:
     assert (
@@ -237,6 +256,7 @@ def test_the_node_ships_the_root_config_movie_directory_mail_and_nodes_applicati
             DIRECTORY_APPLICATION,
             MAIL_APPLICATION,
             NODES_APPLICATION,
+            KARMA_APPLICATION,
         }
     )
 
@@ -431,7 +451,8 @@ def test_each_page_showing_a_node_offers_the_details_the_issue_names(
 
 
 @mark.parametrize(
-    "page_fixture", ["root_page", "nodes_page", "directory_page", "mail_page", "movie_page"]
+    "page_fixture",
+    ["root_page", "nodes_page", "directory_page", "mail_page", "movie_page", "karma_page"],
 )
 def test_each_page_reading_drops_reads_whatever_the_node_finds_there(
     request: FixtureRequest, page_fixture: str
@@ -836,7 +857,9 @@ def test_the_config_page_links_its_node_to_its_page_on_the_main_port(config_page
     assert 'url.searchParams.set("id", id);' in config_page
 
 
-@mark.parametrize("page_fixture", ["movie_page", "directory_page", "mail_page", "nodes_page"])
+@mark.parametrize(
+    "page_fixture", ["movie_page", "directory_page", "mail_page", "nodes_page", "karma_page"]
+)
 def test_each_page_on_the_main_port_links_home_from_its_upper_right_corner(
     request: FixtureRequest, page_fixture: str
 ) -> None:
@@ -860,6 +883,82 @@ def test_the_config_page_links_home_on_the_main_port(config_page: str) -> None:
 
 def test_the_nodes_page_shows_one_node_alone(nodes_page: str) -> None:
     assert 'new URLSearchParams(location.search).get("id")' in nodes_page
+
+
+def test_the_karma_application_is_built_from_its_directory(karma_page: str) -> None:
+    assert karma_page == KARMA_PAGE_SOURCE.read_text(encoding="utf-8")
+
+
+def test_the_karma_page_is_one_self_contained_document(karma_page: str) -> None:
+    assert karma_page.startswith("<!doctype html>")
+    # Nothing is loaded from a file of its own, or from anywhere else.
+    assert "<link" not in karma_page
+    assert findall(r"<script[^>]*\bsrc", karma_page) == []
+    assert "url(" not in karma_page.split("<style>", 1)[1].split("</style>", 1)[0]
+    assert "http:" not in karma_page
+    assert "https:" not in karma_page
+
+
+def test_the_karma_page_calls_only_endpoints_the_node_serves(karma_page: str) -> None:
+    called = set(findall(r'["`](/data/[^"`$]*)', karma_page))
+    some_id = ContentId.for_data(b"a public key", "sha256")
+    target = f"karma transaction:{some_id}"
+
+    assert called == {
+        CLIENT_PATH,
+        SESSION_PATH,
+        KARMA_PATH,
+        KARMA_GENERATIONS_PATH,
+        f"{KARMA_GENERATIONS_PATH}?before=",
+        KARMA_PAYMENTS_PATH,
+        KARMA_STAKES_PATH,
+        f"{KARMA_PATH}/balances/",
+        "/data/drop/",
+        "/data/signed/",
+        "/data/",
+    }
+    # An id's hash algorithm and hash are each one segment of the path.
+    assert fullmatch(KARMA_BALANCE_PATTERN, f"{KARMA_PATH}/balances/{some_id}")
+    assert fullmatch(SIGNED_PATTERN, f"/data/signed/{some_id}")
+    assert fullmatch(DATA_PATTERN, f"/data/{some_id}")
+    # The page names a drop by its target string, one segment, and hashes nothing.
+    assert fullmatch(DROP_SEARCH_PATTERN, f"/data/drop/{quote(target, safe='')}")
+    assert "encodeURIComponent(target)" in karma_page
+
+
+def test_the_karma_page_finds_full_blocks_where_the_ledger_places_them(karma_page: str) -> None:
+    some_id = ContentId.for_data(b"a validation block", "sha256")
+    [prefix] = findall(r'const TRANSACTION_PREFIX = "([^"]*)";', karma_page)
+
+    # The next generation's transaction blocks, after the head (KarmaLedger 3.1).
+    assert DropTarget.of(prefix + str(some_id)) == GenerationTargets.after(some_id).transaction
+    # Full as the ledger's bounds say (KarmaLedger 5.4).
+    assert f"const MOST_BLOCK_BYTES = {MAX_BLOCK_BYTES};" in karma_page
+    assert f"const FULL_ROOM_BYTES = {FULL_BLOCK_ROOM_BYTES};" in karma_page
+
+
+def test_the_karma_page_counts_kismet_as_the_ledger_does(karma_page: str) -> None:
+    [kismet_per_karma] = findall(r"const KISMET_PER_KARMA = 10n \*\* (\d+)n;", karma_page)
+    [decimals] = findall(r"const KARMA_DECIMALS = (\d+);", karma_page)
+
+    assert 10 ** int(kismet_per_karma) == KISMET_PER_KARMA == 10 ** int(decimals)
+
+
+def test_the_karma_page_pays_within_the_ceilings_a_node_sets(karma_page: str) -> None:
+    [seconds] = findall(r"const PAYMENT_SECONDS = (\d+);", karma_page)
+
+    # Unless its operator lowers them (HttpApi 10.10).
+    assert int(seconds) <= NetworkConfig().drop_max_seconds
+    assert "{ payment: { to, fee_kismet: fee, seconds: PAYMENT_SECONDS } }" in karma_page
+    assert "{ transaction_block: view.stakeOn.id, kismet }" in karma_page
+
+
+def test_the_karma_page_links_each_identity_to_its_karma_and_shows_it_alone(
+    karma_page: str,
+) -> None:
+    # The link any page gives an identity's Karma, the id one value.
+    assert "link.href = `/karma/?id=${encodeURIComponent(id)}`;" in karma_page
+    assert 'new URLSearchParams(location.search).get("id")' in karma_page
 
 
 def test_the_config_page_connects_to_an_address_typed_without_its_scheme(config_page: str) -> None:
@@ -894,6 +993,7 @@ def test_the_config_page_makes_a_user_with_a_fallback_password(config_page: str)
         (DIRECTORY_APPLICATION, "/directory/", DIRECTORY_PAGE_SOURCE, "203.0.113.42", {}, None),
         (MAIL_APPLICATION, "/mail/", MAIL_PAGE_SOURCE, "203.0.113.42", {}, None),
         (NODES_APPLICATION, "/nodes/", NODES_PAGE_SOURCE, "203.0.113.42", {}, None),
+        (KARMA_APPLICATION, "/karma/", KARMA_PAGE_SOURCE, "203.0.113.42", {}, None),
         (
             CONFIG_APPLICATION,
             "/config/",

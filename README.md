@@ -170,7 +170,8 @@ what the network holds, and nothing more. A trusted one can also import
 files from the folders your node offers, make bundles, and keep data on your
 node, as the movie library does, and see which nodes yours talks to, as the
 nodes application does. It can sign people in and act for them, as the user
-directory and mail do, and have your node delete content and never hold it
+directory and mail do, and pay and stake Karma for them, as the Karma
+application does, and have your node delete content and never hold it
 again. The
 [App Developer Guide](docs/operations/App%20Developer%20Guide.md) describes
 what an application can do, and how to write one.
@@ -227,8 +228,9 @@ Then open `http://127.0.0.1:8080/` in a browser. That is your node's front
 page, which says who the node is and links to its applications: the movie
 library at `http://127.0.0.1:8080/movie/`, the user directory at
 `http://127.0.0.1:8080/directory/`, mail at `http://127.0.0.1:8080/mail/`,
-the nodes it knows at `http://127.0.0.1:8080/nodes/`, and the administration
-page, where you back up folders and register applications. The administration
+the nodes it knows at `http://127.0.0.1:8080/nodes/`, the Karma chain it
+follows at `http://127.0.0.1:8080/karma/`, and the administration page,
+where you back up folders and register applications. The administration
 page is at
 `http://127.0.0.1:8180/config/`, unless that port was taken, and the node
 prints the address it took as it starts. It opens only in a browser on the
@@ -267,7 +269,7 @@ applications, and running test networks and super nodes.
 | Phase 3 — video playback, steps 64–77 | Implemented |
 | Phase 4 — user accounts, steps 30, 78–82, and 89–93 | Implemented |
 | Phase 5 — the trust network, steps 94 and 96–114 | Implemented |
-| Phase 6 — Karma, steps 56 and 116–142 | Planned |
+| Phase 6 — Karma, steps 56 and 116–142 | Steps 56 and 116–139 implemented |
 | Phase 7 — enhancements, steps 16, 50, 57, and 95 | Planned |
 | Phase 8 — a seed node, step 84 | Planned |
 | Improving the movie application, steps 83 and 85–88 | Planned |
@@ -285,15 +287,16 @@ application, shunning content), people's identities (signing in on any node,
 a fallback identity, signing and encrypting for a person), the trust
 network (each person's trust list, and scores built from it at sign-in,
 and the node's own, which say which nodes it connects to),
-what nodes say of themselves, trusted and sandboxed applications, and the
-movie library, user directory, mail, and nodes applications.
+what nodes say of themselves, trusted and sandboxed applications, the Karma
+ledger's chain, followed, built, paid, and staked in (steps 56 and 116–139),
+and the movie library, user directory, mail, nodes, and Karma applications.
 
 Deliberately deferred, and specified but not yet built:
 
 - HTTPS/TLS — v1 is HTTP only
-- The [Karma/Kismet](docs/specs/Karma.md) incentive layer, begun as the
-  ledger's library and a process of its own, which so far keeps the history
-  of the chain it follows; node-list ordering uses a simpler proxy for now
+- The rest of the [Karma/Kismet](docs/specs/Karma.md) incentive layer:
+  Karma shown in every application, and nodes ordered and kept by it;
+  node-list ordering uses a simpler proxy for now
 - mDNS/DNS-SD discovery on the local network
 - Reading into a signed bundle as a bundle (Bundle Specification §5), and
   password-protected applications (HTTP API §13.1)
