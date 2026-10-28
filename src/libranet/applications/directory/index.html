@@ -113,12 +113,15 @@
   .choices button { padding: 0.15rem 0.6rem; }
   #arrange { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0 0 0.75rem; }
   #arrange[hidden] { display: none; }
-  #trust-text { margin: 0 0 0.75rem; }
+  #trust-text, #karma-text { margin: 0 0 0.75rem; }
   select { font: inherit; padding: 0.25rem 0.4rem; border: 1px solid var(--border); border-radius: 4px; background: var(--background); color: var(--text); }
 
   /* One person shown alone, and whom their trust list names. */
   .one, .named { list-style: none; margin: 0; padding: 0; }
   .unlisted { color: var(--muted); font-size: 0.93rem; margin-left: 0.5rem; }
+
+  /* An identity's Karma, beside its trust, linked to the Karma application. */
+  .karma { font-weight: normal; font-size: 0.93rem; margin-left: 0.5rem; }
 </style>
 </head>
 <body>
@@ -165,6 +168,7 @@
       <label><input id="hide-distrusted" type="checkbox"> Hide those distrusted</label>
     </div>
     <p id="trust-text" class="note" hidden></p>
+    <p id="karma-text" class="note" hidden></p>
     <div id="people"><span class="note">Asking the node&hellip;</span></div>
   </section>
 
@@ -234,6 +238,8 @@
     builds from your list, the lists of those you trust, and so on onward:
     &#x1F7E2; above 0, trusted; &#x1F7E1; 0, neither; &#x1F534; below 0,
     distrusted; and &#x26AA; where there are no scores to show.
+    Beside it is their Karma, their balance as the Karma chain this node
+    follows states it, linked to the Karma application.
     A link to <code>/directory/?id=</code> and a person's id shows them alone,
     with whom their trust list names.
   </footer>
@@ -315,6 +321,16 @@ const TRUST_PREFIX = "trust:";
 // An id a trust list names, in any case (HttpApi 5.4), which the node reads
 // lower-cased (Trust Network 3.1).
 const NAMED_ID = /^sha256\/[0-9a-f]{64}$/i;
+
+// How many Kismet make a Karma (Karma 4), and so how many decimals a Karma
+// has; and an amount of Kismet as the chain writes it: decimal digits, with no
+// leading zero unless it is "0" (KarmaLedger 4.1).
+const KISMET_PER_KARMA = 10n ** 14n;
+const KARMA_DECIMALS = 14;
+const KISMET = /^(?:0|[1-9][0-9]*)$/;
+
+// How many people's Karma is read at once.
+const KARMA_AT_ONCE = 8;
 
 function byId(id) {
   return document.getElementById(id);
@@ -1083,6 +1099,113 @@ function showTrust() {
   render();
 }
 
+// Karma (#458): the generation of the head the node follows, once it says,
+// or why no Karma is shown; each identity's balance there, by id, once read,
+// or why it was not; and those asked for, those still to be read, and how
+// many are being read.
+const karma = { generation: null, unread: "", balances: new Map(), asked: new Set(), queued: [], reading: 0 };
+
+// An amount the chain writes in Kismet (KarmaLedger 4.1), in Karma, its
+// decimals cut short where they end in zeros.
+function formatKarma(kismet) {
+  const count = BigInt(kismet);
+  const whole = (count / KISMET_PER_KARMA).toLocaleString();
+  const decimals = (count % KISMET_PER_KARMA).toString().padStart(KARMA_DECIMALS, "0");
+  const shown = decimals.replace(/0+$/, "");
+  return shown ? `${whole}.${shown}` : whole;
+}
+
+// Whether `value` is a balance (KarmaLedger 5.3): the Kismet held, and the
+// generation whose reward last paid it, or null.
+function isBalance(value) {
+  return (
+    isObject(value) &&
+    typeof value.kismet === "string" &&
+    KISMET.test(value.kismet) &&
+    (value.last_won === null || Number.isSafeInteger(value.last_won))
+  );
+}
+
+// Read the head the node follows (HttpApi 10.10), then the Karma of each
+// person asked for meanwhile; or say why no Karma is shown.
+async function readKarma() {
+  const result = await call("GET", "/data/karma");
+
+  if (result.ok && isObject(result.value) && Number.isSafeInteger(result.value.generation)) {
+    karma.generation = result.value.generation;
+    readBalances();
+  } else {
+    karma.unread = `No Karma is shown: ${refusal(result)}`;
+  }
+
+  showKarma();
+}
+
+// Have the Karma of `id` read, once, as soon as the node says which chain it
+// follows.
+function askKarma(id) {
+  if (!karma.asked.has(id)) {
+    karma.asked.add(id);
+    karma.queued.push(id);
+    readBalances();
+  }
+}
+
+// Read the Karma of those asked for, no more than KARMA_AT_ONCE at a time,
+// showing each as it comes.
+function readBalances() {
+  while (karma.generation !== null && karma.reading < KARMA_AT_ONCE && karma.queued.length > 0) {
+    karma.reading += 1;
+    readBalance(karma.queued.shift()).finally(() => {
+      karma.reading -= 1;
+      readBalances();
+    });
+  }
+}
+
+// Read the balance of `id`, as the chain states it at the head (HttpApi 10.10).
+async function readBalance(id) {
+  try {
+    const result = await call("GET", `/data/karma/balances/${id}`);
+    karma.balances.set(id, result.ok && isBalance(result.value) ? result.value : { error: refusal(result) });
+  } catch (error) {
+    karma.balances.set(id, { error: error.message });
+  }
+
+  renderSoon();
+}
+
+// The Karma of `id`, beside its trust, linked to the Karma application, which
+// shows it with the rest (App Developer Guide 6.20), with its Kismet, and when
+// a reward last paid it, when hovered over; asked for if it has not been, and
+// nothing until it is read, or while the node follows no chain.
+function karmaFor(id) {
+  askKarma(id);
+  const balance = karma.balances.get(id);
+
+  if (balance === undefined) {
+    return [];
+  }
+
+  const link = make("a", balance.error ? "Karma not read" : `${formatKarma(balance.kismet)} Karma`, "karma");
+  link.href = `/karma/?id=${encodeURIComponent(id)}`;
+  const won = balance.last_won === null ? "never rewarded" : `last rewarded in generation ${balance.last_won}`;
+  link.title = balance.error || `${balance.kismet} Kismet, ${won}`;
+  return [link];
+}
+
+// Say what each person's Karma is, or why none is shown, and show it on
+// everyone listed.
+function showKarma() {
+  const said = byId("karma-text");
+  said.textContent =
+    karma.generation === null
+      ? karma.unread
+      : `Each person's Karma is their balance as the Karma chain this node follows states it, at generation ${karma.generation}. Hover over it for its Kismet, or follow it to the Karma application.`;
+  said.hidden = false;
+  render();
+}
+
 // What an entry says of the person's fallback: that they are compromised,
 // and whom to use in their place; or their fallback, and whether it was
 // checked back to their first version.
@@ -1140,6 +1263,8 @@ function itemOf(entry) {
   if (entry.compromised) {
     first.append(make("span", "compromised", "flag"));
   }
+
+  first.append(...karmaFor(entry.id));
 
   if (view.opened.has(entry.id)) {
     first.append(make("span", trustText(entry.trust), "score"));
@@ -1283,7 +1408,7 @@ function theirsShown() {
 // An identity a trust list names: its mark, and, if the directory lists it,
 // so that it is a person, their name linked to their page; if not, its id
 // alone, since nothing says whether it is a person or a node (App Developer
-// Guide 6.18).
+// Guide 6.18); and its Karma, which either has.
 function namedItem(entry) {
   const item = document.createElement("li");
   const others = entry.id !== view.you;
@@ -1306,6 +1431,8 @@ function namedItem(entry) {
   if (entry.compromised) {
     item.append(make("span", "compromised", "flag"));
   }
+
+  item.append(...karmaFor(entry.id));
 
   if (view.opened.has(entry.id)) {
     item.append(make("span", trustText(entry.trust), "score"));
@@ -2372,6 +2499,13 @@ async function start() {
       : "No trust is shown: only a browser on the node's own machine, signed in, is shown it.";
     showTrust();
   }
+
+  // Any client is shown Karma, which is public, each person's read as they
+  // are first shown, once the node says which chain it follows.
+  readKarma().catch((error) => {
+    karma.unread = `No Karma is shown: ${error.message}`;
+    showKarma();
+  });
 
   // A link naming one person shows them alone, and offers nothing else.
   const one = new URLSearchParams(location.search).get("id");
