@@ -575,8 +575,11 @@ example:
 curl http://127.0.0.1:8080/data/karma
 ```
 
-Each answers `503` while the node follows no chain. The node's Karma is its
-balance as the chain this node follows states it, which
+Each answers `503` while the node follows no chain. The Karma application,
+at `/karma/`, shows the same in a browser: the chain a generation at a time,
+the node's Karma, and anyone's, by their id; and, in a browser on the node's
+own machine, lets whoever is signed in pay others and stake. The node's
+Karma is its balance as the chain this node follows states it, which
 `karma/balances.json` in the data directory holds, written each time the
 head changes; no node's word of its own Karma is taken.
 
@@ -679,9 +682,10 @@ replaced. The new node also needs peers that hold the backup's content
 ## 6. Applications
 
 An application is a directory bundle served as a website at `/{name}/` on
-the node's port. A new node ships six: its front page at `/`, the
+the node's port. A new node ships seven: its front page at `/`, the
 `/config` page, the movie library at `/movie/`, the user directory at
-`/directory/`, mail at `/mail/`, and the nodes it knows at `/nodes/`. The
+`/directory/`, mail at `/mail/`, the nodes it knows at `/nodes/`, and the
+Karma chain it follows at `/karma/`. The
 [App Developer Guide](App%20Developer%20Guide.md) describes writing one.
 
 ### 6.1 Registering an Application

@@ -1484,6 +1484,29 @@ nothing, or a stake of nothing. Each is `503` while the node follows no
 chain. Only a local client, from a trusted application's page, pays or
 stakes.
 
+A stake is taken only on the block the node itself builds validation
+blocks on: the best full transaction block placed for the generation after
+the head, at `karma transaction:{head}` (Karma Ledger §3.1). A page finds
+it by searching that drop (§6.9), reading each block found with
+`GET /data/{id}`, and taking those whose size is between 1 MiB less 128 KiB
+and 1 MiB (Karma Ledger §5.4). A block held compressed is answered as the
+node holds it, a zlib stream, whose size is the one that counts; one held
+as it is begins with the `{` of a signed bundle, and a page compresses it
+with `CompressionStream("deflate")` to measure it. Of those full, the best
+shares the most bits with the target, then has the shortest `reach`, read
+with `GET /data/signed/{id}` (§6.13).
+
+The shipped `karma` application, at `/karma/`, does each of these. It shows
+the chain a generation at a time, each generation's transaction block with
+its payments, its payout, and the balances it states, and its winning
+validation block with its stakes; the node's own Karma; anyone's, by their
+id; and, in a browser on the node's own machine, the Karma of whoever is
+signed in, paying one person or several, and staking on the latest full
+block. To link an identity's Karma, link to `/karma/?id={id}`, which shows
+it with the rest. It links an identity to its page elsewhere only where it
+knows whether it is a person or a node (§6.18): the node itself, and
+whoever is signed in.
+
 ## 7. Patterns From the Movie Library
 
 The movie library, `src/libranet/applications/movie/index.html`, is one page
@@ -1544,7 +1567,8 @@ The applications a node ships with are directories under
 [`src/libranet/applications/`](../../src/libranet/applications/): `root`,
 served at `/`, `config`, served at `/config`, `movie`, served at
 `/movie`, `directory`, served at `/directory`, `mail`, served at `/mail`,
-and `nodes`, served at `/nodes`. `SHIPPED_APPLICATIONS` in `packaged.py`
+`nodes`, served at `/nodes`, and `karma`, served at `/karma`.
+`SHIPPED_APPLICATIONS` in `packaged.py`
 names each, and a node trusts them from the start. Each but `root` links
 home from its upper right corner (§3.1), and each carries its own copy of
 the link and its style, as each carries its own code for showing trust

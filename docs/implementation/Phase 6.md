@@ -2846,7 +2846,7 @@ passed over, with a warning, though the page was answered `202`.
 
 ---
 
-## Step 138 — Karma on `/config`
+## Step 138 — Karma on `/config` ✅
 
 **Kind:** improvement in UI. **Issue:** #456, under #87.
 **Depends on:** Steps 125, 128, 132, and 136.
@@ -2951,7 +2951,7 @@ Noted, not changed: the page's Applications section is 465 px wide at a
 
 ## Step 139 — The Karma Application
 
-**Kind:** improvement in UI. **Issue:** none yet; planned under #87.
+**Kind:** improvement in UI. **Issue:** #457, under #87.
 **Depends on:** Steps 128 and 137.
 
 Work this implies:
@@ -2966,6 +2966,89 @@ Work this implies:
 
 **Testable in isolation:** the packaged applications' tests, that it is
 shipped; the page checked live in headless Chrome.
+
+It came to 5 added lines of non-test Python, with 4 changed, against an
+estimate of 20, a page of 1,453 lines, and 104 lines of tests, so it was
+built as one change set. The node is unchanged: the page does everything
+with the endpoints Steps 128 and 137 added, and those every page has.
+
+What was built:
+
+- **`applications/karma/index.html`** (new), shipped as `karma`
+  (`SHIPPED_APPLICATIONS`), which the root application lists as it lists
+  every other. One page, in sections:
+  - **Signed in**, for a local client: signing in, as the nodes application
+    does, and the Karma of whoever is signed in.
+  - **Anyone's Karma**: an id typed, or named by a link to `/karma/?id=`,
+    and its balance, with **Pay**, for whoever can pay. Each identity the
+    page shows links there, shown without loading the page again.
+  - **Pay**, for whoever is signed in with a fallback of their own: one row
+    for each person paid, their id and the Karma paid them, as many as are
+    added, and a fee, in Karma, `0` unless given.
+  - **Stake**: the latest full block, found at the head's transaction
+    target, and the Karma staked on it.
+  - **The chain**: the head followed, its generation and weight, and the
+    node's own Karma; then one generation at a time, with **Older**,
+    **Newer**, **Newest**, and a generation to go to: its transaction block,
+    with its payments, its payout, and the balances it states, and its
+    winning validation block, with its stakes, its runner-up, and how many
+    transactions it witnesses.
+- **The packaged applications' tests**: it is shipped, self-contained, calls
+  only endpoints the node serves, finds blocks at the targets the ledger
+  places them at and judges them full by its bounds, counts 10^14 Kismet to
+  a Karma, pays within the ceilings a node sets, links each identity to
+  `/karma/?id=`, and links home from its upper right corner; and a new node
+  serves it with nothing in its store.
+- The App Developer Guide's §6.20, how a page finds the block to stake on,
+  and the application, with §9; the Operator Guide's §4.8 and §6; and the
+  README.
+
+Checked live, with one node and two people, in headless Chrome over CDP: a
+node following no chain said so; once a root was made, the page showed
+generation 0, its root transaction and its stake, and the node's Karma; it
+signed a person in, showed their Karma, showed another's by an id typed and
+by a link, refused a person named twice, and paid them, with a fee and
+without, put up in 10 seconds, and said it was not covered yet; it found no
+full block, and said so; a stake, on a block chosen by hand since no block
+at a generation 1 target is full, was taken by the Karma module; a block
+held compressed, and a drop held as it is, each measured as the node holds
+it; and the page fit a 390 px screen. Found and fixed in the run: lists
+hidden with `hidden` showed, as `display: grid` overrode it, and a hash in
+a sentence widened the page past 390 px.
+
+My calls, not yet reviewed:
+
+- **"The latest full block" is the best full transaction block placed for
+  the generation after the head**, the one the node stakes on, since the
+  node takes a person's stake only on the block it builds validation blocks
+  on (Step 136). The page judges it as the node does by the bits its drop
+  shares with the target, then the shortest reach, then the first id; not
+  by how long ago its transactions were witnessed, which would mean reading
+  the chain's witnesses, nor by whether it is correct, or whom the node
+  distrusts. Where those differ, a stake may not be taken, and the page
+  says that it is taken only if the node builds on the same block.
+- **A block is judged full by the copy the node answers**: the size of its
+  zlib stream, or, held as it is, compressed in the browser, whose zlib may
+  compress less than the node's. A block held as it is fits 1 MiB, and so
+  is all but never full.
+- **Amounts are typed and shown in Karma**, up to 14 decimals, with Kismet
+  on hover, as `/config` shows them. The fee is the person's to set, as the
+  money it is, and defaults to `0`; the seconds searched are the page's,
+  10, as a drop's are, under the node's ceiling.
+- **A person named twice in one payment is refused**, rather than the two
+  amounts added, so that a slip is not paid twice over.
+- **Identities are shown by id**, cut short, as the ledger names them. The
+  page links outward only where it knows whether an id is a person's or a
+  node's (App Developer Guide §6.18): the node, to its page in the nodes
+  application, and whoever is signed in, to theirs in the user directory.
+  Names, and trust, are left to Step 140's pages.
+- **The page reads nothing again by itself**: **Newest** reads the
+  generations again, forgetting those read, which a heavier chain may have
+  replaced, and **Look again** looks for the block to stake on. A payment
+  changes no balance until a generation holding it wins, and the page says
+  so.
+- **The order of its sections** puts whoever is signed in first, then
+  anyone's Karma, paying, staking, and the chain last, as the longest.
 
 ---
 
