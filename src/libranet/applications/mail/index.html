@@ -324,7 +324,9 @@
     Each person's mark is their trust, by the scores the node builds from your
     trust list, the lists of those you trust, and so on onward: &#x1F7E2;
     above 0, trusted; &#x1F7E1; 0, neither; &#x1F534; below 0, distrusted; and
-    &#x26AA; where there are no scores to show. Each person's name links to
+    &#x26AA; where there are no scores to show. What a mark says ends with
+    the person's Karma, their balance as the Karma chain this node follows
+    states it, linked to the Karma application. Each person's name links to
     their page in the user directory.
   </footer>
 </main>
@@ -451,6 +453,16 @@ const UNKNOWN = "\u{26AA}";
 
 // How long the page waits to read scores still being built again.
 const SCORES_AGAIN_SECONDS = 2;
+
+// How many Kismet make a Karma (Karma 4), and so how many decimals a Karma
+// has; and an amount of Kismet as the chain writes it: decimal digits, with no
+// leading zero unless it is "0" (KarmaLedger 4.1).
+const KISMET_PER_KARMA = 10n ** 14n;
+const KARMA_DECIMALS = 14;
+const KISMET = /^(?:0|[1-9][0-9]*)$/;
+
+// How many people's Karma is read at once.
+const KARMA_AT_ONCE = 8;
 
 function byId(id) {
   return document.getElementById(id);
@@ -1888,8 +1900,10 @@ function isOpened(person, place) {
 }
 
 // The mark of the trust of `person` where `place` shows them, saying it in
-// words when hovered over, and where the place shows it once tapped.
+// words, and their Karma, when hovered over, and where the place shows it once
+// tapped; their Karma asked for, if it has not been.
 function trustMarkFor(person, place) {
+  askKarma(person);
   const mark = make("button", "", "mark");
   mark.type = "button";
   mark.dataset.mark = person;
@@ -1909,15 +1923,15 @@ function trustMarkFor(person, place) {
 }
 
 function showTrustMark(mark) {
-  const text = trustText(mark.dataset.mark);
+  const text = `${trustText(mark.dataset.mark)} ${karmaText(mark.dataset.mark)}`;
   mark.textContent = trustSymbol(trustOf(mark.dataset.mark));
   mark.title = text;
   mark.setAttribute("aria-label", text);
   mark.setAttribute("aria-expanded", String(isOpened(mark.dataset.mark, mark.dataset.place)));
 }
 
-// What the mark of `person` where `place` shows them says, beside it once it
-// is tapped.
+// What the mark of `person` where `place` shows them says, and their Karma,
+// beside it once it is tapped.
 function trustWordsFor(person, place) {
   const words = make("span", "", "score");
   words.dataset.words = person;
@@ -1927,7 +1941,7 @@ function trustWordsFor(person, place) {
 }
 
 function showTrustWords(words) {
-  words.textContent = trustText(words.dataset.words);
+  words.replaceChildren(`${trustText(words.dataset.words)} `, karmaShown(words.dataset.words, words.dataset.place));
   words.hidden = !isOpened(words.dataset.words, words.dataset.place);
 }
 
@@ -1976,6 +1990,120 @@ async function followScores() {
   } finally {
     followingScores = false;
   }
+}
+
+// Karma (#458): the generation of the head the node follows, once it says,
+// or why no Karma is shown; each person's balance there, by id, once read, or
+// why it was not; and those asked for, those still to be read, and how many
+// are being read.
+const karma = { generation: null, unread: "", balances: new Map(), asked: new Set(), queued: [], reading: 0 };
+
+// An amount the chain writes in Kismet (KarmaLedger 4.1), in Karma, its
+// decimals cut short where they end in zeros.
+function formatKarma(kismet) {
+  const count = BigInt(kismet);
+  const whole = (count / KISMET_PER_KARMA).toLocaleString();
+  const decimals = (count % KISMET_PER_KARMA).toString().padStart(KARMA_DECIMALS, "0");
+  const shown = decimals.replace(/0+$/, "");
+  return shown ? `${whole}.${shown}` : whole;
+}
+
+// Whether `value` is a balance (KarmaLedger 5.3): the Kismet held, and the
+// generation whose reward last paid it, or null.
+function isBalance(value) {
+  return (
+    isObject(value) &&
+    typeof value.kismet === "string" &&
+    KISMET.test(value.kismet) &&
+    (value.last_won === null || Number.isSafeInteger(value.last_won))
+  );
+}
+
+// Read the head the node follows (HttpApi 10.10), then the Karma of each
+// person asked for meanwhile; or say why no Karma is shown.
+async function readKarma() {
+  const result = await call("GET", "/data/karma");
+
+  if (result.ok && isObject(result.value) && Number.isSafeInteger(result.value.generation)) {
+    karma.generation = result.value.generation;
+    readBalances();
+  } else {
+    karma.unread = `No Karma is shown: ${refusal(result)}`;
+  }
+
+  renderSoon();
+}
+
+// Have the Karma of `person` read, once, as soon as the node says which chain
+// it follows.
+function askKarma(person) {
+  if (!karma.asked.has(person)) {
+    karma.asked.add(person);
+    karma.queued.push(person);
+    readBalances();
+  }
+}
+
+// Read the Karma of those asked for, no more than KARMA_AT_ONCE at a time,
+// showing each as it comes.
+function readBalances() {
+  while (karma.generation !== null && karma.reading < KARMA_AT_ONCE && karma.queued.length > 0) {
+    karma.reading += 1;
+    readBalance(karma.queued.shift()).finally(() => {
+      karma.reading -= 1;
+      readBalances();
+    });
+  }
+}
+
+// Read the balance of `person`, as the chain states it at the head (HttpApi
+// 10.10).
+async function readBalance(person) {
+  try {
+    const result = await call("GET", `/data/karma/balances/${person}`);
+    karma.balances.set(person, result.ok && isBalance(result.value) ? result.value : { error: refusal(result) });
+  } catch (error) {
+    karma.balances.set(person, { error: error.message });
+  }
+
+  renderSoon();
+}
+
+// What the Karma of `person` says after their trust: what they hold, as the
+// chain the node follows states it, or why it is not said.
+function karmaText(person) {
+  const balance = karma.balances.get(person);
+
+  if (karma.unread) {
+    return karma.unread;
+  }
+
+  if (balance === undefined) {
+    return "Their Karma is being read.";
+  }
+
+  return balance.error ? `Their Karma was not read: ${balance.error}` : `They hold ${formatKarma(balance.kismet)} Karma.`;
+}
+
+// What the Karma of `person` says once their mark where `place` shows them is
+// tapped: what karmaText says, but what they hold linked to the Karma
+// application, which shows it with the rest (App Developer Guide 6.20), with
+// its Kismet, and when a reward last paid it, when hovered over. Not linked
+// while a message is written, which following a link would lose.
+function karmaShown(person, place) {
+  const balance = karma.balances.get(person);
+
+  if (balance === undefined || balance.error || place.startsWith("compose ")) {
+    return karmaText(person);
+  }
+
+  const link = make("a", `${formatKarma(balance.kismet)} Karma`);
+  link.href = `/karma/?id=${encodeURIComponent(person)}`;
+  const won = balance.last_won === null ? "never rewarded" : `last rewarded in generation ${balance.last_won}`;
+  link.title = `${balance.kismet} Kismet, ${won}`;
+  const shown = document.createElement("span");
+  shown.append("They hold ", link, ".");
+  return shown;
 }
 
 // A link showing `content` to the page of the person `id` names, in the user
@@ -2079,11 +2207,16 @@ function lineOf(people, prefix, place, open, opener) {
   return line;
 }
 
-// What the marks tapped in a row say, beneath it, each after whose it is.
+// What the marks tapped in a row say, and their Karma, beneath it, each after
+// whose it is.
 function saidOf(people, place) {
   return people
     .filter((person) => person !== mail.you && isOpened(person, place))
-    .map((person) => make("p", `${nameOf(person)}: ${trustText(person)}`, "said"));
+    .map((person) => {
+      const said = make("p", `${nameOf(person)}: ${trustText(person)} `, "said");
+      said.append(karmaShown(person, place));
+      return said;
+    });
 }
 
 function renderList() {
@@ -3075,6 +3208,12 @@ async function start() {
   // The scores are read as the mail is, and each mark shows them as they come.
   readScores().catch((error) => {
     trust.unscored = `No trust is shown: ${error.message}`;
+    renderSoon();
+  });
+  // Each person's Karma is read as their mark is first shown, once the node
+  // says which chain it follows.
+  readKarma().catch((error) => {
+    karma.unread = `No Karma is shown: ${error.message}`;
     renderSoon();
   });
 

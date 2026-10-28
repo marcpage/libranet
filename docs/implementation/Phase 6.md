@@ -2949,7 +2949,7 @@ Noted, not changed: the page's Applications section is 465 px wide at a
 
 ---
 
-## Step 139 — The Karma Application
+## Step 139 — The Karma Application ✅
 
 **Kind:** improvement in UI. **Issue:** #457, under #87.
 **Depends on:** Steps 128 and 137.
@@ -3054,7 +3054,7 @@ My calls, not yet reviewed:
 
 ## Step 140 — Karma Shown Throughout
 
-**Kind:** improvement in UI. **Issue:** none yet; planned under #87.
+**Kind:** improvement in UI. **Issue:** #458, under #87.
 **Depends on:** Steps 128 and 139.
 
 Work this implies:
@@ -3066,6 +3066,73 @@ Work this implies:
   Phase 5 §6 ruled for trust.
 
 **Testable:** each page checked live in headless Chrome.
+
+It came to no Python: pages only, as planned, with 136 lines added to the
+directory, 133 to the nodes application, and 147 to mail, and 28 lines of
+tests, so it was built as one change set. The node is unchanged: each page
+reads the endpoints Step 128 added.
+
+What was built:
+
+- **Each page reads the head the node follows** with `GET /data/karma`, once,
+  as it opens, and then the balance of each identity it shows, as it is first
+  shown, with `GET /data/karma/balances/{id}`, eight at a time, each shown as
+  it comes. While the node follows no chain, it reads no balance, and says
+  why none is shown, as it says why no trust is.
+- **The directory** shows each person's Karma beside their name, after their
+  trust's mark, as "12.5 Karma", linked to `/karma/?id=`, with its Kismet,
+  and when a reward last paid it, on hover: in the list, for the person shown
+  alone, and for each identity their trust list names. A line beneath the
+  trust's says at which generation of the chain it is stated.
+- **The nodes application** shows each node's Karma alike, this node's among
+  them, in the list and for the node shown alone.
+- **Mail** says each person's Karma after their trust, in what each mark
+  says: on hover, to a screen reader, and once tapped, beside the person or
+  beneath a row, where what they hold links to `/karma/?id=`, but among those
+  a message being written is to, where it is not linked.
+- **The packaged applications' tests**: each of the three calls only
+  endpoints the node serves, the two Karma ones among them, counts 10^14
+  Kismet to a Karma, as the Karma page does, and links each identity's Karma
+  as the Karma page does.
+- The App Developer Guide's §6.12, §6.16, §6.18, and §6.20; the Operator
+  Guide's §4.8; and the README.
+
+Checked live, with two nodes and two people, in headless Chrome over CDP:
+before a root was made, the directory and nodes applications said that no
+Karma is shown, as the node follows no chain; once one was made, each person
+in the directory, the person shown alone, and whom their trust list names
+showed 0 Karma, linked, with "0 Kismet, never rewarded" on hover; the nodes
+application showed the peer's Karma and its own, alone; and mail said Karma
+in a recipient's mark, unlinked, and, linked, in a sent row's, in a
+message's, and in the address book's. No one holds Karma at generation 0, as
+Step 139 found, so amounts other than 0 were checked by the page's own
+formatting, from one Kismet to over a million Karma. Each page fit a 390 px
+screen but for two overflows found and not of this step: the directory's
+paragraph on a compromised identity, whose fallback's id runs past the edge,
+and the time of a sent row in mail, 4 px past it.
+
+My calls, not yet reviewed:
+
+- **Mail says Karma in what a mark says, rather than beside each name**, as
+  the directory and nodes applications do: its rows, and the people a message
+  is written to, have no room for it, and a name in a row opens the row.
+  Among those a message is written to, it is not linked, since following a
+  link loses the message.
+- **Karma is shown to any client**, a browser elsewhere too, since what a
+  chain states is public, unlike trust, which only a local client signed in
+  is shown.
+- **Each balance is read as its identity is first shown**, rather than every
+  balance at once, since there is no endpoint giving more than one, and a
+  page shows only some of those the chain names. The node still reads its
+  balances file whole for each (Step 128's last call); no cache was added,
+  since this step is pages only.
+- **The page reads Karma once**, as it opens, as the Karma application does,
+  and says at which generation; it is read again when the page is opened
+  again.
+- **Shown as the Karma application shows it**: in Karma, its decimals cut
+  short where they end in zeros, "0 Karma" too, with its Kismet on hover.
+- **Lists are not sorted or hidden by Karma**, as they are by trust. Step
+  141 orders nodes by Karma in the node, not in a page.
 
 ---
 

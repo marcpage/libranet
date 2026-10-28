@@ -598,15 +598,18 @@ def test_the_directory_page_calls_only_endpoints_the_node_serves(directory_page:
         BUNDLES_PATH,
         SIGNED_PATH,
         TRUST_PATH,
+        KARMA_PATH,
         "/data/drop/",
         "/data/signed/",
         f"{TRUST_PATH}/",
+        f"{KARMA_PATH}/balances/",
         "/data/",
     }
     # The page names a drop by its target string, one segment, and hashes nothing.
     assert fullmatch(DROP_SEARCH_PATTERN, f"/data/drop/{quote('user:sha256/0a', safe='')}")
     assert fullmatch(SIGNED_PATTERN, f"/data/signed/{some_id}")
     assert fullmatch(TRUST_PATTERN, f"{TRUST_PATH}/{some_id}")
+    assert fullmatch(KARMA_BALANCE_PATTERN, f"{KARMA_PATH}/balances/{some_id}")
     assert "encodeURIComponent(target)" in directory_page
 
 
@@ -720,15 +723,18 @@ def test_the_mail_page_calls_only_endpoints_the_node_serves(mail_page: str) -> N
         SESSION_PATH,
         SIGNED_PATH,
         TRUST_PATH,
+        KARMA_PATH,
         "/data/drop/",
         "/data/signed/",
         f"{ENCRYPTED_PATH}/",
+        f"{KARMA_PATH}/balances/",
         "/data/",
     }
     # Mail is found by the target string of a day, one segment.
     target = f"mail:{some_id}:2026/10/12"
     assert fullmatch(DROP_SEARCH_PATTERN, f"/data/drop/{quote(target, safe='')}")
     assert fullmatch(ENCRYPTED_PATTERN, f"{ENCRYPTED_PATH}/{some_id}")
+    assert fullmatch(KARMA_BALANCE_PATTERN, f"{KARMA_PATH}/balances/{some_id}")
     assert "encodeURIComponent(target)" in mail_page
 
 
@@ -800,14 +806,17 @@ def test_the_nodes_page_calls_only_endpoints_the_node_serves(nodes_page: str) ->
         PEERS_PATH,
         NODES_PATH,
         TRUST_PATH,
+        KARMA_PATH,
         "/data/drop/",
         "/data/signed/",
         f"{TRUST_PATH}/",
+        f"{KARMA_PATH}/balances/",
     }
     # The page names a drop by its target string, one segment, and hashes nothing.
     assert fullmatch(DROP_SEARCH_PATTERN, f"/data/drop/{quote(f'node:{some_id}', safe='')}")
     assert fullmatch(SIGNED_PATTERN, f"/data/signed/{some_id}")
     assert fullmatch(TRUST_PATTERN, f"{TRUST_PATH}/{some_id}")
+    assert fullmatch(KARMA_BALANCE_PATTERN, f"{KARMA_PATH}/balances/{some_id}")
     assert "encodeURIComponent(target)" in nodes_page
 
 
@@ -937,9 +946,13 @@ def test_the_karma_page_finds_full_blocks_where_the_ledger_places_them(karma_pag
     assert f"const FULL_ROOM_BYTES = {FULL_BLOCK_ROOM_BYTES};" in karma_page
 
 
-def test_the_karma_page_counts_kismet_as_the_ledger_does(karma_page: str) -> None:
-    [kismet_per_karma] = findall(r"const KISMET_PER_KARMA = 10n \*\* (\d+)n;", karma_page)
-    [decimals] = findall(r"const KARMA_DECIMALS = (\d+);", karma_page)
+@mark.parametrize("page_fixture", ["karma_page", "directory_page", "mail_page", "nodes_page"])
+def test_each_page_showing_karma_counts_kismet_as_the_ledger_does(
+    request: FixtureRequest, page_fixture: str
+) -> None:
+    page = request.getfixturevalue(page_fixture)
+    [kismet_per_karma] = findall(r"const KISMET_PER_KARMA = 10n \*\* (\d+)n;", page)
+    [decimals] = findall(r"const KARMA_DECIMALS = (\d+);", page)
 
     assert 10 ** int(kismet_per_karma) == KISMET_PER_KARMA == 10 ** int(decimals)
 
@@ -959,6 +972,18 @@ def test_the_karma_page_links_each_identity_to_its_karma_and_shows_it_alone(
     # The link any page gives an identity's Karma, the id one value.
     assert "link.href = `/karma/?id=${encodeURIComponent(id)}`;" in karma_page
     assert 'new URLSearchParams(location.search).get("id")' in karma_page
+
+
+@mark.parametrize("page_fixture", ["directory_page", "mail_page", "nodes_page"])
+def test_each_page_marking_an_identitys_trust_links_its_karma_beside_it(
+    request: FixtureRequest, page_fixture: str
+) -> None:
+    page = request.getfixturevalue(page_fixture)
+
+    # Read once the node says it follows a chain, and linked as the Karma page
+    # links an identity's Karma (#458), the id one value.
+    assert f'call("GET", "{KARMA_PATH}")' in page
+    assert "link.href = `/karma/?id=${encodeURIComponent(" in page
 
 
 def test_the_config_page_connects_to_an_address_typed_without_its_scheme(config_page: str) -> None:

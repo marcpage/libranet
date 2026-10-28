@@ -578,10 +578,12 @@ curl http://127.0.0.1:8080/data/karma
 Each answers `503` while the node follows no chain. The Karma application,
 at `/karma/`, shows the same in a browser: the chain a generation at a time,
 the node's Karma, and anyone's, by their id; and, in a browser on the node's
-own machine, lets whoever is signed in pay others and stake. The node's
-Karma is its balance as the chain this node follows states it, which
-`karma/balances.json` in the data directory holds, written each time the
-head changes; no node's word of its own Karma is taken.
+own machine, lets whoever is signed in pay others and stake. The user
+directory, the nodes application, and mail show each identity's Karma beside
+its trust, linked there. The node's Karma is its balance as the chain this
+node follows states it, which `karma/balances.json` in the data directory
+holds, written each time the head changes; no node's word of its own Karma
+is taken.
 
 ## 5. Backing Up and Restoring
 

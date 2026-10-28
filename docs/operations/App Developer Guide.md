@@ -906,7 +906,8 @@ It sorts the list by trust, and hides those distrusted. Whoever is signed
 in, with a fallback of their own, trusts, distrusts, or clears each person
 there, one entry at a time, and is told that their list is public,
 distrust included. The person signed in is marked 🟢, saying it is them,
-since they are at step 0 of their own scores.
+since they are at step 0 of their own scores. Beside each person's trust,
+it shows their Karma (§6.20), linked to the Karma application.
 
 ### 6.13 Signing as a Person
 
@@ -1206,7 +1207,9 @@ The mail application shows the trust of each person it shows (§6.17): each
 sender and reader in its lists and in a message, each person in the address
 book, and each it is to send to. A click on a name in a list opens the
 conversation, as the rest of the row does; a name in a message or the
-address book links to the person's page (§6.12).
+address book links to the person's page (§6.12). What each mark says ends
+with the person's Karma (§6.20), linked to the Karma application but among
+those a message being written is to, since following a link would lose it.
 
 ### 6.17 The Trust List
 
@@ -1360,11 +1363,12 @@ connected first, by name, or by trust, and shows only those connected, or
 hides those distrusted, on request; a search looks through what each says,
 its id, and its addresses. It shows each node's trust (§6.17), with
 **Trust**, **Distrust**, and **Clear** for whoever is signed in, and signs
-them in and out. Elsewhere, it lists the nodes `GET /data/nodes` names, by
-name, with the addresses it gives, and says that whether each is connected,
-what the node counts of it, and its trust are shown only on the node's own
-machine. A page for a node the node knows nothing of says so, and still
-offers its trust, since a trust list may name any node.
+them in and out, and each node's Karma (§6.20), to any client. Elsewhere,
+it lists the nodes `GET /data/nodes` names, by name, with the addresses it
+gives, and says that whether each is connected, what the node counts of it,
+and its trust are shown only on the node's own machine. A page for a node
+the node knows nothing of says so, and still offers its trust, since a trust
+list may name any node.
 
 **Know a node by where you found it.** A node's id and a person's are of one
 form, so a page knows which an id is from where it found it: those of
@@ -1506,6 +1510,16 @@ block. To link an identity's Karma, link to `/karma/?id={id}`, which shows
 it with the rest. It links an identity to its page elsewhere only where it
 knows whether it is a person or a node (§6.18): the node itself, and
 whoever is signed in.
+
+**Show each identity's Karma beside its trust** (§6.17), wherever a page
+shows a person or a node, linked to `/karma/?id={id}`, in Karma, with its
+Kismet when hovered over. Read `GET /data/karma` once, and, if the node
+follows a chain, each identity's balance as the page first shows it, a few
+at a time; if it follows none, read no balance, and say why none is shown,
+as for trust. Unlike trust, any client is shown it. Each shipped application
+carries its own copy of the code that does it: the directory shows each
+person's Karma beside their name (§6.12), and the nodes application each
+node's (§6.18); mail says it in what each mark says (§6.16).
 
 ## 7. Patterns From the Movie Library
 
