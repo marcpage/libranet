@@ -15,10 +15,11 @@ from libranet.karma.blocks import BlockDrop, TransactionBlock
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
-from libranet.karma.payments import PAYMENTS_FILE, NodePayments, Payment, PaymentQueue
+from libranet.karma.payments import NodePayments
 from libranet.karma.putting import TransactionsPutUp
 from libranet.karma.reading import TargetReader
 from libranet.protocol.karma_amounts import MAX_KISMET, Kismet
+from libranet.protocol.karma_payments import PAYMENTS_FILE, Payment, PaymentQueue
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from libranet.protocol.search import LocalSearch
 from tests.helpers import new_identity
@@ -585,6 +586,20 @@ def test_a_queue_is_written_as_it_is_read(alice: NodeIdentity, bob: NodeIdentity
     }
     assert PaymentQueue.from_value(queue.value()) == queue
     assert PaymentQueue.from_value(PaymentQueue().value()) == PaymentQueue()
+
+
+def test_payments_queued_are_due_once_due_and_otherwise_an_interval_after_the_last_made(
+    bob: NodeIdentity,
+) -> None:
+    payment = Payment(bob.node_id, Kismet(3))
+    later = CREATED + timedelta(seconds=10)
+    queue = PaymentQueue((payment,), CREATED)
+
+    assert PaymentQueue((), CREATED).due_at(later, 2, 60.0) is None
+    assert queue.due_at(later, 2, 60.0) == CREATED + timedelta(seconds=60)
+    assert queue.due_at(later, 2, 5.0) == later
+    assert queue.queued(payment).due_at(later, 2, 60.0) == later
+    assert PaymentQueue((payment,)).due_at(later, 2, 60.0) == later
 
 
 @mark.parametrize(

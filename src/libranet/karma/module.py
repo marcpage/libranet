@@ -115,17 +115,19 @@ Step 135)::
 
     data.shunned  {"algorithm", "hash"}
 
-After each build, it stakes ``karma.stake_percent`` of what covers the node
-on the best correct transaction block at its head's transaction target that
-no identity the node distrusts built, and builds a validation block of its
-stake and the others' on that block held at its head's validation target,
-but those of whom the node distrusts, naming a runner-up whose stakes it
-would take are covered, and listing the transactions not yet witnessed. It
-places it as it places a block of its own, unless a correct one it holds
-there holds every stake (:class:`~libranet.karma.staking.ValidationBuilder`,
-Phase 6 Step 136), and follows the chain through it as it next looks. Among
-others' stakes, it takes each a person makes through the node, as the web
-server gives it, keeping it until its head changes (Phase 6 Step 137)::
+After each build, it stakes ``karma.stake_percent`` of what covers the node,
+or the share its operator sets on ``/config``, which the web server keeps in
+``staking.json`` in ``storage.karma_dir`` (Phase 6 Step 138), on the best
+correct transaction block at its head's transaction target that no identity
+the node distrusts built, and builds a validation block of its stake and the
+others' on that block held at its head's validation target, but those of
+whom the node distrusts, naming a runner-up whose stakes it would take are
+covered, and listing the transactions not yet witnessed. It places it as it
+places a block of its own, unless a correct one it holds there holds every
+stake (:class:`~libranet.karma.staking.ValidationBuilder`, Phase 6 Step
+136), and follows the chain through it as it next looks. Among others'
+stakes, it takes each a person makes through the node, as the web server
+gives it, keeping it until its head changes (Phase 6 Step 137)::
 
     karma.stake  {"stake": {"contents": "…", …}}
 """
@@ -166,6 +168,7 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.messaging.server_ratings import ServerRatings
 from libranet.modules import ModuleName
 from libranet.protocol.karma_stakes import SignedStake
+from libranet.protocol.karma_staking import StakingRule
 from libranet.protocol.karma_transactions import SignedTransaction
 from libranet.protocol.search import normalize_prefix
 
@@ -335,7 +338,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             partial(NodeIdentity.load, self._config),
             store=self._stored,
             distrusts=self._distrusts,
-            stake_percent=self._config.karma.stake_percent,
+            stake_percent=StakingRule(karma_dir, self._config.karma.stake_percent).percent,
             block_seconds=self._config.karma.block_seconds,
             drop_bits=self._config.storage.search_min_bits,
             clock=self._clock,

@@ -63,6 +63,7 @@ from libranet.config.models import (
     DEFAULT_READ_AHEAD_PARTS,
     IDLE_TIMEOUT_SECONDS,
     LOOPBACK_FOR_ANY,
+    KarmaConfig,
     StorageConfig,
 )
 from libranet.identity.authentication import RequestAuthenticator
@@ -148,6 +149,7 @@ from libranet.webserver.karma_handlers import (
     KarmaHeadTold,
     KarmaReads,
     KarmaSigning,
+    OwnKarma,
 )
 from libranet.webserver.list_handlers import (
     PEERS_PATH,
@@ -547,6 +549,7 @@ def build_config_router(  # pylint: disable=too-many-locals
     dial_wait_seconds: float = 0.0,
     peers: PeerTrust | None = None,
     trust: OwnTrust | None = None,
+    karma: KarmaConfig | None = None,
 ) -> Router:
     """``/config``'s port's routes: its endpoints and its application, and nothing else.
 
@@ -570,7 +573,10 @@ def build_config_router(  # pylint: disable=too-many-locals
     of the node's own scores ``peers`` holds, if given; or ``trust`` does, if
     given, as :func:`build_own_trust` makes it; and ``/config/api/connecting``
     reads and changes whether it connects only to the nodes it trusts (Phase 5
-    Step 113). ``/config/api/connections`` has an
+    Step 113). ``/config/api/karma`` reads what the node holds of Karma, as
+    the Karma module keeps it in ``storage``, and changes how much it stakes,
+    as ``karma`` says until then, its defaults unless given (Phase 6 Step
+    138). ``/config/api/connections`` has an
     address dialed, and waits for what came of it in ``dial_outcomes`` for up
     to ``dial_wait_seconds`` (Phase 5 Step 109). ``retry_after_seconds``,
     ``app_outcomes``, ``app_wait_seconds``, and ``read_ahead_parts`` are as for
@@ -632,6 +638,7 @@ def build_config_router(  # pylint: disable=too-many-locals
         ),
         connecting=None if peers is None else Connecting(peers),
         karma_root=KarmaRootHandler(publish, storage.karma_dir),
+        karma=OwnKarma(storage.karma_dir, node.node_id, KarmaConfig() if karma is None else karma),
     ):
         router.add(method, pattern, handler)
 

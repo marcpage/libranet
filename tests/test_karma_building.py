@@ -16,12 +16,13 @@ from libranet.config.models import KIB, MIB, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import Balance, BlockBounds, BlockDrop, TransactionBlock
 from libranet.karma.building import BlockBuilder, CombinedBlock, FilledBlock
-from libranet.karma.carried import CarriedTransaction, CarriedTransactions
+from libranet.karma.carried import CarriedTransactions
 from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_carried import CarriedTransaction
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from libranet.protocol.search import LocalSearch
 from tests.helpers import new_identity

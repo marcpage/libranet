@@ -37,7 +37,6 @@ from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.module import KarmaModule
-from libranet.karma.payments import Payment, PaymentQueue
 from libranet.karma.reading import HeldChain
 from libranet.karma.validating import ValidationBlockCheck
 from libranet.karma.weight import ChainWeight
@@ -48,7 +47,9 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.messaging.server_ratings import ServerRating, ServerRatings
 from libranet.modules import SPAWNED_MODULES, ModuleName
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_payments import Payment, PaymentQueue
 from libranet.protocol.karma_stakes import SignedStake
+from libranet.protocol.karma_staking import StakingRule
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from libranet.supervision.registry import default_module_specs
 from libranet.supervision.specs import ModuleSpec
@@ -1097,6 +1098,26 @@ def test_the_module_stakes_on_a_full_block_at_its_heads_target_and_follows_the_b
 
     head = module.history.head
     assert head is not None and (head.generation, head.validation) == (2, built)
+
+
+def test_the_module_stakes_the_share_its_operator_saved_in_place_of_its_configurations(
+    storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    clock = Clock()
+    karma = KarmaConfig(block_seconds=0.0, stake_percent=10.0)
+    module = paying_module(storage, queues, clock, karma)
+    published(queues)
+    module.handle(given(paid_by_node(storage, 1)))
+    (put_up,) = stored_ids(queues)
+    StakingRule(storage.karma_dir, karma.stake_percent).write(0.0)
+    clock.now += karma.build_interval_seconds
+
+    with caplog.at_level(INFO):
+        module.on_idle()
+
+    # Staking nothing, with no stake of another's, it builds nothing.
+    assert stored_ids(queues) == []
+    assert f"Not staking on Karma transaction block {put_up}: 0.0% of the" in caplog.text
 
 
 def test_a_stake_made_through_the_node_is_in_the_validation_block_the_module_builds(

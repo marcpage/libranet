@@ -864,7 +864,8 @@ class KarmaConfig(_Section):
     # to whole Kismet, as it builds a validation block (KarmaLedger §6.3,
     # Phase 6 Step 136). It is read as the decimal it is written as. At 0, the
     # node stakes nothing, and builds validation blocks of others' stakes
-    # alone.
+    # alone. Once the operator sets a share on /config, karma/staking.json in
+    # the data directory says it instead (Phase 6 Step 138).
     stake_percent: float = Field(default=10.0, ge=0, le=100)
 
 

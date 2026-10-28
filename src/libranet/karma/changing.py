@@ -50,7 +50,7 @@ from libranet.bundle.signing import SignedBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DROP_SEPARATOR
 from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds, BlockFinding, ValidationBlock
-from libranet.karma.carried import CarriedTransaction, CarriedTransactions
+from libranet.karma.carried import CarriedTransactions
 from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.claims import ClaimedChain, FalseStatement, HeadClaim
 from libranet.karma.following import say_found
@@ -61,6 +61,7 @@ from libranet.karma.validating import ValidationBlockCheck
 from libranet.karma.weight import ChainWeight
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
+from libranet.protocol.karma_carried import CarriedTransaction
 
 _LOGGER = getLogger(__name__)
 

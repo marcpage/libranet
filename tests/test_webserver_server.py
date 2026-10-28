@@ -19,7 +19,7 @@ from queue import Empty, Queue
 from socket import AF_INET6, SHUT_WR, create_connection, gethostname, socket
 from threading import Thread
 from time import monotonic, sleep
-from typing import Callable, Iterator
+from typing import Any, Callable, Iterator
 from urllib.parse import quote
 from zlib import compress
 
@@ -35,7 +35,7 @@ from libranet.cas.layered import LayeredSource
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
-from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
+from libranet.config.models import KarmaConfig, LibranetConfig, NetworkConfig, StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.content_digest import CONTENT_DIGEST_HEADER
 from libranet.identity.errors import InvalidSignatureError, UnknownKeyError
@@ -3003,6 +3003,40 @@ def test_the_config_port_starts_a_karma_ledger_only_while_no_chain_is_followed(
     (storage.karma_dir / "head.json").write_text(dumps(head), encoding="utf-8")
     assert asked() == 409
     assert [message["event"] for message in _published(queues)] == [EventType.KARMA_ROOT_REQUESTED]
+
+
+def test_the_config_port_reads_the_nodes_karma_and_keeps_the_share_it_stakes(
+    storage: StorageConfig, queues: ModuleQueues, credential: ConfigCredential
+) -> None:
+    router = build_config_router(
+        storage,
+        RETRY_AFTER_SECONDS,
+        StubModule(ModuleName.WEBSERVER, queues).publish,
+        config_credential=credential,
+        node=SERVER_NODE,
+        karma=KarmaConfig(stake_percent=25.0),
+    )
+
+    def asked(method: str, value: object = None) -> tuple[int, Any]:
+        body = b"" if value is None else dumps(value).encode("utf-8")
+        response = router.dispatch(
+            Request(
+                method,
+                "/config/api/karma",
+                headers={**_credentials(), **CONFIG_PAGE, "Content-Type": JSON_CONTENT_TYPE},
+                client_address="127.0.0.1",
+                body=RequestBody.of(body),
+            )
+        )
+        return response.status, loads(response.body)
+
+    status, read = asked("GET")
+
+    assert (status, read["node_id"], read["head"]) == (200, str(SERVER_NODE.node_id), None)
+    assert read["stake_percent"] == 25.0
+    assert asked("PUT", {"stake_percent": 5}) == (200, {"stake_percent": 5})
+    assert asked("GET")[1]["stake_percent"] == 5
+    assert loads((storage.karma_dir / "staking.json").read_bytes()) == {"stake_percent": 5}
 
 
 def test_bundles_are_made_only_by_a_node_that_knows_its_id(

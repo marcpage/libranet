@@ -85,9 +85,10 @@ Unless the configuration moves them:
 
 The data directory holds the node's content, its database, its registered
 applications, its backup jobs, whether it connects only to the nodes it
-trusts (§4.7), the Karma chain it follows, and, in `keys`, its secrets: its private key,
-its backup secret (§5.2), and its `/config` credential (§8). `uv run
-libranet --help` prints the defaults for the machine it runs on, and
+trusts (§4.7), the Karma chain it follows, and how much it stakes (§4.8),
+and, in `keys`, its secrets: its private key, its backup secret (§5.2), and
+its `/config` credential (§8). `uv run libranet --help` prints the defaults
+for the machine it runs on, and
 [File Layout](../implementation/File%20Layout.md) describes every file.
 
 ## 3. Configuring a Node
@@ -148,7 +149,7 @@ The settings an operator is most likely to change:
 | `karma.transaction_seconds` | `10.0` | How long Karma mines a transaction of the node's payments before taking the best nonce found (§4.8) |
 | `karma.rating_interval_seconds` | `3600.0` | How often Karma rates the servers the node is a client of, and pays the best (§4.8) |
 | `karma.build_interval_seconds` | `60.0` | How often Karma combines the transactions put up for the next generation into one block, as full as it can be, and stakes on a full one (§4.8) |
-| `karma.stake_percent` | `10.0` | What share of the Karma that covers its stakes the node stakes on each generation's best full block, in percent; `0` stakes nothing (§4.8) |
+| `karma.stake_percent` | `10.0` | What share of the Karma that covers its stakes the node stakes on each generation's best full block, in percent, until a share is saved on `/config`; `0` stakes nothing (§4.8) |
 | `local.folders` | Your desktop, documents, downloads, music, pictures, and videos folders | The folders offered to trusted applications (§6.3) |
 | `logging.level` | `INFO` | What is logged (§7.2) |
 
@@ -172,8 +173,8 @@ if you say so (§4.7).
 
 `/config` is how an operator puts their own content into Libranet: it backs
 up and restores directories, builds bundles, registers applications,
-creates users, says what the node is called, and connects it to other
-nodes. It is a page for a
+creates users, says what the node is called, connects it to other nodes,
+and shows the Karma it holds. It is a page for a
 browser, and a set of JSON endpoints beneath `/config/api` for scripts.
 
 The page lists its categories down its left side, **This node**, **Trust**,
@@ -251,6 +252,7 @@ curl -u admin:secret -e http://127.0.0.1:8180/config/ \
 | `PUT`, `DELETE` | `/config/api/trust/{algorithm}/{hash}` | Trust or distrust an identity as this node, or neither (§4.7) |
 | `GET`, `PUT` | `/config/api/connecting` | Whether this node connects only to the nodes it trusts (§4.7) |
 | `POST` | `/config/api/karma/root` | Start a Karma ledger (§4.8) |
+| `GET`, `PUT` | `/config/api/karma` | What this node holds of Karma, and how much it stakes (§4.8) |
 
 A backup, restore, build, or export is answered `202` at once, with the id
 it is known by, and its `GET` says how it is doing. Restores, builds, and
@@ -411,14 +413,37 @@ curl -u admin:secret -e http://127.0.0.1:8180/config/ \
 Each is answered with what the node does now, `{"only_trusted": true}`. The
 choice is kept in `connecting.json` in the data directory (§2.3).
 
-### 4.8 Starting a Karma Ledger
+### 4.8 Karma
 
-The nodes of a network keep a ledger of Karma together, which begins with a
-root. A new network has none until one node places it, and every node then
-follows the chain built on it. Place one on one node of a new network only,
-and only if no node of it has: a node that places a second root follows
-that, apart from the rest, until one chain outweighs the other. There is no
-button for it on the page yet. From a script:
+The nodes of a network keep a ledger of Karma together, a chain of blocks
+each generation adds to. **Karma**, on the page, shows the chain this node
+follows, its generation and weight, and the Karma the chain says the node
+holds, in Karma and in Kismet, a hundred trillionth of a Karma; the payments
+it has queued, and when they go; the transactions it carries; and how much
+it stakes, which can be changed there. It reads them again every few
+seconds. A script reads the same with `GET /config/api/karma`:
+
+```json
+{"head": "sha256/9f8e…", "generation": 41, "weight": "1208",
+ "node_id": "sha256/0a1b…", "balance": {"kismet": "250", "last_won": 40},
+ "payments": [{"to": "sha256/4c2d…", "kismet": "200"}],
+ "payments_due": "2026-10-27T10:00:00Z",
+ "carried": [{"hash": "7d3f…", "transaction": {"from": "sha256/0a1b…", …},
+              "witnessed": 41, "put_up": true}],
+ "stake_percent": 10}
+```
+
+`head`, `generation`, and `weight` are `null` while the node follows no
+chain, and `balance` too, until the node has read the balances at its head.
+`payments_due` is when the payments queued go, and is `null` with none
+queued. A file of the node's Karma that cannot be read is `500`, saying why.
+
+A ledger begins with a root. A new network has none until one node places
+it, and every node then follows the chain built on it. While the node
+follows no chain, **Karma** offers **Start a ledger**, which places one.
+Place one on one node of a new network only, and only if no node of it has:
+a node that places a second root follows that, apart from the rest, until
+one chain outweighs the other. From a script:
 
 ```bash
 curl -u admin:secret -e http://127.0.0.1:8180/config/ \
@@ -522,6 +547,23 @@ lack. A stake in a block another names as its runner-up is lost to that
 block's stakers: at `0`, the node stakes nothing, and builds validation
 blocks of others' stakes alone. `libranet-karma.log` says each stake the
 node makes, and each validation block it builds.
+
+In **How much this node stakes**, give a share from 0 to 100, in percent,
+and **Save**, to have the node stake that, in place of `karma.stake_percent`,
+from its next stake on. A script reads it with `GET /config/api/karma`, and
+changes it:
+
+```bash
+curl -u admin:secret -e http://127.0.0.1:8180/config/ \
+  -X PUT http://127.0.0.1:8180/config/api/karma \
+  -H 'Content-Type: application/json' \
+  -d '{"stake_percent": 5}'
+```
+
+It is answered with the share the node now stakes, `{"stake_percent": 5}`,
+which is kept in `karma/staking.json` in the data directory (§2.3). A file
+that cannot be read the node logs, and stakes nothing until it is saved
+again.
 
 What the chain says, any client may read (HTTP API §10.10): the head the
 node follows, and the Karma the chain states the node holds, at

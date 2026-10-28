@@ -310,10 +310,14 @@ which it publishes for the Karma module to weigh (`karma.head_told`,
 `KarmaHeadTold`, Phase 6 Step 130). A person signed in pays, and stakes,
 through it: it mines a payment in the turns drops take, signs it, and the
 stake, as the person, and publishes each for the Karma module
-(`karma.transaction`, `karma.stake`, `KarmaSigning`, Phase 6 Step 137). It
-subscribes to only six events, `app.path_resolved`, `backup.state`,
-`peers.connected_requested`, `address.dialed`, `node.trust_stored`, and
-`karma.false_block`, and publishes twenty-seven.
+(`karma.transaction`, `karma.stake`, `KarmaSigning`, Phase 6 Step 137). On
+`/config` it shows the operator what that module keeps of the node's own
+Karma, its balance, payments queued, and transactions carried, and keeps the
+share the node stakes in `karma/staking.json`, which that module reads as it
+stakes (`OwnKarma`, Phase 6 Step 138). It subscribes to only six events,
+`app.path_resolved`, `backup.state`, `peers.connected_requested`,
+`address.dialed`, `node.trust_stored`, and `karma.false_block`, and
+publishes twenty-seven.
 
 #### 3.2.3 Validator
 
@@ -495,12 +499,14 @@ shuns (`data.shunned`) each transaction block at its head's transaction
 target whose transactions are all in another it holds there, correct, holding
 more of them, or as many and sharing more bits with the target: never one a
 validation block there names, nor one full (Phase 6 Step 135). After each
-build, it stakes `karma.stake_percent` of what covers the node on the best
-correct transaction block at its head's transaction target that no identity
-the node distrusts built, and builds a validation block of its stake and
-the others' on that block held at its head's validation target, but those of
-whom the node distrusts, naming a runner-up whose stakes it would take are
-covered, and listing the transactions not yet witnessed, as many as fit. It
+build, it stakes `karma.stake_percent` of what covers the node, or the share
+`staking.json` says once the operator sets one on `/config` (Phase 6 Step
+138), on the best correct transaction block at its head's transaction target
+that no identity the node distrusts built, and builds a validation block of
+its stake and the others' on that block held at its head's validation
+target, but those of whom the node distrusts, naming a runner-up whose
+stakes it would take are covered, and listing the transactions not yet
+witnessed, as many as fit. It
 places it as it places a block of its own, unless a correct one it holds
 there holds every stake (`ValidationBuilder`, `karma/staking.py`, Phase 6
 Step 136), and follows the chain through it as it next looks. Among others'

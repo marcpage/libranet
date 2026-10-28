@@ -143,7 +143,8 @@ something is written to it.
     ├── head.json                        the head followed
     ├── balances.json                    every balance stated at the head
     ├── carried.json                     transactions carried, and put up
-    └── payments.json                    the node's payments queued
+    ├── payments.json                    the node's payments queued
+    └── staking.json                     how much the node stakes
 ```
 
 | Path | Written by | Read by |
@@ -162,7 +163,7 @@ something is written to it.
 | `store/` | Web server | Web server |
 | `archives/` | Backup module (`/data/archives`, Step 115) | Every module that reads content |
 | `kept_archives.json` | Backup module | Backup module |
-| `karma/` | Karma module | Karma module; web server (`head.json`, `balances.json`, `generations/`) |
+| `karma/` | Karma module; web server (`staking.json`) | Karma module; web server (`head.json`, `balances.json`, `generations/`, `carried.json`, `payments.json`, `staking.json`) |
 
 ### 3.1 The Source of Truth: `cas/data`
 
@@ -490,7 +491,8 @@ module, as `backup_jobs.json` does (§3.7), rather than being saved over.
 
 The history of the chain the Karma module follows (KarmaLedger §3.5, Phase 6
 Step 123; `ChainHistory` in `src/libranet/karma/history.py`). Only the Karma
-module writes it, and it reads all of it into memory as it starts. It adds a
+module writes it, `staking.json` aside, and it reads all of it into memory as
+it starts. It adds a
 generation each time it follows the chain on (Phase 6 Step 126).
 
 `genealogy` is the id of the winning validation block of each generation,
@@ -577,7 +579,9 @@ file whole each time its head changes, leaving those out, and once it has
 carried something, and the file is not there before then
 (`CarriedTransactions` in `src/libranet/karma/carried.py`, Phase 6 Steps 129
 and 131). A file it cannot read it logs, and writes again without what it
-held.
+held. The web server reads it (`CarriedTransaction` in
+`src/libranet/protocol/karma_carried.py`) for `GET /config/api/karma`
+(Phase 6 Step 138).
 
 `payments.json` is the node's own payments, queued to be put up together as
 one transaction (KarmaLedger §4.6, Phase 6 Step 132): each a recipient, as
@@ -601,6 +605,27 @@ Once it is carried (`carried.json`), or passed over for good, the module
 writes the file again without it (`NodePayments` in
 `src/libranet/karma/payments.py`). The file is not there before the first
 payment is queued. A file it cannot read it logs, and writes again empty.
+The web server reads it (`PaymentQueue` in
+`src/libranet/protocol/karma_payments.py`) for `GET /config/api/karma`, and
+says when the payments queued go.
+
+`staking.json` is how much the node stakes, as its operator sets it on
+`/config` (Phase 6 Step 138): the share of what covers the node's stakes it
+stakes on the best transaction block of each generation, in percent, from 0
+to 100:
+
+```json
+{
+  "stake_percent": 10
+}
+```
+
+The web server writes it, for `PUT /config/api/karma`, and the Karma module
+reads it each time it stakes (`StakingRule` in
+`src/libranet/protocol/karma_staking.py`), in place of `karma.stake_percent`.
+The file is not there until the operator first saves a share, and
+`karma.stake_percent` holds until then. A file that cannot be read is logged,
+and read as staking nothing, until it is saved again.
 
 A generation's file is written before the genealogy, and the head last, each
 replaced whole (§8), so that a write cut short leaves the genealogy as it was.

@@ -120,7 +120,8 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   Step 126 is #444, Step 127 is #445, Step 128 is #446, Step 129 is #447,
   Step 130 is #448, Step 131 is #449, Step 132 is #450, Step 133 is #451,
   Step 134 is #452, Step 135 is #453, Step 136 is #454, Step 137 is #455,
-  and none after it has one yet.
+  Step 138 is #456, Step 139 is #457, Step 140 is #458, Step 141 is #459,
+  and Step 142 is #460.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -2723,7 +2724,7 @@ not yet followed.
 
 ---
 
-## Step 137 — Paying and Staking as a Person
+## Step 137 — Paying and Staking as a Person ✅
 
 **Kind:** improvement in web API. **Issue:** #455, under #87.
 **Depends on:** Steps 118, 128, 131, and 136; Phase 4 Step 79's signing
@@ -2847,7 +2848,7 @@ passed over, with a warning, though the page was answered `202`.
 
 ## Step 138 — Karma on `/config`
 
-**Kind:** improvement in UI. **Issue:** none yet; planned under #87.
+**Kind:** improvement in UI. **Issue:** #456, under #87.
 **Depends on:** Steps 125, 128, 132, and 136.
 
 Work this implies:
@@ -2866,6 +2867,85 @@ Work this implies:
 
 **Testable in isolation:** the endpoints; the setting kept, and read back
 by the module; the page checked live in headless Chrome.
+
+It came to 755 added lines of non-test Python, with 373 changed or removed,
+against an estimate of 150, and 393 lines of tests, so it was built as two
+change sets. The web server loads none of the Karma module's code (Module
+System §2), so the first moves the types `payments.json` and
+`carried.json` are read with to `protocol/`, as Step 137 moved the
+transactions: 412 lines, 345 of them the two files moved, with 333 changed
+or removed, and 13 lines of tests. The second adds the setting, the
+endpoints, and the page, at 343 lines, with 40 changed, 380 lines of tests,
+and 269 of the page.
+
+What was built:
+
+- **`protocol/karma_payments.py`** and **`protocol/karma_carried.py`**:
+  `Payment`, `PaymentQueue`, and `PAYMENTS_FILE` from `karma/payments.py`,
+  whole, and `CarriedTransaction` and `CARRIED_FILE` from
+  `karma/carried.py`, with `kept()` and `keep()`, what read and wrote the
+  file. `CarriedTransaction.on`, which reads the chain's history, stays in
+  the karma package as `CarriedTransactions._on`.
+  **`PaymentQueue.due_at`** says when the payments queued go.
+- **`StakingRequest`** and **`StakingRule`** (`protocol/karma_staking.py`,
+  new): `{"stake_percent"}`, a number from 0 to 100, kept in
+  `karma/staking.json`; `percent()` reads it, `karma.stake_percent` with no
+  file. `HeadStakes` and `ValidationBuilder` take `stake_percent` as a
+  callable, which the Karma module gives as `StakingRule.percent`, read each
+  time the node stakes.
+- **`OwnKarma`** (`webserver/karma_handlers.py`): `GET /config/api/karma`
+  reads `head.json`, `balances.json`, `payments.json`, `carried.json`, and
+  the share, and answers `{"head", "generation", "weight", "node_id",
+  "balance", "payments", "payments_due", "carried", "stake_percent"}`; `PUT`
+  keeps the share. `build_config_router` takes the node's `karma` settings.
+- **The page's "Karma"**, after "Trust": the chain and the node's balance,
+  in Karma and in Kismet; the payments queued, and when they go; the
+  transactions carried; "Start a ledger", while no chain is followed; and
+  "How much this node stakes".
+- The Operator Guide's §4.8, now "Karma", with §2.3, §3, §4, and §4.4; File
+  Layout §3 and §3.11; the Module System; and the example configuration.
+
+Checked live: a node with no chain, in headless Chrome over CDP, showed
+"Start a ledger", saved a stake of 5%, made a root once the operator
+confirmed, and showed the chain; payments and a transaction carried, written
+with the node's key, showed in Karma; the section fits 390 px; and the
+Operator Guide's `curl` changed the share, and was refused 150.
+
+My calls, not yet reviewed:
+
+- **The payment and carried types moved to `protocol/`**, as Step 137's
+  did, rather than the web server reading the files with code of its own,
+  which would define them twice.
+- **`staking.json` is in `karma/`**, as planned, though the web server
+  writes it: the one file there the Karma module does not.
+- **The share is read each time the node signs a stake**, which it does
+  once at a head (Step 136), so a change counts from the next head, not on a
+  block it has staked on already.
+- **A `staking.json` that cannot be read stakes nothing**, logged as a
+  warning each time it is read, rather than `karma.stake_percent`, as an
+  unreadable `connecting.json` is read as the less the operator may have
+  said. A stake in a runner-up is lost (KarmaLedger §6.6).
+- **The share is kept as it was written**, `10` rather than `10.0`, and read
+  as the decimal it is written as, as Step 136 reads its setting.
+- **`GET /config/api/karma` is `200` while the node follows no chain**, its
+  head's members `null`, not `503` as `/data/karma` is, so that the page can
+  offer "Start a ledger" and the share. The balance is `null` until
+  `balances.json` names the head `head.json` does.
+- **One file that cannot be read makes the answer `500`**, saying why, since
+  only the operator asks, and the page says so above the section.
+- **`payments_due` is when the queue is made a transaction**: the time of
+  the read once that is due, which the page says is as the node next looks.
+  A transaction made of earlier payments and not yet put up is not listed;
+  it is listed as carried once it is put up.
+- **The page reads the section every 5 seconds**, as the backup lists are
+  read, but fills in the share only once, and after a save, so that a read
+  does not replace what is being typed. "Start a ledger" asks to confirm.
+- **HttpApi is unchanged**: `/config/api/karma` is this node's own
+  administration, as `/config/api/connecting` is, and HttpApi §25 lists
+  `/config/api/...` as a whole.
+
+Noted, not changed: the page's Applications section is 465 px wide at a
+390 px screen, before this step as after it.
 
 ---
 

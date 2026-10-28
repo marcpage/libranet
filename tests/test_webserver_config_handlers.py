@@ -21,7 +21,7 @@ from typing import Any, Mapping
 from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.cas.content_id import ContentId
-from libranet.config.models import NetworkConfig
+from libranet.config.models import KarmaConfig, NetworkConfig
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import JOBS_FIELD, DialOutcome, EventType
 from libranet.messaging.queues import ModuleQueues
@@ -48,6 +48,7 @@ from libranet.webserver.config_handlers import (
     BACKUPS_PATH,
     BUILDS_PATH,
     CONFIG_API_PATH,
+    CONFIG_KARMA_PATH,
     CONFIG_TRUST_PATH,
     CONFIG_USERS_PATH,
     CONNECTIONS_PATH,
@@ -63,6 +64,7 @@ from libranet.webserver.config_handlers import (
     config_routes,
 )
 from libranet.webserver.http_types import Request, RequestBody, Response
+from libranet.webserver.karma_handlers import OwnKarma
 from libranet.webserver.request_refusals import MAX_JSON_BODY_BYTES
 from libranet.webserver.router import Router
 
@@ -189,6 +191,8 @@ def test_the_index_names_every_endpoint(router: Router) -> None:
         ("GET", "/config/api/connecting"),
         ("PUT", "/config/api/connecting"),
         ("POST", "/config/api/karma/root"),
+        ("GET", "/config/api/karma"),
+        ("PUT", "/config/api/karma"),
     }
 
 
@@ -1095,3 +1099,34 @@ def test_without_its_handler_no_route_starts_a_karma_ledger(
     # Starting one is tested where /config's port is built, and above.
     assert router.dispatch(request("POST", KARMA_ROOT_PATH)).status == 404
     assert published(queues) == []
+
+
+def test_what_the_node_holds_of_karma_is_read_and_its_stake_changed_where_given(
+    queues: ModuleQueues, state: BackupState, registry: ApplicationRegistry, karma_dir: Path
+) -> None:
+    router = Router()
+
+    for method, pattern, handler in config_routes(
+        StubModule(ModuleName.WEBSERVER, queues).publish,
+        state,
+        registry,
+        NodeDescription(NODE_ID, NETWORK),
+        RETRY_AFTER_SECONDS,
+        karma=OwnKarma(karma_dir, NODE_ID, KarmaConfig(stake_percent=4.0)),
+    ):
+        router.add(method, pattern, handler)
+
+    read = router.dispatch(request("GET", CONFIG_KARMA_PATH))
+    changed = router.dispatch(request("PUT", CONFIG_KARMA_PATH, {"stake_percent": 0}))
+
+    assert (read.status, loads(read.body)["stake_percent"]) == (200, 4.0)
+    assert (changed.status, json_body(changed)) == (200, {"stake_percent": 0})
+    assert published(queues) == []
+
+
+@mark.parametrize("method", ["GET", "PUT"])
+def test_without_its_handler_no_route_reads_or_changes_the_nodes_karma(
+    router: Router, method: str
+) -> None:
+    # Read and changed where /config's port is built, and above.
+    assert router.dispatch(request(method, CONFIG_KARMA_PATH, {"stake_percent": 1})).status == 404

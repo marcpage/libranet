@@ -22,7 +22,9 @@ validation blocks of the stakes (Phase 6 Step 136).
 Kismet, the unit an amount is counted in, and the transactions, payouts,
 and stakes blocks are made of (Phase 6 Steps 116 and 117), are in
 :mod:`libranet.protocol`, since the web server makes transactions and
-stakes for whoever is signed in (Phase 6 Step 137).
+stakes for whoever is signed in (Phase 6 Step 137), and so are the node's
+payments queued, and the transactions it carries, as the module keeps them,
+since ``/config`` shows them (Phase 6 Step 138).
 """
 
 from libranet.karma.balances import HeadBalances
@@ -39,7 +41,7 @@ from libranet.karma.blocks import (
     ValidationBlock,
 )
 from libranet.karma.building import BlockBuilder, CombinedBlock, FilledBlock
-from libranet.karma.carried import CARRIED_FILE, CarriedTransaction, CarriedTransactions
+from libranet.karma.carried import CarriedTransactions
 from libranet.karma.changing import HeadChanges
 from libranet.karma.checking import (
     BlockScore,
@@ -67,7 +69,7 @@ from libranet.karma.ledger import (
     reach_of,
 )
 from libranet.karma.module import KarmaModule
-from libranet.karma.payments import PAYMENTS_FILE, NodePayments, Payment, PaymentQueue
+from libranet.karma.payments import NodePayments
 from libranet.karma.putting import OwnBlock, TransactionsPutUp
 from libranet.karma.reading import ChainGenerations, HeldBlock, HeldChain, TargetReader
 from libranet.karma.root import ChainRoot
@@ -77,7 +79,6 @@ from libranet.karma.weight import ChainWeight
 
 __all__ = [
     "BLOCK_BOUNDS",
-    "CARRIED_FILE",
     "FIRST_NEW_KISMET",
     "FULL_BLOCK_ROOM_BYTES",
     "LAST_ISSUING_GENERATION",
@@ -85,7 +86,6 @@ __all__ = [
     "MisplacedBlockError",
     "NEW_KISMET_DECREASE",
     "NO_BALANCE",
-    "PAYMENTS_FILE",
     "WEIGHT_GENERATIONS",
     "Balance",
     "BalanceSheet",
@@ -94,7 +94,6 @@ __all__ = [
     "BlockDrop",
     "BlockFinding",
     "BlockScore",
-    "CarriedTransaction",
     "CarriedTransactions",
     "ChainBefore",
     "ChainFollower",
@@ -119,8 +118,6 @@ __all__ = [
     "KarmaModule",
     "NodePayments",
     "OwnBlock",
-    "Payment",
-    "PaymentQueue",
     "Reward",
     "StakeCover",
     "StakeWeight",

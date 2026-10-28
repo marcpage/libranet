@@ -13,12 +13,13 @@ from libranet.cas.store import CasStore
 from libranet.config.models import KIB, MIB, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import BlockBounds, BlockDrop, ValidationBlock
-from libranet.karma.carried import CarriedTransaction, CarriedTransactions
+from libranet.karma.carried import CarriedTransactions
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.staking import HeadStakes, StakeCover, ValidationBuilder
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_carried import CarriedTransaction
 from libranet.protocol.karma_stakes import SignedStake, Stake
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from libranet.protocol.search import LocalSearch
@@ -156,7 +157,7 @@ def stakes(history: ChainHistory, reader: TargetReader, distrusted: set[ContentI
         history,
         reader,
         distrusts=distrusted.__contains__,
-        stake_percent=10.0,
+        stake_percent=lambda: 10.0,
         clock=NOW.timestamp,
     )
 
@@ -229,6 +230,38 @@ def test_the_node_stakes_its_share_of_what_covers_it_on_the_best_block_at_the_ta
     assert own.stake == Stake(alice.node_id, id_of(data), Kismet(covering // 10), NOW)
     own.verified(alice.public_key)
     assert f"Staking {covering // 10} of the {covering} Kismet that cover the node" in caplog.text
+
+
+def test_the_share_staked_is_read_as_the_node_stakes(
+    history: ChainHistory,
+    reader: TargetReader,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    # As the operator may change it on /config at any time (Phase 6 Step 138).
+    shares = [10.0]
+    stakes = HeadStakes(
+        history,
+        reader,
+        distrusts=lambda identity: False,
+        stake_percent=lambda: shares[-1],
+        clock=NOW.timestamp,
+    )
+    following(follower, truth, first)
+    signed = sent(alice, {bob.node_id: 100}, 1)
+    put_up(truth, first, dave, signed)
+    covering = first.block_after(signed).balances[alice.node_id].kismet.count
+    shares.append(12.5)
+
+    taken = stakes.staked(follower.checked()[0], alice)
+
+    assert taken is not None
+    (own,) = taken.stakes
+    assert own.stake.kismet == Kismet(covering // 8)
 
 
 def test_of_blocks_scoring_alike_the_one_whose_id_sorts_first_is_staked_on(
@@ -544,7 +577,7 @@ def building(
         lambda: node,
         store=placed,
         distrusts=lambda identity: False,
-        stake_percent=10.0,
+        stake_percent=lambda: 10.0,
         block_seconds=0.0,
         drop_bits=MINIMUM_BITS,
         clock=NOW.timestamp,

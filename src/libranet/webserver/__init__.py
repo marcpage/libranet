@@ -129,6 +129,7 @@ from libranet.webserver.config_handlers import (
     BACKUPS_PATH,
     BUILDS_PATH,
     CONFIG_API_PATH,
+    CONFIG_KARMA_PATH,
     CONFIG_TRUST_PATH,
     CONFIG_TRUST_PATTERN,
     CONFIG_TRUST_TEMPLATE,
@@ -234,6 +235,7 @@ from libranet.webserver.karma_handlers import (
     KarmaHeadTold,
     KarmaReads,
     KarmaSigning,
+    OwnKarma,
 )
 from libranet.webserver.list_handlers import (
     PEERS_PATH,
@@ -356,6 +358,7 @@ __all__ = [
     "CONFIG_APPLICATION",
     "CONFIG_APP_PATTERN",
     "CONFIG_APP_POLICY",
+    "CONFIG_KARMA_PATH",
     "CONFIG_REALM",
     "CONFIG_TRUST_PATH",
     "CONFIG_TRUST_PATTERN",
@@ -499,6 +502,7 @@ __all__ = [
     "NodeHandler",
     "NodeListHandler",
     "NodeMetadataReader",
+    "OwnKarma",
     "OwnMetadata",
     "OwnTrust",
     "OwnPageOnly",
