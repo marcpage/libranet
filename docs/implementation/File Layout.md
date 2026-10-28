@@ -163,7 +163,7 @@ something is written to it.
 | `store/` | Web server | Web server |
 | `archives/` | Backup module (`/data/archives`, Step 115) | Every module that reads content |
 | `kept_archives.json` | Backup module | Backup module |
-| `karma/` | Karma module; web server (`staking.json`) | Karma module; web server (`head.json`, `balances.json`, `generations/`, `carried.json`, `payments.json`, `staking.json`) |
+| `karma/` | Karma module; web server (`staking.json`) | Karma module; web server (`head.json`, `balances.json`, `generations/`, `carried.json`, `payments.json`, `staking.json`); stats module (`balances.json`) |
 
 ### 3.1 The Source of Truth: `cas/data`
 
@@ -547,7 +547,9 @@ the file once it comes, so the file may name the head before `head.json`'s
 until then (`HeadBalances` in `src/libranet/karma/balances.py`, Phase 6 Step
 128). The web server reads it (`KarmaBalances` in
 `src/libranet/protocol/karma_balances.py`) for `GET /data/karma` and
-`GET /data/karma/balances/{algorithm}/{hash}`.
+`GET /data/karma/balances/{algorithm}/{hash}`. The stats module reads it at
+each derivation, to put the nodes of more Karma first in the node and
+candidate lists (§4.1, Phase 6 Step 141).
 
 `carried.json` is each transaction of a chain the module left for a heavier
 one that the heavier one does not hold, which it carries over into the
@@ -678,6 +680,9 @@ Until it is derived, nothing is shunned. `seek.json` is also written at once
 when a search names a prefix it does not list, so that peers read the prefix
 on their next refresh (Phase 4 Step 93). `peers.json` says when it was
 derived, so it is written at every derivation (Phase 5 Step 107).
+`nodes.json` and `candidates.json` put the nodes of more Karma first, as
+`karma/balances.json` (§3.11) states it when they are derived (Phase 6 Step
+141).
 
 Until a list has been derived, the web server answers requests for it with
 `503` and a `Retry-After` of `network.retry_after_seconds`.

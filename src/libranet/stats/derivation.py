@@ -11,10 +11,19 @@ that says nothing new.
 The candidate list names every node this node knows an address for, but
 itself and those it has given up on for now (Phase 2 Step 26), with every
 address it knows, in the order to try them. Nodes that have been reached
-come first, the most recently reached first, then the rest, the most
-recently learned of first; each node's addresses follow the same rule::
+come first, then the rest; within each part, those of more Karma first
+(Phase 6 Step 141), then the most recently reached first, or, of those never
+reached, the most recently learned of first. Each node's addresses are in
+the order the database tries them in::
 
     {"nodes": [{"node_id": "sha256/<hex>", "endpoints": ["http://203.0.113.9:4300", ...]}]}
+
+The node list puts the nodes of more Karma first as well, so that what its
+cap leaves out is what holds least (HttpApi §10.6). A node's Karma is its
+balance as the chain this node follows states it, which the Karma module
+writes to ``balances.json``, read afresh at each derivation; a node the
+chain does not name holds none, as every node does while this one follows no
+chain. Karma only orders the lists: no node is left out of either for it.
 
 The shunned list names the content this node will not hold, for the modules
 that refuse it (Phase 4 Step 30), in the shape
@@ -30,13 +39,14 @@ from dataclasses import dataclass
 from logging import getLogger
 from pathlib import Path
 from time import time
-from typing import Callable, Sequence
+from typing import Callable, Mapping, Sequence
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
 from libranet.cas.shunned import ShunnedContent
 from libranet.config.models import StatsConfig, StorageConfig
 from libranet.messaging.connected_peers import ConnectedPeers
+from libranet.protocol.karma_balances import KarmaBalances
 from libranet.stats.database import StatsDatabase
 from libranet.stats.lists import render_candidate_list, render_node_list, render_seek_list
 from libranet.stats.peers import PeerList
@@ -109,10 +119,13 @@ class ListDeriver:
         self._database.prune_addresses(
             self._stats.max_addresses_per_node, self._stats.max_address_failures
         )
-        node_list_changed = _write_if_changed(self._storage.node_list_path, self._node_list_body())
+        kismet = self._held_kismet()
+        node_list_changed = _write_if_changed(
+            self._storage.node_list_path, self._node_list_body(kismet)
+        )
         self.write_seek_list()
         candidate_list_changed = _write_if_changed(
-            self._storage.candidate_list_path, render_candidate_list(self._candidates())
+            self._storage.candidate_list_path, render_candidate_list(self._candidates(kismet))
         )
         self.write_shunned_list()
         write_atomically(self._storage.peer_list_path, self._peer_list().body())
@@ -144,22 +157,57 @@ class ListDeriver:
             self._storage.shunned_list_path, ShunnedContent.body(self._database.shunned_ids())
         )
 
-    def _node_list_body(self) -> bytes:
-        """This node's own entries, then each peer's last known good address, best first."""
+    def _held_kismet(self) -> Mapping[str, int]:
+        """The Kismet each node the chain this node follows names holds, by node id.
+
+        It names none while this node follows no chain, or if its balances
+        cannot be read, which is logged.
+        """
+        try:
+            balances = KarmaBalances.read(self._storage.karma_dir)
+
+        except (OSError, ValueError) as error:
+            _LOGGER.warning(
+                "Cannot read the Karma balances in %s, so nodes are not ordered by Karma: %s",
+                self._storage.karma_dir,
+                error,
+            )
+            return {}
+
+        return {str(identity): balance.kismet for identity, balance in balances.balances.items()}
+
+    def _node_list_body(self, kismet: Mapping[str, int]) -> bytes:
+        """This node's own entries, then each peer's last known good address, best first.
+
+        Best is the node of most ``kismet``, then the most recently reached.
+        """
         entries = [(endpoint, str(self._node_id)) for endpoint in self._endpoints]
-        entries.extend(self._database.last_good_endpoints(exclude=self._node_id))
+        entries.extend(
+            sorted(
+                self._database.last_good_endpoints(exclude=self._node_id),
+                key=lambda entry: -kismet.get(entry[1], 0),
+            )
+        )
         return render_node_list(entries, self._stats.max_list_bytes)
 
-    def _candidates(self) -> list[tuple[str, list[str]]]:
-        """Every peer to try, with its endpoints, but those given up on for now."""
+    def _candidates(self, kismet: Mapping[str, int]) -> list[tuple[str, list[str]]]:
+        """Every peer to try, with its endpoints, but those given up on for now.
+
+        Those reached come first, and within each part those of more
+        ``kismet``, then in the order the database gives.
+        """
         given_up = self._database.given_up_nodes(
             self._stats.max_node_failures, self._stats.node_cool_off_seconds
         )
-        return [
-            (node_id, endpoints)
-            for node_id, endpoints in self._database.candidate_endpoints(exclude=self._node_id)
-            if node_id not in given_up
-        ]
+        reached = self._database.reached_nodes()
+        return sorted(
+            (
+                (node_id, endpoints)
+                for node_id, endpoints in self._database.candidate_endpoints(exclude=self._node_id)
+                if node_id not in given_up
+            ),
+            key=lambda candidate: (candidate[0] not in reached, -kismet.get(candidate[0], 0)),
+        )
 
     def _peer_list(self) -> PeerList:
         return PeerList.read(
