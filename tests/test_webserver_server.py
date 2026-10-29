@@ -8,7 +8,7 @@ Every response is expected to be signed by the server's node key.
 
 from __future__ import annotations
 from base64 import b64encode
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from errno import EADDRINUSE
 from hashlib import sha256
 from http.client import HTTPConnection, HTTPResponse, IncompleteRead
@@ -65,12 +65,14 @@ from libranet.validator.module import ValidatorModule
 from libranet.webserver.app_handler import CONFIG_APP_POLICY
 from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.app_store import StoredValue
+from libranet.webserver.client_keeping import ClientKeeping, HeldKarma, SoughtContent
 from libranet.webserver.config_auth import CONFIG_REALM
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.costly_work import CostlyWork, Turns
 from libranet.webserver.errors import ResponseCutShortError
 from libranet.webserver.http_types import Request, RequestBody, Response, StreamedBody
+from libranet.webserver.inbound_peers import InboundPeers
 from libranet.webserver.local_folders import LocalFolders
 from libranet.webserver.router import Router
 from libranet.webserver.server import LibranetHTTPServer, build_config_router, build_router
@@ -721,6 +723,89 @@ def test_signed_upload_is_accepted_and_the_connection_reused(
 
     assert response.status == 200
     assert reply == CONTENT
+
+
+class Clock:
+    """A clock a test moves on."""
+
+    def __init__(self) -> None:
+        self.now = 1_000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+@fixture
+def keeping_clock() -> Clock:
+    return Clock()
+
+
+@fixture
+def keeping_server(
+    storage: StorageConfig, store: CasStore, queues: ModuleQueues, keeping_clock: Clock
+) -> Iterator[LibranetHTTPServer]:
+    """The main port's server, keeping each peer for one request, then as Karma has it."""
+    # `store` is asked for so that what it holds is there to be served.
+    # pylint: disable=unused-argument
+    keeping = ClientKeeping(
+        1,
+        600.0,
+        SoughtContent.of(storage),
+        HeldKarma(storage.karma_dir),
+        clock=keeping_clock,
+    )
+    publish = StubModule(ModuleName.WEBSERVER, queues).publish
+    yield from serving(
+        LibranetHTTPServer(
+            ("127.0.0.1", 0),
+            build_router(
+                storage,
+                RETRY_AFTER_SECONDS,
+                publish,
+                RequestAuthenticator.of(LibranetConfig(storage=storage)),
+                allow_unsigned_api_reads=True,
+                config_port=8180,
+            ),
+            getLogger("test.webserver"),
+            MessageSigner(SERVER_IDENTITY),
+            inbound_peers=InboundPeers(publish, keeping=keeping),
+        )
+    )
+
+
+def test_a_peer_of_low_karma_that_adds_nothing_is_answered_then_closed(
+    keeping_server: LibranetHTTPServer,
+    storage: StorageConfig,
+    store: CasStore,
+    keeping_clock: Clock,
+) -> None:
+    poor, rich = _new_identity(), _new_identity()
+
+    for identity in (poor, rich):
+        identity.publish_public_key(store)
+
+    KarmaBalances(
+        KarmaHead(ContentId("sha256", "c1" * 32), 1, 96), {rich.node_id: KarmaBalance(250, 0)}
+    ).write(storage.karma_dir)
+    path = f"/data/{CONTENT_ID}"
+    host, port = keeping_server.server_address[:2]
+
+    with (
+        closing(HTTPConnection(str(host), int(port), timeout=5)) as poor_connection,
+        closing(HTTPConnection(str(host), int(port), timeout=5)) as rich_connection,
+    ):
+        kept = [
+            _signed_get(rich_connection, path, rich)[0],
+            _signed_get(poor_connection, path, poor)[0],
+        ]
+        keeping_clock.now += 600.0
+        kept.append(_signed_get(rich_connection, path, rich)[0])
+        closed, body = _signed_get(poor_connection, path, poor)
+
+    assert [response.getheader("Connection") for response in kept] == [None] * 3
+    assert closed.status == 200
+    assert body == CONTENT
+    assert closed.getheader("Connection") == "close"
 
 
 def test_upload_of_stored_content_is_204(connection: HTTPConnection, queues: ModuleQueues) -> None:

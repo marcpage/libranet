@@ -22,7 +22,9 @@ connects to and serves, and distrusts whoever built a false Karma block (Phase
 states: its head, any identity's balance, and its generations (Phase 6 Step
 128). Peers tell the node the Karma heads they follow, and ask for its own
 (Phase 6 Step 130). A person signed in pays, and stakes, through the node,
-which signs for them (Phase 6 Step 137).
+which signs for them (Phase 6 Step 137). A peer of lower Karma than the
+others connected, that pushes nothing the node seeks, is closed (Phase 6
+Step 142).
 
 A few `/data` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
@@ -78,6 +80,7 @@ from libranet.webserver.app_store import (
 )
 from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.backup_state import BackupReport, BackupState
+from libranet.webserver.client_keeping import ClientKeeping, HeldKarma, SoughtContent
 from libranet.webserver.bundle_edits import (
     BUNDLES_PATH,
     BundleEdit,
@@ -456,6 +459,7 @@ __all__ = [
     "BundlePaths",
     "BundleReadHandler",
     "ByteRange",
+    "ClientKeeping",
     "ConfigAuthGuard",
     "ConfigCredential",
     "ConfigSiteGuard",
@@ -480,6 +484,7 @@ __all__ = [
     "FoundVersions",
     "Guard",
     "Handler",
+    "HeldKarma",
     "Identities",
     "IfMatch",
     "ImportHandler",
@@ -532,6 +537,7 @@ __all__ = [
     "SignedDrops",
     "SignedVersions",
     "SiteChecks",
+    "SoughtContent",
     "StoreFileError",
     "StoreHandler",
     "StoreLimitError",

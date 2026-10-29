@@ -84,9 +84,12 @@ Work this implies:
   connections each has open (`webserver/inbound_peers.py`, Phase 2 Step
   53). It also needs to know when each peer connected, and when it last
   pushed content this node seeks.
-- Closing a working connection by choice is new: today the server closes
-  one only when it cannot go on with it, after a signature fails
-  (HandshakeProtocol §5.3) or a request or response is cut short.
+- Closing a working connection by choice was new when this was planned,
+  when the server closed one only when it could not go on with it, after a
+  signature failed (HandshakeProtocol §5.3) or a request or response was
+  cut short. [Phase 6](Phase%206.md) Step 142 built it, for a peer of low
+  Karma that adds nothing: the response it is answering is sent with
+  `Connection: close`.
 - HandshakeProtocol §5.2 already lets a host close a guest that is not
   adding value; this step is a host doing so by number. Once Karma is
   built ([Phase 6](Phase%206.md)), §5.2 has Karma choose whom to keep,

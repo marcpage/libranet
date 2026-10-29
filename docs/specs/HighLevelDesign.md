@@ -382,6 +382,11 @@ balances (Handshake Protocol §5.1). It fills each bucket with the best node
 it knows there, so it connects to a node of more Karma wherever it has a
 choice, and to no fewer for it: holding no Karma leaves no node out.
 
+As a server, a node keeps the clients of more Karma connected, and past each
+client's first requests, closes one holding less than the median of those
+connected once it has pushed nothing the node seeks for a while (Handshake
+Protocol §5.2).
+
 ### 4.7 Request Routing Algorithm
 
 When a node receives a request for data that it does not hold locally, or a

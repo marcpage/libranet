@@ -299,6 +299,22 @@ This allows a low-Karma node to still reach high-Karma servers, obtain
 node lists, and attempt to earn Karma by fulfilling outstanding requests,
 rather than being locked out for having no track record yet.
 
+The reference node keeps a client connected for its first
+`network.client_grace_requests` requests, 12 unless its configuration says
+otherwise, counted on all the client's connections from the first request
+the client's key verifies. Past them, it closes a client whose Karma is below
+the median of the clients connected to it, and that has pushed nothing it
+seeks for `network.client_value_seconds`, ten minutes unless its
+configuration says otherwise. What it seeks is what its seek list names, or
+what a search the list names would find (HTTP API §10.7.2), and a push counts
+once it is accepted, before the content is checked. The request being served
+is answered first, with `Connection: close`, and each other connection of
+the client's is closed as it is next answered. A client of the median's
+Karma or more is kept however little it pushes, so none is closed while
+every client holds as much as the others, as while the node follows no
+chain. A client that connects again once its last connection has closed
+starts afresh.
+
 HTTP API §7.5 independently lists a low ratio of desired data (what the
 host's `/data/seek` asks for) to undesired data as an example of abusive
 behavior justifying an abrupt connection break. The Karma-relative

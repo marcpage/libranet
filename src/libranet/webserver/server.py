@@ -28,7 +28,9 @@ target in ``X-Request-Path``, to help debug pipelined clients (Step 10).
 Given :class:`~libranet.webserver.inbound_peers.InboundPeers`, the server
 tells it which peers are connected: each request carries the connection it
 arrived on, and each connection is reported closed when its thread ends
-(Phase 2 Step 53).
+(Phase 2 Step 53). Each request answered is reported too, and the
+connection is closed after the response once a peer on it is no longer kept
+(Phase 6 Step 142).
 
 A node has two of these servers, with routes of their own. The main port's,
 from :func:`build_router`, serves ``/data`` and the applications, and never
@@ -954,7 +956,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 Problem.for_status(HTTPStatus.INTERNAL_SERVER_ERROR, instance=path)
             )
 
-        self._send(response, close=response.close or not body.consumed)
+        kept = self.inbound is None or self.inbound.served()
+        self._send(response, close=response.close or not body.consumed or not kept)
 
     do_GET = _handle
     do_HEAD = _handle

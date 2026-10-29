@@ -3136,7 +3136,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 141 — Ordering Nodes by Karma
+## Step 141 — Ordering Nodes by Karma ✅
 
 **Kind:** improvement in behavior. **Issue:** #459, under #87.
 **Depends on:** Step 128.
@@ -3200,8 +3200,8 @@ My calls, not yet reviewed:
 
 ## Step 142 — Keeping Clients by Karma
 
-**Kind:** improvement in behavior. **Issue:** none yet; planned under
-#87. **Depends on:** Step 128; [Phase 8](Phase%208.md) Step 84, which
+**Kind:** improvement in behavior. **Issue:** #460, under #87.
+**Depends on:** Step 128; [Phase 8](Phase%208.md) Step 84, which
 has a server close a working connection by choice.
 
 A server keeps a client of higher Karma connected longer, and may close
@@ -3220,6 +3220,71 @@ Work this implies:
 **Testable in isolation:** web server tests with fake peers and a fake
 clock: the grace kept; an idle client of low Karma closed; one of low
 Karma that pushes kept; an idle one of high Karma kept.
+
+It came to 337 added lines of non-test Python, with 7 changed, and 511
+lines of tests, so it was built as one change set.
+
+What was built:
+
+- **`ClientKeeping`** (`webserver/client_keeping.py`) holds what each peer
+  connected has done: the requests it has made, and when it last pushed
+  what the node seeks, or else connected. Past its first
+  `network.client_grace_requests` (12) requests, a peer is closed if it has
+  pushed nothing sought for `network.client_value_seconds` (600) and holds
+  less Kismet than the median of the peers connected. **`HeldKarma`** reads
+  `karma/balances.json`, and **`SoughtContent`** the node's own
+  `seek.json`, each kept as read until the file is replaced (`KeptRead`).
+  What is sought is what the list names, or what a search it names would
+  find (`LocalSearch.matching`, HttpApi §10.7.2). Closing a peer is logged
+  at `INFO`, with its Kismet and the median.
+- **`InboundPeers`** takes a `ClientKeeping`, and tells it as each peer
+  connects and as its last connection closes. **`InboundConnection.served()`**
+  counts each request answered on a connection for each peer verified on
+  it, and says whether the connection is kept; **`pushed()`** notes an
+  upload. `DataWriteHandler` notes each upload it writes for the validator
+  on the connection it came on. `RequestHandler` closes the connection after
+  the response, with `Connection: close`, once it is not kept. The web
+  server module gives its `InboundPeers` a `ClientKeeping` of the node's
+  configuration.
+- HandshakeProtocol §5.2, HighLevelDesign §4.6, the Operator Guide's §3 and
+  §4.8, the example configuration, the Module System and File Layout
+  documents, Phase 8 Step 84, and the README.
+
+My calls, not yet reviewed:
+
+- **Built before Phase 8 Step 84**: the rule stands without the limit, and
+  closing by choice is a `Connection: close` on the response. That one of
+  higher Karma "is the last Step 84's limit closes" is left to Step 84.
+- **The request is answered, then the connection closed**, rather than
+  refused with a `503` and `Retry-After`, or cut without an answer.
+- **A peer is counted across its connections**, from the first request its
+  key verifies on each (Phase 2 Step 53), unsigned requests on that
+  connection included. Its other connections close as each is next
+  answered, or when they go idle. A connection carrying several peers'
+  requests closes once any of them is to be closed.
+- **What a peer did is forgotten when its last connection closes**, so a
+  peer that connects again starts afresh, with its grace and ten minutes
+  again. HandshakeProtocol §5 never refuses a connection for low Karma
+  alone; remembering peers past their connections would need state kept
+  apart from the connections.
+- **A push counts once it is accepted**, before the validator checks it, so
+  a peer pushing bytes that are not the content at a sought id is kept.
+  Counting `data.stored` instead would have the web server take that event,
+  and check it against a seek list that may no longer name what was found.
+- **A node seeking nothing closes every peer below the median** once its
+  grace and ten minutes are over, since none can push what it seeks. That
+  is the rule as planned; HandshakeProtocol §5.2 also weighs what a client
+  asks for, which this does not. Such peers connect again, and are kept
+  through the grace again.
+- **The median is of the peers connected inbound, the peer itself
+  included**, so a peer alone is kept, and of two, the one holding less is
+  closed.
+- **A file that cannot be read is warned of once a version**, and the
+  keeping goes on by what was read before; before either file is first
+  written, nothing is sought and no peer holds Karma.
+- **`client_grace_requests` may be 0**, though HandshakeProtocol §5.2 says
+  a server SHOULD keep a client for a dozen or so; `client_value_seconds`
+  must be more than 0.
 
 ---
 
