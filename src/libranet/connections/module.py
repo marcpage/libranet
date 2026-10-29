@@ -13,7 +13,11 @@ connection opens, fails, or closes, and when a node's retry delay ends. A
 node is dialed at each of its endpoints in turn, in the order the candidate
 list gives them, until one reaches it (Phase 2 Step 23). The node rests for
 ``retry_delay_seconds`` once none has, or after its connection closes, so a
-peer that is down or turning this node away is not dialed again and again.
+peer that is down or turning this node away is not dialed again and again. A
+peer that closed the connection once it had answered, as a server does a
+client of too little Karma (HandshakeProtocol §5.2), rests for
+``turned_away_rest_seconds`` instead (Phase 6 Step 143), so that this node
+finds a peer that keeps it rather than going back to the same one.
 Meanwhile another peer in the same bucket is dialed, if one is known. A seed
 whose node id is unknown rests by its endpoint instead. Stats counts the
 times in a row a node was reached at none of its endpoints, and gives up on
@@ -1191,11 +1195,20 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             # Even when this node closed it (a response that failed
             # verification), or it would be dialed straight back. By its
             # endpoint too, for a seed dialed without knowing its node id.
-            rest_until = self._clock() + self._config.peers.retry_delay_seconds
+            rest_until = self._clock() + (
+                self._config.peers.turned_away_rest_seconds
+                if session.turned_away
+                else self._config.peers.retry_delay_seconds
+            )
             self._dialing.resting[session.node_id] = rest_until
             self._dialing.resting[session.endpoint] = rest_until
 
-        self.logger.info("Connection to %s at %s closed", session.node_id, session.endpoint)
+        self.logger.info(
+            "Connection to %s at %s closed%s",
+            session.node_id,
+            session.endpoint,
+            ", turning this node away" if session.turned_away else "",
+        )
         self.publish(
             EventType.CONNECTION_CLOSED, {"node_id": str(session.node_id), "remote": remote}
         )

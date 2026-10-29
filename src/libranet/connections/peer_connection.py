@@ -92,6 +92,7 @@ class PeerConnection:  # pylint: disable=too-many-instance-attributes
         self._waiting: deque[_Waiting] = deque()
         self._outgoing: SimpleQueue[bytes | None] = SimpleQueue()
         self._closed = False
+        self._turned_away = False
         self._failure: Exception = ConnectionClosedError(f"Connection to {host} closed")
         self._last_progress = monotonic()
         self._peer_ip = _peer_ip(sock)
@@ -163,6 +164,15 @@ class PeerConnection:  # pylint: disable=too-many-instance-attributes
         """Whether the connection has closed, so no further request can be made."""
         return self._closed
 
+    @property
+    def turned_away(self) -> bool:
+        """Whether the peer closed the connection once it had answered, turning this node away.
+
+        A response saying ``Connection: close`` closes it so (Phase 6 Step
+        143); a connection that failed, or that the peer dropped, was not.
+        """
+        return self._turned_away
+
     def request(
         self,
         method: str,
@@ -228,17 +238,19 @@ class PeerConnection:  # pylint: disable=too-many-instance-attributes
         except Exception:  # pylint: disable=broad-exception-caught
             self._logger.exception("Calling back as the connection to %s closed failed", self._host)
 
-    def _fail(self, error: Exception) -> None:
+    def _fail(self, error: Exception, *, turned_away: bool = False) -> None:
         """Close the connection for ``error``, unless it has closed already.
 
         The oldest waiting request fails with ``error`` once the receive
         thread exits, and every other with :class:`ConnectionClosedError`.
+        ``turned_away`` says the peer closed it after answering.
         """
         with self._lock:
             if self._closed:
                 return
 
             self._closed = True
+            self._turned_away = turned_away
             self._failure = error
 
         self._outgoing.put(None)
@@ -367,7 +379,9 @@ class PeerConnection:  # pylint: disable=too-many-instance-attributes
             )
 
         if response.closes_connection:
-            self._fail(ConnectionClosedError(f"{self._host} closed the connection"))
+            self._fail(
+                ConnectionClosedError(f"{self._host} closed the connection"), turned_away=True
+            )
 
         waiting.future.set_result(response)
 

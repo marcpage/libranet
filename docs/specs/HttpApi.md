@@ -1526,10 +1526,12 @@ exceed the 1 MiB limit.
 
 The reference node lists its own endpoints first (§10.1), then each other
 node's last known good endpoint, leaving out one that has failed since: the
-nodes of more Karma first, as the chain it follows states their balances
-(Handshake Protocol §5), then the most recently reached. What the cap leaves
-out is then what holds least; a node holding none is listed where there is
-room.
+nodes whose Karma is nearest its own first, above it or below, as the chain
+it follows states their balances (Handshake Protocol §5), then the most
+recently reached. What the cap leaves out is then what holds least like the
+node listing it, and a peer is told most of the nodes near its own Karma, as
+it likely is, which are those likeliest to keep it connected (Handshake
+Protocol §5.2). A node holding none is listed where there is room.
 
 ### 10.7 Outstanding Requests List (`/data/seek`)
 

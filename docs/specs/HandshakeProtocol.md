@@ -273,9 +273,21 @@ peers to prefer when initiating contact, favoring higher-Karma servers
 when a choice is available.
 
 The reference node orders the nodes it may dial with those it has reached
-before first, and within each part, those of more Karma first, and fills its
-peer mix from the front of that order (High-Level Design §4.6). It dials no
-fewer for Karma, and none is left out for holding none.
+before first. Within each part, it climbs from its own Karma: those holding
+as much as it does or more come first, those holding least of them first,
+then those holding less, the nearest first. It fills its peer mix from the
+front of that order (High-Level Design §4.6). A server keeps a client holding
+as much as the median of its clients (§5.2), so a client fares best among
+the servers near its own Karma, and since every node climbs from its own,
+the nodes do not all dial the same few of most Karma. It dials no fewer for
+Karma, and none is left out for holding none.
+
+A server that closes the connection once it has answered, as one does a
+client it does not keep (§5.2), is not dialed again by the reference node
+for `peers.turned_away_rest_seconds`, an hour unless its configuration says
+otherwise, rather than the `peers.retry_delay_seconds` after another close.
+Meanwhile it dials the next node in that order, so it works through the
+servers until it finds one that keeps it.
 
 ### 5.2 Server Behavior
 

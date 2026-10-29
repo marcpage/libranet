@@ -3198,7 +3198,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 142 — Keeping Clients by Karma
+## Step 142 — Keeping Clients by Karma ✅
 
 **Kind:** improvement in behavior. **Issue:** #460, under #87.
 **Depends on:** Step 128; [Phase 8](Phase%208.md) Step 84, which
@@ -3288,6 +3288,86 @@ My calls, not yet reviewed:
 
 ---
 
+## Step 143 — Karma Order a Low-Karma Node Can Live With
+
+**Kind:** improvement in behavior. **Issue:** #519.
+**Depends on:** Steps 141 and 142.
+
+Issue #519 asks whether a low-Karma node can still find peers that keep it
+connected if every node lists the nodes of most Karma first. The node
+list's 1 MiB cap left no node out yet, but Step 141's order did worse where
+a node dials. Every node following a chain reads the same balances, so
+every node put the same nodes first, and the peer mix took the same node of
+most Karma in each bucket. Step 142 then closes a client below the median
+of a server's clients. A low-Karma client rested that server only
+`peers.retry_delay_seconds` (60), so it went back to the same one or two
+servers of each bucket every ten minutes or so, and never reached the
+nodes nearer its own Karma that would keep it. Step 133's payments went to
+the same few nodes, and a node seldom dialed was seldom reached, and so
+seldom listed.
+
+User rulings:
+
+- **Dialing starts at the node's own Karma and works up.** The nodes
+  reached first, as before, so a node keeps favoring those just above its
+  own balance once it has reached them.
+- **The node list is ordered by how far each node's Karma is from the
+  node's own**, either way, so a node shares the nodes near its own level.
+- **A server that turned the node away rests longer**: for
+  `peers.turned_away_rest_seconds`, an hour by default, rather than
+  `peers.retry_delay_seconds`.
+
+**Testable in isolation:** derivation tests of both orders, with the
+node's own balance and without; a connection test that a `Connection:
+close` response turns the node away and a dropped connection does not; a
+connection manager test that a peer that turned the node away rests the
+longer time.
+
+It came to 93 added lines of non-test Python, with 24 changed or removed,
+and 166 lines of tests, so it was built as one change set.
+
+What was built:
+
+- **`_HeldKismet`** (`stats/derivation.py`) holds the Kismet each node the
+  chain names holds, and the node's own. `distance()` is how far a node's
+  Kismet is from the node's own, which the node list sorts by.
+  `climbing()` puts those holding as much as the node or more first, the
+  least of them first, then those holding less, the nearest first, which
+  the candidate list sorts each part by. The sorts are stable, so ties keep
+  the database's order: the most recently reached, or learned of, first.
+- **`PeerConnection.turned_away`**: whether a response saying `Connection:
+  close` closed the connection. `PeerSession.turned_away` says the same.
+  The connection manager rests a peer that turned the node away for
+  `peers.turned_away_rest_seconds`, and logs it so.
+- **`peers.turned_away_rest_seconds`** (3600, more than 0), in the example
+  configuration too.
+- HighLevelDesign §4.6, HandshakeProtocol §5.1, HttpApi §10.6; the Operator
+  Guide's §3, §4.8, and §7.3; the Module System, File Layout, and Database
+  Schema documents; and the README.
+
+My calls, not yet reviewed:
+
+- **The nodes holding less than the node come after all those holding as
+  much or more, the nearest first.** The rulings say where dialing starts
+  and which way it goes, not where those below go; none is left out
+  (HighLevelDesign §4.6).
+- **Turned away is any response saying `Connection: close`**: Step 142's
+  close, Step 113's refusal of a node not trusted, and a response sent
+  before a request's body was read. A connection that drops, fails, or
+  that this node closes, rests as before.
+- **The rest is still by node**, so a bucket whose only node turned this
+  one away stays empty for the hour, and the mix fills from elsewhere
+  meanwhile, as it does for any bucket without a node to dial.
+- **HandshakeProtocol §5.1's MAY is unchanged**: a client may still favor
+  servers of higher Karma, and the reference node's order, climbing from
+  its own, is one way to.
+- **The node list's order is the node's own, not the peer's**: it is the
+  same list for every peer that reads it, so it is ordered by the lister's
+  Karma, and a peer near the lister's level, as one that stays connected
+  likely is, finds the nodes near its own.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 6 - Karma** milestone, by number, and where
@@ -3298,6 +3378,7 @@ it went.
 | #86 | Documenting how Karma works with the CAS | 56 |
 | #87 | A Karma implementation plan | None: this document. Steps 116–142, which build Karma, are planned under it, each to take an issue of its own |
 | #434 | Kismet, targets, and a chain's weight | 116 |
+| #519 | Whether a low-Karma node can find peers that keep it, if every node lists the nodes of most Karma first | 143 |
 
 Issue #71, the shunned data list, left the milestone unbuilt for
 **Phase 4 - User Accounts**, and Step 30 went with it to
@@ -3339,6 +3420,7 @@ built (§3). In all, about 7,900.
 | 26 | 140 | Improvement in UI | None; the pages alone | Needs 128's reads, and 139's application to link to. |
 | 27 | 141 | Improvement in behavior | About 150 | Needs 128's balances file. |
 | 28 | 142 | Improvement in behavior | About 250 | Needs 128's balances, and Phase 8 Step 84's closing of a connection by choice. |
+| 29 | 143 (#519) | Improvement in behavior | About 70 | Needs 141's order and 142's closing, which it answers. |
 
 The shun list the steps that build Karma use to let go of what a merge
 supersedes is Phase 4 Step 30, built in that phase.

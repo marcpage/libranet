@@ -135,6 +135,7 @@ The settings an operator is most likely to change:
 | `network.config_port` | `null` | `/config`'s port (§4.1) |
 | `network.client_grace_requests` | `12` | How many requests a peer connected to the node is kept for, whatever its Karma (§4.8) |
 | `network.client_value_seconds` | `600.0` | How long a peer holding less Karma than the median of those connected is kept, after those requests, once it pushes nothing the node seeks (§4.8) |
+| `peers.turned_away_rest_seconds` | `3600.0` | How long the node waits before dialing again a peer that turned it away, closing the connection once it had answered (§4.8) |
 | `peers.seed_file` | `null` | The node's first peers (§3.1) |
 | `storage.max_storage_bytes` | `null` | The most bytes of content the node keeps; `null` is no limit |
 | `storage.min_free_bytes` | `1073741824` | The free space the node keeps on its disk |
@@ -587,18 +588,24 @@ node follows states it, which `karma/balances.json` in the data directory
 holds, written each time the head changes; no node's word of its own Karma
 is taken.
 
-The node prefers the nodes holding more Karma. Of the nodes it may connect
-to, it dials those it has reached before ahead of the rest, as it always
-has, and within each, those holding more Karma first, so that where it has a
-choice of node to connect to, it takes the one holding more. Its node list,
-`/data/nodes` (§7.3), names the nodes holding more Karma first too, so that
-were it to outgrow its 1 MiB, those it left out would be those holding
-least. Holding none leaves no node out, and it connects to no fewer for
-Karma. While the node follows no chain, none holds any, and it orders them
-as before. It reads `karma/balances.json` for this each time it works out
-its lists, about every minute (`stats.derive_interval_seconds`); one it
-cannot read `libranet-stats.log` (§7.2) warns of, and it orders no node by
-Karma until it can.
+The node prefers the nodes holding about as much Karma as it does. Of the
+nodes it may connect to, it dials those it has reached before ahead of the
+rest, as it always has, and within each, climbs from its own Karma: those
+holding as much as it does or more first, those holding least of them
+first, then those holding less, the nearest first. A peer keeps the nodes
+holding as much as most of those connected to it (below), so these are the
+ones likeliest to keep it, and the nodes do not all crowd onto the few
+holding most. A peer that turned the node away, closing the connection once
+it had answered, is not dialed again for `peers.turned_away_rest_seconds`,
+an hour by default, so the node tries others meanwhile. Its node list,
+`/data/nodes` (§7.3), names the nodes nearest its own Karma first, above it
+or below, so that were it to outgrow its 1 MiB, those it left out would be
+those holding least like it. Holding none leaves no node out, and it
+connects to no fewer for Karma. While the node follows no chain, none holds
+any, and it orders them as before. It reads `karma/balances.json` for this
+each time it works out its lists, about every minute
+(`stats.derive_interval_seconds`); one it cannot read `libranet-stats.log`
+(§7.2) warns of, and it orders no node by Karma until it can.
 
 The node keeps the peers holding more Karma connected to it, too. A peer
 that connects to the node is kept for its first `network.client_grace_requests`
@@ -987,9 +994,9 @@ curl http://127.0.0.1:8080/data/nodes
 The node lists itself first. `http://localhost:8080` means "reach me at the
 address this connection came from": the node advertises a real address once
 `network.external_address` is set. The peers it knows follow, by address and
-node id, those holding more Karma first (§4.8). `GET /data/seek` lists the
-content it is still looking for, and peers `POST` their own lists to the
-same two paths.
+node id, those holding Karma nearest the node's own first (§4.8).
+`GET /data/seek` lists the content it is still looking for, and peers
+`POST` their own lists to the same two paths.
 
 In a browser on the node's own machine, the nodes application, at `/nodes/`,
 shows each other node it knows, by the name it gives itself: whether a

@@ -249,9 +249,10 @@ report, and records each in one small statement. Every
 `stats.derive_interval_seconds` it rewrites the node, seek, candidate,
 shunned, and peer lists into `lists/`, which the web server, connection
 manager, validator, and fetcher read as plain files, and publishes
-`nodes.updated` when the candidate list or node list changed. It puts the
-nodes of more Karma first in those two, as the Karma module's
-`karma/balances.json` states it, read at each derivation (Phase 6 Step 141).
+`nodes.updated` when the candidate list or node list changed. It orders
+those two by how near each node's Karma is to this node's own, as the Karma
+module's `karma/balances.json` states it, read at each derivation (Phase 6
+Steps 141 and 143).
 It keeps the peers connected each way in memory, as `peers.connected` names
 them, for the peer list (Phase 5 Step 107), and asks for them as it starts.
 It keeps the content the node has shunned

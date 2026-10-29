@@ -172,6 +172,8 @@ def test_peer_closing_fails_the_requests_it_did_not_answer(
         second.result(TIMEOUT)
 
     assert connection.closed
+    # Dropped, not closed by a response saying so.
+    assert not connection.turned_away
 
     with raises(ConnectionClosedError):
         connection.request("GET", "/three")
@@ -196,6 +198,7 @@ def test_connection_close_response_fails_the_rest(pair: tuple[PeerConnection, so
     peer.sendall(_response(200, b"bye", {"Connection": "close"}))
 
     assert first.result(TIMEOUT).closes_connection
+    assert connection.turned_away
 
     with raises(ConnectionClosedError):
         second.result(TIMEOUT)
@@ -304,6 +307,8 @@ def test_close_fails_waiting_requests(pair: tuple[PeerConnection, socket]) -> No
 
     with raises(ConnectionClosedError, match="closed locally"):
         future.result(TIMEOUT)
+
+    assert not connection.turned_away
 
     with raises(ConnectionClosedError):
         connection.request("GET", "/")
