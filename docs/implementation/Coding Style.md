@@ -90,7 +90,10 @@ self._archive = ZipFile(file)  # pylint: disable=consider-using-with
 Two kinds need no reason given, because it is always the same one:
 `broad-exception-caught` at a boundary (§9.2), and a limit on size
 (`too-many-instance-attributes`, `too-many-locals`, and the like) that a
-class or function has outgrown.
+class or function has outgrown. Each limit is `pylint`'s own but one: a
+class may keep ten attributes, not seven, since a value has a field for
+each member of what it stands for (§6.2), and a class keeps each
+collaborator it is handed (§6.4).
 
 A disable that turns nothing off fails the run (`useless-suppression`), so
 none outlives its reason.

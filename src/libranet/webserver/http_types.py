@@ -121,7 +121,7 @@ class RequestBody:
 
 
 @dataclass(frozen=True)
-class Request:  # pylint: disable=too-many-instance-attributes
+class Request:
     """An incoming request, reduced to what handlers need.
 
     ``path`` excludes any query string; ``params`` holds the named groups the

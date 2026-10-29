@@ -89,6 +89,13 @@ max-line-length = 100
 # declares it, which has none of the model's attributes.
 ignored-classes = ["pydantic.fields.FieldInfo"]
 
+[tool.pylint.design]
+# A record has a field for each member of what it stands for, and a class
+# keeps each collaborator it is handed, its clock among them, so that a test
+# can hand it its own. Ten, not pylint's seven, leaves room for both, and
+# still marks a class that holds too much.
+max-attributes = 10
+
 [tool.pylint."messages control"]
 # A disable that turns nothing off is reported, and fails the run, so that
 # none outlives its reason.

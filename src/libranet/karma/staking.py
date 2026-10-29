@@ -174,7 +174,7 @@ class StakedBlock:
     stakes: tuple[SignedStake, ...]
 
 
-class HeadStakes:  # pylint: disable=too-many-instance-attributes
+class HeadStakes:
     """Stakes on the best transaction block at the head's target, and takes others' stakes on it.
 
     The chain is the one ``history`` keeps, its blocks read from what

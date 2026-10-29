@@ -52,7 +52,7 @@ _ARCHIVES_KEY: Final = "archives"
 
 
 @dataclass(frozen=True)
-class KeptRecord:  # pylint: disable=too-many-instance-attributes
+class KeptRecord:
     """An archive written: what it keeps, plainly, when, how much, and until when.
 
     ``bundles`` are the plain ids of the bundles it keeps whole, and

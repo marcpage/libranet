@@ -79,7 +79,7 @@ class FalseBlock:
         return (self.builder,) if self.staker is None else (self.builder, self.staker)
 
 
-class FalseBuilders:  # pylint: disable=too-many-instance-attributes
+class FalseBuilders:
     """Has the node distrust, by ``trust``, whoever a false Karma block makes it distrust.
 
     The distrusts are placed by a job handed to ``in_background``, which runs

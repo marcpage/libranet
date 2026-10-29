@@ -136,7 +136,7 @@ class _Builds:
     lock: Lock = field(default_factory=Lock)
 
 
-class TrustBuilds:  # pylint: disable=too-many-instance-attributes
+class TrustBuilds:
     """The trust scores of each person signed in, each built behind their sign-in.
 
     Each build reads the lists it needs with ``lists``, as far as ``limits``

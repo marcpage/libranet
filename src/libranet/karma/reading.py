@@ -109,7 +109,7 @@ class HeldBlock:
     keys: Mapping[ContentId, bytes] = field(default_factory=dict)
 
 
-class TargetReader:  # pylint: disable=too-many-instance-attributes
+class TargetReader:
     """Reads what is placed at a target from ``content``, and asks the network for what it lacks.
 
     ``search`` scans ``content``, and what ``shunned`` names is left out.

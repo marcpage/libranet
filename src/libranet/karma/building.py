@@ -303,7 +303,7 @@ class FilledBlock:
         return BlockDrop(identity.signed(block.text()), block)
 
 
-class BlockBuilder:  # pylint: disable=too-many-instance-attributes
+class BlockBuilder:
     """Combines the blocks at the head's targets, and what is carried, into one (§5.6).
 
     The chain is the one ``history`` keeps, its blocks read from what
