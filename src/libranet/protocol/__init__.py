@@ -100,7 +100,7 @@ from libranet.protocol.karma_members import (
     moment_member,
 )
 from libranet.protocol.karma_payments import PAYMENTS_FILE, Payment, PaymentQueue
-from libranet.protocol.karma_requests import PaymentRequest, StakeRequest
+from libranet.protocol.karma_requests import NodePaymentRequest, PaymentRequest, StakeRequest
 from libranet.protocol.karma_stakes import SignedStake, Stake
 from libranet.protocol.karma_staking import (
     STAKE_PERCENT_FIELD,
@@ -207,6 +207,7 @@ __all__ = [
     "LocalSearch",
     "NodeListSender",
     "NodeMetadataRequest",
+    "NodePaymentRequest",
     "Password",
     "PasswordEncryption",
     "Payment",
