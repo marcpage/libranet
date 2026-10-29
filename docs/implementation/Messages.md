@@ -661,8 +661,8 @@ or reported, nor is the key a kept archive's bundle may carry.
   at a target it reads as it follows the chain, naming the block, the
   identity that signed it, the staker of such a stake, and what it states
   falsely (`karma/following.py`); and so for a block of a heavier chain it
-  weighs (`karma/changing.py`, Phase 6 Step 129). It logs it as a warning
-  too.
+  weighs (`karma/changing.py`, Phase 6 Step 129). It logs it at debug too,
+  as what anyone may place (Coding Style §9.3).
 - **Received by:** Web server, which has the node distrust the builder, and
   the staker, in its own trust list, placing the next version as `/config`
   does, in turn with the operator's changes, unless it distrusts them

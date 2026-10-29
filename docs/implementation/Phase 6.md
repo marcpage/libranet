@@ -1638,6 +1638,22 @@ My calls, not yet reviewed:
 - **A root asked for is made without first looking** for one already placed,
   which the next look would follow.
 
+Ruled after building (2026-10-29, #465):
+
+- **A peer's block that fails its checks is logged at debug**, not as a
+  warning, as Coding Style §9.3 has signed content that does not check,
+  since anyone may place it. That is a block found unsigned or false, here
+  and as Step 129 weighs a heavier chain, one shunned as no block of the
+  ledger (Step 129), a block at a target that is no block of its kind
+  (Step 134), and a transaction or a stake in one whose signature fails
+  (Steps 134 and 136). A block that cannot be checked is still a warning
+  where the node lacks what checking it takes, a hash algorithm or a way of
+  signing, or holds what it names otherwise than its id says, and is
+  otherwise debug too (`unchecked_level` in `karma/blocks.py`). A block of
+  another target stays at `INFO`, as Step 127's ruling has it, and the
+  distrust Step 127 places stays a warning, as a change to the node's own
+  trust list.
+
 ---
 
 ## Step 127 — Distrusting False Builders ✅

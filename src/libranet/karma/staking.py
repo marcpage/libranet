@@ -373,7 +373,7 @@ class HeadStakes:  # pylint: disable=too-many-instance-attributes
         except BundleSignatureError as error:
             if signed.hash not in self._passed_over:
                 self._passed_over.add(signed.hash)
-                _LOGGER.warning(
+                _LOGGER.debug(
                     "Passing over Karma stake %s, whose signature must check: %s",
                     signed.hash,
                     error,

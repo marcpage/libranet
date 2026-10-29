@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from itertools import count
-from logging import INFO, WARNING
+from logging import DEBUG, INFO, WARNING
 from typing import Iterable
 
 from pytest import LogCaptureFixture, fixture
@@ -475,12 +475,13 @@ def test_an_unsigned_block_is_shunned_once(
     hold(truth, root.transaction, root.validation, unsigned)
     hold_keys(truth, alice)
 
-    with caplog.at_level(WARNING):
+    with caplog.at_level(DEBUG):
         follower.look()
         follower.look()
 
     assert recorder.shunned(keys) == [id_of(unsigned)]
-    assert f"Shunning Karma block {id_of(unsigned)}, which is unsigned" in caplog.text
+    shunning = f"Shunning Karma block {id_of(unsigned)}, which is unsigned"
+    assert [r.levelno for r in caplog.records if shunning in r.getMessage()] == [DEBUG]
 
 
 def test_a_false_block_is_said_once_naming_its_builder_and_not_shunned(
@@ -499,7 +500,7 @@ def test_a_false_block_is_said_once_naming_its_builder_and_not_shunned(
     hold(truth, root.transaction, root.validation, false)
     hold_keys(truth, alice, bob)
 
-    with caplog.at_level(WARNING):
+    with caplog.at_level(DEBUG):
         follower.look()
         follower.look()
 
@@ -513,10 +514,8 @@ def test_a_false_block_is_said_once_naming_its_builder_and_not_shunned(
         }
     ]
     assert recorder.shunned(keys) == []
-    assert (
-        f"Karma block {id_of(false)}, built by {bob.node_id}, states something false: "
-        f"{statement}"
-    ) in caplog.text
+    said = f"Karma block {id_of(false)}, built by {bob.node_id}, states something false: "
+    assert [r.levelno for r in caplog.records if said + statement in r.getMessage()] == [DEBUG]
 
 
 def test_a_stake_more_than_what_covers_it_names_its_staker_too(
@@ -609,11 +608,12 @@ def test_a_block_naming_what_is_no_block_is_passed_over_and_logged(
     hold(truth, root.transaction, root.validation, first, naming, junk)
     hold_keys(truth, alice, bob)
 
-    with caplog.at_level(WARNING):
+    with caplog.at_level(DEBUG):
         assert len(follower.look()) == 1
         follower.look()
 
-    assert caplog.text.count(f"Passing over Karma block {id_of(naming)}, which cannot be") == 1
+    passing = f"Passing over Karma block {id_of(naming)}, which cannot be"
+    assert [r.levelno for r in caplog.records if passing in r.getMessage()] == [DEBUG]
     assert recorder.said(EventType.KARMA_FALSE_BLOCK) == []
     assert recorder.shunned({*keys, id_of(junk)}) == []
 
@@ -637,12 +637,16 @@ def test_a_block_validating_one_passed_over_is_passed_over_too(
     truth.write(id_of(root.transaction), b"Not the root")
     hold(truth, first, first_validation)
 
-    with caplog.at_level(WARNING):
+    with caplog.at_level(DEBUG):
         assert follower.look() == []
 
-    assert f"Passing over Karma block {id_of(first)}, which cannot be checked" in caplog.text
-    assert (
+    # What the node holds is not what its id names, but what names it is as
+    # anyone placed it.
+    held_wrongly = f"Passing over Karma block {id_of(first)}, which cannot be checked"
+    naming = (
         f"Passing over Karma block {id_of(first_validation)}, which cannot be checked: It names "
         f"{id_of(first)}, which is passed over"
-    ) in caplog.text
+    )
+    assert [r.levelno for r in caplog.records if held_wrongly in r.getMessage()] == [WARNING]
+    assert [r.levelno for r in caplog.records if naming in r.getMessage()] == [DEBUG]
     assert recorder.said(EventType.KARMA_FALSE_BLOCK) == []

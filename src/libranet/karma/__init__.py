@@ -40,6 +40,7 @@ from libranet.karma.blocks import (
     BlockFinding,
     TransactionBlock,
     ValidationBlock,
+    unchecked_level,
 )
 from libranet.karma.building import BlockBuilder, CombinedBlock, FilledBlock
 from libranet.karma.carried import CarriedTransactions
@@ -130,4 +131,5 @@ __all__ = [
     "new_kismet",
     "reach_of",
     "say_found",
+    "unchecked_level",
 ]

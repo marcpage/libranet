@@ -32,6 +32,7 @@ rule, states nothing false, and only scores zero (§5.5).
 from __future__ import annotations
 from dataclasses import dataclass
 from itertools import pairwise
+from logging import DEBUG, WARNING
 from re import compile as compile_pattern
 from typing import Any, Callable, Final, Generic, Mapping, Sequence, TypeVar
 from zlib import compress
@@ -39,8 +40,10 @@ from zlib import compress
 from libranet.bundle.errors import (
     BundleError,
     BundleSignatureError,
+    BundleVerificationError,
     MalformedBundleError,
     MissingContentError,
+    UnsupportedBundleError,
 )
 from libranet.bundle.signing import SIGNATURE_FIELD, SignedBundle
 from libranet.bundle.storing import STORAGE_COMPRESSION_LEVEL
@@ -701,6 +704,24 @@ class BlockDrop(Generic[_Block]):
                     return f"What {bundle.signer} signed in a block must check: {error}"
 
         return ""
+
+
+def unchecked_level(error: Exception) -> int:
+    """The level to log a block at that ``error`` keeps from being checked (Coding Style §9.3).
+
+    It is a warning if the block names a hash algorithm, or is signed in a
+    way, this node lacks, since the node may need an update, or if what the
+    node holds of it, or of a block it names, is not what its id names.
+    Otherwise what is wrong is the block's own, which anyone may place, and
+    it is debug.
+    """
+    if isinstance(error, BundleSignatureError):
+        return DEBUG
+
+    if isinstance(error, (UnknownAlgorithmError, UnsupportedBundleError, BundleVerificationError)):
+        return WARNING
+
+    return DEBUG
 
 
 def _optional_id(value: Mapping[str, object], name: str) -> ContentId | None:
