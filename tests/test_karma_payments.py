@@ -49,10 +49,14 @@ class Clock:
 
 
 class Placed:
-    """Stands in for the Karma module's storing, keeping each drop in the node's store."""
+    """Stands in for the Karma module's storing, keeping each drop in the node's store.
 
-    def __init__(self, truth: CasStore) -> None:
+    ``shunned`` is the node's shun list, which placing reads.
+    """
+
+    def __init__(self, truth: CasStore, shunned: ShunnedContent) -> None:
         self.truth = truth
+        self.shunned = shunned
         self.drops: list[bytes] = []
 
     def __call__(self, data: bytes, _node_id: ContentId) -> None:
@@ -151,8 +155,8 @@ def history(storage: StorageConfig) -> ChainHistory:
 
 
 @fixture
-def placed(truth: CasStore) -> Placed:
-    return Placed(truth)
+def placed(truth: CasStore, storage: StorageConfig) -> Placed:
+    return Placed(truth, ShunnedContent.of(storage))
 
 
 @fixture
@@ -197,7 +201,9 @@ def paying_as(
         history,
         reader,
         CarriedTransactions(storage.karma_dir, 3),
-        BlockPlacing(lambda: node, placed, block_seconds=0.0, drop_bits=MINIMUM_BITS),
+        BlockPlacing(
+            lambda: node, placed, shunned=placed.shunned, block_seconds=0.0, drop_bits=MINIMUM_BITS
+        ),
         bounds=BOUNDS,
     )
     return NodePayments(

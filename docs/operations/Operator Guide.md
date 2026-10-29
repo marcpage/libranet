@@ -542,7 +542,10 @@ nonce for `karma.block_seconds`, which holds up its other Karma work, unless
 a block there already holds every transaction it would take. With none to
 take, and no correct block there, it places a block of the payout alone,
 which pays the last generation's reward, so that the balances it leaves are
-stated there. `libranet-karma.log` says each block it builds, how many
+stated there. It builds nothing while a block found there is not held, and
+is being fetched, until it comes or `karma.fetch_wait_seconds` pass, so that
+a block it let go of to eviction does not have it build again one it shuns;
+and it never stores a block it builds that comes out as one it shuns. `libranet-karma.log` says each block it builds, how many
 transactions it holds, and whether it is full.
 
 Each time it looks and each time it builds, the node shuns each smaller block

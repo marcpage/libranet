@@ -35,7 +35,11 @@ be taken: the same blocks build the same block, so each new transaction
 builds one more. With no transaction to take, and no such block held, a
 block holding only the payout is built, so that the balances the head's
 reward leaves are stated at the target, where those it pays may spend it
-(§7.4).
+(§7.4). Nothing is built while a block found at the head's transaction
+target is not held, until it comes, or ``karma.fetch_wait_seconds`` pass
+from when it was first found lacking: the node may have let it go to
+eviction, and building without it would build again a block it let go of
+for that one, which it shuns.
 
 A block held at the head's transaction target whose transactions are all in
 another held there of the same generation, correct but perhaps for not
@@ -347,7 +351,9 @@ class BlockBuilder:
         It is built of the transactions in the blocks held at that target,
         and at the targets of the head's false starts (§3.4), and those
         carried, or of the payout alone, if there are none, and no correct
-        block is held there. A block of the chain it lacks is asked for, and
+        block is held there. None is built while a block found at that target
+        is not held, and is waited for: it is built once that comes, or is
+        given up on. A block of the chain it lacks is asked for, and
         it is built as this is next called; one that cannot be built for an
         error of the system, or because what it is built of cannot be read,
         is logged.
@@ -358,6 +364,12 @@ class BlockBuilder:
             return
 
         at_target = self._at_target(head)
+
+        if self._reader.awaits(GenerationTargets.after(head.validation).transaction):
+            # Not logged: what it lacks is asked for, and it is built once that
+            # comes, or is given up on.
+            return
+
         offered = [
             signed
             for _, drop in [*at_target, *self._parsed(self._false_starts(head))]
@@ -675,6 +687,10 @@ class BlockBuilder:
                 during the search, or the drop could not be written.
         """
         drop = self._placing.placed(filled.drop, GenerationTargets.after(head).transaction)
+
+        if drop is None:
+            return
+
         compressed_bytes = len(compress(drop.data, STORAGE_COMPRESSION_LEVEL))
         _LOGGER.info(
             "Built Karma transaction block %s of %d transactions, %d bytes compressed, %s, "

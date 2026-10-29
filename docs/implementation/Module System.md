@@ -503,7 +503,9 @@ head's transaction target, and at the transaction targets of the head's
 rivals, and the transactions it carries, into one block, as full as it can
 be, and places it as it places one of its own, unless a block it holds there
 already holds every transaction it would take; with none to take, and no
-correct block held there, it places a block of the payout alone (`BlockBuilder`,
+correct block held there, it places a block of the payout alone, and it
+builds nothing while a block found there is being fetched, for up to
+`karma.fetch_wait_seconds` (`BlockBuilder`,
 `karma/building.py`, Phase 6 Step 134). After each look and each build, it
 shuns (`data.shunned`) each transaction block at its head's transaction
 target whose transactions are all in another it holds there, correct, holding

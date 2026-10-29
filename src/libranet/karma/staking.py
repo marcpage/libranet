@@ -622,6 +622,10 @@ class ValidationBuilder:
                 during the search, or the drop could not be written.
         """
         placed = self._placing.placed(drop, target)
+
+        if placed is None:
+            return
+
         _LOGGER.info(
             "Built Karma validation block %s of %d stakes and %d witnesses, validating %s, "
             "naming %s its runner-up, sharing %d bits with its target",

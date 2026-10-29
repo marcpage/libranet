@@ -148,6 +148,7 @@ from libranet.bundle.storing import HASH_ALGORITHM, store_object
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import NonceSearchers
 from libranet.cas.layered import LayeredSource
+from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
 from libranet.identity.node_identity import NodeIdentity
@@ -307,6 +308,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         placing = BlockPlacing(
             partial(NodeIdentity.load, self._config),
             self._stored,
+            shunned=ShunnedContent.of(self._config.storage),
             block_seconds=self._config.karma.block_seconds,
             drop_bits=self._config.storage.search_min_bits,
             searchers=self._searchers,

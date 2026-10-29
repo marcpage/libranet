@@ -32,10 +32,14 @@ NOT_FULL = BlockBounds(most_bytes=MIB, room_bytes=1_000, transaction_bits=0)
 
 
 class Placed:
-    """Stands in for the Karma module's storing, keeping each drop in the node's store."""
+    """Stands in for the Karma module's storing, keeping each drop in the node's store.
 
-    def __init__(self, truth: CasStore) -> None:
+    ``shunned`` is the node's shun list, which placing reads.
+    """
+
+    def __init__(self, truth: CasStore, shunned: ShunnedContent) -> None:
         self.truth = truth
+        self.shunned = shunned
         self.drops: list[bytes] = []
         self.builders: list[ContentId] = []
 
@@ -124,8 +128,8 @@ def carried(storage: StorageConfig) -> CarriedTransactions:
 
 
 @fixture
-def placed(truth: CasStore) -> Placed:
-    return Placed(truth)
+def placed(truth: CasStore, storage: StorageConfig) -> Placed:
+    return Placed(truth, ShunnedContent.of(storage))
 
 
 def putting_up(
@@ -141,7 +145,9 @@ def putting_up(
         history,
         reader,
         carried,
-        BlockPlacing(lambda: carol, placed, block_seconds=0.0, drop_bits=MINIMUM_BITS),
+        BlockPlacing(
+            lambda: carol, placed, shunned=placed.shunned, block_seconds=0.0, drop_bits=MINIMUM_BITS
+        ),
         bounds=bounds,
     )
 
