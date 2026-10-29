@@ -124,27 +124,37 @@ class _Scheme(Protocol):
         ...
 
 
-# Its methods are documented on _Scheme, which they implement.
 @dataclass(frozen=True)
-class _Aes256CbcScheme:  # pylint: disable=missing-function-docstring
+class _Aes256CbcScheme:
     """AES-256-CBC with PKCS#7 padding, keyed as ``derivation`` names."""
 
     derivation: str
 
     @property
     def descriptor(self) -> str:
+        """``PW-{derivation}-AES256-CBC``, without an IV."""
         return DESCRIPTOR_FIELD_SEPARATOR.join(
             (_DESCRIPTOR_PREFIX, self.derivation, "AES256", "CBC")
         )
 
     @property
     def iv_bytes(self) -> int:
+        """One AES block, 16 bytes. The default IV is that many zero bytes (§6.3)."""
         return BLOCK_BYTES
 
     def encrypt(self, plaintext: bytes, key: bytes, iv: bytes) -> bytes:
+        """``plaintext`` padded with PKCS#7, and encrypted with AES-256-CBC."""
         return Aes256Cbc(key, iv).encrypt(plaintext)
 
     def decrypt(self, ciphertext: bytes, key: bytes, iv: bytes) -> bytes:
+        """``ciphertext`` decrypted with AES-256-CBC, with its PKCS#7 padding removed.
+
+        Raises:
+            MalformedBundleError: ``ciphertext`` is empty, or not whole AES
+                blocks.
+            IncorrectPasswordError: ``key`` does not decrypt it to padded
+                plaintext.
+        """
         if not ciphertext or len(ciphertext) % BLOCK_BYTES:
             raise MalformedBundleError("Password-protected bundle is not whole AES blocks")
 

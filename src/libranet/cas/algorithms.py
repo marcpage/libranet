@@ -47,22 +47,25 @@ class HashAlgorithm(Protocol):
         ...
 
 
-# Its methods are documented on HashAlgorithm, which they implement.
-class Sha256Algorithm:  # pylint: disable=missing-function-docstring
+class Sha256Algorithm:
     """SHA-256, the only algorithm supported in v1."""
 
     @property
     def name(self) -> str:
+        """``sha256``, as URLs and the store name it."""
         return "sha256"
 
     @property
     def hex_length(self) -> int:
+        """64, the hexadecimal characters in a 32-byte SHA-256 digest."""
         return 64
 
     def hexdigest(self, data: bytes) -> str:
+        """Lower-case hexadecimal SHA-256 digest of ``data``."""
         return sha256(data).hexdigest()
 
     def hasher(self) -> Hasher:
+        """A new incremental SHA-256 digest, for data not held in memory all at once."""
         return sha256()
 
 
