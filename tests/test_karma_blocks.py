@@ -35,11 +35,13 @@ from libranet.karma.blocks import (
 from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets, new_kismet
 from libranet.karma.weight import ChainWeight
+from libranet.messaging.events import EventType
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import Balance
 from libranet.protocol.karma_stakes import SignedStake, Stake
 from libranet.protocol.karma_transactions import Payout, SignedTransaction, Transaction
 from tests.helpers import new_identity
+from tests.karma_chains import Recorder
 
 CREATED = datetime(2026, 10, 21, 14, 3, 22, tzinfo=UTC)
 CAROL = ContentId("sha256", "7c" * 32)
@@ -941,3 +943,33 @@ def test_a_block_not_checked_for_what_the_node_lacks_or_holds_wrongly_is_a_warni
 )
 def test_a_block_not_checked_for_what_is_wrong_with_it_is_debug(error: Exception) -> None:
     assert unchecked_level(error) == DEBUG
+
+
+def test_a_block_found_unsigned_is_said_shunned() -> None:
+    block_id = ContentId.for_data(b"Unsigned", "sha256")
+    recorder = Recorder()
+
+    BlockFinding("Not a signed bundle").say(recorder, block_id)
+
+    assert recorder.messages == [(EventType.DATA_SHUNNED, block_id.fields())]
+
+
+def test_a_block_found_false_is_said_naming_its_builder_and_staker(
+    alice: NodeIdentity, bob: NodeIdentity
+) -> None:
+    block_id = ContentId.for_data(b"False", "sha256")
+    recorder = Recorder()
+
+    BlockFinding("A stake exceeds what covers it", bob.node_id, alice.node_id).say(
+        recorder, block_id
+    )
+
+    assert recorder.said(EventType.KARMA_FALSE_BLOCK) == [
+        {
+            "block": str(block_id),
+            "builder": str(bob.node_id),
+            "staker": str(alice.node_id),
+            "statement": "A stake exceeds what covers it",
+        }
+    ]
+    assert recorder.said(EventType.DATA_SHUNNED) == []
