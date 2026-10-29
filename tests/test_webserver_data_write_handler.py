@@ -1,6 +1,7 @@
 """Tests for the upload handler, called through a router without a server."""
 
 from __future__ import annotations
+from dataclasses import replace
 from io import BytesIO
 from json import loads
 from logging import DEBUG, WARNING
@@ -32,6 +33,7 @@ from libranet.problems import (
 from libranet.webserver.data_handler import DATA_PATTERN
 from libranet.webserver.data_write_handler import DataWriteHandler
 from libranet.webserver.http_types import Request, RequestBody
+from libranet.webserver.inbound_peers import InboundPeers
 from libranet.webserver.router import Router
 from libranet.webserver.signature_guard import SignatureGuard
 
@@ -105,6 +107,17 @@ def signed_request(
     return Request(
         "PUT", path, headers=headers, body=RequestBody.of(body if sent is None else sent)
     )
+
+
+class Pushes(InboundPeers):
+    """The peers connected, keeping each upload noted on a connection rather than judging it."""
+
+    def __init__(self, queues: ModuleQueues) -> None:
+        super().__init__(StubModule(ModuleName.WEBSERVER, queues).publish)
+        self.noted: list[tuple[ContentId, ContentId]] = []
+
+    def pushed(self, node_id: ContentId, content_id: ContentId) -> None:
+        self.noted.append((node_id, content_id))
 
 
 def announced(queues: ModuleQueues) -> list[dict[str, object]]:
@@ -355,6 +368,20 @@ def test_content_already_held_is_not_written_again(
     assert request.body.consumed
     assert not CasStore.for_node(storage, known.node_id).exists(CONTENT_ID)
     assert published(queues) == []
+
+
+def test_an_upload_for_the_validator_is_noted_on_its_connection_and_one_held_is_not(
+    router: Router, truth: CasStore, queues: ModuleQueues, known: NodeIdentity
+) -> None:
+    pushes = Pushes(queues)
+    held = b"held already"
+    truth.write(ContentId.for_data(held, "sha256"), held)
+
+    for body in (CONTENT, held):
+        request = signed_request(known, body, ContentId.for_data(body, "sha256"))
+        router.dispatch(replace(request, connection=pushes.connection()))
+
+    assert pushes.noted == [(known.node_id, CONTENT_ID)]
 
 
 def test_content_already_held_still_needs_a_signature(router: Router, truth: CasStore) -> None:

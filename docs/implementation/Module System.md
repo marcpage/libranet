@@ -1487,7 +1487,12 @@ main thread. A connection counts for a peer from its first request whose
 signature that peer's key verifies until the connection closes, and a list
 of every peer connected goes out as `peers.connected` whenever one comes
 or goes. The main thread reads it only to answer
-`peers.connected_requested`.
+`peers.connected_requested`. Its `ClientKeeping`, which request threads
+alone use, counts each peer's requests and notes when it last pushed what
+`seek.json` asks for. Past its first `network.client_grace_requests`, a
+peer holding less Karma than the median of those connected, as
+`karma/balances.json` states it, is closed once it has pushed nothing sought
+for `network.client_value_seconds` (Phase 6 Step 142).
 
 Two more hold who is signed in, and are kept in the web server's memory
 alone (Phase 4 Step 79, Phase 5 Step 99). `Sessions` is shared among

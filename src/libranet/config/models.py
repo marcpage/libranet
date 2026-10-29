@@ -211,6 +211,14 @@ class NetworkConfig(_Section):
     # 4 Step 79). Signing out, or the web server stopping, ends one sooner.
     session_idle_seconds: float = Field(default=DEFAULT_SESSION_IDLE_SECONDS, gt=0)
 
+    # Past a client's first client_grace_requests requests, through which
+    # its first-contact exchange is answered, it is closed if its Karma is
+    # below the median of the clients connected and it has pushed nothing
+    # this node seeks for client_value_seconds. One of more Karma is kept
+    # (HandshakeProtocol §5.2, Phase 6 Step 142).
+    client_grace_requests: int = Field(default=12, ge=0)
+    client_value_seconds: float = Field(default=600.0, gt=0)
+
     # The hosts `/config` is served as, beside the name this machine gives
     # itself (served_as). A request there whose `Host` header names any other
     # is refused, so a site that points a name of its own at this machine is

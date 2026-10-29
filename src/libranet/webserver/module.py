@@ -24,7 +24,9 @@ reports its jobs, restores, and imports are doing, ``backup.state`` (Step
 19), for request threads on either port to answer from. It also takes the
 eviction module's ``peers.connected_requested``, answered with the peers
 connected to the server (:mod:`libranet.webserver.inbound_peers`), which are
-named once as the server starts too (Phase 2 Step 53). And it takes what came
+named once as the server starts too (Phase 2 Step 53), and which are kept
+connected, or closed, by their Karma and what they push
+(:mod:`libranet.webserver.client_keeping`, Phase 6 Step 142). And it takes what came
 of each dial ``/config`` asked the connection manager for, ``address.dialed``,
 which wakes the request waiting on it (Phase 5 Step 109).
 
@@ -60,6 +62,7 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.backup_state import BackupReport, BackupState
+from libranet.webserver.client_keeping import ClientKeeping
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.costly_work import CostlyWork
@@ -107,7 +110,9 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
         self._app_outcomes = ApplicationOutcomes()
         self._backup_state = BackupState()
         self._dial_outcomes = DialOutcomes()
-        self._inbound_peers = InboundPeers(self.publish)
+        self._inbound_peers = InboundPeers(
+            self.publish, keeping=ClientKeeping.of(config, clock=clock)
+        )
         self._peers: PeerTrust | None = None
         self._false_builders: FalseBuilders | None = None
         self._server: LibranetHTTPServer | None = None

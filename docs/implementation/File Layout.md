@@ -547,9 +547,10 @@ the file once it comes, so the file may name the head before `head.json`'s
 until then (`HeadBalances` in `src/libranet/karma/balances.py`, Phase 6 Step
 128). The web server reads it (`KarmaBalances` in
 `src/libranet/protocol/karma_balances.py`) for `GET /data/karma` and
-`GET /data/karma/balances/{algorithm}/{hash}`. The stats module reads it at
-each derivation, to put the nodes of more Karma first in the node and
-candidate lists (§4.1, Phase 6 Step 141).
+`GET /data/karma/balances/{algorithm}/{hash}`, and again once it is
+replaced, to keep connected the peers of more Karma (Phase 6 Step 142). The
+stats module reads it at each derivation, to put the nodes of more Karma
+first in the node and candidate lists (§4.1, Phase 6 Step 141).
 
 `carried.json` is each transaction of a chain the module left for a heavier
 one that the heavier one does not hold, which it carries over into the
@@ -669,7 +670,7 @@ since none of them may open SQLite.
 | File | Read by | Bounded by |
 | --- | --- | --- |
 | `nodes.json` | Web server (`GET /data/nodes`); connection manager (the list it sends peers, and the nodes it newly names) | `stats.max_list_bytes` |
-| `seek.json` | Web server (`GET /data/seek`); connection manager | `stats.max_list_bytes`, `stats.seek_entry_ttl_seconds` |
+| `seek.json` | Web server (`GET /data/seek`, and what keeps a peer connected); connection manager | `stats.max_list_bytes`, `stats.seek_entry_ttl_seconds` |
 | `candidates.json` | Connection manager, choosing whom to dial | `stats.max_addresses_per_node` |
 | `shunned.json` | Web server, validator, and fetcher, refusing shunned content (`src/libranet/cas/shunned.py`) | Nothing: every shunning the database holds |
 | `peers.json` | Web server (`GET /data/peers`, for local clients' pages) | `stats.max_peers_listed` |
@@ -682,7 +683,9 @@ on their next refresh (Phase 4 Step 93). `peers.json` says when it was
 derived, so it is written at every derivation (Phase 5 Step 107).
 `nodes.json` and `candidates.json` put the nodes of more Karma first, as
 `karma/balances.json` (§3.11) states it when they are derived (Phase 6 Step
-141).
+141). The web server reads `seek.json` again once it is replaced, and keeps
+connected a peer of less Karma than the others that pushes what it names
+(Phase 6 Step 142).
 
 Until a list has been derived, the web server answers requests for it with
 `503` and a `Retry-After` of `network.retry_after_seconds`.

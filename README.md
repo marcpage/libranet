@@ -86,7 +86,8 @@ see [Project Status](#project-status).
   which node it is talking to.
 - **Fairness.** Priority for nodes that
   [add more to the network than they take](docs/specs/Karma.md): nodes
-  connect first to those holding more Karma, and list them first.
+  connect first to those holding more Karma, list them first, and keep
+  them connected when they bring nothing, closing those holding less.
 
 [Vote for the next feature](https://github.com/marcpage/libranet/issues?q=is%3Aissue+state%3Aopen+sort%3Areactions-%2B1+label%3Aenhancement)
 by giving a Thumbs Up to the description of your favorite issues.
@@ -269,7 +270,7 @@ applications, and running test networks and super nodes.
 | Phase 3 — video playback, steps 64–77 | Implemented |
 | Phase 4 — user accounts, steps 30, 78–82, and 89–93 | Implemented |
 | Phase 5 — the trust network, steps 94 and 96–114 | Implemented |
-| Phase 6 — Karma, steps 56 and 116–142 | Steps 56 and 116–141 implemented |
+| Phase 6 — Karma, steps 56 and 116–142 | Implemented |
 | Phase 7 — enhancements, steps 16, 50, 57, and 95 | Planned |
 | Phase 8 — a seed node, step 84 | Planned |
 | Improving the movie application, steps 83 and 85–88 | Planned |
@@ -289,15 +290,13 @@ network (each person's trust list, and scores built from it at sign-in,
 and the node's own, which say which nodes it connects to),
 what nodes say of themselves, trusted and sandboxed applications, the Karma
 ledger's chain, followed, built, paid, and staked in, shown in the
-applications, and ordering the nodes a node connects to and lists (steps 56
-and 116–141), and the movie library, user directory, mail, nodes, and Karma
-applications.
+applications, ordering the nodes a node connects to and lists, and keeping
+the peers connected to it by Karma (steps 56 and 116–142), and the movie
+library, user directory, mail, nodes, and Karma applications.
 
 Deliberately deferred, and specified but not yet built:
 
 - HTTPS/TLS — v1 is HTTP only
-- The rest of the [Karma/Kismet](docs/specs/Karma.md) incentive layer:
-  servers keeping the clients of more Karma connected longer
 - mDNS/DNS-SD discovery on the local network
 - Reading into a signed bundle as a bundle (Bundle Specification §5), and
   password-protected applications (HTTP API §13.1)

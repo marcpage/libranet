@@ -33,6 +33,10 @@ is announced as the validator announces what it stores, so that it counts
 as content held (Phase 2 Step 28)::
 
     data.stored  {"algorithm", "hash", "node_id": "sha256/<hex>", "size"}
+
+An upload written for the validator is noted on the connection it came on,
+since pushing what this node seeks keeps the signer connected (Phase 6 Step
+142).
 """
 
 from __future__ import annotations
@@ -125,6 +129,10 @@ class DataWriteHandler:
             EventType.PUT_COMPLETED,
             {**content_id.fields(), "node_id": str(result.node_id)},
         )
+
+        if request.connection is not None:
+            request.connection.pushed(result.node_id, content_id)
+
         return Response(HTTPStatus.ACCEPTED)
 
 

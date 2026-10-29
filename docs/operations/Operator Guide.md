@@ -133,6 +133,8 @@ The settings an operator is most likely to change:
 | `network.listen_port` | `8080` | The port it listens on, for peers, applications, and `/data` |
 | `network.external_address`, `network.external_port` | `null` | The address and port it tells peers to reach it at, when they differ from what peers see |
 | `network.config_port` | `null` | `/config`'s port (§4.1) |
+| `network.client_grace_requests` | `12` | How many requests a peer connected to the node is kept for, whatever its Karma (§4.8) |
+| `network.client_value_seconds` | `600.0` | How long a peer holding less Karma than the median of those connected is kept, after those requests, once it pushes nothing the node seeks (§4.8) |
 | `peers.seed_file` | `null` | The node's first peers (§3.1) |
 | `storage.max_storage_bytes` | `null` | The most bytes of content the node keeps; `null` is no limit |
 | `storage.min_free_bytes` | `1073741824` | The free space the node keeps on its disk |
@@ -597,6 +599,20 @@ as before. It reads `karma/balances.json` for this each time it works out
 its lists, about every minute (`stats.derive_interval_seconds`); one it
 cannot read `libranet-stats.log` (§7.2) warns of, and it orders no node by
 Karma until it can.
+
+The node keeps the peers holding more Karma connected to it, too. A peer
+that connects to the node is kept for its first `network.client_grace_requests`
+requests, 12 by default (§3), enough to exchange node lists and push what
+the node seeks. After that, one holding less Karma than the median of the
+peers connected is closed once it has pushed nothing the node seeks for
+`network.client_value_seconds`, ten minutes by default; the node answers
+the request it is serving first. `libranet-webserver.log` says each peer it
+closes, with the Kismet the peer holds and the median. A peer holding the
+median or more is kept however little it pushes, so while the node follows
+no chain, and none holds any, none is closed. A peer that is closed may
+connect again, and is kept for its first requests again. A
+`karma/balances.json`, or a seek list, the web server cannot read
+`libranet-webserver.log` warns of, and it goes on by what it read before.
 
 ## 5. Backing Up and Restoring
 

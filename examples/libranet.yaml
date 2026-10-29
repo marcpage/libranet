@@ -65,6 +65,15 @@ network:
   # session sooner.
   session_idle_seconds: 86400.0
 
+  # How long a peer connected to this node is kept when it holds less Karma
+  # than the median of the peers connected (Handshake Protocol §5.2). Past
+  # its first client_grace_requests requests, through which it exchanges
+  # node lists, such a peer is closed once it has pushed nothing this node
+  # seeks for client_value_seconds. A peer holding the median's Karma or
+  # more is kept, so none is closed while the node follows no Karma chain.
+  client_grace_requests: 12
+  client_value_seconds: 600.0
+
   # The hosts /config is served as, beside the name this machine gives
   # itself (such as macbook.local), which it is always served as. A /config
   # request whose Host header names any other host is refused, so that a

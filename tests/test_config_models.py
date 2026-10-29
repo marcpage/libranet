@@ -91,6 +91,19 @@ def test_a_session_ends_after_a_day_unused_by_default_and_never_at_once() -> Non
             NetworkConfig(session_idle_seconds=wrong)
 
 
+def test_a_client_is_kept_for_its_first_12_requests_and_ten_minutes_by_default() -> None:
+    assert NetworkConfig().client_grace_requests == 12
+    assert NetworkConfig().client_value_seconds == 600.0
+    assert NetworkConfig(client_grace_requests=0).client_grace_requests == 0
+
+    with raises(ValidationError):
+        NetworkConfig(client_grace_requests=-1)
+
+    for wrong in (0, -1):
+        with raises(ValidationError):
+            NetworkConfig(client_value_seconds=wrong)
+
+
 def test_a_drop_may_be_searched_for_a_minute_and_to_32_bits_by_default() -> None:
     assert NetworkConfig().drop_max_seconds == 60.0
     assert NetworkConfig().drop_max_minimum_bits == 32
@@ -822,6 +835,16 @@ def test_the_example_config_states_the_default_session_idle_time() -> None:
         LibranetConfig.load(example).network.session_idle_seconds
         == NetworkConfig().session_idle_seconds
     )
+
+
+def test_the_example_config_states_the_default_keeping_of_clients() -> None:
+    example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
+    stated = safe_load(example.read_text(encoding="utf-8"))["network"]
+    settings = ("client_grace_requests", "client_value_seconds")
+
+    assert {name: stated[name] for name in settings} == {
+        name: getattr(NetworkConfig(), name) for name in settings
+    }
 
 
 def test_the_example_config_states_the_default_person_key_sizes() -> None:
