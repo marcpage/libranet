@@ -15,7 +15,8 @@ at, as ``head.json`` names it (:mod:`libranet.protocol.karma_head`)::
 each of the head's members ``null``, and ``balances`` empty, while it
 follows no chain. An identity it does not name holds nothing, and has won
 nothing: ``{"kismet": "0", "last_won": null}``. The web server reads it here,
-since it loads none of the Karma module's code (Module System §2).
+and the stats module, to order the nodes it lists by Karma (Phase 6 Step
+141), since neither loads the Karma module's code (Module System §2).
 """
 
 from __future__ import annotations

@@ -376,6 +376,12 @@ A node chooses its peers only among the nodes it allows: never one its own
 trust scores call untrusted, and, if its operator says so, only those they
 call trusted (Trust Network §4.5).
 
+Among those, it prefers the nodes it has reached before to the rest, and
+within each, the nodes of more Karma, as the chain it follows states their
+balances (Handshake Protocol §5.1). It fills each bucket with the best node
+it knows there, so it connects to a node of more Karma wherever it has a
+choice, and to no fewer for it: holding no Karma leaves no node out.
+
 ### 4.7 Request Routing Algorithm
 
 When a node receives a request for data that it does not hold locally, or a

@@ -249,10 +249,12 @@ report, and records each in one small statement. Every
 `stats.derive_interval_seconds` it rewrites the node, seek, candidate,
 shunned, and peer lists into `lists/`, which the web server, connection
 manager, validator, and fetcher read as plain files, and publishes
-`nodes.updated` when the candidate list or node list changed. It keeps the peers
-connected each way in memory, as `peers.connected` names them, for the peer
-list (Phase 5 Step 107), and asks for them as it starts. It keeps the
-content the node has shunned
+`nodes.updated` when the candidate list or node list changed. It puts the
+nodes of more Karma first in those two, as the Karma module's
+`karma/balances.json` states it, read at each derivation (Phase 6 Step 141).
+It keeps the peers connected each way in memory, as `peers.connected` names
+them, for the peer list (Phase 5 Step 107), and asks for them as it starts.
+It keeps the content the node has shunned
 (`data.shunned`, Phase 4 Step 30), and writes the shunned list at once when
 that grows, and the seek list when a search names a prefix it does not list
 (Phase 4 Step 93). It keeps whom the node trusts and distrusts, as the web
@@ -466,9 +468,10 @@ processes, stores both drops straight into `cas/data`, as the backup module
 stores what it makes, announces each with `data.stored`, and then follows the
 root. Each time its head changes, and as it first looks, it writes every
 balance the chain states at the head to `balances.json`, for the web server's
-`/data/karma` (`HeadBalances`, `karma/balances.py`, Phase 6 Step 128); a
-transaction block those are read from that it lacks it asks for, and writes
-them once it comes. Each signed transaction it is given to put up
+`/data/karma` and the order of the stats module's lists (`HeadBalances`,
+`karma/balances.py`, Phase 6 Steps 128 and 141); a transaction block those
+are read from that it lacks it asks for, and writes them once it comes.
+Each signed transaction it is given to put up
 (`karma.transaction`, which the web server publishes for each payment a
 person makes through the node, Phase 6 Step 137) it checks against the chain
 (`TransactionsPutUp`, `karma/putting.py`, Phase 6 Step 131): one that is
@@ -527,7 +530,7 @@ Step 137), each kept until its head changes.
 | The application registry | Web server | — |
 | Applications' stores in `store/` | Web server | — |
 | Backup jobs and the backup secret | Backup | The web server publishes `backup.*` requests |
-| The Karma history in `karma/` | Karma | The web server reads its head, `head.json`, its generations, and the balances stated at the head, `balances.json`; `/config` publishes `karma.root_requested` |
+| The Karma history in `karma/` | Karma | The web server reads its head, `head.json`, its generations, and the balances stated at the head, `balances.json`, which stats reads too; `/config` publishes `karma.root_requested` |
 | The search cache in `search/` | Web server | Stats rewrites a cached result to add identifiers |
 
 Adding to `cas/data` is shared more widely than promoting into it: the
@@ -1434,7 +1437,7 @@ data moves through files, and a message tells the reader where to look.
 | `store/` | Web server | Web server | — |
 | `backup_jobs.json` | Backup | Backup | — |
 | `backup_jobs/` | Backup | Backup | — |
-| `karma/` | Karma | Karma; web server, `head.json`, `generations/`, `balances.json` | Nothing; read when needed |
+| `karma/` | Karma | Karma; web server, `head.json`, `generations/`, `balances.json`; stats, `balances.json` | Nothing; read when needed |
 | `keys/` | Supervisor; backup; web server | Modules that need them, in `on_start`; Karma, as it makes a root | — |
 | The folders `local.folders` offers | — | Web server, listing them and finding a file to import; backup, reading that file | `backup.import_requested`, which names the file |
 

@@ -3052,7 +3052,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 140 — Karma Shown Throughout
+## Step 140 — Karma Shown Throughout ✅
 
 **Kind:** improvement in UI. **Issue:** #458, under #87.
 **Depends on:** Steps 128 and 139.
@@ -3138,8 +3138,8 @@ My calls, not yet reviewed:
 
 ## Step 141 — Ordering Nodes by Karma
 
-**Kind:** improvement in behavior. **Issue:** none yet; planned under
-#87. **Depends on:** Step 128.
+**Kind:** improvement in behavior. **Issue:** #459, under #87.
+**Depends on:** Step 128.
 
 A client may prefer servers of higher Karma (HandshakeProtocol §5.1), and
 a node list is ordered by it (HttpApi §10.6), in place of the simpler
@@ -3160,6 +3160,41 @@ Work this implies:
 
 **Testable in isolation:** derivation tests of both lists, with balances
 and without; a node of no balance never left out for it alone.
+
+It came to 72 added lines of non-test Python, with 16 changed or removed,
+and 135 lines of tests, so it was built as one change set.
+
+What was built:
+
+- **`ListDeriver`** (`stats/derivation.py`) reads `karma/balances.json` with
+  `KarmaBalances.read` once at each derivation, as the Kismet each node the
+  chain names holds. It sorts the node list's peers by it, the most first,
+  and the candidate list with the nodes reached first, then by it, the most
+  first. The sorts are stable, so nodes of equal Karma keep the order the
+  database gives, as before. A file it cannot read it logs as a warning, and
+  orders no node by Karma; while the node follows no chain, none holds any.
+- **`StatsDatabase.reached_nodes()`**: the nodes reached at an address they
+  have now, the same test `candidate_endpoints` orders them by.
+- HighLevelDesign §4.6, HandshakeProtocol §5.1, HttpApi §10.6; the Operator
+  Guide's §4.8 and §7.3; the Module System, File Layout, and Database Schema
+  documents; and the README.
+
+My calls, not yet reviewed:
+
+- **Karma is sorted in Python, not in SQL**: the balances are in a file the
+  Karma module writes, not in the database, and a list of a few thousand
+  nodes sorts at once. The queries are unchanged, and their docstrings still
+  say the order they give.
+- **A file that cannot be read is warned of at each derivation**, about once
+  a minute, as `_write_if_changed` warns of a list it cannot read, rather
+  than once until it reads again; the Karma module rewrites it whole at each
+  head, so a fault should not last.
+- **The peer list (`/data/peers`) is not ordered by Karma**: it is ordered
+  by connection, for the nodes application, which shows each node's Karma
+  since Step 140.
+- **Connections already open are not closed for a node of more Karma**: the
+  peer mix closes no working connection for a better one (Phase 2 Step 25),
+  so the order counts only when it dials, to fill what the mix lacks.
 
 ---
 

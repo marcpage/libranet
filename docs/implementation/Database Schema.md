@@ -484,6 +484,7 @@ stats first deletes the seek entries and addresses that are past keeping
 | `last_good_endpoints` | Each derivation | `node_addresses` | Whole table, with a window function |
 | `candidate_endpoints` | Each derivation | `node_addresses` | Whole table, with two window functions |
 | `given_up_nodes` | Each derivation | `node_stats` | Whole table |
+| `reached_nodes` | Each derivation | `node_addresses` | Whole table |
 | `all_node_stats` | Each derivation | `node_stats` | Whole table |
 | `all_node_addresses` | Each derivation | `node_addresses` | Whole table, sorted |
 | `seek_values` | Each derivation, and each new search, once for each kind | `seek_entries` | Primary key prefix, then sorted |
@@ -515,8 +516,8 @@ its contents change.
 
 | File | Built from | Order |
 | --- | --- | --- |
-| `nodes.json` | This node's own endpoints, then `last_good_endpoints` | Each node's last reached address, if it has not failed since; most recently reached first |
-| `candidates.json` | `candidate_endpoints`, less `given_up_nodes` | Nodes that have been reached first, most recently first, then the rest, most recently learned first |
+| `nodes.json` | This node's own endpoints, then `last_good_endpoints` | Each node's last reached address, if it has not failed since; most Karma first, then most recently reached first |
+| `candidates.json` | `candidate_endpoints`, less `given_up_nodes`, with `reached_nodes` | Nodes that have been reached first, then the rest; in each, most Karma first, then the most recently reached, or of the rest the most recently learned, first |
 | `seek.json` | `seek_values` for this node, of each kind | Most recently asked for first |
 | `shunned.json` | `shunned_ids` | By hash |
 | `peers.json` | `all_node_stats` and `all_node_addresses`, with the peers connected now | Those connected first, then the most recently connected, then the most recently learned of; up to `stats.max_peers_listed` (1000) |
@@ -525,6 +526,12 @@ A node is given up on while its `consecutive_failures` is at least
 `stats.max_node_failures` (5) and its `last_failure` is within the last
 `stats.node_cool_off_seconds` (86400). Every read of `node_addresses` for a
 list leaves out this node's own id.
+
+A node's Karma is not in the database: stats reads `karma/balances.json`
+(File Layout §3.11) at each derivation, and sorts the two lists by it in
+Python, keeping the order the queries give among nodes of equal Karma. A
+node the file does not name holds none, as every node does while the node
+follows no chain (Phase 6 Step 141).
 
 The lists are derived when stats starts, then once
 `stats.derive_interval_seconds` (60) has passed and the module is idle, and

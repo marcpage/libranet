@@ -272,6 +272,11 @@ A client MAY use a candidate server's relative Karma to decide which
 peers to prefer when initiating contact, favoring higher-Karma servers
 when a choice is available.
 
+The reference node orders the nodes it may dial with those it has reached
+before first, and within each part, those of more Karma first, and fills its
+peer mix from the front of that order (High-Level Design §4.6). It dials no
+fewer for Karma, and none is left out for holding none.
+
 ### 5.2 Server Behavior
 
 A server uses a connected client's relative Karma to decide how

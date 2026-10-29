@@ -12,6 +12,8 @@ from libranet.cas.content_id import ContentId
 from libranet.config.models import StatsConfig, StorageConfig
 from libranet.messaging.connected_peers import ConnectedPeers
 from libranet.messaging.events import AddressSource, ConnectionDirection
+from libranet.protocol.karma_balances import KarmaBalance, KarmaBalances
+from libranet.protocol.karma_head import KarmaHead
 from libranet.stats.database import StatsDatabase
 from libranet.stats.derivation import DerivedLists, ListDeriver
 from libranet.stats.schema import SeekKind
@@ -19,9 +21,12 @@ from libranet.stats.schema import SeekKind
 SELF_ID = ContentId.for_data(b"this node's public key", "sha256")
 PEER_ID = ContentId.for_data(b"a peer's public key", "sha256")
 OTHER_PEER_ID = ContentId.for_data(b"another peer's public key", "sha256")
+THIRD_PEER_ID = ContentId.for_data(b"a third peer's public key", "sha256")
+FOURTH_PEER_ID = ContentId.for_data(b"a fourth peer's public key", "sha256")
 CONTENT_ID = ContentId.for_data(b"content this node wants", "sha256")
 SELF_ENDPOINT = "http://localhost:8080"
 DIRECT_ENDPOINT = "http://localhost:9090"
+HEAD = KarmaHead(ContentId("sha256", "c1" * 32), 41, 1208)
 
 
 @fixture
@@ -38,6 +43,20 @@ def deriver(database: StatsDatabase, storage: StorageConfig) -> ListDeriver:
 def candidates(lists: DerivedLists) -> list[dict[str, object]]:
     nodes: list[dict[str, object]] = loads(lists.candidate_list.read_bytes())["nodes"]
     return nodes
+
+
+def candidate_ids(lists: DerivedLists) -> list[object]:
+    return [node["node_id"] for node in candidates(lists)]
+
+
+def listed_ids(lists: DerivedLists) -> list[str]:
+    return list(loads(lists.node_list.read_bytes())["nodes"].values())
+
+
+def hold_karma(storage: StorageConfig, kismet: dict[ContentId, int]) -> None:
+    """Write the balances the Karma module would, each node named holding its Kismet."""
+    balances = {node_id: KarmaBalance(amount) for node_id, amount in kismet.items()}
+    KarmaBalances(HEAD, balances).write(storage.karma_dir)
 
 
 def test_the_node_list_leads_with_this_node(
@@ -307,3 +326,109 @@ def test_the_peer_list_names_the_peers_known_and_how_each_is_connected(
     # Written afresh, though no peer's statistics changed.
     assert second["derived"] == "2026-10-14T12:01:00Z"
     assert second["peers"][0]["connected"] == []
+
+
+def test_the_node_list_puts_the_nodes_of_more_karma_first(storage: StorageConfig) -> None:
+    now = [1_000.0]
+
+    with StatsDatabase(storage.database_path, clock=lambda: now[0]) as database:
+        deriver = ListDeriver(database, storage, StatsConfig(), [SELF_ENDPOINT], SELF_ID)
+
+        for node_id, endpoint in [
+            (PEER_ID, "http://203.0.113.9:4300"),
+            (OTHER_PEER_ID, "http://198.51.100.7:8080"),
+            (THIRD_PEER_ID, "http://192.0.2.4:4300"),
+        ]:
+            database.record_address_worked(node_id, endpoint)
+            now[0] += 10
+
+        unordered = listed_ids(deriver.derive())
+        hold_karma(storage, {PEER_ID: 250, THIRD_PEER_ID: 10**14})
+        ordered = listed_ids(deriver.derive())
+
+    # The most recently reached first, while none holds Karma.
+    assert unordered == [str(SELF_ID), str(THIRD_PEER_ID), str(OTHER_PEER_ID), str(PEER_ID)]
+    # One of no balance is still listed, after those that hold some.
+    assert ordered == [str(SELF_ID), str(THIRD_PEER_ID), str(PEER_ID), str(OTHER_PEER_ID)]
+
+
+def test_the_node_list_cap_leaves_out_the_nodes_of_least_karma(storage: StorageConfig) -> None:
+    now = [1_000.0]
+
+    with StatsDatabase(storage.database_path, clock=lambda: now[0]) as database:
+        # Room for this node and one peer.
+        deriver = ListDeriver(
+            database, storage, StatsConfig(max_list_bytes=250), [SELF_ENDPOINT], SELF_ID
+        )
+        database.record_address_worked(PEER_ID, "http://203.0.113.9:4300")
+        now[0] += 10
+        database.record_address_worked(OTHER_PEER_ID, "http://198.51.100.7:8080")
+        hold_karma(storage, {PEER_ID: 1})
+        lists = deriver.derive()
+
+    assert listed_ids(lists) == [str(SELF_ID), str(PEER_ID)]
+
+
+def test_the_candidate_list_puts_nodes_reached_first_then_those_of_more_karma(
+    storage: StorageConfig,
+) -> None:
+    now = [1_000.0]
+
+    with StatsDatabase(storage.database_path, clock=lambda: now[0]) as database:
+        deriver = ListDeriver(database, storage, StatsConfig(), [SELF_ENDPOINT], SELF_ID)
+        database.record_address_worked(PEER_ID, "http://203.0.113.9:4300")
+        now[0] += 10
+        database.record_address_worked(OTHER_PEER_ID, "http://198.51.100.7:8080")
+        now[0] += 10
+        database.record_addresses({"http://192.0.2.4:4300": THIRD_PEER_ID}, AddressSource.RELAYED)
+        now[0] += 10
+        database.record_addresses({"http://192.0.2.5:4300": FOURTH_PEER_ID}, AddressSource.RELAYED)
+        unordered = candidate_ids(deriver.derive())
+        hold_karma(storage, {PEER_ID: 250, THIRD_PEER_ID: 10**14})
+        ordered = candidate_ids(deriver.derive())
+
+    assert unordered == [str(OTHER_PEER_ID), str(PEER_ID), str(FOURTH_PEER_ID), str(THIRD_PEER_ID)]
+    # A node never reached waits behind those reached, whatever it holds.
+    assert ordered == [str(PEER_ID), str(OTHER_PEER_ID), str(THIRD_PEER_ID), str(FOURTH_PEER_ID)]
+
+
+def test_nodes_are_not_ordered_by_karma_while_no_chain_is_followed(
+    storage: StorageConfig,
+) -> None:
+    now = [1_000.0]
+
+    with StatsDatabase(storage.database_path, clock=lambda: now[0]) as database:
+        deriver = ListDeriver(database, storage, StatsConfig(), [SELF_ENDPOINT], SELF_ID)
+        database.record_addresses({"http://203.0.113.9:4300": PEER_ID}, AddressSource.RELAYED)
+        now[0] += 10
+        database.record_addresses(
+            {"http://198.51.100.7:8080": OTHER_PEER_ID}, AddressSource.RELAYED
+        )
+        hold_karma(storage, {PEER_ID: 250})
+        ordered = candidate_ids(deriver.derive())
+        KarmaBalances().write(storage.karma_dir)
+        unordered = candidate_ids(deriver.derive())
+
+    assert ordered == [str(PEER_ID), str(OTHER_PEER_ID)]
+    assert unordered == [str(OTHER_PEER_ID), str(PEER_ID)]
+
+
+def test_karma_balances_that_cannot_be_read_are_logged_and_order_nothing(
+    deriver: ListDeriver,
+    database: StatsDatabase,
+    storage: StorageConfig,
+    caplog: LogCaptureFixture,
+) -> None:
+    database.record_address_worked(PEER_ID, "http://203.0.113.9:4300")
+    storage.karma_dir.mkdir(parents=True)
+    (storage.karma_dir / "balances.json").write_text("{not JSON", encoding="utf-8")
+
+    lists = deriver.derive()
+
+    assert candidate_ids(lists) == [str(PEER_ID)]
+    assert listed_ids(lists) == [str(SELF_ID), str(PEER_ID)]
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(
+        f"Cannot read the Karma balances in {storage.karma_dir}, so nodes are not ordered"
+    )

@@ -506,6 +506,13 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
             for node_id, node_rows in groupby(rows, key=lambda row: str(row["node_id"]))
         ]
 
+    def reached_nodes(self) -> set[str]:
+        """The node ids reached at any address they have now, as text (Phase 6 Step 141)."""
+        rows = self._query(
+            "SELECT DISTINCT node_id FROM node_addresses WHERE last_success IS NOT NULL", {}
+        )
+        return {row["node_id"] for row in rows}
+
     def prune_addresses(self, max_per_node: int, max_failures: int) -> int:
         """Forget addresses not worth trying again, and say how many were dropped.
 

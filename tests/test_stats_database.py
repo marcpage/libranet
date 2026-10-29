@@ -479,6 +479,16 @@ def test_last_good_endpoints_put_the_most_recently_reached_first(
     assert database.last_good_endpoints(exclude=OTHER_NODE_ID) == [(FIRST, str(NODE_ID))]
 
 
+def test_a_node_reached_at_an_address_it_has_counts_as_reached_though_it_failed_since(
+    database: StatsDatabase,
+) -> None:
+    database.record_addresses({FIRST: NODE_ID, SECOND: OTHER_NODE_ID}, AddressSource.RELAYED)
+    database.record_address_worked(NODE_ID, THIRD)
+    database.record_address_failed(NODE_ID, THIRD)
+
+    assert database.reached_nodes() == {str(NODE_ID)}
+
+
 def test_addresses_that_never_worked_are_forgotten_once_they_fail_too_often(
     database: StatsDatabase,
 ) -> None:

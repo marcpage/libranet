@@ -585,6 +585,19 @@ node follows states it, which `karma/balances.json` in the data directory
 holds, written each time the head changes; no node's word of its own Karma
 is taken.
 
+The node prefers the nodes holding more Karma. Of the nodes it may connect
+to, it dials those it has reached before ahead of the rest, as it always
+has, and within each, those holding more Karma first, so that where it has a
+choice of node to connect to, it takes the one holding more. Its node list,
+`/data/nodes` (§7.3), names the nodes holding more Karma first too, so that
+were it to outgrow its 1 MiB, those it left out would be those holding
+least. Holding none leaves no node out, and it connects to no fewer for
+Karma. While the node follows no chain, none holds any, and it orders them
+as before. It reads `karma/balances.json` for this each time it works out
+its lists, about every minute (`stats.derive_interval_seconds`); one it
+cannot read `libranet-stats.log` (§7.2) warns of, and it orders no node by
+Karma until it can.
+
 ## 5. Backing Up and Restoring
 
 ### 5.1 Backing Up a Directory
@@ -958,8 +971,9 @@ curl http://127.0.0.1:8080/data/nodes
 The node lists itself first. `http://localhost:8080` means "reach me at the
 address this connection came from": the node advertises a real address once
 `network.external_address` is set. The peers it knows follow, by address and
-node id. `GET /data/seek` lists the content it is still looking for, and
-peers `POST` their own lists to the same two paths.
+node id, those holding more Karma first (§4.8). `GET /data/seek` lists the
+content it is still looking for, and peers `POST` their own lists to the
+same two paths.
 
 In a browser on the node's own machine, the nodes application, at `/nodes/`,
 shows each other node it knows, by the name it gives itself: whether a

@@ -1525,8 +1525,11 @@ Prioritization SHOULD be used to determine what to include if the list will
 exceed the 1 MiB limit.
 
 The reference node lists its own endpoints first (§10.1), then each other
-node's last known good endpoint, the most recently reached first, leaving
-out one that has failed since.
+node's last known good endpoint, leaving out one that has failed since: the
+nodes of more Karma first, as the chain it follows states their balances
+(Handshake Protocol §5), then the most recently reached. What the cap leaves
+out is then what holds least; a node holding none is listed where there is
+room.
 
 ### 10.7 Outstanding Requests List (`/data/seek`)
 
