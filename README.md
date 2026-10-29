@@ -261,7 +261,7 @@ applications, and running test networks and super nodes.
 
 ## Project Status
 
-**Version 0.2** — October 2026
+**Version 0.5** — October 2026
 
 | Area | State |
 | ------------------------------------- | -------------------------- |
@@ -271,10 +271,10 @@ applications, and running test networks and super nodes.
 | Phase 3 — video playback, steps 64–77 | Implemented |
 | Phase 4 — user accounts, steps 30, 78–82, and 89–93 | Implemented |
 | Phase 5 — the trust network, steps 94 and 96–114 | Implemented |
-| Phase 6 — Karma, steps 56 and 116–142 | Implemented |
+| Phase 6 — Karma, steps 56 and 116–143 | Implemented |
 | Phase 7 — enhancements, steps 16, 50, 57, and 95 | Planned |
 | Phase 8 — a seed node, step 84 | Planned |
-| Improving the movie application, steps 83 and 85–88 | Planned |
+| Improving the movie application, steps 83, 85–88, and 115 | Implemented |
 | Public network | Not yet running |
 
 Working today: content-addressed storage with prefix search, of the node and
@@ -285,14 +285,15 @@ directory bundles served as applications, files served from their parts with
 range requests, eviction under space pressure, the local `/config` surface,
 encrypted backup and restore, the endpoints applications use (reading into
 bundles, making bundles and drops, importing local files, a store for each
-application, shunning content), people's identities (signing in on any node,
-a fallback identity, signing and encrypting for a person), the trust
+application, shunning content, keeping content offline), people's
+identities (signing in on any node, a fallback identity, signing and
+encrypting for a person), the trust
 network (each person's trust list, and scores built from it at sign-in,
 and the node's own, which say which nodes it connects to),
 what nodes say of themselves, trusted and sandboxed applications, the Karma
 ledger's chain, followed, built, paid, and staked in, shown in the
 applications, ordering the nodes a node connects to and lists, and keeping
-the peers connected to it by Karma (steps 56 and 116–142), and the movie
+the peers connected to it by Karma (steps 56 and 116–143), and the movie
 library, user directory, mail, nodes, and Karma applications.
 
 Deliberately deferred, and specified but not yet built:
@@ -332,10 +333,10 @@ you say so on `/config`.
 | [Phase 3 Plan](docs/implementation/Phase%203.md) | Video playback: steps 64–77, all built |
 | [Phase 4 Plan](docs/implementation/Phase%204.md) | User accounts: steps 30, 78–82, and 89–93, all built |
 | [Phase 5 Plan](docs/implementation/Phase%205.md) | The trust network: steps 94 and 96–114, all built |
-| [Phase 6 Plan](docs/implementation/Phase%206.md) | Karma: steps 56 and 116–142, planned |
+| [Phase 6 Plan](docs/implementation/Phase%206.md) | Karma: steps 56 and 116–143, all built |
 | [Phase 7 Plan](docs/implementation/Phase%207.md) | Enhancements: steps 16, 50, 57, and 95, planned |
 | [Phase 8 Plan](docs/implementation/Phase%208.md) | A seed node: step 84, planned |
-| [Movie App Plan](docs/implementation/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 83 and 85–88, planned |
+| [Movie App Plan](docs/implementation/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 83, 85–88, and 115, all built |
 | [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |
 | [File Layout](docs/implementation/File%20Layout.md) | Every file a node reads or writes, and the settings that move them |
 | [Database Schema](docs/implementation/Database%20Schema.md) | The statistics database's tables, and what reads and writes them |

@@ -24,9 +24,11 @@ is placed at its target, and links to the documents that define it.
 | [`mail sent:{id}:{year}/{month}/{day}`](#36-mail-sent) | The sender's own copy of each message they sent on that day | The mail application | The sender | For the sender | In use |
 | [`mail address book:{id}`](#37-address-books) | The versions of a person's address book | The mail application | The person | For the person | In use |
 | [`mail state:{id}:{year}/{month}`](#38-read-and-hidden-marks) | The versions of what a person read and hid of a month's mail | The mail application | The person | For the person | In use |
+| [`movie collections:{id}`](#312-movie-collections) | The versions of a person's list of movie collections | The movie application | The person | For the person | In use |
+| [`movie offline:{id}`](#313-movies-kept-offline) | A version for each collection a person keeps offline | The movie application | The person | For the person | In use |
 | [`node:{id}`](#39-what-a-node-says-of-itself) | The versions of what a node says of itself | The node | The node | No | In use |
-| [`karma transaction:{validation}`](#310-karma-transaction-blocks) | Karma's transaction blocks, and transactions put up for them | Anyone | Its builder; each transaction by its sender | No | Specified |
-| [`karma validation:{validation}`](#311-karma-validation-blocks) | Karma's validation blocks | Anyone | Its builder; each stake by its staker | No | Specified |
+| [`karma transaction:{validation}`](#310-karma-transaction-blocks) | Karma's transaction blocks, and transactions put up for them | Anyone | Its builder; each transaction by its sender | No | In use |
+| [`karma validation:{validation}`](#311-karma-validation-blocks) | Karma's validation blocks | Anyone | Its builder; each stake by its staker | No | In use |
 
 A drop **in use** is placed by the node or a shipped application today. A
 **specified** drop is defined by a specification, but nothing places it yet.
@@ -41,6 +43,7 @@ flowchart TB
         pid --> says["user:{id}<br/>what they say of themselves"]
         pid --> ptrust["trust:{id}<br/>trust list"]
         pid --> mail["mail:{id}:…<br/>mail sent:{id}:…<br/>mail address book:{id}<br/>mail state:{id}:…<br/>their mail (§3.5 to §3.8)"]
+        pid --> movie["movie collections:{id}<br/>movie offline:{id}<br/>their movies (§3.12, §3.13)"]
     end
     subgraph node["A node"]
         direction LR
@@ -387,7 +390,6 @@ winning validation block before it. A transaction is put up as a block of
 its own at its generation's target, and the blocks there are combined into
 larger ones.
 
-- **Status:** specified. Nothing places one yet.
 - **Placed by** anyone: whoever puts up a transaction, and whoever builds
   a block from others.
 - **Signed** by its builder, and each transaction in it by its sender. The
@@ -424,7 +426,6 @@ generation's transaction blocks, and lists the hashes of transactions its
 builder has seen that its chain has not yet witnessed. Many are placed for
 each generation, and the one the heaviest chain goes through wins.
 
-- **Status:** specified. Nothing places one yet.
 - **Placed by** anyone, and may be built from others' stakes.
 - **Signed** by its builder, its list of witnesses with it, and each stake
   in it by its staker. **Not encrypted.**
@@ -446,3 +447,59 @@ each generation, and the one the heaviest chain goes through wins.
   [Karma Ledger §6](KarmaLedger.md#6-validation-blocks) for the block, and
   [§7.3](KarmaLedger.md#73-validation-block-0) for the root's.
 - **See also:** [Karma](Karma.md) §17 to §33 for the economics.
+
+### 3.12 Movie Collections
+
+**Target:** `movie collections:{id}`
+
+A person's list of movie collections names each collection, with its
+newest bundle and when it last changed. It is kept in versions, so that it
+follows the person from node to node, and versions made apart, on two
+nodes say, are merged as they are read. A client no one is signed in on
+reads the node's collections from the application's store instead.
+
+- **Placed by** the movie application, with `POST /data/signed`, given
+  `encrypt: {for: id}`, whenever the person's list of collections changes.
+- **Signed** by the person, then **encrypted** for the person.
+- **Bits:** placed matching at least 24, searched for 1 second.
+- **Reading:** a reader passes over every version that does not open for
+  the person, or that they did not sign. It merges every version left:
+  each collection at the version that changed it last, and of two changed
+  in the same second, the one whose drop's id comes first. Each change
+  places a version holding the merged list, and shuns the versions read,
+  which it replaces, so that they do not crowd the newest out of a search.
+- **Defined in:**
+  [Improve Movie Web App](../implementation/Improve%20Movie%20Web%20App.md)
+  Step 83.
+- **See also:**
+  [App Developer Guide §7](../operations/App%20Developer%20Guide.md#7-patterns-from-the-movie-library).
+
+### 3.13 Movies Kept Offline
+
+**Target:** `movie offline:{id}`
+
+Each collection a person keeps offline has a version of its own here: the
+collection's name, a bundle of the movies kept, when it was kept, and the
+identity block the person signed in with. The node keeps that bundle, the
+version, the identity block, and the person's public key in an archive of
+its own, so that the person can sign in and play the movies with the node
+offline. The versions are kept apart from the person's collections
+(§3.12), since each change there shuns the versions it replaces, and a
+node's search leaves out what it has shunned, archived or not.
+
+- **Placed by** the movie application, with `POST /data/signed`, given
+  `encrypt: {for: id}`, as the person keeps movies offline.
+- **Signed** by the person, then **encrypted** for the person.
+- **Bits:** placed matching at least 24, searched for 1 second.
+- **Reading:** a reader passes over every version that does not open for
+  the person, or that they did not sign. Each collection listed in a
+  version left is kept offline while the node reports an archive holding
+  its bundle. A version older than a minute whose bundle no archive holds, as
+  once its archive expires, is shunned.
+- **Defined in:**
+  [Improve Movie Web App](../implementation/Improve%20Movie%20Web%20App.md)
+  Step 115.
+- **See also:**
+  [HTTP API §12.4](HttpApi.md#124-keeping-content-offline) for the
+  archives;
+  [App Developer Guide §6.19](../operations/App%20Developer%20Guide.md#619-keeping-content-offline).

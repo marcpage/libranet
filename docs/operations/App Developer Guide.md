@@ -212,6 +212,8 @@ network holds.
 | Read the trust scores of whoever is signed in, and change their trust list (§6.17) | No | From a local client |
 | Shun content the node will no longer hold (§6.11) | No | From a local client |
 | Read what the node knows of each peer, and whether it is connected (§6.8) | No | From a local client |
+| Keep content offline on the node, and stop keeping it (§6.19) | No | From a local client |
+| Pay and stake Karma as whoever is signed in (§6.20) | No | From a local client |
 
 An untrusted application is served with:
 

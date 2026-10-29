@@ -11,8 +11,9 @@ those processes work together: which modules there are and what each one is
 responsible for, how the supervisor starts, restarts, and stops them, and the
 message bus, shared files, and signals they communicate through. It is
 written for someone about to read or change the code, and describes the
-implementation as of version 0.2 and Phase 3, up to Step 77, Phase 4's
-Steps 30, 78–82, and 89–93, and Phase 5's Steps 94 and 96–108.
+implementation as of version 0.5 and Phase 3, up to Step 77, Phase 4's
+Steps 30, 78–82, and 89–93, Phase 5's Steps 94 and 96–114, Phase 6's Steps
+56 and 116–143, and the movie application's Step 115.
 
 The architecture was chosen in [Phase 1](Phase%201.md) §2 and Steps 3 and 4,
 and [Phase 2](Phase%202.md) and [Phase 3](Phase%203.md) leave it unchanged.
@@ -232,7 +233,7 @@ through the dispatcher.
 | 7 | Unbundler | `unbundler` | `UnbundlerModule` | Resolves application files' entries from their bundles on demand, and deletes unused ones |
 | 8 | Eviction | `eviction` | `EvictionModule` | Keeps storage within its limits |
 | 9 | Backup | `backup` | `BackupModule` | Backs directories up as bundles; restores, builds, and exports bundles |
-| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger; for now, follows the chain, keeping its history, makes a root when asked, puts up the transactions it is given, pays the servers it rates highest, puts up the node's payments together, combines the blocks at its head's targets, shuns those superseded, and stakes and builds validation blocks |
+| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger: follows the chain, keeping its history, makes a root when asked, puts up the transactions it is given, pays the servers it rates highest, puts up the node's payments together, combines the blocks at its head's targets, shuns those superseded, and stakes and builds validation blocks |
 
 The supervisor launches them in this order, taken from `SPAWNED_MODULES`,
 but waits only for the dispatcher to be ready. No module waits for another
@@ -426,10 +427,10 @@ archives under way are kept in memory only.
 
 Where the node acts on the Karma ledger (KarmaLedger.md): reading what is placed
 at a target, following the chain, and mining, building, and checking blocks,
-each a step of Phase 6 to come. That is hours of hashing and thousands of
+each a step of Phase 6. That is hours of hashing and thousands of
 signatures a generation, so it runs in a process of its own, rather than on the
 web server's threads, and a restart of either leaves the other running (Phase 6
-Step 123). For now it keeps the history of the chain it follows, in `karma/` in
+Step 123). It keeps the history of the chain it follows, in `karma/` in
 the data directory, which it reads as it starts (`ChainHistory`,
 `karma/history.py`): the genealogy, a file for each generation, and the head,
 which the web server reads (`KarmaHead`, `protocol/karma_head.py`). It reads
@@ -531,7 +532,7 @@ Step 137), each kept until its head changes.
 | The application registry | Web server | — |
 | Applications' stores in `store/` | Web server | — |
 | Backup jobs and the backup secret | Backup | The web server publishes `backup.*` requests |
-| The Karma history in `karma/` | Karma | The web server reads its head, `head.json`, its generations, and the balances stated at the head, `balances.json`, which stats reads too; `/config` publishes `karma.root_requested` |
+| The Karma history in `karma/` | Karma | The web server reads its head, `head.json`, its generations, and the balances stated at the head, `balances.json`, which stats reads too, and, for `/config`, what it carries and the node's payments queued, `carried.json` and `payments.json`; `/config` writes how much the node stakes, `staking.json`, and publishes `karma.root_requested` |
 | The search cache in `search/` | Web server | Stats rewrites a cached result to add identifiers |
 
 Adding to `cas/data` is shared more widely than promoting into it: the
@@ -880,7 +881,9 @@ the GIL, so threads would take turns at one core. They are not modules, and
 neither send nor receive messages. Each runs `cas/nonce_search.py`, which
 imports only the standard library, tries the nonces of each round it reads
 on a pipe, and exits once the pipe closes, as it does when the web server's
-process exits, however it exits.
+process exits, however it exits. The Karma module starts
+`karma.mining_processes` of them, 1 by default, the first time it mines a
+transaction or searches for a block's nonce, and keeps them the same way.
 
 Any thread may publish: `publish()` only puts the message on the outbox,
 and `multiprocessing.Queue.put` is thread-safe. Only the main thread
@@ -1069,7 +1072,7 @@ to end its loop.
 | `karma.ratings` | | | | P | | | | | S |
 | *Lifecycle* | | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 25 / 6 | 17 / 10 | 2 / 1 | 6 / 24 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 | 7 / 7 |
+| **Publishes / subscribes** | 27 / 6 | 17 / 10 | 2 / 1 | 6 / 24 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 11 | 7 / 8 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
@@ -1440,7 +1443,7 @@ data moves through files, and a message tells the reader where to look.
 | `store/` | Web server | Web server | — |
 | `backup_jobs.json` | Backup | Backup | — |
 | `backup_jobs/` | Backup | Backup | — |
-| `karma/` | Karma | Karma; web server, `head.json`, `generations/`, `balances.json`; stats, `balances.json` | Nothing; read when needed |
+| `karma/` | Karma; web server, `staking.json` only | Karma; web server, `head.json`, `generations/`, `balances.json`, `carried.json`, `payments.json`; stats, `balances.json` | Nothing; read when needed |
 | `keys/` | Supervisor; backup; web server | Modules that need them, in `on_start`; Karma, as it makes a root | — |
 | The folders `local.folders` offers | — | Web server, listing them and finding a file to import; backup, reading that file | `backup.import_requested`, which names the file |
 
@@ -1547,7 +1550,7 @@ side recovers:
 | Unbundler | Directories held in memory; paths waiting on content; a reclaim in progress | Directories are read back from each bundle's saved `directory.jzon`; a request waiting on a path forgotten is answered `503`, and its retry asks again; eviction times out the reclaim |
 | Eviction | Hand-offs under way; its list of candidates; which peers are connected | It counts storage again at start, says whether storage is full, asks which peers are connected, and asks stats again |
 | Backup | Restores, builds, exports, and imports; messages set aside while it stored content | They must be asked for again; jobs are read back from `backup_jobs.json`; it asks whether storage is full |
-| Karma | Content it waited for; what peers named at the targets it read; what it found of the blocks at its head's targets; a root it was making; whom the node trusts | The history is read back from `karma/`, and its head written again; what it lacks is asked for again as it next reads; the blocks at its head's targets are checked again as it first looks, and what was said of them is said again; a root is asked for again on `/config`, as the node follows none; whom the node trusts is known again only once the web server next says it, which it does when that changes |
+| Karma | Content it waited for; what peers named at the targets it read; what it found of the blocks at its head's targets; a root it was making; whom the node trusts; the stakes people made through the node | The history is read back from `karma/`, and its head written again; what it lacks is asked for again as it next reads; the blocks at its head's targets are checked again as it first looks, and what was said of them is said again; a root is asked for again on `/config`, as the node follows none; whom the node trusts is known again only once the web server next says it, which it does when that changes; a stake a person made must be made again |
 | Dispatcher | Messages it had read but not yet delivered, and those it held for a full inbox | Nothing recovers them; no module is started until it is back |
 
 ## 11. Testing Modules
@@ -1583,7 +1586,7 @@ assert message["event"] == EventType.DATA_STORED
 | The bus | `Dispatcher.dispatch_pending()`, which delivers without threads | `tests/test_messaging_dispatcher.py` |
 | Supervision | Real `spawn` processes running the modules in `tests/stubs.py`, which crash, linger, or publish on the way out on purpose | `tests/test_supervision.py` |
 | A whole node | `supervisor.main(argv, stop=event)`, which runs until the event is set | `tests/test_supervisor.py` |
-| Many nodes | `libranet-local-network`, which runs linked nodes on `127.0.0.1` | `tests/test_local_network.py`, and by hand |
+| Many nodes | `libranet-local-network`, which runs linked nodes on one machine | `tests/test_local_network.py`, and by hand |
 
 ## 12. Limits and Planned Changes
 
