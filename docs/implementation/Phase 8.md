@@ -44,7 +44,8 @@ So far, one step:
   handshake first, so that it learns of other nodes. Step 84.
 
 Running the seed node itself, and shipping its address in
-`config/seed_peers.json`, has no issue yet (§4).
+`config/seed_peers.json`, is not yet a step: only running a node on EC2
+and behind an NGINX proxy have issues, not yet planned (§4).
 
 ## 3. How to Read the Steps Below
 
@@ -91,9 +92,10 @@ Work this implies:
   Karma that adds nothing: the response it is answering is sent with
   `Connection: close`.
 - HandshakeProtocol §5.2 already lets a host close a guest that is not
-  adding value; this step is a host doing so by number. Once Karma is
-  built ([Phase 6](Phase%206.md)), §5.2 has Karma choose whom to keep,
-  and this step's rule is the one used until then.
+  adding value; this step is a host doing so by number. §5.2 has Karma
+  choose whom to keep, as [Phase 6](Phase%206.md) Step 142 now does for
+  a peer that adds nothing, and this step's rule is by a connection's
+  age.
 
 My calls, not yet reviewed:
 
@@ -133,11 +135,13 @@ and where it went.
 | Issue | Asks for | Step |
 | --- | --- | --- |
 | #204 | Limiting incoming connections | 84 |
+| #480 | Whether a node works behind an NGINX proxy | None yet: not planned |
+| #481 | Running a node on an EC2 instance | None yet: not planned |
 
 The milestone's own description asks for the seed node itself: running
 one in public, keeping content in AWS S3 (#149, [Phase 7](Phase%207.md)),
-and shipping its address in `config/seed_peers.json`. None of that has
-an issue yet, so none of it is a step.
+and shipping its address in `config/seed_peers.json`. Of that, only where
+it might run has issues, #480 and #481, and none of it is a step yet.
 
 ## 5. Suggested Build Order
 
@@ -148,7 +152,7 @@ an issue yet, so none of it is a step.
 ## 6. Open Items Not Yet Decided
 
 - **Running the seed node** — where it runs, who operates it, and what
-  address is shipped for it. Not yet an issue.
-- **Karma and the limit** (Step 84, HandshakeProtocol §5.2) — once Karma
-  is built, whether it replaces the age of a connection as what decides
-  which peers a full node keeps.
+  address is shipped for it. Only where has issues yet, #480 and #481.
+- **Karma and the limit** (Step 84, HandshakeProtocol §5.2) — Karma is
+  built ([Phase 6](Phase%206.md)); whether it replaces the age of a
+  connection as what decides which peers a full node keeps.

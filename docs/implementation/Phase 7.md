@@ -193,9 +193,10 @@ against the real library in a temp directory checks the wiring.
 
 Much of the node already copes with IPv6 when it meets it:
 
-- The web server listens on IPv6 when `network.listen_address` is an
-  IPv6 address (`webserver/server.py`). A client's IPv4-mapped address is
-  unwrapped before it is checked for loopback
+- The web server listens on IPv6 and IPv4 by default: `listen_address`
+  is `::`, on a socket made dual-stack explicitly, and `0.0.0.0` on a
+  host with no IPv6 (#394, `webserver/server.py`). A client's IPv4-mapped
+  address is unwrapped before it is checked for loopback
   (`webserver/client_origin.py`) or written into a resolved `localhost`
   entry (`webserver/localhost_resolution.py`), which brackets an IPv6
   host as RFC 3986 requires.
@@ -210,25 +211,19 @@ Much of the node already copes with IPv6 when it meets it:
 
 What is missing:
 
-- **Listening on both.** `listen_address` defaults to `0.0.0.0`, which is
-  IPv4 alone. Listening on `::` takes IPv4 as well only on a dual-stack
-  socket, which the node does not ask for, so it is left to the
-  platform's default: dual-stack on Linux and macOS, IPv6 alone on
-  Windows.
 - **Advertising an IPv6 address.** `advertised_endpoint()` writes
   `external_address` into the endpoint as it is, so an IPv6 address comes
   out unbracketed, and no peer can parse it.
 - **The specification.** HttpApi §10.1 and §10.6 give endpoints as
   `scheme://host:port` and say nothing of IPv6 literals, nor what a
   receiver resolving `localhost` writes for an IPv6 source address.
-- **A way to try it.** The local network script runs every node on
-  `127.0.0.1`.
+- **A way to try it.** The local network script listens at `::` by
+  default, but tells its nodes of each other at `127.0.0.1`. Given an
+  IPv6 `--host`, it tells them of each other at it, bracketed, but
+  no test runs a network that way.
 
 **Open questions:**
 
-- Whether the default listens on both: `::`, with the socket made
-  dual-stack explicitly, falling back to `0.0.0.0` on a host with no
-  IPv6 rather than failing to start.
 - What a node list names for a node reachable both ways. HttpApi §10.6,
   as Phase 2 Step 23 ruled, names each node at its last known good
   address. If that is an IPv6 address, a peer with no IPv6 is given
@@ -314,6 +309,10 @@ where it went.
 | #160 | Releasing on PyPI | None yet: not planned |
 | #181 | HTTPS | None yet: not planned |
 | #279 | Aging out shunned data | 95 |
+| #399 | A macOS node started with a double-click | None yet: not planned |
+| #400 | A macOS local network started with a double-click | None yet: not planned |
+| #401 | A Windows node started with a double-click | None yet: not planned |
+| #402 | A Windows local network started with a double-click | None yet: not planned |
 
 [Phase 8](Phase%208.md), the seed node, depends on #149: its milestone
 asks for content to be kept in AWS S3.

@@ -763,11 +763,12 @@ application can import any file from the folders this node offers (§6.3),
 make bundles, and read and change every application's store. It can see
 which nodes this node talks to, and how much (§7.3). It can also sign
 people in, see the passwords they type, and act as them while they are
-signed in (§6.5), changing whom they trust among the rest (§6.6), and have
-this node delete content and refuse it for good, which nothing undoes but
-deleting the node's database. So trust only one you
-would trust with those folders and with the people who use it. Tick its box
-on the `/config` page, or:
+signed in (§6.5), changing whom they trust among the rest (§6.6), and
+paying and staking their Karma (§4.8). It can have this node keep content
+offline, in an archive of its own, and have it delete content and refuse
+it for good, which nothing undoes but deleting the node's database. So
+trust only one you would trust with those folders and with the people who
+use it. Tick its box on the `/config` page, or:
 
 ```bash
 curl -u admin:secret -e http://127.0.0.1:8180/config/ \
@@ -954,7 +955,7 @@ without taking the node down.
 | Unbundler | Resolves a directory bundle's files on demand for application paths |
 | Eviction | Watches free space and hands off low-priority content before deleting it |
 | Backup | Turns local directories into encrypted bundles, and restores them; builds and exports bundles, and imports files |
-| Karma | Follows the Karma ledger; for now, keeps the history of the chain it follows, and starts one when asked (§4.8) |
+| Karma | Follows the Karma ledger, and starts one when asked; puts up the node's payments and those people make through it, combines blocks, and stakes (§4.8) |
 
 Keeping the web server minimal is deliberate: the process exposed to the
 network does not validate uploads, fetch, evict, or resolve applications'

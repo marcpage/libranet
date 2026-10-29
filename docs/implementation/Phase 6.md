@@ -66,7 +66,8 @@ keeps, it keeps in files of its own, as the backup module does.
 - **Karma shown.** On `/config`, in a Karma application, and beside each
   identity throughout the shipped applications. Steps 138 to 140.
 - **Karma used.** Ordering the candidate and node lists by it, and keeping
-  clients connected by it. Steps 141 and 142.
+  clients connected by it. Steps 141 and 142, and Step 143, an order a node
+  of little Karma can live with.
 
 Once transactions are merged into larger blocks, the smaller blocks they
 replace are not needed. A private list of content a node will not hold
@@ -3394,7 +3395,48 @@ it went.
 | #86 | Documenting how Karma works with the CAS | 56 |
 | #87 | A Karma implementation plan | None: this document. Steps 116–142, which build Karma, are planned under it, each to take an issue of its own |
 | #434 | Kismet, targets, and a chain's weight | 116 |
+| #435 | Transactions, payouts, and stakes | 117 |
+| #436 | Mining a transaction | 118 |
+| #437 | Transaction blocks and validation blocks | 119 |
+| #438 | Balances, the pot, and shares | 120 |
+| #439 | Checking a transaction block | 121 |
+| #440 | Checking a validation block, and the best | 122 |
+| #441 | The Karma module and its history | 123 |
+| #442 | Reading blocks at a target | 124 |
+| #443 | Making the root from `/config` | 125 |
+| #444 | Following the chain | 126 |
+| #445 | Distrusting false builders | 127 |
+| #446 | Reading Karma | 128 |
+| #447 | Changing heads | 129 |
+| #448 | Telling and asking heads | 130 |
+| #449 | Putting up a transaction | 131 |
+| #450 | The node's payments | 132 |
+| #451 | Paying the servers a node rates | 133 |
+| #452 | Combining transaction blocks | 134 |
+| #453 | Shunning what is superseded | 135 |
+| #454 | Staking and building validation blocks | 136 |
+| #455 | Paying and staking as a person | 137 |
+| #456 | Karma on `/config` | 138 |
+| #457 | The Karma application | 139 |
+| #458 | Karma shown throughout the shipped applications | 140 |
+| #459 | Ordering nodes by Karma | 141 |
+| #460 | Keeping clients by Karma | 142 |
+| #461 | Duplicate logic in the Python | None: cleanup, #522 |
+| #462 | Constants that can be shared | None: cleanup, #523 |
+| #463 | Constants better suited to the configuration file | None: cleanup, #525 |
+| #464 | Inconsistencies in the code | None: cleanup, #526 |
+| #465 | Exceptions not logged where they should be | None: cleanup, #531 |
+| #466 | Functions that should be methods | None: cleanup, #532 |
+| #467 | Documentation out of sync with the code or other documentation | None: cleanup |
+| #468 | What the specifications can settle from the implementation | None: cleanup |
+| #496 | Tests failing from cross-talk between drops | None: a fix, #501 |
+| #503 | A failing test of the root made | None: a fix, #506 |
+| #510 | A hang now and then in the tests of following the chain | None: a fix, #512 |
 | #519 | Whether a low-Karma node can find peers that keep it, if every node lists the nodes of most Karma first | 143 |
+| #527 | Fewer pylint disables of `broad-exception-caught` | None: cleanup |
+| #528 | Fewer pylint disables of `too-many-instance-attributes` | None: cleanup |
+| #529 | No pylint disables of `missing-function-docstring` | None: cleanup |
+| #530 | No pylint disables of `redefined-builtin` | None: cleanup |
 
 Issue #71, the shunned data list, left the milestone unbuilt for
 **Phase 4 - User Accounts**, and Step 30 went with it to
@@ -3473,6 +3515,7 @@ ones that cut across more than one step:
   blocks at all unless its operator says so is open with Step 136's
   question of whether it stakes, which it built as recommended: 10% by
   default, not yet ruled.
-- **Keeping clients by Karma** (Step 142) — it waits on Phase 8 Step 84,
-  and may move to Phase 8 with it, should that phase be built after this
-  one.
+- **Keeping clients by Karma** (Step 142) — it was to wait on Phase 8
+  Step 84's closing of a connection by choice, and was built first, closing
+  one itself. Step 84, still to be built, limits how many peers connect,
+  and whether Karma decides which it keeps is open there.

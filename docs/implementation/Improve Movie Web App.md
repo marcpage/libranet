@@ -21,8 +21,8 @@ any phase.
 
 ## 2. What It Adds
 
-So far, six steps, Steps 85 to 88 in `applications/movie/index.html`
-alone:
+So far, six steps, all built. Steps 85 to 88 change
+`applications/movie/index.html` alone:
 
 - **Each person's playlists are their own.** Step 83, moved here from
   [Phase 4](Phase%204.md).
@@ -48,7 +48,7 @@ The conventions of [Phase 3](Phase%203.md) §3 carry over. In addition:
 
 ---
 
-## Step 83 — Playlists per User
+## Step 83 — Playlists per User ✅
 
 **Issue:** #261, which names the goal and no more. **Depends on:** Phase
 4 Step 79; Phase 3 Steps 67, 70.
@@ -97,7 +97,7 @@ people on one node.
 
 ---
 
-## Step 85 — Reading a Playlist That Is Not There
+## Step 85 — Reading a Playlist That Is Not There ✅
 
 **Issue:** #255, a bug. **Depends on:** Phase 3 Step 67.
 
@@ -133,7 +133,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 86 — Collections, Not Playlists
+## Step 86 — Collections, Not Playlists ✅
 
 **Issue:** #262. **Depends on:** Phase 3 Step 67.
 
@@ -159,7 +159,7 @@ Work this implies:
 
 ---
 
-## Step 87 — A Dark Theme
+## Step 87 — A Dark Theme ✅
 
 **Issue:** #263, which names the goal and no more. **Depends on:** Phase
 3 Step 67.
@@ -178,7 +178,7 @@ to dark shows it dark.
 
 ---
 
-## Step 88 — Keyboard Navigation
+## Step 88 — Keyboard Navigation ✅
 
 **Issue:** #264, which names the goal and no more. **Depends on:** Phase
 3 Step 67.
@@ -231,7 +231,7 @@ players have, and the page lists them under **Keys**, or `?`:
 **Testable in isolation:** checked by hand in the page, from the keyboard
 alone.
 
-## Step 115 — Keeping Movies Offline
+## Step 115 — Keeping Movies Offline ✅
 
 **Issue:** #380, which asks for an API keeping bundles in a zip file in a
 known place, for the movie application to keep a collection and the movie
@@ -345,6 +345,7 @@ where it went.
 | #263 | A dark theme | 87 |
 | #264 | Full keyboard navigation | 88 |
 | #380 | Offline viewing | 115 |
+| #404 | No changing collections while no one is signed in | None: a fix, #408 |
 
 ## 5. Suggested Build Order
 
@@ -353,6 +354,7 @@ where it went.
 | 1 | 85 (#255) | A bug, and small. |
 | 2 | 86 (#262) | Renames what the steps after it touch, so that they are written in the new words. |
 | 3 | 83 (#261), 87 (#263), 88 (#264) | Independent of each other. 83 needs Phase 4 Step 79's sessions, which are built, and Phase 4 Step 78 as well if a person's collections are kept encrypted for them. |
+| 4 | 115 (#380) | Needs 83's collections at a person's drop, which it keeps offline beside. |
 
 ## 6. Open Items Not Yet Decided
 

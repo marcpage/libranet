@@ -483,10 +483,10 @@ Some endpoints ask more of the page:
 - **An application's store** is read and changed only from a page of the
   application whose store it is (§13.3).
 - **Shunning content, the peers, making an identity, a fallback taking
-  over, the session, making a signed drop, opening an encrypted block,
-  making a drop encrypted by a password, trust, the folders, imports, and
-  making bundles** are served only from a page of a trusted application
-  (§13.5).
+  over, the session, making a signed drop, paying and staking as a person,
+  opening an encrypted block, making a drop encrypted by a password, trust,
+  the folders, imports, making bundles, and keeping content offline** are
+  served only from a page of a trusted application (§13.5).
 
 ```mermaid
 flowchart TD
@@ -499,7 +499,7 @@ flowchart TD
     ref -->|yes| asks{"Asks more<br/>of the page?"}
     asks -->|no| serve["Serve the request"]
     asks -->|"an application's store"| own{"Page of the store's<br/>application?"}
-    asks -->|"shunning, peers, identities,<br/>session, signing, encryption,<br/>trust, folders, imports, bundles"| trusted{"Page of a trusted<br/>application?"}
+    asks -->|"shunning, peers, identities,<br/>session, signing, payments, stakes,<br/>encryption, trust, folders, imports,<br/>bundles, archives"| trusted{"Page of a trusted<br/>application?"}
     own -->|yes| serve
     own -->|no| deny
     trusted -->|yes| serve
@@ -2559,7 +2559,7 @@ carry no `Cache-Control`, as the list is public. The scores of a person who
 trusts the node reach through its list, and read a change to it at their
 next sign-in (Trust Network §4.3). The node builds scores of its own from
 its list, which score a change to it at once, and say which nodes it
-connects to (Trust Network §4.5, §7.3).
+connects to (§7.3, and Trust Network §4.5).
 
 ### 11.8 What a Node Says of Itself
 
@@ -3285,11 +3285,12 @@ port's origin. A page of one, open in a local client, may list and import
 from the folders offered (§12.2), make bundles (§12.3), change its own
 application's store (§13.3), shun content (§5.5), read what the node
 knows of its peers (§10.8), make identities and sign people in (§11.3,
-§11.4), make signed drops (§11.5), open encrypted blocks and encrypt by a
-username and password (§11.6), and read the trust scores of whoever is
-signed in and change their trust list (§11.7). Open in any client, it may
-make a drop (§9.6). Trusted applications share that origin, so each can do
-whatever another can (§2.4).
+§11.4), make signed drops (§11.5), pay and stake as whoever is signed in
+(§10.10), open encrypted blocks and encrypt by a username and password
+(§11.6), read the trust scores of whoever is signed in and change their
+trust list (§11.7), and keep content offline (§12.4). Open in any client,
+it may make a drop (§9.6). Trusted applications share that origin, so each
+can do whatever another can (§2.4).
 
 The `/config` application is neither trusted nor untrusted. It is served
 only on its own port (§2.3), where trust gives nothing, and never in a
@@ -3898,6 +3899,8 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/directory/...`                | `GET`        | List the folders offered to local clients (§12.2)          | Defined |
 | `/data/imports`                      | `GET`/`POST` | Import a local file, and follow imports (§12.2)            | Defined |
 | `/data/bundles`                      | `POST`       | Make, change, or store a bundle, locally (§12.3)           | Defined |
+| `/data/archives`                     | `GET`/`POST` | Keep content offline, and follow it, locally (§12.4)       | Defined |
+| `/data/archives/{archive_id}`        | `DELETE`     | Stop keeping an archive, locally (§12.4)                   | Defined |
 | `/data/store/{application}/...`      | Various      | An application's store on this node (§13.3)                | Defined |
 | `/data/applications`                 | `GET`        | The applications this node serves (§13.4)                  | Defined |
 | `/data/...`                          | Various      | Additional programmatic APIs                               | TBD     |
