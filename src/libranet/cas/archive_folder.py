@@ -31,15 +31,12 @@ from threading import Lock
 from time import time
 from typing import Callable, Final
 
+from libranet.atomic_file import TEMP_PREFIX
 from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry
 from libranet.cas.archive import ARCHIVE_SUFFIX, ArchiveSource
 from libranet.cas.errors import ArchiveError
 
 _LOGGER = getLogger(__name__)
-
-# What a file being written starts with, and so what is never read as an
-# archive.
-_HIDDEN_PREFIX: Final = "."
 
 # A folder changed this recently is listed again at the next look, as its
 # modification time may not show a second change within the same tick.
@@ -135,7 +132,7 @@ class ArchiveFolder:  # pylint: disable=too-many-instance-attributes
         listed: dict[str, tuple[int, int]] = {}
 
         for entry in entries:
-            if not entry.name.endswith(ARCHIVE_SUFFIX) or entry.name.startswith(_HIDDEN_PREFIX):
+            if not entry.name.endswith(ARCHIVE_SUFFIX) or entry.name.startswith(TEMP_PREFIX):
                 continue
 
             try:

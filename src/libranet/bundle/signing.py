@@ -52,13 +52,17 @@ _LOGGER = getLogger(__name__)
 #: The one hash a signed bundle's ``contents`` is hashed with.
 SIGNED_HASH_ALGORITHM: Final = "sha256"
 
+#: The fields only a signed bundle has: its signature, whose presence is what
+#: makes one (BundleSpecification §1), and its signer.
+SIGNATURE_FIELD: Final = "signature"
+SIGNER_FIELD: Final = "signer"
+
 # The bytes of a SHA-256 hash, which is also the salt RSASSA-PSS signs with
 # (BundleSpecification §5).
 _SALT_BYTES: Final = 32
 
-# The fields of a signed bundle, each a string; the presence of "signature"
-# is what makes one (§1).
-_FIELDS: Final = ("algorithm", "contents", "hash", "signature", "signer")
+# The fields of a signed bundle, each a string.
+_FIELDS: Final = ("algorithm", "contents", "hash", SIGNATURE_FIELD, SIGNER_FIELD)
 
 # RSASSA-PSS with SHA-256 and MGF1 over it, salted as long as the hash, over a
 # hash already taken (BundleSpecification §5).
@@ -155,7 +159,7 @@ class SignedBundle:
             # Not logged: not being JSON is the answer.
             return False
 
-        return isinstance(value, dict) and "signature" in value
+        return isinstance(value, dict) and SIGNATURE_FIELD in value
 
     @classmethod
     def decoded(cls, data: bytes) -> SignedBundle:
@@ -194,8 +198,8 @@ class SignedBundle:
             BundleSignatureError: its ``hash`` is not the hash of its
                 ``contents``.
         """
-        if not isinstance(value, dict) or "signature" not in value:
-            raise MalformedBundleError('A signed bundle is an object with a "signature"')
+        if not isinstance(value, dict) or SIGNATURE_FIELD not in value:
+            raise MalformedBundleError(f'A signed bundle is an object with a "{SIGNATURE_FIELD}"')
 
         fields: dict[str, str] = {}
 
@@ -213,8 +217,8 @@ class SignedBundle:
             )
 
         try:
-            signer = ContentId.parse(fields["signer"])
-            signature = b64decode(fields["signature"], validate=True)
+            signer = ContentId.parse(fields[SIGNER_FIELD])
+            signature = b64decode(fields[SIGNATURE_FIELD], validate=True)
 
         except UnknownAlgorithmError as error:
             raise UnsupportedBundleError(f"A signed bundle's signer: {error}") from None
@@ -247,8 +251,8 @@ class SignedBundle:
             "algorithm": SIGNED_HASH_ALGORITHM,
             "contents": self.contents,
             "hash": self.hash,
-            "signature": b64encode(self.signature).decode("ascii"),
-            "signer": str(self.signer),
+            SIGNATURE_FIELD: b64encode(self.signature).decode("ascii"),
+            SIGNER_FIELD: str(self.signer),
         }
 
     def read_value(self, content_id: ContentId) -> dict[str, str]:

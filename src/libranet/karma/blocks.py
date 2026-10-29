@@ -42,7 +42,7 @@ from libranet.bundle.errors import (
     MalformedBundleError,
     MissingContentError,
 )
-from libranet.bundle.signing import SignedBundle
+from libranet.bundle.signing import SIGNATURE_FIELD, SignedBundle
 from libranet.bundle.storing import STORAGE_COMPRESSION_LEVEL
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DROP_SEPARATOR
@@ -57,6 +57,7 @@ from libranet.protocol.karma_balances import Balance
 from libranet.protocol.karma_members import contents_value, id_member
 from libranet.protocol.karma_stakes import SignedStake
 from libranet.protocol.karma_transactions import (
+    FROM_MEMBER,
     MIN_TRANSACTION_BITS,
     Payout,
     SignedTransaction,
@@ -81,10 +82,6 @@ _BALANCES: Final = "balances"
 _RUNNER_UP: Final = "runner_up"
 _STAKES: Final = "stakes"
 _WITNESSED: Final = "witnessed"
-
-# The member of a transaction's contents naming its sender: an id, where a
-# payout's names an object of them (§4.1, §5.2).
-_FROM: Final = "from"
 
 # How a witness is written: a transaction's hash, the SHA-256 of its
 # contents in lower-case hex (§4.2, §6.4).
@@ -760,13 +757,13 @@ def _transaction(value: object) -> SignedTransaction | Payout:
     if not isinstance(value, dict):
         raise ValueError(f"Each of a block's {_TRANSACTIONS} must be an object")
 
-    if "signature" not in value:
+    if SIGNATURE_FIELD not in value:
         return Payout.from_value(value)
 
     bundle = SignedBundle.from_value(value)
     terms = contents_value(bundle.contents, named="A transaction")
 
-    if isinstance(terms, dict) and isinstance(terms.get(_FROM), dict):
+    if isinstance(terms, dict) and isinstance(terms.get(FROM_MEMBER), dict):
         raise ValueError(f"A block's payout must not be signed, as {bundle.signer} signed it")
 
     return SignedTransaction(bundle, Transaction.from_value(terms))

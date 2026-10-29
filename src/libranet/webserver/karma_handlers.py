@@ -141,6 +141,7 @@ from libranet.webserver.http_types import (
     status_response,
 )
 from libranet.webserver.request_refusals import (
+    CONTENT_ID_SEGMENTS,
     content_id_or_refusal,
     invalid_request_response,
     parsed_or_refusal,
@@ -154,7 +155,7 @@ _LOGGER = getLogger(__name__)
 KARMA_PATH: Final = API_PREFIX + "/karma"
 
 #: Where a client reads one identity's balance.
-KARMA_BALANCE_PATTERN: Final = KARMA_PATH + "/balances/(?P<algorithm>[^/]+)/(?P<hash>[^/]+)"
+KARMA_BALANCE_PATTERN: Final = KARMA_PATH + "/balances" + CONTENT_ID_SEGMENTS
 
 #: Where a client reads the generations of the chain the node follows.
 KARMA_GENERATIONS_PATH: Final = KARMA_PATH + "/generations"

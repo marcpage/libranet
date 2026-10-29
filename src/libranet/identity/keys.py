@@ -30,7 +30,7 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_public_key,
 )
 
-from libranet.atomic_file import TEMP_SUFFIX
+from libranet.atomic_file import TEMP_PREFIX, TEMP_SUFFIX
 from libranet.bundle.signing import has_small_order
 from libranet.cas.compression import decompressed
 from libranet.cas.content_id import ContentId
@@ -187,7 +187,9 @@ def write_private_file(path: Path, data: bytes) -> bool:
     """
     path.parent.mkdir(mode=_PRIVATE_DIR_MODE, parents=True, exist_ok=True)
     # mkstemp creates the file with mode 0o600.
-    descriptor, temp_name = mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=TEMP_SUFFIX)
+    descriptor, temp_name = mkstemp(
+        dir=path.parent, prefix=f"{TEMP_PREFIX}{path.name}.", suffix=TEMP_SUFFIX
+    )
     temp_path = Path(temp_name)
 
     try:

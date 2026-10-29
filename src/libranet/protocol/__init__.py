@@ -109,6 +109,7 @@ from libranet.protocol.karma_staking import (
     StakingRule,
 )
 from libranet.protocol.karma_transactions import (
+    FROM_MEMBER,
     MIN_TRANSACTION_BITS,
     TRANSACTION_WORK_TARGET,
     Payout,
@@ -149,6 +150,7 @@ __all__ = [
     "CREATED_MEMBER",
     "CRLF",
     "DEFAULT_PORTS",
+    "FROM_MEMBER",
     "GENERATION_FIELD",
     "GENERATIONS_DIR",
     "HEAD_FIELD",

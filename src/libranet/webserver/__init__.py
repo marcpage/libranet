@@ -268,6 +268,7 @@ from libranet.webserver.own_pages import (
 )
 from libranet.webserver.peer_trust import ConnectingRule, PeerTrust
 from libranet.webserver.request_refusals import (
+    CONTENT_ID_SEGMENTS,
     MAX_JSON_BODY_BYTES,
     body_or_refusal,
     content_id_or_refusal,
@@ -363,6 +364,7 @@ __all__ = [
     "CONFIG_USERS_PATH",
     "CONNECTING_PATH",
     "CONNECTIONS_PATH",
+    "CONTENT_ID_SEGMENTS",
     "COST",
     "DATA_APPLICATIONS_PATH",
     "DATA_ENDPOINT_NAMES",

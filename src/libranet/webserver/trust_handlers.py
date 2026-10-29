@@ -77,6 +77,7 @@ from libranet.webserver.http_types import (
     typed_response,
 )
 from libranet.webserver.request_refusals import (
+    CONTENT_ID_SEGMENTS,
     content_id_or_refusal,
     invalid_request_response,
     parsed_or_refusal,
@@ -92,7 +93,7 @@ _LOGGER = getLogger(__name__)
 TRUST_PATH: Final = API_PREFIX + "/trust"
 
 #: Where a page reads the score of one identity, and trusts, distrusts, or clears it.
-TRUST_PATTERN: Final = rf"{TRUST_PATH}/(?P<algorithm>[^/]+)/(?P<hash>[^/]+)"
+TRUST_PATTERN: Final = TRUST_PATH + CONTENT_ID_SEGMENTS
 
 # What reading the scores with no one signed in is refused for needing.
 _READING_NEEDS: Final = "Sign in to read your trust scores."
