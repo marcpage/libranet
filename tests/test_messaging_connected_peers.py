@@ -29,8 +29,8 @@ def test_the_peers_connected_each_way_are_replaced_when_named_again() -> None:
 
     assert connected.directions(PEER_ID) == (ConnectionDirection.INBOUND,)
     assert connected.node_ids() == {PEER_ID, OTHER_PEER_ID}
-    assert connected.node_ids(ConnectionDirection.OUTBOUND) == {OTHER_PEER_ID}
-    assert connected.node_ids(ConnectionDirection.INBOUND) == {PEER_ID}
+    assert connected.node_ids(direction=ConnectionDirection.OUTBOUND) == {OTHER_PEER_ID}
+    assert connected.node_ids(direction=ConnectionDirection.INBOUND) == {PEER_ID}
 
 
 def test_the_payload_names_the_direction_and_the_peers_by_id_in_order() -> None:

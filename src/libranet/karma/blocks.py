@@ -24,9 +24,9 @@ it states falsely against its target and its chain is for whoever checks it
 there. Since a drop's nonce is not signed, anyone may place a copy of a
 signed block at any target, so one read at a target not its own, as one of
 the other kind is, states nothing false there, and is passed over
-(:class:`MisplacedBlockError`). A block a builder could honestly make, such as one not full or one
-breaking the half-free rule, states nothing false, and only scores zero
-(§5.5).
+(:class:`~libranet.karma.errors.MisplacedBlockError`). A block a builder
+could honestly make, such as one not full or one breaking the half-free
+rule, states nothing false, and only scores zero (§5.5).
 """
 
 from __future__ import annotations
@@ -50,6 +50,7 @@ from libranet.cas.errors import UnknownAlgorithmError
 from libranet.config.models import KIB, MIB, TARGET_BITS
 from libranet.json_fields import integer_field
 from libranet.json_format import compact_json
+from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
@@ -468,16 +469,6 @@ class BlockBounds:
 BLOCK_BOUNDS: Final = BlockBounds()
 
 
-class MisplacedBlockError(ValueError):
-    """A block was read at a target its own contents do not place it at (§3.8).
-
-    It is of the other kind than the target's, or built on another block
-    than the one the target is named for. A drop's nonce is not signed, so
-    anyone may place a copy of a signed block at any target: such a block is
-    passed over, and states nothing false of the target it is read at.
-    """
-
-
 @dataclass(frozen=True)
 class BlockFinding:
     """Why a block is not taken, by itself: it is unsigned, or it states ``statement`` falsely.
@@ -615,7 +606,8 @@ class BlockDrop(Generic[_Block]):
             if other:
                 raise MisplacedBlockError(f"It is a {other}, not a {kind.__name__}") from error
 
-            # Not logged: it is the finding, once the builder's signature checks.
+            # Not logged: it is the finding, once the builder's
+            # signature checks.
             statement = str(error)
 
         wanted = tuple(dict.fromkeys(signer for signer in signers if signer not in keys))
@@ -672,7 +664,8 @@ class BlockDrop(Generic[_Block]):
             other.from_value(contents_value(bundle.contents, named="A block"))
 
         except (BundleError, ValueError):
-            # Not logged: it is no block of either kind, which its reader finds false.
+            # Not logged: it is no block of either kind, which its
+            # reader finds false.
             return ""
 
         return other.__name__
@@ -747,7 +740,8 @@ def _transaction(value: object) -> SignedTransaction | Payout:
 
     Raises:
         UnsupportedBundleError: it is hashed with an algorithm other than
-            SHA-256, or names its signer under a hash algorithm this node lacks.
+            SHA-256, or names its signer under a hash algorithm this node
+            lacks.
         UnknownAlgorithmError: what it states names an id under a hash
             algorithm this node lacks.
         BundleSignatureError: its ``hash`` is not the hash of its ``contents``.

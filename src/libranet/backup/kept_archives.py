@@ -31,7 +31,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from json import loads
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Final, Iterable
 
 from libranet.atomic_file import write_atomically
 from libranet.backup.errors import KeptArchivesFileError
@@ -48,7 +48,7 @@ from libranet.json_format import MOMENT_FORMAT, parsed_moment, pretty_json
 from libranet.protocol.backup_requests import ArchiveRequest
 
 # What a record's file holds its records under.
-_ARCHIVES_KEY = "archives"
+_ARCHIVES_KEY: Final = "archives"
 
 
 @dataclass(frozen=True)
@@ -292,6 +292,7 @@ class KeptArchive(Task):
         source: ContentSource,
         directory: Path,
         now: float,
+        *,
         progressed: Callable[[], None] = lambda: None,
     ) -> tuple[ContentId, ...]:
         """Write the archive into ``directory`` from what ``source`` holds, or wait on the rest.

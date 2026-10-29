@@ -89,10 +89,12 @@ from libranet.webserver.version_edits import VersionEdits
 
 _LOGGER = getLogger(__name__)
 
-#: Where a page reads the trust scores of whoever is signed in, and changes their list.
+#: Where a page reads the trust scores of whoever is signed in, and changes
+#: their list.
 TRUST_PATH: Final = API_PREFIX + "/trust"
 
-#: Where a page reads the score of one identity, and trusts, distrusts, or clears it.
+#: Where a page reads the score of one identity, and trusts, distrusts, or
+#: clears it.
 TRUST_PATTERN: Final = TRUST_PATH + CONTENT_ID_SEGMENTS
 
 # What reading the scores with no one signed in is refused for needing.

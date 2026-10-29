@@ -5,7 +5,7 @@ is found so as it is read (:meth:`~libranet.karma.blocks.BlockDrop.decoded`).
 One whose ``previous`` names another validation block than the one its
 target is named for, as one that is a validation block, is of another
 target, where anyone may have placed it, and is passed over
-(:class:`~libranet.karma.blocks.MisplacedBlockError`). What any other states
+(:class:`~libranet.karma.errors.MisplacedBlockError`). What any other states
 against its target and the chain its ``previous`` names is checked here: its
 ``generation``, against the validation block its target is named for; and
 its ``weight``, payout, balances, and ``reach``, and each transaction's key,
@@ -41,10 +41,10 @@ from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
     BlockFinding,
-    MisplacedBlockError,
     TransactionBlock,
     ValidationBlock,
 )
+from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.ledger import BalanceSheet, Reward, reach_of
 from libranet.karma.reading import HeldBlock
@@ -229,8 +229,8 @@ class ChainView(Protocol):
         """Each of ``identities``' balance, as the chain's transaction block ``generation`` left it.
 
         That is the latest stated of it through that block, or
-        :data:`~libranet.protocol.karma_balances.NO_BALANCE` for one stated nowhere
-        (§5.3).
+        :data:`~libranet.protocol.karma_balances.NO_BALANCE` for one stated
+        nowhere (§5.3).
 
         Raises:
             MissingContentError: names the blocks within that block's reach

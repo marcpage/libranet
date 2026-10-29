@@ -200,8 +200,11 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
 
     @property
     def can_carry_on(self) -> bool:
-        """Whether asking for the restore again carries it on, rather than starting it over:
-        it is waiting on content, or gave up waiting."""
+        """Whether asking for the restore again carries it on, rather than starting it over.
+
+        It does while the restore is waiting on content, or has given up
+        waiting.
+        """
         return not self.finished or self._waiting.gave_up
 
     @property

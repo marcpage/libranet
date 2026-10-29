@@ -38,7 +38,6 @@ from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
     BlockFinding,
-    MisplacedBlockError,
     TransactionBlock,
     ValidationBlock,
 )
@@ -53,6 +52,7 @@ from libranet.karma.checking import (
     TransactionVerdict,
 )
 from libranet.karma.claims import ClaimedChain, ClaimedGeneration, FalseStatement, HeadClaim
+from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.following import ChainFollower, say_found
 from libranet.karma.generations import (
     FIRST_NEW_KISMET,

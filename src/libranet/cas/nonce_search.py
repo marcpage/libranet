@@ -129,7 +129,8 @@ class NonceSearch:
 
 def serve(requests: BinaryIO, answers: BinaryIO) -> None:
     """Answer each round read from ``requests`` on ``answers``, until ``requests`` end."""
-    # Never searched: the process that asks sends a search with its first round.
+    # Never searched: the process that asks sends a search with its
+    # first round.
     search = NonceSearch(b"", bytes(_TARGET_BYTES))
     header = requests.read(ROUND.size)
 

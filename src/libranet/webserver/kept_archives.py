@@ -52,7 +52,8 @@ from libranet.webserver.request_refusals import invalid_request_response, parsed
 
 _LOGGER = getLogger(__name__)
 
-#: Where a local client keeps content offline, and asks how its archives are doing.
+#: Where a local client keeps content offline, and asks how its
+#: archives are doing.
 ARCHIVES_PATH: Final = API_PREFIX + "/archives"
 
 #: Where a local client stops keeping one archive.

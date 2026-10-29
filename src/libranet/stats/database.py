@@ -55,24 +55,6 @@ _DATA_NOT_FOUND: Final = "data_not_found"
 _PAST_EVERY_HASH: Final = "g"
 
 
-def _hash_range(prefix: str, bits: int) -> tuple[str, str]:
-    """Where the hashes sharing the first ``bits`` leading bits of ``prefix`` lie, in hash order.
-
-    Each sorts at or after the first bound and before the second.
-    """
-    digits = -(-bits // BITS_PER_HEX_DIGIT)
-
-    if digits == 0:
-        return "", _PAST_EVERY_HASH
-
-    spare_bits = digits * BITS_PER_HEX_DIGIT - bits
-    first = int(prefix[:digits], 16) >> spare_bits << spare_bits
-    after = first + (1 << spare_bits)
-    # When those bits are all ones, every hash from the first bound on shares them.
-    high = _PAST_EVERY_HASH if after >> (digits * BITS_PER_HEX_DIGIT) else f"{after:0{digits}x}"
-    return f"{first:0{digits}x}", high
-
-
 def _source_rank(expression: str) -> str:
     """SQL for the rank of the source ``expression`` names, weakest lowest."""
     cases = " ".join(
@@ -720,3 +702,22 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
     def _query_one(self, statement: str, parameters: Mapping[str, Any]) -> Row | None:
         row: Row | None = self._execute(statement, parameters).fetchone()
         return row
+
+
+def _hash_range(prefix: str, bits: int) -> tuple[str, str]:
+    """Where the hashes sharing the first ``bits`` leading bits of ``prefix`` lie, in hash order.
+
+    Each sorts at or after the first bound and before the second.
+    """
+    digits = -(-bits // BITS_PER_HEX_DIGIT)
+
+    if digits == 0:
+        return "", _PAST_EVERY_HASH
+
+    spare_bits = digits * BITS_PER_HEX_DIGIT - bits
+    first = int(prefix[:digits], 16) >> spare_bits << spare_bits
+    after = first + (1 << spare_bits)
+    # When those bits are all ones, every hash from the first bound
+    # on shares them.
+    high = _PAST_EVERY_HASH if after >> (digits * BITS_PER_HEX_DIGIT) else f"{after:0{digits}x}"
+    return f"{first:0{digits}x}", high

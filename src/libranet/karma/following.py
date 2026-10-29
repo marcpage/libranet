@@ -30,7 +30,7 @@ shuns, is passed over, and logged as a warning. A block of another target,
 which anyone may place a copy of at this one, since a drop's nonce is not
 signed, is passed over too, and logged: one of the other kind, or one built
 on, or staking on one built on, another validation block than the one the
-target is named for (:class:`~libranet.karma.blocks.MisplacedBlockError`).
+target is named for (:class:`~libranet.karma.errors.MisplacedBlockError`).
 Nothing else is shunned: not a block for being on a lighter chain, nor for
 not being chosen (§3.6).
 """
@@ -48,11 +48,11 @@ from libranet.karma.blocks import (
     BLOCK_BOUNDS,
     BlockBounds,
     BlockFinding,
-    MisplacedBlockError,
     TransactionBlock,
     ValidationBlock,
 )
 from libranet.karma.checking import TransactionBlockCheck
+from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
@@ -239,7 +239,8 @@ class ChainFollower:
                 checks[held.block_id] = self._found(self._looking.transactions, held, check)
 
             except MissingContentError as error:
-                # Not logged: what it lacks is asked for, and it is checked once that comes.
+                # Not logged: what it lacks is asked for, and it is checked
+                # once that comes.
                 lacking[held.block_id] = error.content_ids
 
         return _AtTarget(checks, lacking)
@@ -260,7 +261,8 @@ class ChainFollower:
                 found = self._found(self._looking.validations, held, check)
 
             except MissingContentError:
-                # Not logged: what it lacks is asked for, and it is checked once that comes.
+                # Not logged: what it lacks is asked for, and it is checked
+                # once that comes.
                 continue
 
             if isinstance(found, ValidationBlockCheck):

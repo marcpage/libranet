@@ -231,7 +231,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._head_said: ContentId | None = None
         self._trust: NodeTrust | None = None
         self._store = CasStore.source_of_truth(config.storage)
-        self._searchers = NonceSearchers(config.karma.mining_processes)
+        self._searchers = NonceSearchers(processes=config.karma.mining_processes)
         self._reader = TargetReader.of(
             config, LayeredSource.open(config.storage), self.publish, clock=clock
         )
@@ -657,7 +657,8 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 self.logger.debug("Wrote the Karma balances stated at the head")
 
         except MissingContentError:
-            # Not logged: what they are read from is asked for, and they are written once it comes.
+            # Not logged: what they are read from is asked for, and they are
+            # written once it comes.
             return
 
         except (BundleError, ValueError) as error:

@@ -140,7 +140,8 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
                 followed = self._weigh(claim)
 
             except MissingContentError as error:
-                # Not logged: what it lacks is asked for, and it is weighed on once that comes.
+                # Not logged: what it lacks is asked for, and it is weighed on
+                # once that comes.
                 claim.lacking = frozenset(error.content_ids)
                 return False
 

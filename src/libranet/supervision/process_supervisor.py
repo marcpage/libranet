@@ -74,7 +74,8 @@ class _Backoff:
     ``stable_after_seconds`` is counted as failing for the first time.
 
     Raises:
-        ValueError: ``delay_seconds`` is negative or above ``max_delay_seconds``.
+        ValueError: ``delay_seconds`` is negative or above
+            ``max_delay_seconds``.
     """
 
     delay_seconds: float

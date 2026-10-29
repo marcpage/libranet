@@ -153,7 +153,7 @@ class NonceSearchers:
         ValueError: ``processes`` is less than 1.
     """
 
-    def __init__(self, processes: int | None = None) -> None:
+    def __init__(self, *, processes: int | None = None) -> None:
         count = (cpu_count() or 1) if processes is None else processes
 
         if count < 1:

@@ -365,7 +365,10 @@ do.
   `queue.Queue` objects.
 - **The clock is a parameter**: `clock: Callable[[], float] = time`. Code
   that stamps or compares wall-clock time calls `self._clock()`, so a test
-  can set the time. `monotonic()` is called directly for deadlines.
+  can set the time. `monotonic()` is called directly for deadlines, unless
+  a test must move one: then it is the clock's default,
+  `clock: Callable[[], float] = monotonic`, as for how long a session has
+  gone unused (`Sessions`) or a nonce has been searched for.
 - **No mutable default arguments.**
 - **Optional collaborators and tuning are keyword-only**, after a `*`:
 
@@ -697,8 +700,8 @@ New code comes with tests, and coverage is gated at 90%.
 
 ## 12. Where the Code Departs
 
-These are in the code as of Phase 5 Step 108 and the cleanup merged after
-it, through #367. New code follows the rules above. None of these is fixed
+These are in the code as of Phase 6 Step 143 and the cleanup of #464. New
+code follows the rules above. None of these is fixed
 in passing: a change set keeps to its task.
 Paths are relative to `src/libranet/`, except those that start with `tests/`.
 
@@ -714,7 +717,7 @@ Paths are relative to `src/libranet/`, except those that start with `tests/`.
 | 82 public callables in 42 files, listed in §12.1 | An optional parameter a call may pass by position (§6.4) |
 | 69 public constants and type aliases in 29 files, listed in §12.2; `stats/lists.py` `_NODE_LIST_BASE_BYTES`, `_SEEK_LIST_BASE_BYTES` | A public name's comment starts `#` rather than `#:`, and a private one's `#:` rather than `#` (§7) |
 | `cas/archive.py`, `config/models.py` (eleven lines), `connections/request_encoding.py`, `messaging/events.py` (two), `stats/database.py` (four), `stats/lists.py` (two), `stats/schema.py`, `supervisor.py`, `webserver/app_handler.py`, `webserver/app_registry.py` (two), `webserver/server.py` | A comment marks a literal with Markdown's single backticks rather than reStructuredText's double ones (§8.2) |
-| `backup/imports.py`, `backup/tasks.py`, `connections/peer_session.py`, `messaging/queues.py`, `stats/records.py`, `stats/schema.py`, `webserver/data_handler.py`, `webserver/search_handler.py`, `webserver/shun_handler.py`, `webserver/signed_versions.py`, `webserver/site_checks.py` | No test file of its own: each is tested through the code that uses it (§11) |
+| `backup/imports.py`, `connections/peer_session.py`, `messaging/queues.py`, `protocol/karma_carried.py`, `protocol/karma_payments.py`, `stats/records.py`, `stats/schema.py`, `webserver/data_handler.py`, `webserver/search_handler.py`, `webserver/shun_handler.py`, `webserver/signed_versions.py`, `webserver/site_checks.py` | No test file of its own: each is tested through the code that uses it (§11) |
 
 ### 12.1 Optional Parameters Taken Positionally
 

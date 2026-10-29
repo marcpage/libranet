@@ -156,7 +156,7 @@ class Request:  # pylint: disable=too-many-instance-attributes
 
     def from_local_client(self) -> bool:
         """Whether the client that sent it is on this machine (HttpApi §2.4)."""
-        return is_local_client(self.client_address, self.server_address)
+        return is_local_client(self.client_address, reached=self.server_address)
 
     def carries_json(self) -> bool:
         """Whether the request says its body is JSON: its ``Content-Type`` is ``application/json``.

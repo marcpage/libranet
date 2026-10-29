@@ -20,10 +20,10 @@ from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
     BlockFinding,
-    MisplacedBlockError,
     TransactionBlock,
     ValidationBlock,
 )
+from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets, new_kismet
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet

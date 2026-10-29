@@ -319,7 +319,7 @@ class PeerConfig(_Section):
     # the connection after answering, as a server does a client of too little
     # Karma (HandshakeProtocol §5.2), so that other peers are tried meanwhile
     # (Phase 6 Step 143). Provisional default.
-    turned_away_rest_seconds: float = Field(default=3600.0, gt=0)
+    turned_away_rest_seconds: float = Field(default=HOUR_SECONDS, gt=0)
 
     # How often a connected peer's seek list is fetched again, so content it
     # still wants can be pushed (HandshakeProtocol §3.3). It must be shorter
@@ -865,7 +865,7 @@ class KarmaConfig(_Section):
     # How long after the node's last transaction the Karma module puts up the
     # payments it has queued, however few (KarmaLedger §4.6, Phase 6 Step
     # 132).
-    payment_interval_seconds: float = Field(default=3600.0, gt=0)
+    payment_interval_seconds: float = Field(default=HOUR_SECONDS, gt=0)
 
     # How long the Karma module searches for the nonce of a transaction it
     # makes of the node's payments, before taking the best found, once that
@@ -877,7 +877,7 @@ class KarmaConfig(_Section):
     # as a client, by the data each sent it, and by the requests each
     # fulfilled, since it last rated them, and pays the best by each
     # (KarmaLedger §4.6, Phase 6 Step 133).
-    rating_interval_seconds: float = Field(default=3600.0, gt=0)
+    rating_interval_seconds: float = Field(default=HOUR_SECONDS, gt=0)
 
     # How often the Karma module combines the transaction blocks at its
     # head's targets, and what it carries, into one, as full as it can be,
@@ -1027,10 +1027,10 @@ class LibranetConfig(_Section):
     ) -> LibranetConfig:
         """The configuration a YAML file gives, plus overrides.
 
-        ``path`` is the YAML file to read. A missing file yields an all-defaults
-        configuration, unless ``required`` is set, when it is an error.
-        ``overrides`` is a nested mapping merged over the file's contents, used
-        for command-line flags such as ``--log-level``.
+        ``path`` is the YAML file to read. A missing file yields an
+        all-defaults configuration, unless ``required`` is set, when it is an
+        error. ``overrides`` is a nested mapping merged over the file's
+        contents, used for command-line flags such as ``--log-level``.
 
         Raises:
             ConfigError: the file is unreadable, is not a YAML mapping, or the

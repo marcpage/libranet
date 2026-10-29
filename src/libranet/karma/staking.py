@@ -229,6 +229,7 @@ class HeadStakes:  # pylint: disable=too-many-instance-attributes
         self,
         transactions: Mapping[ContentId, TransactionBlockCheck],
         identity: NodeIdentity,
+        *,
         also: Iterable[ContentId] = (),
     ) -> StakedBlock | None:
         """The stakes a validation block takes on the best of ``transactions``, or ``None``.
@@ -318,7 +319,8 @@ class HeadStakes:  # pylint: disable=too-many-instance-attributes
                 drop = BlockDrop.parsed(held.data, ValidationBlock)
 
             except (BundleError, ValueError) as error:
-                # Not logged as a warning: the chain followed checks each block at the target.
+                # Not logged as a warning: the chain followed checks each block
+                # at the target.
                 _LOGGER.debug("Karma block %s holds no stakes: %s", held.block_id, error)
                 continue
 
@@ -361,7 +363,8 @@ class HeadStakes:  # pylint: disable=too-many-instance-attributes
         key = keys.get(signed.staker)
 
         if key is None:
-            # Not logged: the reader asks for it, and the stake is taken once it comes.
+            # Not logged: the reader asks for it, and the stake is taken once
+            # it comes.
             return False
 
         try:
@@ -476,7 +479,8 @@ class ValidationBuilder:
             self._build(GenerationTargets.after(head.validation).validation)
 
         except MissingContentError:
-            # Not logged: what it lacks is asked for, and it is built once that comes.
+            # Not logged: what it lacks is asked for, and it is built once
+            # that comes.
             return
 
         except OSError as error:
@@ -503,7 +507,7 @@ class ValidationBuilder:
         staked = self._stakes.staked(
             transactions,
             identity,
-            {signed.staker for check in validations for signed in check.drop.block.stakes},
+            also={signed.staker for check in validations for signed in check.drop.block.stakes},
         )
 
         if staked is None or self._held(staked.stakes, validations):

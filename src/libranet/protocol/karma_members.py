@@ -49,23 +49,6 @@ def contents_value(contents: str, *, named: str) -> object:
         ) from None
 
 
-def _once_each(members: list[tuple[str, object]]) -> dict[str, object]:
-    """The JSON object whose ``members`` are these, in order, each named once.
-
-    Raises:
-        ValueError: it names a member twice.
-    """
-    value: dict[str, object] = {}
-
-    for name, member in members:
-        if name in value:
-            raise ValueError(f"An object names {name!r} twice")
-
-        value[name] = member
-
-    return value
-
-
 def id_member(value: object, *, named: str) -> ContentId:
     """The id ``value``, the member called ``named``, writes as ``{algorithm}/{hash}``.
 
@@ -143,3 +126,20 @@ def check_moment(moment: datetime, *, named: str) -> None:
     """
     if moment.utcoffset() != timedelta(0) or moment.microsecond:
         raise ValueError(f"{named} must be a UTC time to the second, got {moment!r}")
+
+
+def _once_each(members: list[tuple[str, object]]) -> dict[str, object]:
+    """The JSON object whose ``members`` are these, in order, each named once.
+
+    Raises:
+        ValueError: it names a member twice.
+    """
+    value: dict[str, object] = {}
+
+    for name, member in members:
+        if name in value:
+            raise ValueError(f"An object names {name!r} twice")
+
+        value[name] = member
+
+    return value

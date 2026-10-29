@@ -87,6 +87,7 @@ class LayeredSource:
         store: CasStore,
         archives: Sequence[ArchiveSource] = (),
         applications: Mapping[str, ContentId] | None = None,
+        *,
         kept: ArchiveFolder | None = None,
     ) -> None:
         self._store = store
@@ -129,7 +130,7 @@ class LayeredSource:
 
         kept = ArchiveFolder(storage.kept_archives_dir)
         kept.refresh()
-        return cls(CasStore.source_of_truth(storage), archives, shipped.bundles, kept)
+        return cls(CasStore.source_of_truth(storage), archives, shipped.bundles, kept=kept)
 
     @property
     def archives(self) -> tuple[ArchiveSource, ...]:
