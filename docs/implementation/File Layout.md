@@ -892,6 +892,7 @@ optional; `examples/libranet.yaml` shows them all with their defaults.
 | `storage.min_free_bytes` | `1073741824` | — | Free space kept on the filesystem holding `cas/` |
 | `storage.max_storage_bytes` | `null` | — | Most bytes of objects kept in `cas/data` |
 | `storage.resolved_idle_seconds` | `2592000.0` | — | How long an application goes unused before its tree in `cas/resolved/` may be deleted for free space |
+| `storage.reclaim_interval_seconds` | `3600.0` | — | How often, at most, trees in `cas/resolved/` are deleted while free space stays short |
 | `storage.max_application_store_bytes` | `1048576` | — | Largest file in `store/` |
 | `storage.max_application_value_bytes` | `65536` | — | Largest value in a file in `store/` |
 | `storage.search_cache_ttl_seconds` | `300.0` | — | How long a file in `search/` is reused |

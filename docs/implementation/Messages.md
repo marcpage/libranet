@@ -516,7 +516,8 @@ or reported, nor is the key a kept archive's bundle may carry.
 
 - **Payload:** `objects`, a list of `algorithm`, `hash`, `size`.
 - **Sent by:** Stats, the held content scoring highest, best first, leaving
-  out `exclude`, until the sizes add up to `bytes` or the list is full.
+  out `exclude`, until the sizes add up to `bytes` or the list holds
+  `storage.max_candidates` objects.
 - **Received by:** Eviction, which hands the content off in turn.
 - **Purpose:** choose what to evict.
 
@@ -548,7 +549,7 @@ or reported, nor is the key a kept archive's bundle may carry.
 
 - **Payload:** none.
 - **Sent by:** Eviction, when free space runs short, before handing any
-  content off, at most once every `reclaim_interval_seconds`.
+  content off, at most once every `storage.reclaim_interval_seconds`.
 - **Received by:** Stats, which answers with `resolved.reclaim`.
 - **Purpose:** free space held by application files not used lately.
 

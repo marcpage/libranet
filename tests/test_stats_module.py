@@ -535,6 +535,30 @@ def test_no_more_than_the_most_candidates_are_offered(
         module.on_stop()
 
 
+def test_the_most_candidates_offered_are_as_the_config_says_by_default(
+    config: LibranetConfig, queues: ModuleQueues, node_id: ContentId
+) -> None:
+    storage = config.storage.model_copy(update={"max_candidates": 1})
+    limited = config.model_copy(update={"storage": storage})
+    module = StatsModule(
+        ModuleName.STATS, queues, limited, clock=lambda: NOW, poll_interval_seconds=0.01
+    )
+    module.on_start()
+
+    try:
+        content = [unmatched(node_id, variant) for variant in (1, 2)]
+
+        for size, content_id in enumerate(content, start=1):
+            hold(module, limited, content_id, size)
+
+        module.handle(candidates_requested(1_000))
+
+        assert offered(queues) == [(content[0], 1)]
+
+    finally:
+        module.on_stop()
+
+
 def test_content_gone_from_the_store_is_recorded_as_deleted_not_offered(
     still: StatsModule,
     config: LibranetConfig,
