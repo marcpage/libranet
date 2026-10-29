@@ -404,9 +404,10 @@ larger ones.
   says how heavy the chain before it claims to be. A block whose
   transactions are all in a larger block, or in one as large sharing more
   bits, may be shunned, unless it is near 1 MiB or a validation block names
-  it. No block is shunned for being on a lighter chain. An unsigned block is
-  shunned, and the builder of a block found to state something false is
-  distrusted in the node's own trust list.
+  it. No block is shunned for being on a lighter chain. A block that is no
+  block of the ledger, unsigned or stating its `weight` or `generation`
+  falsely, is shunned, and the builder of a block found to state something
+  false is distrusted in the node's own trust list.
 - **Defined in:**
   [Karma Ledger §3](KarmaLedger.md#3-generations) for the targets, the
   heaviest chain, heads, shunning, and distrusted builders,
@@ -437,8 +438,9 @@ each generation, and the one the heaviest chain goes through wins.
   rest by bits, then by effective stake, then by id, and builds the next
   generation on the best. The winner's stakers share the generation's
   reward, and the runner-up's stakers lose their stakes in it, unless they
-  also staked in the winner. A signed validation block is never shunned,
-  since any one may lead to another chain, and an unsigned one always is.
+  also staked in the winner. A validation block is shunned only when it is
+  no block of the ledger, unsigned or stating its `generation` falsely,
+  since any other may lead to another chain.
   A builder found to state something false is distrusted, and no builder
   puts a distrusted identity's stake in a block. A node's head, the winner
   whose id names the target for new transactions, is told to its peers
