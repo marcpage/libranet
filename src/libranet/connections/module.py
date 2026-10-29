@@ -652,7 +652,9 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             passes = self._searches.prefixes.resumed(now)
 
         for peer in due:
-            self._start("refresh", partial(self._talk, peer, self.exchange.refresh))
+            self._start(
+                f"refresh {peer.session.endpoint}", partial(self._talk, peer, self.exchange.refresh)
+            )
 
         for search in resumed:
             self._searches.content.ready.put(search)
@@ -716,7 +718,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             sessions = [peer.session for peer in self._peers.values()]
 
         for session in sessions:
-            self._start(purpose, partial(self._tell, session, what, tell))
+            self._start(f"{purpose} {session.endpoint}", partial(self._tell, session, what, tell))
 
         return len(sessions)
 
@@ -727,9 +729,6 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
         except OSError as error:
             self.logger.debug("Could not tell %s of %s: %s", session.endpoint, what, error)
-
-        except Exception:  # pylint: disable=broad-exception-caught
-            self.logger.exception("Telling %s of %s failed", session.endpoint, what)
 
     def _on_node_trust(self, message: Message) -> None:
         """Take whom this node trusts, close the peers it no longer allows, and tend the mix."""
@@ -766,7 +765,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             self._publish_dialed(dial_id, DialOutcome.ALREADY_CONNECTED, reached[0])
             return
 
-        self._start("dial", partial(self._dial_asked, dial_id, endpoint))
+        self._start(f"dial {endpoint}", partial(self._dial_asked, dial_id, endpoint))
 
     def _dial_asked(self, dial_id: str, endpoint: str) -> None:
         """Dial ``endpoint``, as the operator asked, and say what came of it.
@@ -936,7 +935,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
             self._pushing.handing_off.add(content_id)
 
-        self._start("hand-off", partial(self._hand_off, content_id, copies))
+        self._start(f"hand-off {content_id}", partial(self._hand_off, content_id, copies))
 
     def _on_data_stored(self, message: Message) -> None:
         """Push the new content on, and end any search for it."""
@@ -1013,10 +1012,15 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
                 self._dialing.pending[candidate.key] = candidate
 
         for candidate in chosen:
-            self._start("connect", partial(self._connect, candidate))
+            self._start(f"connect {candidate.key}", partial(self._connect, candidate))
 
     def _start(self, purpose: str, job: Callable[[], None]) -> None:
-        """Run ``job`` on its own thread, which never holds up the process exiting."""
+        """Run ``job`` on its own thread, which never holds up the process exiting.
+
+        The thread is named for ``purpose``, which says what it works on, so
+        that an exception ending it is logged, by the hook for uncaught
+        exceptions, with what it was doing.
+        """
         Thread(target=job, name=f"{self.name}-{purpose}", daemon=True).start()
 
     def _connect(self, candidate: Candidate) -> None:
@@ -1030,18 +1034,16 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         try:
             peer = self._walk(candidate)
 
-        except Exception:  # pylint: disable=broad-exception-caught
-            self.logger.exception("Connecting to %s failed", candidate.key)
+        finally:
+            with self._lock:
+                self._dialing.pending.pop(candidate.key, None)
 
-        with self._lock:
-            self._dialing.pending.pop(candidate.key, None)
+                if peer is None and candidate.node_id not in self._peers:
+                    self._dialing.resting[candidate.key] = (
+                        self._clock() + self._config.peers.retry_delay_seconds
+                    )
 
-            if peer is None and candidate.node_id not in self._peers:
-                self._dialing.resting[candidate.key] = (
-                    self._clock() + self._config.peers.retry_delay_seconds
-                )
-
-        self._maintain()
+            self._maintain()
 
         if peer is not None:
             self._push_unpushed()
@@ -1221,9 +1223,6 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
         except OSError as error:
             self.logger.info("Exchange with %s ended early: %s", peer.session.endpoint, error)
-
-        except Exception:  # pylint: disable=broad-exception-caught
-            self.logger.exception("Exchange with %s failed", peer.session.endpoint)
 
         finally:
             with self._lock:
@@ -1410,9 +1409,6 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
         try:
             accepted = self._accepting_peers(content_id, copies)
-
-        except Exception:  # pylint: disable=broad-exception-caught
-            self.logger.exception("Handing off %s failed", content_id)
 
         finally:
             with self._lock:

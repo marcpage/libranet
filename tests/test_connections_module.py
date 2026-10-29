@@ -43,6 +43,7 @@ from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner
+from libranet.logging_setup import UncaughtExceptions, get_logger
 from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import ConnectionDirection, DialOutcome, EventType
 from libranet.messaging.queues import MessageQueue, ModuleQueues
@@ -360,6 +361,17 @@ def modules(queues: ModuleQueues, now: list[float]) -> Iterator[Modules]:
         module.on_stop()
 
 
+@fixture
+def uncaught() -> None:
+    """Log what ends one of the module's threads, as `configure_logging` has every process do."""
+    UncaughtExceptions(get_logger(ModuleName.CONNECTIONS)).install()
+
+
+def ended(purpose: str) -> str:
+    """What is logged as the module's thread for ``purpose`` ends on an exception."""
+    return f"Thread {ModuleName.CONNECTIONS}-{purpose} ended on an exception nothing caught"
+
+
 def node_list(identity: NodeIdentity, *peers: FixturePeer) -> dict[str, str]:
     """A derived node list: this node first, then ``peers`` in order."""
     nodes = {"http://localhost:8080": str(identity.node_id)}
@@ -618,10 +630,11 @@ def test_nodes_newly_listed_are_passed_on_to_every_peer_connected_but_the_one_na
 @mark.parametrize(
     ("error", "logged"),
     [
-        (ConnectionResetError("gone"), "Could not tell"),
-        (RuntimeError("broken"), "Telling"),
+        (ConnectionResetError("gone"), "Could not tell {} of new nodes"),
+        (RuntimeError("broken"), ended("pass-on {}")),
     ],
 )
+@mark.usefixtures("uncaught")
 def test_passing_nodes_on_that_fails_is_logged(
     modules: Modules,
     config: LibranetConfig,
@@ -649,7 +662,7 @@ def test_passing_nodes_on_that_fails_is_logged(
     module.handle(node_list_updated(config))
 
     wait_until(
-        lambda: f"{logged} {peers[0].endpoint} of new nodes" in caplog.text,
+        lambda: logged.format(peers[0].endpoint) in caplog.text,
         "the failure to be logged",
     )
 
@@ -710,6 +723,7 @@ def test_each_peer_is_asked_for_its_karma_head_after_first_contact(
     assert len(bus.events(EventType.KARMA_HEAD_TOLD)) == 1
 
 
+@mark.usefixtures("uncaught")
 def test_a_peer_that_serves_no_karma_is_asked_for_its_head_without_error(
     modules: Modules,
     config: LibranetConfig,
@@ -729,15 +743,17 @@ def test_a_peer_that_serves_no_karma_is_asked_for_its_head_without_error(
     )
     assert bus.events(EventType.KARMA_HEAD_TOLD) == []
     assert "Exchange with" not in caplog.text
+    assert "ended on an exception nothing caught" not in caplog.text
 
 
 @mark.parametrize(
     ("error", "logged"),
     [
-        (ConnectionResetError("gone"), "Could not tell"),
-        (RuntimeError("broken"), "Telling"),
+        (ConnectionResetError("gone"), "Could not tell {} of the Karma head"),
+        (RuntimeError("broken"), ended("tell-head {}")),
     ],
 )
+@mark.usefixtures("uncaught")
 def test_telling_a_head_that_fails_is_logged(
     modules: Modules,
     config: LibranetConfig,
@@ -761,7 +777,7 @@ def test_telling_a_head_that_fails_is_logged(
     module.handle(karma_head(HEAD))
 
     wait_until(
-        lambda: f"{logged} {peers[0].endpoint} of the Karma head" in caplog.text,
+        lambda: logged.format(peers[0].endpoint) in caplog.text,
         "the failure to be logged",
     )
 
@@ -1316,6 +1332,7 @@ def test_a_peer_that_turns_this_node_away_rests_longer(
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
 
 
+@mark.usefixtures("uncaught")
 def test_a_dial_that_fails_unexpectedly_is_logged_and_rests(
     modules: Modules,
     config: LibranetConfig,
@@ -1342,9 +1359,7 @@ def test_a_dial_that_fails_unexpectedly_is_logged_and_rests(
 
     module = modules.start(config)
 
-    wait_until(
-        lambda: f"Connecting to {peers[0].node_id} failed" in caplog.text, "the dial to fail"
-    )
+    wait_until(lambda: ended(f"connect {peers[0].node_id}") in caplog.text, "the dial to fail")
     # The candidate rests rather than being left half-dialed, so it is dialed again.
     now[0] += RETRY_DELAY
     module.on_idle()
@@ -1352,6 +1367,7 @@ def test_a_dial_that_fails_unexpectedly_is_logged_and_rests(
     bus.wait_for(EventType.CONNECTION_OPENED)
 
 
+@mark.usefixtures("uncaught")
 def test_a_dial_that_fails_unexpectedly_is_not_counted_against_the_peer(
     modules: Modules,
     config: LibranetConfig,
@@ -1369,9 +1385,7 @@ def test_a_dial_that_fails_unexpectedly_is_not_counted_against_the_peer(
 
     modules.start(config)
 
-    wait_until(
-        lambda: f"Connecting to {peers[0].node_id} failed" in caplog.text, "the dial to fail"
-    )
+    wait_until(lambda: ended(f"connect {peers[0].node_id}") in caplog.text, "the dial to fail")
     # The fault is this node's, not the peer's, so stats hears nothing of it.
     assert bus.events(EventType.CONNECTION_FAILED) == []
     assert bus.events(EventType.NODE_UNREACHED) == []
@@ -2200,6 +2214,7 @@ def test_content_not_held_is_not_handed_off(
     assert bus.events(EventType.DATA_SENT) == []
 
 
+@mark.usefixtures("uncaught")
 def test_content_that_cannot_be_read_is_not_handed_off(
     modules: Modules,
     config: LibranetConfig,
@@ -2219,10 +2234,17 @@ def test_content_that_cannot_be_read_is_not_handed_off(
     (answer,) = bus.wait_for(EventType.EVICTION_ACKNOWLEDGED)
     assert answer["node_ids"] == []
     assert f"Cannot read {HELD_ID}, so it is not handed off" in caplog.text
-    assert f"Handing off {HELD_ID} failed" not in caplog.text
+
+    # It answers before its thread ends, which is when the hook would log.
+    for thread in running_threads():
+        if thread.name == f"{module.name}-hand-off {HELD_ID}":
+            thread.join(TIMEOUT)
+
+    assert ended(f"hand-off {HELD_ID}") not in caplog.text
     assert bus.events(EventType.DATA_SENT) == []
 
 
+@mark.usefixtures("uncaught")
 def test_a_hand_off_that_goes_wrong_is_still_answered(
     modules: Modules,
     config: LibranetConfig,
@@ -2246,7 +2268,7 @@ def test_a_hand_off_that_goes_wrong_is_still_answered(
 
     (answer,) = bus.wait_for(EventType.EVICTION_ACKNOWLEDGED)
     assert answer["node_ids"] == []
-    assert f"Handing off {HELD_ID} failed" in caplog.text
+    wait_until(lambda: ended(f"hand-off {HELD_ID}") in caplog.text, "the failure to be logged")
 
 
 def test_a_hand_off_under_way_is_not_started_again(
