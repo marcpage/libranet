@@ -89,7 +89,7 @@ class OwnBlock:
         return cls(signed, verdict, replace(stated, reach=before.reach(stated)))
 
 
-class TransactionsPutUp:  # pylint: disable=too-many-instance-attributes
+class TransactionsPutUp:
     """Puts up the transactions the node is given, each as a block of its own at the head (§5.6).
 
     Each is checked against the chain ``history`` keeps, its blocks read from

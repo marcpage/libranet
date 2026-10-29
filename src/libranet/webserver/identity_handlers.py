@@ -159,7 +159,7 @@ class _Made:
 
 
 @dataclass(frozen=True)
-class Identities:  # pylint: disable=too-many-instance-attributes
+class Identities:
     """The endpoints making people's identities, having fallbacks take over, and signing in and out.
 
     The drops holding them are read from ``uploads``, and found by

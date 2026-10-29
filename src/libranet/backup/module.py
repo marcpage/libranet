@@ -300,7 +300,7 @@ class _Backpressure:
     waited_seconds: float = 0.0
 
 
-class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
+class BackupModule(ModuleBase):
     """Keeps configured directories backed up into the source of truth, and restores them."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(

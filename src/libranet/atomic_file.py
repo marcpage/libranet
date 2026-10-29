@@ -95,7 +95,7 @@ class KeptRead(Generic[_Read]):
         self._kept = None
 
 
-class LastGoodRead(Generic[_Read]):  # pylint: disable=too-many-instance-attributes
+class LastGoodRead(Generic[_Read]):
     """What ``parse`` makes of the file at ``path``, read again whenever it is replaced.
 
     It is ``empty`` while there is no file. A file that cannot be looked at,

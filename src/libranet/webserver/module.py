@@ -79,7 +79,7 @@ from libranet.webserver.server import (
 )
 
 
-class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
+class WebServerModule(ModuleBase):
     """Serves the node's HTTP API while the module runs."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(

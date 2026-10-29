@@ -25,7 +25,7 @@ server reads them too (Phase 6 Step 138).
 """
 
 from __future__ import annotations
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from logging import getLogger
 from pathlib import Path
 from typing import Callable
@@ -45,7 +45,20 @@ from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 _LOGGER = getLogger(__name__)
 
 
-class NodePayments:  # pylint: disable=too-many-instance-attributes
+@dataclass(frozen=True)
+class _Settings:
+    """How much the node pays, and when, and how long a transaction of its payments is mined.
+
+    As :class:`NodePayments` describes them.
+    """
+
+    percent: float
+    batch: int
+    interval_seconds: float
+    transaction_seconds: float
+
+
+class NodePayments:
     """Queues the node's payments in ``directory``, and has ``putting`` put them up together (§4.6).
 
     The node's balance is read at the head of the chain ``history`` keeps,
@@ -81,10 +94,7 @@ class NodePayments:  # pylint: disable=too-many-instance-attributes
         self._identity = identity
         self._putting = putting
         self._clock = clock
-        self._percent = percent
-        self._batch = batch
-        self._interval_seconds = interval_seconds
-        self._transaction_seconds = transaction_seconds
+        self._settings = _Settings(percent, batch, interval_seconds, transaction_seconds)
         self._searchers = searchers
         self._bounds = bounds
 
@@ -128,13 +138,13 @@ class NodePayments:  # pylint: disable=too-many-instance-attributes
             )
             return None
 
-        payment = Payment.of(recipient, balance, self._percent)
+        payment = Payment.of(recipient, balance, self._settings.percent)
 
         if payment is None:
             _LOGGER.debug(
                 "Not paying %s: %s%% of the %s Kismet the node holds rounds to 0",
                 recipient,
-                self._percent,
+                self._settings.percent,
                 balance.value(),
             )
             return None
@@ -167,7 +177,7 @@ class NodePayments:  # pylint: disable=too-many-instance-attributes
             if transaction is None:
                 now = moment_at(self._clock())
 
-                if not queue.due(now, self._batch, self._interval_seconds):
+                if not queue.due(now, self._settings.batch, self._settings.interval_seconds):
                     return
 
                 head = self._history.head
@@ -198,7 +208,7 @@ class NodePayments:  # pylint: disable=too-many-instance-attributes
                 during the search.
         """
         mined = transaction.mined(
-            self._transaction_seconds,
+            self._settings.transaction_seconds,
             minimum_bits=self._bounds.transaction_bits,
             searchers=self._searchers,
         )

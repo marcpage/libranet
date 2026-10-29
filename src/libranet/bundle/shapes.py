@@ -79,7 +79,7 @@ XattrValue: TypeAlias = str | tuple[str, ...]
 
 
 @dataclass(frozen=True)
-class Metadata:  # pylint: disable=too-many-instance-attributes
+class Metadata:
     """What a bundle records about a file or directory (§2.1), all optional.
 
     ``algorithm`` and ``hash`` are the whole-file hash over a file's
