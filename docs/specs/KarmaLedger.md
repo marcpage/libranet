@@ -72,9 +72,12 @@ This version specifies the root (§7), transactions (§4), transaction blocks
   any identity's
   ([Handshake Protocol §5](HandshakeProtocol.md#5-karma-and-connection-management),
   [HTTP API §10.6](HttpApi.md#106-peer-list-json-schema)), is its balance as
-  the chain this node follows states it (§5.3), which
-  [HTTP API §10.10](HttpApi.md#1010-reading-karma) serves. A node reads no
-  peer's claim of its own Karma, so there is none to check.
+  the chain this node follows states it (§5.3), with the reward of the
+  head's validation block paid (§5.2): the balance the next generation's
+  transactions are checked against. So each identity that reward pays holds
+  its share as soon as the node follows the head, and may spend it in the
+  next block. [HTTP API §10.10](HttpApi.md#1010-reading-karma) serves it. A
+  node reads no peer's claim of its own Karma, so there is none to check.
 
 ## 3. Generations
 
@@ -753,7 +756,10 @@ at the generation's transaction target, signed by whoever puts it up. It
 holds that transaction and the payout, and states its `weight`, its
 balances, and its `reach` truly (§3.8). Builders combine the blocks at a
 generation's targets, false starts among them (§3.4), into larger ones, for
-a better score.
+a better score. A builder that has no transaction to take, and holds no
+correct block at the generation's transaction target, builds one holding
+the payout alone, so that the balances the reward of the head's validation
+block leaves are stated there as soon as the head is placed (§7.4).
 
 A block that is not full, or that scores zero, is never validated, but it
 is still read: a builder takes its valid transactions into correct blocks.
@@ -993,6 +999,9 @@ Validation block 0's one stake is `"0"`, so its effective stake totals 0,
 and the pot is divided equally among its stakers (§6.6), of whom the
 creator is the only one. The payout is applied first in block 1 (§5.2), so
 the creator may spend it there, and may stake it in validation block 1.
+A node following the root builds a block 1 holding that payout alone,
+unless it holds a correct one already (§5.6), and reads the creator as
+holding the 20 Karma from then on (§2).
 
 ### 7.5 Rival Roots
 

@@ -261,7 +261,8 @@ the other.
 protocol itself — a connection is never refused solely for low Karma.
 
 A node's Karma, here, is its balance as the chain this node follows states
-it ([Karma Ledger §5.3](KarmaLedger.md#53-balances-and-reach),
+it, with the reward of its head paid
+([Karma Ledger §2](KarmaLedger.md#2-relationship-to-other-documents),
 [HTTP API §10.10](HttpApi.md#1010-reading-karma)). Neither side reads the
 other's claim of its own Karma, so there is none to check, and each compares
 the nodes at hand by the balances its own chain states.

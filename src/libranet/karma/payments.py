@@ -2,11 +2,12 @@
 
 For most common payments, a node pays ``karma.payment_percent`` of its
 balance, 0.01% by default, as the chain it follows states it at the head,
-rounded down to whole Kismet: nothing while that rounds to 0, as it does
-under 10,000 Kismet at 0.01%. It queues each in ``payments.json`` in
-``storage.karma_dir``, and puts them up together, as one transaction paying
-each recipient all it is queued to be paid, so that they cost the work of
-one transaction (§4.3), and do not flood the network::
+with the head's reward paid (§2), rounded down to whole Kismet: nothing
+while that rounds to 0, as it does under 10,000 Kismet at 0.01%. It queues
+each in ``payments.json`` in ``storage.karma_dir``, and puts them up
+together, as one transaction paying each recipient all it is queued to be
+paid, so that they cost the work of one transaction (§4.3), and do not
+flood the network::
 
     {"payments": [{"to": "sha256/9f8e…", "kismet": "200000000000"}],
      "last_created": "2026-10-23T09:00:00Z", "transaction": null}
@@ -36,6 +37,7 @@ from libranet.cas.drops import NONCE_SEARCHERS, NonceSearchers
 from libranet.identity.node_identity import NodeIdentity
 from libranet.json_format import MOMENT_FORMAT, moment_at
 from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds
+from libranet.karma.checking import ChainBefore
 from libranet.karma.history import ChainHistory
 from libranet.karma.putting import TransactionsPutUp
 from libranet.karma.reading import HeldChain, TargetReader
@@ -62,7 +64,8 @@ class NodePayments:
     """Queues the node's payments in ``directory``, and has ``putting`` put them up together (§4.6).
 
     The node's balance is read at the head of the chain ``history`` keeps,
-    its blocks read from what ``reader`` holds, and the time from
+    with the head's reward paid, its blocks read from what ``reader`` holds,
+    and the time from
     ``clock``, in seconds since the epoch, and each payment is ``percent``
     of it. The queue is made a transaction
     once ``batch`` payments are queued, or ``interval_seconds`` have passed
@@ -101,10 +104,11 @@ class NodePayments:
     def pay(self, recipient: ContentId) -> Payment | None:
         """Queue a payment to ``recipient`` of the node's percent of its balance at the head.
 
-        None is queued while that rounds to 0, or while no chain is
-        followed. One whose balance is read from blocks
-        not held, which are asked for, or that cannot be read or queued, is
-        logged, and not made.
+        The balance is the one the block after the head checks the node's
+        transactions against, with the head's reward paid. None is queued
+        while that rounds to 0, or while no chain is followed. One whose
+        balance is read from blocks not held, which are asked for, or that
+        cannot be read or queued, is logged, and not made.
 
         Returns:
             The payment queued, or ``None`` if none was.
@@ -122,7 +126,8 @@ class NodePayments:
         node_id = self._identity().node_id
 
         try:
-            balance = self._chain.balances((node_id,), head.generation)[node_id].kismet
+            paid = ChainBefore.read(self._chain, head.validation).paid((node_id,))
+            balance = paid.balance(node_id).kismet
 
         except MissingContentError:
             _LOGGER.info(

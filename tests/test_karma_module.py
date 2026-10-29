@@ -197,8 +197,9 @@ def paying_module(
 ) -> KarmaModule:
     """The Karma module of a node, started, following its own root and a generation on it.
 
-    The node holds the root's reward, 20 Karma, so pays 0.01% of it,
-    200,000,000,000 Kismet, a payment. Its Karma is configured as ``karma``
+    The node holds the root's reward, 20 Karma, and generation 1's, which it
+    alone staked on, 200 Kismet less, so pays 0.01% of the two,
+    399,999,999,999 Kismet, a payment. Its Karma is configured as ``karma``
     says, or by default.
     """
     config = with_node_key(
@@ -664,7 +665,7 @@ def test_a_module_following_no_chain_says_so_in_the_balances_as_it_first_idles(
     }
 
 
-def test_the_balances_the_root_made_states_are_written_with_it(
+def test_the_balances_the_root_made_states_are_written_with_its_reward_paid(
     storage: StorageConfig, queues: ModuleQueues
 ) -> None:
     module = rooting_module(storage, queues)
@@ -674,9 +675,10 @@ def test_the_balances_the_root_made_states_are_written_with_it(
     node = NodeIdentity.load(LibranetConfig(storage=storage)).node_id
     head = module.history.head
     assert head is not None
+    # The node holds the root's reward, 20 Karma, as soon as it makes it (§7.4).
     assert loads((storage.karma_dir / "balances.json").read_bytes()) == {
         **head.head_value(),
-        "balances": {str(node): {"kismet": "0", "last_won": None}},
+        "balances": {str(node): {"kismet": "2000000000000000", "last_won": 0}},
     }
 
 
@@ -1198,7 +1200,7 @@ def test_the_server_rated_highest_by_each_measure_is_paid(
     with caplog.at_level(INFO):
         module.handle(rated((PEER, 4_096, 1), (OTHER_PEER, 512, 3), (BLOCK, 0, 0)))
 
-    payment = Kismet(200_000_000_000)
+    payment = Kismet(399_999_999_999)
     assert PaymentQueue.read(storage.karma_dir).payments == (
         Payment(PEER, payment),
         Payment(OTHER_PEER, payment),
@@ -1214,7 +1216,7 @@ def test_a_server_rated_highest_by_both_measures_is_paid_once(
     module.handle(rated((PEER, 4_096, 1), (OTHER_PEER, 512, 3), (BLOCK, 8_192, 4)))
 
     assert PaymentQueue.read(storage.karma_dir).payments == (
-        Payment(BLOCK, Kismet(200_000_000_000)),
+        Payment(BLOCK, Kismet(399_999_999_999)),
     )
 
 

@@ -248,7 +248,7 @@ def test_a_percent_is_read_as_the_decimal_it_is_written_as(bob: NodeIdentity) ->
     assert Payment.of(bob.node_id, Kismet(9_999), 0.01) is None
 
 
-def test_a_payment_is_queued_as_the_chain_states_the_balance_at_the_head(
+def test_a_payment_is_queued_as_the_chain_states_the_balance_at_the_head_its_reward_paid(
     storage: StorageConfig,
     history: ChainHistory,
     reader: TargetReader,
@@ -260,12 +260,35 @@ def test_a_payment_is_queued_as_the_chain_states_the_balance_at_the_head(
     bob: NodeIdentity,
 ) -> None:
     following(history, reader, truth, first)
-    held = history.generation(1)
-    reward = BlockDrop.parsed(truth.read(held.transaction), TransactionBlock).block.balances
+    # Alice staked on generation 1, whose reward the block after pays her.
+    balance = first.block_after().balances[alice.node_id].kismet
 
     payment = paying_as(alice, storage, history, reader, placed, clock).pay(bob.node_id)
 
-    assert payment == Payment(bob.node_id, Kismet(reward[alice.node_id].kismet.count // 10_000))
+    assert payment == Payment(bob.node_id, Kismet(balance.count // 10_000))
+
+
+def test_the_roots_creator_pays_from_the_roots_reward_while_its_root_is_the_head(
+    storage: StorageConfig,
+    history: ChainHistory,
+    reader: TargetReader,
+    truth: CasStore,
+    placed: Placed,
+    clock: Clock,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+) -> None:
+    following(history, reader, truth, Chain.root(alice, 9))
+    payments = paying_as(alice, storage, history, reader, placed, clock)
+
+    payment = payments.pay(bob.node_id)
+    payments.put_up()
+
+    # 0.01% of the 20 Karma the block after the root pays her (§7.4).
+    assert payment == Payment(bob.node_id, Kismet(200_000_000_000))
+    assert [transaction.to for transaction in placed.transactions()] == [
+        {bob.node_id: Kismet(200_000_000_000)}
+    ]
 
 
 def test_no_payment_is_queued_by_a_node_holding_under_ten_thousand_kismet(

@@ -3,7 +3,8 @@
 And ``/config/api/karma``: what the node holds of it, and how much it stakes.
 
 An identity's Karma, to a node, is its balance as the chain the node follows
-states it (KarmaLedger §5.3, Phase 6 Step 128). Any client may read these,
+states it, with the head's reward paid (KarmaLedger §2, §5.3, Phase 6 Step
+128). Any client may read these,
 another node as well as a page, since what a chain states is public:
 
 - ``GET /data/karma``: the head followed, its generation, the chain's weight

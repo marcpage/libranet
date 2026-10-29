@@ -3,9 +3,11 @@
 An identity's Karma, to a node, is its balance as the chain the node follows
 states it: the latest stated of it in the head's transaction block, or in
 those before it as far back as that block's reach, or ten blocks, whichever is
-further (KarmaLedger §5.3). No peer's claim of its own Karma is read.
+further (KarmaLedger §5.3), with the reward of the head's validation block
+paid, as the next generation's transactions are checked against it (§2). No
+peer's claim of its own Karma is read.
 
-Each time its head changes, the Karma module writes every balance so stated
+Each time its head changes, the Karma module writes every balance so read
 to ``balances.json`` in ``storage.karma_dir``, with the head it read them
 at, as ``head.json`` names it (:mod:`libranet.protocol.karma_head`)::
 

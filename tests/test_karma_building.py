@@ -663,7 +663,8 @@ def test_a_transaction_whose_signature_fails_is_passed_over_and_logged_once_at_a
         builder.build()
         builder.build()
 
-    assert placed.drops == []
+    # With nothing to take, the payout alone, once.
+    assert [block.signed for block in placed.blocks()] == [()]
     passing = f"Passing over Karma transaction {forged.hash}"
     assert [r.levelno for r in caplog.records if passing in r.getMessage()] == [DEBUG]
 
@@ -700,6 +701,29 @@ def test_a_transaction_whose_senders_key_is_not_held_is_taken_once_it_is(
     ]
 
 
+def test_with_nothing_to_take_a_block_of_the_payout_alone_is_built_once(
+    builder: BlockBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    reader: TargetReader,
+    history: ChainHistory,
+    root: Chain,
+    alice: NodeIdentity,
+) -> None:
+    following(follower, truth, root)
+
+    builder.build()
+    builder.build()
+
+    (data,) = placed.drops
+    block = BlockDrop.parsed(data, TransactionBlock).block
+    assert block == root.block_after()
+    # The root's reward, 20 Karma, for Alice to spend in it (§7.4).
+    assert block.balances[alice.node_id] == Balance(Kismet(2_000_000_000_000_000), 0)
+    assert checked(reader, history, root.head, data).is_correct
+
+
 def test_nothing_is_built_while_no_chain_is_followed(
     builder: BlockBuilder, placed: Placed, carried: CarriedTransactions, history: ChainHistory
 ) -> None:
@@ -728,7 +752,8 @@ def test_what_is_no_transaction_block_at_a_target_is_passed_over_and_logged_once
         builder.build()
         builder.build()
 
-    assert placed.drops == []
+    # With nothing to take, the payout alone, once.
+    assert [block.signed for block in placed.blocks()] == [()]
     taking_none = f"Taking no Karma transactions from {id_of(misplaced)}"
     assert [r.levelno for r in caplog.records if taking_none in r.getMessage()] == [DEBUG]
 

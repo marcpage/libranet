@@ -469,7 +469,8 @@ transaction, searches for each drop's nonce with `karma.mining_processes`
 processes, stores both drops straight into `cas/data`, as the backup module
 stores what it makes, announces each with `data.stored`, and then follows the
 root. Each time its head changes, and as it first looks, it writes every
-balance the chain states at the head to `balances.json`, for the web server's
+balance the chain states at the head, with the head's reward paid, to
+`balances.json`, for the web server's
 `/data/karma` and the order of the stats module's lists (`HeadBalances`,
 `karma/balances.py`, Phase 6 Steps 128 and 141); a transaction block those
 are read from that it lacks it asks for, and writes them once it comes.
@@ -498,7 +499,8 @@ one rated highest by requests fulfilled, once if they are one
 head's transaction target, and at the transaction targets of the head's
 rivals, and the transactions it carries, into one block, as full as it can
 be, and places it as it places one of its own, unless a block it holds there
-already holds every transaction it would take (`BlockBuilder`,
+already holds every transaction it would take; with none to take, and no
+correct block held there, it places a block of the payout alone (`BlockBuilder`,
 `karma/building.py`, Phase 6 Step 134). After each look and each build, it
 shuns (`data.shunned`) each transaction block at its head's transaction
 target whose transactions are all in another it holds there, correct, holding

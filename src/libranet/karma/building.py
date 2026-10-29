@@ -32,7 +32,10 @@ announced, as a block put up for a transaction alone is.
 Nothing is built while one block held at the head's transaction target,
 correct but perhaps for not being full, holds every transaction that would
 be taken: the same blocks build the same block, so each new transaction
-builds one more.
+builds one more. With no transaction to take, and no such block held, a
+block holding only the payout is built, so that the balances the head's
+reward leaves are stated at the target, where those it pays may spend it
+(§7.4).
 
 A block held at the head's transaction target whose transactions are all in
 another held there of the same generation, correct but perhaps for not
@@ -287,13 +290,13 @@ class FilledBlock:
         says (:meth:`~libranet.karma.blocks.BlockBounds.fullest`).
 
         Returns:
-            The block, or ``None`` if ``combined`` takes none, or not one
-            fits.
+            The block, holding only the payout if ``combined`` takes none,
+            or ``None`` if not one it takes fits.
         """
         fullest = bounds.fullest(
             lambda count: cls._signed(combined.block(count), identity),
             len(combined.taken),
-            fewest=1,
+            fewest=min(len(combined.taken), 1),
         )
         return None if fullest is None else cls(*fullest)
 
@@ -343,9 +346,11 @@ class BlockBuilder:
 
         It is built of the transactions in the blocks held at that target,
         and at the targets of the head's false starts (§3.4), and those
-        carried. A block of the chain it lacks is asked for, and it is built
-        as this is next called; one that cannot be built for an error of the
-        system, or because what it is built of cannot be read, is logged.
+        carried, or of the payout alone, if there are none, and no correct
+        block is held there. A block of the chain it lacks is asked for, and
+        it is built as this is next called; one that cannot be built for an
+        error of the system, or because what it is built of cannot be read,
+        is logged.
         """
         head = self._history.head
 
@@ -365,7 +370,7 @@ class BlockBuilder:
                 self._verified(offered), head.validation, self._chain, bounds=self._bounds
             )
 
-            if not combined.taken or self._held(combined.taken, at_target):
+            if self._held(combined.taken, at_target):
                 return
 
             filled = FilledBlock.of(combined, self._placing.identity(), bounds=self._bounds)
