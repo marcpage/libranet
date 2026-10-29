@@ -171,9 +171,10 @@ flowchart TD
 
 ### 5.4 Disposing of Data
 
-- Nodes MAY discard content they hold at their own discretion, subject to any
-  obligations defined by the incentive layer (see companion Karma/Kismet
-  document).
+- Nodes MAY discard content they hold at their own discretion. The incentive
+  layer's ledger adds no obligation: its blocks are evicted as any content
+  is, and fetched again when needed
+  ([Karma Ledger §2](KarmaLedger.md#2-relationship-to-other-documents)).
 - Nodes SHOULD hand content off to one other Node, the best-matching connected
   peer that accepts it (High-Level Design §4.5), and verify the transfer was
   complete before discarding the content.
@@ -261,3 +262,5 @@ This section is non-exhaustive and will be expanded.
   informative source for this draft).
 - [Karma and Kismet](Karma.md) (companion white paper, incentive/reputation
   layer).
+- [Karma Ledger Specification](KarmaLedger.md) (companion document, how the
+  incentive layer's ledger is kept).

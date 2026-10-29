@@ -211,9 +211,9 @@ since, each the user's own answer or my recommended option:
 - **Transactions that exceed the sender's balance are carried forward**,
   until a number of generations after the generation their hash is
   witnessed in a winning validation block, which each node sets in its
-  configuration, 3 by default. Nodes then stop carrying them,
-  but they stay valid, with no expiry: anyone may put one up again. Making
-  them invalid after the count was turned down.
+  configuration, 10 by default (3 until Step 129's review). Nodes then
+  stop carrying them, but they stay valid, with no expiry: anyone may put
+  one up again. Making them invalid after the count was turned down.
 - **Nothing is shunned for being on a lighter chain.** A node cut off from
   most of the network, which has gone on far beyond, must be able to come
   back to it. A rule shunning dead forks, after a lead in work and a time
@@ -1987,7 +1987,7 @@ What was built:
   `generation` on, or that the chain has gone `karma.carry_generations` past,
   is left out.
 - **`karma.carry_generations`** (`KarmaConfig`), 10 by default, as the
-  first set's review set it, where KarmaLedger §4.4 says 3.
+  first set's review set it, where KarmaLedger §4.4 said 3 until #468.
 - **`TargetReader.block(id, kind)`** (`karma/reading.py`): one block by its
   id, as `read` reads one at a target. **`ChainGenerations`**: what
   `HeldChain` reads of a chain's generations, the history's or a claimed

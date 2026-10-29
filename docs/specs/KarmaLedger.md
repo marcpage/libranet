@@ -139,7 +139,11 @@ much as one 30-bit drop, which took 32,768 times the work of either.
 
 The **heaviest chain** is the one of greatest weight, and of two as heavy,
 the one whose latest winning validation block's id sorts first. Every node
-follows the heaviest chain it knows.
+follows the heaviest chain it knows. A node that follows a chain leaves it
+only for a heavier one (§3.5.3): of two as heavy, it keeps the one it
+follows, whose latest validation block it chose as the best of its
+generation (§6.5). The id decides only between chains it does not follow
+yet, such as two roots (§7.5).
 
 ```mermaid
 flowchart RL
@@ -187,8 +191,8 @@ go of the blocks themselves (§5.3).
 
 #### 3.5.2 Telling and Asking
 
-A node tells its peers its head each time it chooses a validation block for
-the latest generation, and asks a peer for its head
+A node tells its peers its head as it starts, and each time it chooses a
+validation block for the latest generation, and asks a peer for its head
 ([HTTP API §10.9](HttpApi.md#109-karma-heads)). A head it is told of is only
 a pointer, until the node has checked the chain it names.
 
@@ -216,11 +220,14 @@ target, it goes through these steps in order:
    it no longer holds. Each collected transaction whose key (§4.2) it meets
    in the new chain is already accounted for, and it strikes that
    transaction from what it collected.
-5. **Follow.** If every block validates as correct, and the new head is heavier, the node
-   follows it. Its genealogy after the common ancestor becomes the new
-   chain's, and it tells its peers its new head (§3.5.2). A block that does
-   not validate as correct distrusts its builder (§3.8), and the node keeps its own head.
-   Any invalid blocks are also shunned.
+5. **Follow.** If every block validates as correct, and the new head is
+   still heavier, the node follows it. Its genealogy after the common
+   ancestor becomes the new chain's, and it tells its peers its new head
+   (§3.5.2). Otherwise it keeps its own head. A block found to state
+   something false distrusts its builder (§3.8), and one that is no block
+   of the ledger, unsigned or false in its `weight` or `generation`, is
+   shunned (§3.7). A block that is only incorrect, such as one not full,
+   is neither.
 6. **Carry the rest over.** It puts each collected transaction into the
    transaction block it builds at the new head's target. One whose sender's
    balance the new chain does not cover, as when the new chain has spent
@@ -236,7 +243,7 @@ flowchart TD
     walk --> collect["3. Collect the node's own transactions<br/>after the common ancestor"]
     collect --> check["4. Check the new branch forward,<br/>striking collected transactions it holds"]
     check --> valid{"All correct,<br/>and heavier?"}
-    valid -->|no| reject["Keep the node's own head: distrust the<br/>builder of an incorrect block, and shun it"]
+    valid -->|no| reject["Keep the node's own head: distrust the<br/>builder of a false block, and shun<br/>what is no block of the ledger"]
     valid -->|yes| follow["5. Follow the new head,<br/>and tell peers"]
     follow --> carry["6. Carry the rest over to the new head's<br/>target, or forward as pending"]
 ```
@@ -269,16 +276,20 @@ A node MAY shun any other transaction block, such as one put up small or
 one still being combined, whose data is all held in another transaction
 block of the same generation. This means searches carry less of the same
 data. It shuns one only if the other block holds more data, or holds the
-same data and shares more bits with its target hash. A transaction block's
-data is its transactions. The data is not lost: it is kept in the other
-block, and a node shuns a block only while it holds the block that keeps
-it.
+same data and shares more bits with its target hash, and only once it has
+found the other block correct but perhaps for not being full (§5.5): a
+transaction is known by its `hash`, which a copy with a forged signature
+shares, and a block that states something false may be shunned itself, and
+its data with it. A transaction block's data is its transactions. The data
+is not lost: it is kept in the other block, and a node shuns a block only
+while it holds the block that keeps it.
 
 ### 3.8 Distrusted Builders
 
-A block that is not signed, or whose signature fails, can be attributed to
-no one: anyone can write another's id into `signer`. A node SHOULD shun
-it, and distrusts no one for it.
+A block that is not signed, whose `hash` is not the hash of its
+`contents`, or whose signature fails (Bundle Specification §5), can be
+attributed to no one: anyone can write another's id into `signer`. A node
+SHOULD shun it, and distrusts no one for it.
 
 A node that checks a signed block and finds that it states something false
 **distrusts its builder**: it marks the builder's id distrusted in its own
@@ -294,8 +305,8 @@ itself, and the chain its `previous` names, prove wrong:
   §5.3 allows; it holds a transaction or a stake whose signature fails, a
   transaction whose `from` is not its signer, whose proof of work is under
   the minimum, or that moves 0 Kismet outside the root, or a stake whose
-  `staker` is not its signer; or its payout is signed, missing, or more
-  than one.
+  `staker` is not its signer; or its payout is signed, missing, more than
+  one, or of another `generation` than the block's.
 - **Against its target:** its `generation` is not one more than that of the
   validation block its target is named for; a validation block has no stake,
   its stakes name more than one transaction block, or one built on that
@@ -332,9 +343,10 @@ counting against its builder.
 None of these makes a builder distrusted, since an honest builder can meet
 each one:
 
-- a block judged full or not full, or near 1 MiB or not (§5.4), or a
-  validation block naming a transaction block judged not full, since
-  copies of a block compressed otherwise measure otherwise;
+- a block judged full or not full, or near 1 MiB or not (§5.4), a
+  validation block judged larger than 1 MiB (§6.5), or a validation block
+  naming a transaction block judged not full, since copies of a block
+  compressed otherwise measure otherwise;
 - the half-free rule broken in a block that is not full and that no
   validation block names (§5.6);
 - a block built on, or chosen, that is not the best the node has seen, or
@@ -398,9 +410,13 @@ A transaction is a signed bundle whose `contents` is the JSON object
 - **`generation`** is the generation the transaction was created in.
 - **`created`** is when the sender decided to pay: an RFC 3339 moment in
   UTC, to the second
-  ([RFC References §2.2](RfcReferences.md#22-rfc-3339-timestamps)). Like
-  `generation`, it is the sender's word, and is checked against no clock.
-  With `from`, it is the transaction's key (§4.2).
+  ([RFC References §2.2](RfcReferences.md#22-rfc-3339-timestamps)),
+  written as `2026-10-21T14:03:22Z` is and read in that form alone: an
+  upper-case `T` and `Z`, no offset, and no fraction of a second, though
+  RFC 3339 allows each. A node that read more forms than another would hold
+  valid a transaction the other refuses. Like `generation`, it is the
+  sender's word, and is checked against no clock. With `from`, it is the
+  transaction's key (§4.2).
 - **`nonce`** is any string, searched for to give the transaction its proof
   of work (§4.3). It is not part of the transaction's key (§4.2).
 
@@ -496,7 +512,7 @@ yet receive enough, and the chain will reach its generation. It is not
 included before then, since the check for duplicates starts at its
 `generation`, and one included earlier could be included again. Builders
 stop carrying it a number of generations after the generation it was
-witnessed in (§4.5), which each node sets in its configuration, 3 by
+witnessed in (§4.5), which each node sets in its configuration, 10 by
 default. It stays valid, never expiring: anyone holding it may put it up
 again, and it is included if it is valid then.
 A node that carries a pending transaction lists its hash among the
@@ -532,18 +548,21 @@ gives keeps in step with what it holds. At 0.01%, a node holding under
 10,000 Kismet pays nothing, since its payment rounds to 0.
 
 A node does not put each payment up as it makes it. It queues them, and
-puts them up together as one transaction, whose `to` pays every recipient
-(§4.1), once 100 are queued or an hour has passed since its last
-transaction, whichever is first. Both are in its configuration. So a
-node's many small payments cost the work of one transaction (§4.3), and do
-not flood the network.
+puts them up together as one free transaction, whose `to` pays every
+recipient (§4.1), summed by recipient, once 100 are queued or an hour has
+passed since its last transaction, whichever is first. Both are in its
+configuration. A node that has made no transaction yet puts its first
+payments up at once. So a node's many small payments cost the work of one
+transaction (§4.3), and do not flood the network.
 
 At times in its configuration, hourly by default, a node rates the servers
 it is connected to as a client
 ([Handshake Protocol §3](HandshakeProtocol.md#3-first-contact-exchange)),
 over the time since it last rated them: by the data it received from each,
 and by the number of its requests each fulfilled. It pays the server rated
-highest by each that share of its balance, queued as any payment is.
+highest by each that share of its balance, queued as any payment is: of
+two rated alike, the one whose id sorts first, and one payment, should one
+server be rated highest by both.
 
 ## 5. Transaction Blocks
 
@@ -701,7 +720,7 @@ is compressed after. A lower floor costs nothing, since fees draw builders
 to fit in as many transactions as they can.
 
 A builder fills the free half of a block with the free transactions of most
-bits first (§4.3).
+bits first (§4.3), and the rest with the paid ones of the largest fees.
 
 ### 5.5 Scoring
 
@@ -714,9 +733,12 @@ by, in order:
   lower being better.
 
 Each compares only where every one before it ties. There are no weights.
-The payout does not count in (c). The mix of free and paid transactions is
-not scored: the half-free rule caps the paid ones (§5.1), and their fees
-draw builders to as many as it allows (§6.6).
+The payout does not count in (c), and a block holding only its payout is
+as young as it can be, its own generation. The average is exact, a
+fraction with no rounding, so that every node ranks two blocks alike. The
+mix of free and paid transactions is not scored: the half-free rule caps
+the paid ones (§5.1), and their fees draw builders to as many as it allows
+(§6.6).
 
 A block with anything incorrect about it scores zero, below every correct
 block. A correct block is signed, is full, is shaped and placed as §5.1 to
@@ -773,7 +795,8 @@ anyone may build one from others' stakes (Karma §21), and signs it as its
 builder. A builder leaves out the stakes of every identity it distrusts, and
 builds on no transaction block a distrusted identity signed (§3.8). It
 fits in 1 MiB compressed (§5.4), and its stakes and witnesses
-share that room. A validation block is never shunned (§3.7).
+share that room. A validation block is shunned only when it is no block of
+the ledger (§3.7).
 
 ### 6.2 Stakes
 
@@ -977,6 +1000,13 @@ Anyone may place a root. Of the roots found, the chain's is the one the
 heaviest chain (§3.3) is built on. A stronger root placed later replaces an
 established one only by outweighing the whole chain built on it.
 
+A node that follows no chain reads what is at `karma transaction:0` and
+`karma validation:0`, and follows the heaviest root whose two blocks it
+finds correct, weighed by those two drops alone (§3.3), since it has read
+no chain on any of them yet; of two as heavy, the one whose validation
+block's id sorts first. A heavier chain on another root is then a head it
+does not follow (§3.5.3).
+
 ## 8. Security Considerations
 
 - **The early chain is cheap to replace.** Weight grows only as generations
@@ -994,11 +1024,11 @@ established one only by outweighing the whole chain built on it.
   it.
 - **Only what no chain can use is shunned.** A node's shun list is
   permanent ([HTTP API §5.5](HttpApi.md#55-shunned-content)), and a node
-  cannot check a chain that runs through a block it has shunned. So it never
-  shuns a validation block, a transaction block one names, or one near
-  1 MiB (§3.7). A smaller transaction block can never be validated, so no
-  correct chain runs through it, as long as nodes measure fullness alike
-  (§5.4).
+  cannot check a chain that runs through a block it has shunned. So, but
+  for a block that is no block of the ledger, it never shuns a validation
+  block, a transaction block one names, or one near 1 MiB (§3.7). A smaller
+  transaction block can never be validated, so no correct chain runs
+  through it, as long as nodes measure fullness alike (§5.4).
 - **Distrust has reach beyond Karma.** A builder distrusted for a false
   block is distrusted in the node's own trust list (§3.8). If the builder
   is a node, this node then neither connects to it nor serves it (Trust
@@ -1046,7 +1076,8 @@ Not yet specified:
 - How far back transaction keys are kept for the check for duplicates
   (§4.4), and witnessed hashes for the check of witnesses (§6.4), since a
   transaction never expires, and what a node does with a transaction older
-  than any block it holds.
+  than any block it holds. The reference node keeps every key and witness
+  of the chain it follows, back to the root.
 - Early blocks that fill slowly while few identities hold Karma.
 - How else Karma and the trust network
   ([Trust Network Specification](TrustNetwork.md)) bear on each other,

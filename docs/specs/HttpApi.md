@@ -1688,9 +1688,9 @@ whose `head` is `null` while the node follows no chain.
 
 #### Publish a Head
 
-Each time a node chooses a validation block for the latest generation, it
-tells every node it holds an outgoing connection to, as it publishes its
-node list (§10.5):
+As a node starts, and each time it chooses a validation block for the
+latest generation, it tells every node it holds an outgoing connection to,
+as it publishes its node list (§10.5):
 
 ```http
 POST /data/karma/head HTTP/1.1
@@ -1699,8 +1699,9 @@ Content-Type: application/json
 
 The request is signed (HandshakeProtocol §2.1). A node answers a head it
 takes `202 Accepted`, without waiting to check it, and a body that is not
-well-formed `400 Bad Request`, with the problem type `invalid-request`
-(§17.2).
+well-formed, or names a head under a hash algorithm the node does not
+support, `400 Bad Request`, with the problem type `invalid-request`
+(§17.2). A head of `null` is taken, with nothing to weigh.
 
 #### Request a Head
 
