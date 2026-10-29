@@ -171,6 +171,15 @@ class KarmaBalances:
         """``identity``'s balance, as stated, or else none: it holds nothing (KarmaLedger §5.3)."""
         return self.balances.get(identity, NO_BALANCE)
 
+    def holders(self) -> int:
+        """How many identities hold Kismet, which sets how large a full block is (KarmaLedger §5.4).
+
+        These are the balances the next generation's transactions are
+        checked against, so their holders are those its blocks are measured
+        by.
+        """
+        return sum(1 for balance in self.balances.values() if balance.kismet != Kismet(0))
+
     def value(self) -> dict[str, Any]:
         """These balances as ``balances.json`` states them, sorted by identity."""
         return {

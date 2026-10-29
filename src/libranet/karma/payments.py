@@ -42,6 +42,7 @@ from libranet.karma.history import ChainHistory
 from libranet.karma.putting import TransactionsPutUp
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.protocol.karma_payments import PAYMENTS_FILE, Payment, PaymentQueue
+from libranet.protocol.karma_requests import NodePaymentRequest
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 
 _LOGGER = getLogger(__name__)
@@ -201,6 +202,43 @@ class NodePayments:
 
         except (OSError, ValueError) as error:
             _LOGGER.error("Cannot put up the node's Karma payments: %s", error)
+
+    def pay_out(self, request: NodePaymentRequest) -> SignedTransaction | None:
+        """Pay as the operator asks, out of the node's Karma, as a transaction of its own, now.
+
+        It is created later than the node's last transaction, in the head's
+        generation, mined as the node's payments are, signed by the node,
+        and given to be put up. One that cannot be made, mined, or carried,
+        or a node whose key cannot be loaded, is logged, and not made; the
+        operator may ask again.
+
+        Returns:
+            The transaction given to be put up, or ``None`` if none was.
+        """
+        try:
+            queue = self._read()
+            head = self._history.head
+            created = queue.next_created(moment_at(self._clock()))
+            transaction = request.transaction(
+                self._identity().node_id, 0 if head is None else head.generation, created
+            )
+            replace(queue, last_created=created).write(self._directory)
+            signed = self._signed(transaction)
+
+            if not self._putting.take(signed):
+                # Not logged: taking it logs why it was not taken.
+                return None
+
+        except (OSError, ValueError) as error:
+            _LOGGER.error("Cannot make the payment the operator asked for: %s", error)
+            return None
+
+        _LOGGER.info(
+            "Made the payment the operator asked for, %s Kismet in all, as transaction %s",
+            transaction.sends().value(),
+            signed.hash,
+        )
+        return signed
 
     def _signed(self, transaction: Transaction) -> SignedTransaction:
         """``transaction`` mined, and signed by the node.

@@ -370,6 +370,32 @@ has no reason to place one. A node places a root only when its operator
 asks, since were each node of a new network to place its own, all but one
 would be outweighed.
 
+#### 2.3.5 Paying Out of a Node's Karma
+
+The node that places a root holds its reward (Karma Ledger §7.4), and a
+node holds what it earns by staking, which it pays the servers it rates
+on its own (Karma Ledger §4.6). Its operator pays out of it too:
+
+```http
+POST /config/api/karma/payments
+```
+
+```json
+{"to": {"sha256/9f8e…": "250"}, "fee_kismet": "0"}
+```
+
+`to` maps each recipient's id to the Kismet it is paid, and `fee_kismet`,
+which may be left out for none, is the fee (Karma Ledger §4.1). The node
+makes the payment a transaction of its own, created later than its last,
+in its head's generation, mines it as it mines its own payments, signs it
+as itself, and puts it up (Karma Ledger §5.6). That takes a while, so it
+answers `202 Accepted` at once, with `{"covered": true}`, saying whether
+the node's balance at its head (§10.10) covers all it sends now; one not
+covered is put up all the same, and is pending until it is (Karma Ledger
+§4.4). A payment that moves nothing is `400 Bad Request`, with the problem
+type `invalid-request` (§17.2), and one made while the node follows no
+chain `409 Conflict`.
+
 ### 2.4 Local Clients
 
 A local client is one whose connecting (source) address is a loopback
@@ -1743,15 +1769,18 @@ GET /data/karma
 
 ```json
 {"head": "sha256/…", "generation": 41, "weight": "1208",
- "node_id": "sha256/…", "balance": {"kismet": "250", "last_won": 40}}
+ "node_id": "sha256/…", "balance": {"kismet": "250", "last_won": 40},
+ "holders": 12}
 ```
 
 `head` is the head the node follows (§10.9), `generation` its generation,
 and `weight` the chain's weight through it, in decimal digits (Karma Ledger
 §3.3). `balance` is the balance of the node, `node_id`, as the chain states
 it at that head, its reward paid: `kismet` is the Kismet it holds, in
-decimal digits, and
-`last_won` the generation whose reward last paid it, or `null` if none has.
+decimal digits, and `last_won` the generation whose reward last paid it, or
+`null` if none has. `holders` is how many identities hold Kismet in those
+balances, which sets how large a block of the next generation must be to be
+full (Karma Ledger §5.4).
 
 ```http
 GET /data/karma/balances/{algorithm}/{hash}

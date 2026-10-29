@@ -271,9 +271,10 @@ ledger, and a node SHOULD shun it (§3.8). Otherwise, a node MUST NOT shun
 a validation block, since any one may lead to another chain. It MUST NOT
 shun a transaction block that a validation block names. Validation blocks
 are made only on full transaction blocks, so a node SHOULD NOT shun a
-transaction block near 1 MiB either: one full, or near enough to full that
-a validation block the node has not seen yet may name it (§5.4) unless
-it fails basic validation.
+transaction block that is full either, near 1 MiB or, while few hold
+Kismet, above what they ask for, or near enough to full that a validation
+block the node has not seen yet may name it (§5.4) unless it fails basic
+validation.
 
 A node MAY shun any other transaction block, such as one put up small or
 one still being combined, whose data is all held in another transaction
@@ -705,8 +706,18 @@ that is further, to know any balance.
 A block is **full** when its drop, compressed as zlib
 ([RFC 1950](https://www.rfc-editor.org/rfc/rfc1950.html)), is no larger
 than 1 MiB (1,048,576 bytes) and larger than 1 MiB less 128 KiB (917,504
-bytes). A node measures the copy it holds. Only a full block is validated
-(§6), except the root.
+bytes), or than 8 KiB (8,192 bytes) for each identity holding Kismet in the
+balances its transactions are checked against (§5.3), if that is less. A
+node measures the copy it holds. Only a full block is validated (§6),
+except the root.
+
+While few hold Karma, there are too few to fill 1 MiB, so a block need only
+be as large as its holders ask for: block 1, checked against balances in
+which the root's creator alone holds Kismet, is full above 8 KiB, and a
+block is held to the 1 MiB band once 112 identities hold Kismet. The
+holders are counted from the balances the block before leaves, as far back
+as its reach, which states every holder (§5.3), with the block's payout
+applied, so every reader counts them alike.
 
 The 128 KiB is room for what a builder cannot control. A block grows a
 transaction at a time, by about 350 to 850 bytes compressed for a
@@ -765,8 +776,8 @@ A block that is not full, or that scores zero, is never validated, but it
 is still read: a builder takes its valid transactions into correct blocks.
 This is how a paid transaction put up alone, which breaks the half-free
 rule, is taken in. A block whose transactions are all in a larger block, or
-in one as large sharing more bits, may then be shunned, unless it is near
-1 MiB or a validation block names it (§3.7).
+in one as large sharing more bits, may then be shunned, unless it is full
+or a validation block names it (§3.7).
 
 ## 6. Validation Blocks
 
@@ -1035,9 +1046,9 @@ does not follow (§3.5.3).
   permanent ([HTTP API §5.5](HttpApi.md#55-shunned-content)), and a node
   cannot check a chain that runs through a block it has shunned. So, but
   for a block that is no block of the ledger, it never shuns a validation
-  block, a transaction block one names, or one near 1 MiB (§3.7). A smaller
-  transaction block can never be validated, so no correct chain runs
-  through it, as long as nodes measure fullness alike (§5.4).
+  block, a transaction block one names, or one full (§3.7). A transaction
+  block not full can never be validated, so no correct chain runs through
+  it, as long as nodes measure fullness alike (§5.4).
 - **Distrust has reach beyond Karma.** A builder distrusted for a false
   block is distrusted in the node's own trust list (§3.8). If the builder
   is a node, this node then neither connects to it nor serves it (Trust
@@ -1061,6 +1072,16 @@ does not follow (§3.5.3).
   so a block its builder fills near 1 MiB is full in every copy (§5.4).
   One built with weak compression just over the floor may be full in one
   copy and not in another. That is accepted: builders aim for the top.
+  While few hold Kismet, the floor is low and has no such room, so a block
+  just over it may be full in one copy and not in another; a builder makes
+  sure of it by building past the floor.
+- **A small chain fills sooner.** While few hold Kismet, a block is full at
+  a few KiB (§5.4), so a chain on which few hold any closes its generations
+  sooner than one on which many do. Whoever builds a fork of their own from
+  early in the chain, and keeps Karma within a few identities on it, can
+  build generations faster than a chain that has spread, and so outweigh
+  it (§3.3). The remedy is the chain's lead: a fork is cheaper the earlier
+  it starts and the less the chain it rivals has grown.
 - **Free transactions cost work.** Half of every block is kept for free
   transactions (Karma §13). Filling that half with junk is limited by the
   bits each must share (§4.3), and builders take the free transactions of
@@ -1087,7 +1108,9 @@ Not yet specified:
   transaction never expires, and what a node does with a transaction older
   than any block it holds. The reference node keeps every key and witness
   of the chain it follows, back to the root.
-- Early blocks that fill slowly while few identities hold Karma.
+- Whether a chain on which few hold Kismet, whose blocks are full sooner
+  (§5.4), should weigh less for it, so that a fork kept small cannot
+  outweigh a chain that has spread (§8).
 - How else Karma and the trust network
   ([Trust Network Specification](TrustNetwork.md)) bear on each other,
   beyond the distrust of builders (§3.8).

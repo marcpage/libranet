@@ -80,6 +80,11 @@ MAX_BLOCK_BYTES: Final = 1 * MIB
 #: and still be full: 128 KiB, room for what its builder cannot control (§5.4).
 FULL_BLOCK_ROOM_BYTES: Final = 128 * KIB
 
+#: How much of a block's drop, compressed, each identity holding Kismet asks
+#: for before the block is full, while too few hold any to fill
+#: :data:`MAX_BLOCK_BYTES` less :data:`FULL_BLOCK_ROOM_BYTES`: 8 KiB (§5.4).
+HOLDER_BLOCK_BYTES: Final = 8 * KIB
+
 # The members of a block (§5.1, §6.1), and of a balance (§5.3).
 _GENERATION: Final = "generation"
 _PREVIOUS: Final = "previous"
@@ -401,21 +406,23 @@ class BlockBounds:
     """What a block is measured against: how large it may be, and how much work it holds.
 
     A block's drop, compressed, is full when it is no larger than
-    ``most_bytes`` and larger than ``most_bytes`` less ``room_bytes`` (§5.4),
-    and each transaction in a block shares at least ``transaction_bits``
-    with the target of its work (§4.3). :data:`BLOCK_BOUNDS` are the
-    specification's: tests give smaller, so that a few transactions fill a
-    block, and each is mined in moments.
+    ``most_bytes``, and larger than ``most_bytes`` less ``room_bytes``, or
+    than ``holder_bytes`` for each identity holding Kismet, if that is less
+    (§5.4); and each transaction in a block shares at least
+    ``transaction_bits`` with the target of its work (§4.3).
+    :data:`BLOCK_BOUNDS` are the specification's: tests give smaller, so
+    that a few transactions fill a block, and each is mined in moments.
 
     Raises:
         ValueError: ``most_bytes`` is under 1, ``room_bytes`` is negative or
-            more than ``most_bytes``, or ``transaction_bits`` is negative or
-            more than a hash has.
+            more than ``most_bytes``, ``holder_bytes`` is negative, or
+            ``transaction_bits`` is negative or more than a hash has.
     """
 
     most_bytes: int = MAX_BLOCK_BYTES
     room_bytes: int = FULL_BLOCK_ROOM_BYTES
     transaction_bits: int = MIN_TRANSACTION_BITS
+    holder_bytes: int = HOLDER_BLOCK_BYTES
 
     def __post_init__(self) -> None:
         if self.most_bytes < 1 or not 0 <= self.room_bytes <= self.most_bytes:
@@ -424,18 +431,31 @@ class BlockBounds:
                 f"{self.most_bytes} and {self.room_bytes}"
             )
 
+        if self.holder_bytes < 0:
+            raise ValueError(f"holder_bytes must not be negative, got {self.holder_bytes}")
+
         if not 0 <= self.transaction_bits <= TARGET_BITS:
             raise ValueError(
                 f"transaction_bits must be from 0 to {TARGET_BITS}, got {self.transaction_bits}"
             )
 
-    def is_full(self, compressed_bytes: int) -> bool:
+    def full_above(self, holders: int) -> int:
+        """What a block's drop, compressed, must be larger than, to be full (§5.4).
+
+        ``holders`` are how many identities hold Kismet in the balances the
+        block's transactions are checked against (§5.3).
+        """
+        return min(self.most_bytes - self.room_bytes, holders * self.holder_bytes)
+
+    def is_full(self, compressed_bytes: int, holders: int) -> bool:
         """Whether a block whose drop the node holds compressed in ``compressed_bytes`` is full.
 
-        A node measures the copy it holds, since copies compressed otherwise
-        measure otherwise, and only a full block is validated (§5.4).
+        ``holders`` hold Kismet in the balances its transactions are checked
+        against (:meth:`full_above`). A node measures the copy it holds,
+        since copies compressed otherwise measure otherwise, and only a full
+        block is validated (§5.4).
         """
-        return self.most_bytes - self.room_bytes < compressed_bytes <= self.most_bytes
+        return self.full_above(holders) < compressed_bytes <= self.most_bytes
 
     def fullest(
         self, made: Callable[[int], BlockDrop[_Block]], most: int, *, fewest: int = 0
@@ -471,8 +491,9 @@ class BlockBounds:
         return fitting
 
 
-#: The bounds the specification sets: full within 128 KiB under 1 MiB, and
-#: 24 bits of work to each transaction (§4.3, §5.4).
+#: The bounds the specification sets: full within 128 KiB under 1 MiB, or
+#: above 8 KiB for each identity holding Kismet, if that is less, and 24 bits
+#: of work to each transaction (§4.3, §5.4).
 BLOCK_BOUNDS: Final = BlockBounds()
 
 

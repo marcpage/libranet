@@ -83,12 +83,17 @@ it is valid, until the chain holds it::
 
 The node's own payments it queues in ``payments.json``, in
 ``storage.karma_dir``, each ``karma.payment_percent`` of the node's balance
-at the head, and, as it looks, once ``karma.payment_batch`` are queued, or
+at the head, with its reward paid, and, as it looks, once
+``karma.payment_batch`` are queued, or
 ``karma.payment_interval_seconds`` have passed since the node's last
 transaction, makes them one transaction, mines it for
 ``karma.transaction_seconds``, signs it as the node, and puts it up as it
 does one it is given (:class:`~libranet.karma.payments.NodePayments`, Phase
-6 Step 132).
+6 Step 132). What the operator pays out of the node's Karma, on
+``/config``, it makes a transaction of its own at once, created after the
+node's last, and puts up the same way::
+
+    karma.node_payment  {"to": {"sha256/…": "250"}, "fee_kismet": "0"}
 
 Every ``karma.rating_interval_seconds``, it asks the stats module how the
 servers the node is connected to as a client served it since stats last
@@ -168,6 +173,8 @@ from libranet.messaging.node_trust import NodeTrust
 from libranet.messaging.queues import ModuleQueues
 from libranet.messaging.server_ratings import ServerRatings
 from libranet.modules import ModuleName
+from libranet.protocol.errors import InvalidRequestError
+from libranet.protocol.karma_requests import NodePaymentRequest
 from libranet.protocol.karma_stakes import SignedStake
 from libranet.protocol.karma_staking import StakingRule
 from libranet.protocol.karma_transactions import SignedTransaction
@@ -192,6 +199,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             EventType.KARMA_TRANSACTION,
             EventType.KARMA_STAKE,
             EventType.KARMA_RATINGS,
+            EventType.KARMA_NODE_PAYMENT,
         }
     )
 
@@ -245,6 +253,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 EventType.KARMA_TRANSACTION: self._on_transaction,
                 EventType.KARMA_STAKE: self._on_stake,
                 EventType.KARMA_RATINGS: self._on_ratings,
+                EventType.KARMA_NODE_PAYMENT: self._on_node_payment,
             }
         )
 
@@ -488,6 +497,26 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         for node_id in best:
             self.logger.info("Rated %s highest of the servers the node is a client of", node_id)
             self._payments.pay(node_id)
+
+    def _on_node_payment(self, message: Message) -> None:
+        """Pay as the operator asked on ``/config``, out of the node's Karma, put up now.
+
+        One that is no payment is logged, and passed over.
+
+        Raises:
+            RuntimeError: the module has not started.
+        """
+        if self._payments is None:
+            raise RuntimeError("The Karma module is not running")
+
+        try:
+            request = NodePaymentRequest.from_value(message)
+
+        except InvalidRequestError as error:
+            self.logger.warning("Passing over a payment of the node's that is none: %s", error)
+            return
+
+        self._payments.pay_out(request)
 
     def _on_node_trust(self, message: Message) -> None:
         """Keep whom the node trusts and distrusts, in place of what was kept before.

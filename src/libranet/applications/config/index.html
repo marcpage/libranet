@@ -374,6 +374,27 @@
       </div>
       <p class="result" role="status" hidden></p>
     </form>
+    <form id="karma-pay-form" hidden>
+      <h3>Pay out of this node's Karma</h3>
+      <div class="fields">
+        <label class="wide">To
+          <input id="karma-pay-to" required autocomplete="off" spellcheck="false"
+                 placeholder="sha256/…">
+        </label>
+        <label>Karma
+          <input id="karma-pay-kismet" required autocomplete="off" inputmode="decimal">
+        </label>
+        <label>Fee, in Karma
+          <input id="karma-pay-fee" autocomplete="off" inputmode="decimal" placeholder="0">
+        </label>
+        <button type="submit">Pay</button>
+      </div>
+      <p class="hint">The node signs the payment as itself, and puts it up for the next
+      generation's blocks at once, apart from the payments it queues. A fee goes to those who
+      stake on the block that takes it in, and has it taken in sooner when blocks are crowded.
+      Without one, it is free.</p>
+      <p class="result" role="status" hidden></p>
+    </form>
     <h3 class="karma-part">Payments queued</h3>
     <p class="state" id="karma-payments-state">Loading…</p>
     <div class="table-wrap">
@@ -1545,12 +1566,30 @@ const KARMA_DECIMALS = 14;
 
 const karmaState = byId("karma-state");
 const karmaRootForm = byId("karma-root-form");
+const karmaPayForm = byId("karma-pay-form");
 const stakeForm = byId("stake-form");
 const stakePercent = byId("stake-percent");
 
 // Whether the share staked has been read into the form, which is not read
 // again, so that it does not change while it is being changed.
 let stakeShown = false;
+
+// An amount of Karma as the operator types it: whole Karma, then a point and
+// up to KARMA_DECIMALS decimals, either of them left out.
+const TYPED_KARMA = /^\s*([0-9]*)(?:\.([0-9]*))?\s*$/;
+
+// What `typed`, an amount of Karma, is in Kismet, decimal digits; or null if
+// it says no amount.
+function kismetOf(typed) {
+  const match = TYPED_KARMA.exec(typed);
+
+  if (!match || (!match[1] && !match[2]) || (match[2] || "").length > KARMA_DECIMALS) {
+    return null;
+  }
+
+  const whole = BigInt(match[1] || "0") * KISMET_PER_KARMA;
+  return String(whole + BigInt((match[2] || "").padEnd(KARMA_DECIMALS, "0")));
+}
 
 // An amount the node writes in Kismet, decimal digits (KarmaLedger 4.1), in
 // Karma, its decimals cut short where they end in zeros.
@@ -1641,6 +1680,7 @@ function showKarma(value) {
   const follows = typeof value.head === "string";
   byId("karma-details").hidden = !follows;
   karmaRootForm.hidden = follows;
+  karmaPayForm.hidden = !follows;
   show(karmaState, follows ? "" : "This node follows no Karma chain yet.");
 
   if (follows) {
@@ -1701,6 +1741,32 @@ onSubmit(karmaRootForm, async () => {
   return [
     "This node is making the ledger's root, which takes about half a minute, and may take " +
       "several times that. This shows the chain once the node follows it.",
+    false,
+  ];
+});
+
+onSubmit(karmaPayForm, async () => {
+  const to = byId("karma-pay-to").value.trim();
+  const kismet = kismetOf(byId("karma-pay-kismet").value);
+  const fee = byId("karma-pay-fee").value.trim() ? kismetOf(byId("karma-pay-fee").value) : "0";
+
+  if (kismet === null || fee === null) {
+    return [`Give each amount in Karma, with at most ${KARMA_DECIMALS} decimals.`, true];
+  }
+
+  const result = await call("POST", "/karma/payments", { to: { [to]: kismet }, fee_kismet: fee });
+
+  if (result.status !== 202 || !result.value || typeof result.value.covered !== "boolean") {
+    return [failure(result), true];
+  }
+
+  karma.load();
+  return [
+    result.value.covered
+      ? "This node is making the payment, and shows it among the transactions carried once it " +
+        "is made."
+      : "This node is making the payment, but the Karma it holds does not cover it yet, so it " +
+        "waits among the transactions carried until it does.",
     false,
   ];
 });

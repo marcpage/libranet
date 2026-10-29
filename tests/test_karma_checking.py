@@ -21,6 +21,7 @@ from libranet.karma.blocks import (
 )
 from libranet.karma.checking import (
     BlockScore,
+    ChainBefore,
     TransactionBlockCheck,
     TransactionVerdict,
 )
@@ -550,6 +551,32 @@ def test_a_block_not_full_is_incorrect(
     assert check.score is None
     assert not check.full
     assert "must be full" in check.incorrect
+
+
+def test_those_holding_kismet_are_counted_with_the_payout_applied(chain: ChainInMemory) -> None:
+    # The root's creator, Alice, holds nothing until the root's reward pays her.
+    assert ChainBefore.read(chain, ROOT_VALIDATION_ID).holders() == 1
+    # Alice, and Dave, whom she paid; Bob holds nothing.
+    assert ChainBefore.read(chain, FIRST_VALIDATION_ID).holders() == 2
+
+
+@mark.parametrize("compressed_bytes, full", [(200, False), (201, True)])
+def test_while_few_hold_kismet_a_block_is_full_above_the_bytes_each_asks_for(
+    alice: NodeIdentity,
+    chain: ChainInMemory,
+    keys: dict[ContentId, bytes],
+    block: TransactionBlock,
+    compressed_bytes: int,
+    full: bool,
+) -> None:
+    # Alice and Dave ask for 100 bytes each, less than the 500 the room leaves.
+    bounds = replace(BOUNDS, holder_bytes=100)
+
+    check = checked(block, alice, chain, keys, compressed_bytes=compressed_bytes, bounds=bounds)
+
+    assert isinstance(check, TransactionBlockCheck)
+    assert check.is_correct is full
+    assert check.full is full
 
 
 def test_a_block_breaking_the_half_free_rule_is_incorrect(

@@ -490,7 +490,10 @@ head, and, as it looks, once `karma.payment_batch` are queued, or
 `karma.payment_interval_seconds` have passed since the node's last
 transaction, makes them one transaction, mines it for
 `karma.transaction_seconds`, signs it as the node, and puts it up as one it
-is given. Every `karma.rating_interval_seconds` it asks the stats module to
+is given. A payment the operator makes out of the node's Karma on `/config`
+(`karma.node_payment`) it makes a transaction of its own at once, created
+after the node's last, and puts up the same way (`NodePayments.pay_out`).
+Every `karma.rating_interval_seconds` it asks the stats module to
 rate the servers the node is a client of (`karma.ratings_requested`), and
 queues a payment to the server rated highest by bytes received, and to the
 one rated highest by requests fulfilled, once if they are one
@@ -1072,6 +1075,7 @@ to end its loop.
 | `karma.stake` | P | | | | | | | | S |
 | `karma.ratings_requested` | | | | S | | | | | P |
 | `karma.ratings` | | | | P | | | | | S |
+| `karma.node_payment` | P | | | | | | | | S |
 | *Lifecycle* | | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S | S |
 | **Publishes / subscribes** | 27 / 6 | 17 / 10 | 2 / 1 | 6 / 24 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 11 | 7 / 8 |
@@ -1162,6 +1166,7 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `karma.head_told` | `head`, `node_id` | The peer `node_id` follows the Karma head `head`; weigh it |
 | `karma.transaction` | `transaction` | Put up this signed transaction, a person's made through the node |
 | `karma.stake` | `stake` | Take this signed stake, a person's made through the node, into the validation blocks built |
+| `karma.node_payment` | `to`, `fee_kismet` | The operator pays this out of the node's own Karma on `/config`; make it a transaction of the node's, and put it up |
 | `shutdown` | — | Leave the receive loop |
 
 ### 7.3 Who Talks to Whom
@@ -1195,7 +1200,7 @@ flowchart TB
     web -->|"data.put_completed"| val
     web <-->|"data.search_requested, address.dial_requested, node.trust<br/>address.dialed"| conn
     web <-->|"node.trust_requested<br/>node.trust_stored"| stats
-    web <-->|"karma.root_requested, node.trust, karma.head_told, karma.transaction, karma.stake<br/>karma.false_block"| karma
+    web <-->|"karma.root_requested, node.trust, karma.head_told, karma.transaction, karma.stake, karma.node_payment<br/>karma.false_block"| karma
     karma <-->|"data.search_requested, karma.head<br/>data.search_answered, karma.head_told"| conn
     karma -->|"data.shunned"| evict
     conn -->|"data.put_completed"| val

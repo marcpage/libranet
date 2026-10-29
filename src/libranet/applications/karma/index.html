@@ -267,11 +267,13 @@ const TYPED_KARMA = /^\s*([0-9]*)(?:\.([0-9]*))?\s*$/;
 const TRANSACTION_PREFIX = "karma transaction:";
 
 // A block is full when its drop, compressed as the node holds it, is no larger
-// than MOST_BLOCK_BYTES, and larger than that less FULL_ROOM_BYTES (KarmaLedger
+// than MOST_BLOCK_BYTES, and larger than that less FULL_ROOM_BYTES, or than
+// HOLDER_BYTES for each identity holding Kismet, if that is less (KarmaLedger
 // 5.4). A drop held as it is begins with the "{" of a signed bundle (Bundle
 // Specification 5); one held compressed is a zlib stream (HttpApi 8).
 const MOST_BLOCK_BYTES = 1048576;
 const FULL_ROOM_BYTES = 131072;
+const HOLDER_BYTES = 8192;
 const OPEN_BRACE = 0x7b;
 
 // How many blocks at the head's target are read at once.
@@ -427,6 +429,7 @@ const view = {
   nodeId: null,
   generations: new Map(),
   newest: null,
+  holders: null,
   shown: null,
   stakeOn: null,
 };
@@ -940,9 +943,10 @@ async function heldBytes(id) {
 }
 
 // The transaction blocks placed for the generation after `head` (KarmaLedger
-// 3.1): how many are found, how many are not held yet, and the best of those
-// that are full (5.4), by the bits their drops share with the target, then
-// the shortest reach, then the first by id (5.5).
+// 3.1): how many are found, how many are not held yet, the best of those that
+// are full (5.4), by the bits their drops share with the target, then the
+// shortest reach, then the first by id (5.5), and what a full one is larger
+// than.
 async function latestFullBlock(head) {
   const search = await call("GET", dropPath(TRANSACTION_PREFIX + head));
   const answered =
@@ -958,13 +962,16 @@ async function latestFullBlock(head) {
   const ids = search.value.results.filter((id) => CONTENT_ID.test(id));
   const full = [];
   let missing = 0;
+  // Until the node has read how many hold Kismet at its head, the most a
+  // full block need be.
+  const fullAbove = Math.min(MOST_BLOCK_BYTES - FULL_ROOM_BYTES, (view.holders ?? Infinity) * HOLDER_BYTES);
 
   await eachAtMost(ids, BLOCKS_AT_ONCE, async (id) => {
     const held = await heldBytes(id);
 
     if (held.missing) {
       missing += 1;
-    } else if (MOST_BLOCK_BYTES - FULL_ROOM_BYTES < held.bytes && held.bytes <= MOST_BLOCK_BYTES) {
+    } else if (fullAbove < held.bytes && held.bytes <= MOST_BLOCK_BYTES) {
       full.push(id);
     }
   });
@@ -991,7 +998,7 @@ async function latestFullBlock(head) {
   }
 
   scored.sort((one, other) => other.bits - one.bits || one.reach - other.reach || (one.id < other.id ? -1 : 1));
-  return { found: ids.length, missing, best: scored[0] || null };
+  return { found: ids.length, missing, best: scored[0] || null, fullAbove };
 }
 
 // Find the latest full block, at the target of the head the node follows, and
@@ -1012,11 +1019,11 @@ async function findStakeBlock() {
     }
 
     const head = view.generations.get(view.newest).validation;
-    const { found, missing, best } = await latestFullBlock(head);
+    const { found, missing, best, fullAbove } = await latestFullBlock(head);
     const notHeld = missing > 0 ? ` ${plural(missing, "of them is", "of them are")} not held here yet, and the node asked its peers for them.` : "";
 
     if (best === null) {
-      said.textContent = `No full block has been placed for generation ${view.newest + 1} yet, so there is nothing to stake on. ${plural(found, "block has", "blocks have")} been placed for it.${notHeld} A block fills as payments are put up; look again later.`;
+      said.textContent = `No full block has been placed for generation ${view.newest + 1} yet, so there is nothing to stake on. ${plural(found, "block has", "blocks have")} been placed for it.${notHeld} A block fills as payments are put up, and is full once it is over ${fullAbove.toLocaleString()} bytes compressed; look again later.`;
     } else {
       view.stakeOn = best;
       said.replaceChildren(
@@ -1071,8 +1078,9 @@ async function stake(event) {
 // ---- The chain ----
 
 // What the node says of the chain it follows (HttpApi 10.10): its head, the
-// head's generation, the chain's weight, and the node's own balance there; or
-// null while it follows none, or has not read the balances at its head.
+// head's generation, the chain's weight, the node's own balance there, and how
+// many hold Kismet; or null while it follows none, or has not read the
+// balances at its head.
 async function readFollowed() {
   const result = await call("GET", "/data/karma");
   const value = result.value;
@@ -1088,7 +1096,9 @@ async function readFollowed() {
     Number.isSafeInteger(value.generation) &&
     typeof value.weight === "string" &&
     CONTENT_ID.test(value.node_id) &&
-    isBalance(value.balance);
+    isBalance(value.balance) &&
+    Number.isSafeInteger(value.holders) &&
+    value.holders >= 0;
 
   if (!isFollowed) {
     throw new Error(`The node did not say which chain it follows: ${refusal(result)}`);
@@ -1375,6 +1385,7 @@ async function readChain() {
 
   if (followed !== null) {
     view.nodeId = followed.node_id;
+    view.holders = followed.holders;
     showFollowed(followed);
   }
 

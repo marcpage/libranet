@@ -34,6 +34,7 @@ from libranet.karma.balances import HeadBalances
 from libranet.karma.blocks import (
     BLOCK_BOUNDS,
     FULL_BLOCK_ROOM_BYTES,
+    HOLDER_BLOCK_BYTES,
     MAX_BLOCK_BYTES,
     BlockBounds,
     BlockDrop,
@@ -78,6 +79,7 @@ __all__ = [
     "BLOCK_BOUNDS",
     "FIRST_NEW_KISMET",
     "FULL_BLOCK_ROOM_BYTES",
+    "HOLDER_BLOCK_BYTES",
     "LAST_ISSUING_GENERATION",
     "MAX_BLOCK_BYTES",
     "MisplacedBlockError",

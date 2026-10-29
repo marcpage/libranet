@@ -121,6 +121,7 @@ from libranet.webserver.config_handlers import (
     ConnectHandler,
     KarmaRootHandler,
     NodeDescription,
+    NodePaymentHandler,
     config_routes,
 )
 from libranet.webserver.costly_work import CostlyWork
@@ -641,6 +642,7 @@ def build_config_router(  # pylint: disable=too-many-locals
         connecting=None if peers is None else Connecting(peers),
         karma_root=KarmaRootHandler(publish, storage.karma_dir),
         karma=OwnKarma(storage.karma_dir, node.node_id, KarmaConfig() if karma is None else karma),
+        karma_payments=NodePaymentHandler(publish, storage.karma_dir, node.node_id),
     ):
         router.add(method, pattern, handler)
 

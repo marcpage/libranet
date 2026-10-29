@@ -8,7 +8,7 @@ from pytest import mark, raises
 from libranet.cas.content_id import ContentId
 from libranet.protocol.errors import InvalidRequestError
 from libranet.protocol.karma_amounts import MAX_KISMET, Kismet
-from libranet.protocol.karma_requests import PaymentRequest, StakeRequest
+from libranet.protocol.karma_requests import NodePaymentRequest, PaymentRequest, StakeRequest
 from libranet.protocol.karma_stakes import Stake
 from libranet.protocol.karma_transactions import Transaction
 
@@ -70,6 +70,33 @@ def test_a_payment_is_its_senders_transaction_its_nonce_not_yet_searched_for() -
     assert asked.transaction(ALICE, 41, CREATED) == Transaction(
         ALICE, {BOB: Kismet(250)}, Kismet(3), 41, CREATED
     )
+
+
+def test_a_payment_of_the_nodes_names_no_search_and_is_given_on_as_it_was_read() -> None:
+    value = {"to": {str(BOB): "250", str(CAROL): "75"}, "fee_kismet": "3"}
+    asked = NodePaymentRequest.from_value({**value, "seconds": 10})
+
+    assert asked == NodePaymentRequest({BOB: Kismet(250), CAROL: Kismet(75)}, Kismet(3))
+    assert asked.value() == value
+    assert NodePaymentRequest.from_value({"to": {str(BOB): "1"}}).fee == Kismet(0)
+    assert asked.transaction(ALICE, 41, CREATED) == Transaction(
+        ALICE, {BOB: Kismet(250), CAROL: Kismet(75)}, Kismet(3), 41, CREATED
+    )
+
+
+@mark.parametrize(
+    "value, error",
+    [
+        ([], "must be a JSON object"),
+        ({}, '"to" must be an object'),
+        ({"to": {"bob": "1"}}, 'A name in "to" must be an id'),
+        ({"to": {str(BOB): "0"}}, "must move more than 0 Kismet"),
+        ({"to": {str(BOB): str(MAX_KISMET)}, "fee_kismet": "1"}, f"from 0 to {MAX_KISMET} Kismet"),
+    ],
+)
+def test_what_is_no_payment_of_the_nodes_is_refused(value: object, error: str) -> None:
+    with raises(InvalidRequestError, match=error):
+        NodePaymentRequest.from_value(value)
 
 
 def test_a_stake_names_the_block_it_is_on_and_what_it_stakes() -> None:

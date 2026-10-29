@@ -157,6 +157,7 @@ from libranet.webserver.config_handlers import (
     KarmaRootHandler,
     NodeDescription,
     NodeHandler,
+    NodePaymentHandler,
     config_index,
     config_routes,
 )
@@ -499,6 +500,7 @@ __all__ = [
     "NodeHandler",
     "NodeListHandler",
     "NodeMetadataReader",
+    "NodePaymentHandler",
     "OwnKarma",
     "OwnMetadata",
     "OwnTrust",

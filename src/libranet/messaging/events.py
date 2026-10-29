@@ -124,6 +124,7 @@ class EventType(StrEnum):
     KARMA_STAKE = "karma.stake"  # webserver → karma (Step 137)
     KARMA_RATINGS_REQUESTED = "karma.ratings_requested"  # karma → stats (Step 133)
     KARMA_RATINGS = "karma.ratings"  # stats → karma (Step 133)
+    KARMA_NODE_PAYMENT = "karma.node_payment"  # webserver → karma
 
 
 class AddressSource(StrEnum):
