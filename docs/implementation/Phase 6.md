@@ -3288,7 +3288,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 143 — Karma Order a Low-Karma Node Can Live With
+## Step 143 — Karma Order a Low-Karma Node Can Live With ✅
 
 **Kind:** improvement in behavior. **Issue:** #519.
 **Depends on:** Steps 141 and 142.
