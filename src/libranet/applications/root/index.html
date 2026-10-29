@@ -452,8 +452,21 @@ function offerAccount(session) {
         : `Signed in as ${session.username}.`;
     byId("sign-out").addEventListener("click", async () => {
       byId("sign-out").disabled = true;
-      await call("DELETE", "/data/session").catch(() => null);
-      location.reload();
+
+      try {
+        const result = await call("DELETE", "/data/session");
+
+        if (result.ok) {
+          location.reload();
+          return;
+        }
+
+        sayAccount(`Not signed out: ${refusal(result)}`, "error");
+      } catch (error) {
+        sayAccount(error.message, "error");
+      }
+
+      byId("sign-out").disabled = false;
     });
     return;
   }

@@ -1798,15 +1798,20 @@ function playFullscreen() {
 // Shows `video` full screen, as this browser can.
 function enterFullscreen(video) {
   if (video.requestFullscreen) {
-    video.requestFullscreen().catch(() => {});
+    video.requestFullscreen().catch((error) => console.warn(`The movie was not shown full screen: ${error.message}`));
   } else if (video.webkitEnterFullscreen) {
     video.webkitEnterFullscreen();
   }
 }
 
+// Says that leaving full screen failed, as `error` says.
+function warnStillFullscreen(error) {
+  console.warn(`The movie is still shown full screen: ${error.message}`);
+}
+
 function toggleFullscreen() {
   if (document.fullscreenElement) {
-    document.exitFullscreen().catch(() => {});
+    document.exitFullscreen().catch(warnStillFullscreen);
   } else if (state.selected !== null) {
     enterFullscreen(byId("video"));
   }
@@ -1851,7 +1856,7 @@ function stopMovie() {
     state.leftFullscreen = false;
     focusMovie(state.selected);
   }, { once: true });
-  document.exitFullscreen().catch(() => {});
+  document.exitFullscreen().catch(warnStillFullscreen);
 }
 
 // Chooses the movie `delta` from the one chosen in the collection, or its
