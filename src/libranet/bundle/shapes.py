@@ -26,18 +26,18 @@ from libranet.bundle.errors import MalformedBundleError, UnsupportedBundleError
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 
-# How an entry path or a symlink's target is spelled (§3.1), wherever bundle
-# code builds, splits, or follows one.
+#: How an entry path or a symlink's target is spelled (§3.1), wherever bundle
+#: code builds, splits, or follows one.
 PATH_SEPARATOR: Final = "/"
 PARENT_SEGMENT: Final = ".."
-# Segments that stay where they are, when a symlink's target is followed.
+#: Segments that stay where they are, when a symlink's target is followed.
 NO_STEP_SEGMENTS: Final = frozenset(("", "."))
 _UNUSABLE_SEGMENTS: Final = NO_STEP_SEGMENTS | {PARENT_SEGMENT}
 
-# Provisional default: how many extensions a directory may reach, which is
-# enough for one of millions of files, split across extensions that each fit
-# 1 MiB as stored (§4). A writer splits a directory into no more than a
-# reader follows.
+#: Provisional default: how many extensions a directory may reach, which is
+#: enough for one of millions of files, split across extensions that each fit
+#: 1 MiB as stored (§4). A writer splits a directory into no more than a
+#: reader follows.
 DEFAULT_MAX_EXTENSIONS: Final = 1024
 
 
@@ -73,8 +73,8 @@ def ancestors(paths: Iterable[str]) -> set[str]:
     return found
 
 
-# An extended attribute's value (§2.4): its bytes base64-encoded, or the CAS
-# paths of the parts they are stored in, in order.
+#: An extended attribute's value (§2.4): its bytes base64-encoded, or the CAS
+#: paths of the parts they are stored in, in order.
 XattrValue: TypeAlias = str | tuple[str, ...]
 
 

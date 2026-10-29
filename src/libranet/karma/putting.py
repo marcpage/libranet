@@ -218,7 +218,8 @@ class TransactionsPutUp:  # pylint: disable=too-many-instance-attributes
                 self._put_up(each.signed, head.validation)
 
             except MissingContentError:
-                # Not logged: what it lacks is asked for, and it is tried again once that comes.
+                # Not logged: what it lacks is asked for, and it is tried again
+                # once that comes.
                 continue
 
             except OSError as error:

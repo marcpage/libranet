@@ -20,15 +20,15 @@ across the process boundary.
 The receive loop takes in what the unbundler found at paths in bundles,
 ``app.path_resolved`` (see :mod:`libranet.unbundler.module`), which wakes the
 request threads waiting on it (Phase 3 Step 65), and what the backup module
-reports its jobs, restores, and imports are doing, ``backup.state`` (Step
-19), for request threads on either port to answer from. It also takes the
-eviction module's ``peers.connected_requested``, answered with the peers
-connected to the server (:mod:`libranet.webserver.inbound_peers`), which are
-named once as the server starts too (Phase 2 Step 53), and which are kept
-connected, or closed, by their Karma and what they push
-(:mod:`libranet.webserver.client_keeping`, Phase 6 Step 142). And it takes what came
-of each dial ``/config`` asked the connection manager for, ``address.dialed``,
-which wakes the request waiting on it (Phase 5 Step 109).
+reports its jobs, restores, and imports are doing, ``backup.state`` (Step 19),
+for request threads on either port to answer from. It also takes the eviction
+module's ``peers.connected_requested``, answered with the peers connected to
+the server (:mod:`libranet.webserver.inbound_peers`), which are named once as
+the server starts too (Phase 2 Step 53), and which are kept connected, or
+closed, by their Karma and what they push
+(:mod:`libranet.webserver.client_keeping`, Phase 6 Step 142). And it takes what
+came of each dial ``/config`` asked the connection manager for,
+``address.dialed``, which wakes the request waiting on it (Phase 5 Step 109).
 
 It builds the node's own trust scores, and says whom they trust, and so which
 peers the node connects to and serves (:mod:`libranet.webserver.peer_trust`,

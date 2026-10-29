@@ -41,16 +41,16 @@ SCHEME: Final = "scrypt"
 SALT_BYTES: Final = 16
 KEY_BYTES: Final = 32
 
-# scrypt's cost, block size, and parallelism. The cost is what makes
-# guessing expensive: 2^14 takes about 60 ms and 16 MiB, which no local
-# administrator notices and a guesser pays for every attempt.
+#: scrypt's cost, block size, and parallelism. The cost is what makes
+#: guessing expensive: 2^14 takes about 60 ms and 16 MiB, which no local
+#: administrator notices and a guesser pays for every attempt.
 COST: Final = 1 << 14
 BLOCK_SIZE: Final = 8
 PARALLELISM: Final = 1
 
-# A stored cost past this would ask for more memory than any node should
-# allocate to check one password — this one needs about 256 MiB — and only a
-# corrupt file could name it. It leaves room to raise the cost later.
+#: A stored cost past this would ask for more memory than any node should
+#: allocate to check one password — this one needs about 256 MiB — and only a
+#: corrupt file could name it. It leaves room to raise the cost later.
 MAX_COST: Final = 1 << 18
 
 _MIN_SALT_BYTES: Final = 8

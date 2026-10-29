@@ -848,7 +848,10 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         try:
             asking = archive.attempt(
-                self._content, self._config.storage.kept_archives_dir, self._clock(), progressed
+                self._content,
+                self._config.storage.kept_archives_dir,
+                self._clock(),
+                progressed=progressed,
             )
 
         except (OSError, BundleError) as error:

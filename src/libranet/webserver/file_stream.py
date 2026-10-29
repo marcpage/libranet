@@ -67,7 +67,7 @@ from libranet.webserver.errors import ResponseCutShortError
 
 _LOGGER = getLogger(__name__)
 
-# Provisional: how often a part waited for is looked for.
+#: Provisional: how often a part waited for is looked for.
 DEFAULT_PART_POLL_INTERVAL_SECONDS: Final = 0.25
 
 

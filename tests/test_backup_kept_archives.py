@@ -93,7 +93,7 @@ def test_content_all_held_is_written_into_the_archive_at_once(
     task = keeping(bundle, (version,))
     written: list[int] = []
 
-    asked = task.attempt(source, kept_dir, REQUESTED_AT + 1, lambda: written.append(1))
+    asked = task.attempt(source, kept_dir, REQUESTED_AT + 1, progressed=lambda: written.append(1))
 
     archive = kept_dir / f"{task.archive_id}.zip"
     assert asked == ()

@@ -28,7 +28,7 @@ TRANSACTION_BITS = 5
 
 @fixture(scope="module")
 def searchers() -> Iterator[NonceSearchers]:
-    searchers = NonceSearchers(1)
+    searchers = NonceSearchers(processes=1)
     yield searchers
     searchers.close()
 

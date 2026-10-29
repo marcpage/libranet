@@ -15,11 +15,11 @@ from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
     BlockFinding,
-    MisplacedBlockError,
     TransactionBlock,
     ValidationBlock,
 )
 from libranet.karma.checking import TransactionBlockCheck
+from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.ledger import BalanceSheet, Reward, reach_of
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore

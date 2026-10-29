@@ -39,10 +39,12 @@ _LOGGER = getLogger(__name__)
 #: The file of the Karma module's history naming its head.
 KARMA_HEAD_FILE: Final = "head.json"
 
-#: Where a node asks another for the Karma head it follows, and tells its own (HttpApi §10.9).
+#: Where a node asks another for the Karma head it follows, and tells its own
+#: (HttpApi §10.9).
 KARMA_HEAD_PATH: Final = API_PREFIX + "/karma/head"
 
-#: The directory of the Karma module's history holding a file for each generation.
+#: The directory of the Karma module's history holding a file for
+#: each generation.
 GENERATIONS_DIR: Final = "generations"
 
 #: The members of ``head.json`` naming the head, its generation, and the

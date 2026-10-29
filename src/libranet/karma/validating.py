@@ -5,7 +5,7 @@ is found so as it is read (:meth:`~libranet.karma.blocks.BlockDrop.decoded`).
 One whose stakes name a transaction block built on another validation block
 than the one its target is named for, as one that is a transaction block, is
 of another target, where anyone may have placed it, and is passed over
-(:class:`~libranet.karma.blocks.MisplacedBlockError`). What any other states
+(:class:`~libranet.karma.errors.MisplacedBlockError`). What any other states
 against its target and its chain is checked here: that its stakes name one
 transaction block, at the transaction target of its generation, which is
 correct; its ``generation``, against the validation block its target is
@@ -43,11 +43,11 @@ from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
     BlockFinding,
-    MisplacedBlockError,
     TransactionBlock,
     ValidationBlock,
 )
 from libranet.karma.checking import ChainView, TransactionBlockCheck
+from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.ledger import Reward, StakeWeight
 from libranet.karma.reading import HeldBlock

@@ -176,11 +176,11 @@ class HeldTrustList(HeldVersions[TrustVersion]):
         """The version after the newest, setting or clearing the entry for ``identity``.
 
         ``trusted`` is ``True`` to trust it, ``False`` to distrust it, and
-        ``None`` for neither. It is numbered one more than the newest, and names its drop, or is
-        the first, if none was read (§3.4). It is ``None`` if it would change
-        nothing, as trusting an identity already trusted would. Whether
-        anything is :attr:`missing`, and so whether to make it yet, is the
-        caller's to ask.
+        ``None`` for neither. It is numbered one more than the newest, and
+        names its drop, or is the first, if none was read (§3.4). It is
+        ``None`` if it would change nothing, as trusting an identity already
+        trusted would. Whether anything is :attr:`missing`, and so whether to
+        make it yet, is the caller's to ask.
 
         Raises:
             ValueError: ``identity`` is the owner, whom their own list never
@@ -244,7 +244,8 @@ class TrustScore:
         It is that quotient, not weights added one at a time, so that three
         lists at step 2 score exactly 0.3.
         """
-        # A power is typed Any, as a negative one is no int; step is at least 1.
+        # A power is typed Any, as a negative one is no int; step is at
+        # least 1.
         divisor: int = 10 ** (self.step - 1)
         return self.net_count / divisor
 

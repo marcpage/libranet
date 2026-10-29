@@ -18,20 +18,20 @@ from cryptography.hazmat.primitives.padding import PKCS7
 
 _BLOCK_BITS: Final = AES256.block_size
 
-# One AES block, which is also the length of a CBC IV, and the most padding
-# adds.
+#: One AES block, which is also the length of a CBC IV, and the most padding
+#: adds.
 BLOCK_BYTES: Final = _BLOCK_BITS // 8
 
-# An AES-256 key.
+#: An AES-256 key.
 KEY_BYTES: Final = 32
 
-# The IV used unless one is named, so that encryption is deterministic (§6.3).
+#: The IV used unless one is named, so that encryption is deterministic (§6.3).
 DEFAULT_IV: Final = bytes(BLOCK_BYTES)
 
-# The zlib level a plaintext is compressed at before it is encrypted. Never
-# changed once anything is written with it, or identical content encrypted
-# before and after would no longer dedup (§6.3, §7.3). A block for a person
-# is compressed at it too (§8).
+#: The zlib level a plaintext is compressed at before it is encrypted. Never
+#: changed once anything is written with it, or identical content encrypted
+#: before and after would no longer dedup (§6.3, §7.3). A block for a person
+#: is compressed at it too (§8).
 ENCRYPTION_COMPRESSION_LEVEL: Final = 9
 
 

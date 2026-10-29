@@ -77,11 +77,6 @@ from libranet.protocol.karma_transactions import Payout, SignedTransaction, Tran
 _LOGGER = getLogger(__name__)
 
 
-def _most_bits_first(signed: SignedTransaction) -> tuple[int, str]:
-    """What orders transactions by most work first, and of as much, by hash (§4.3, §5.4)."""
-    return (-signed.work_bits, signed.hash)
-
-
 @dataclass(frozen=True)
 class CombinedBlock:
     """The transactions a block built on ``before`` takes, in the order it takes them (§5.4).
@@ -387,7 +382,8 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
                 self._place(filled, head.validation)
 
         except MissingContentError:
-            # Not logged: what it lacks is asked for, and it is built once that comes.
+            # Not logged: what it lacks is asked for, and it is built once
+            # that comes.
             return
 
         except OSError as error:
@@ -488,7 +484,8 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
                 drop = BlockDrop.parsed(held.data, ValidationBlock)
 
             except (BundleError, ValueError) as error:
-                # Not logged as a warning: the chain followed checks each block at the target.
+                # Not logged as a warning: the chain followed checks each block
+                # at the target.
                 _LOGGER.debug("Karma block %s names no transaction block: %s", held.block_id, error)
                 continue
 
@@ -589,7 +586,8 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
             return self._reader.held(sender)
 
         except MissingContentError:
-            # Not logged: it is asked for, and the sender's transactions are taken once it comes.
+            # Not logged: it is asked for, and the sender's transactions are
+            # taken once it comes.
             return None
 
         except BundleError as error:
@@ -629,11 +627,13 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
             )
 
         except MissingContentError:
-            # Not logged: what it lacks is asked for, and it is checked again once that comes.
+            # Not logged: what it lacks is asked for, and it is checked again
+            # once that comes.
             return False
 
         except (BundleError, ValueError) as error:
-            # Not logged as a warning: the chain followed checks each block at the target.
+            # Not logged as a warning: the chain followed checks each block at
+            # the target.
             _LOGGER.debug("Karma block %s cannot be checked: %s", held.block_id, error)
             check = None
 
@@ -661,3 +661,8 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
             drop.matching_bits,
             head,
         )
+
+
+def _most_bits_first(signed: SignedTransaction) -> tuple[int, str]:
+    """What orders transactions by most work first, and of as much, by hash (§4.3, §5.4)."""
+    return (-signed.work_bits, signed.hash)

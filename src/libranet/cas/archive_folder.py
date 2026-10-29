@@ -55,8 +55,8 @@ class ArchiveFolder:  # pylint: disable=too-many-instance-attributes
     def __init__(
         self,
         directory: Path,
-        registry: AlgorithmRegistry = DEFAULT_REGISTRY,
         *,
+        registry: AlgorithmRegistry = DEFAULT_REGISTRY,
         clock: Callable[[], float] = time,
     ) -> None:
         self._directory = directory

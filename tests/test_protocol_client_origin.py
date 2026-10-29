@@ -43,7 +43,7 @@ def test_the_address_of_this_machine_the_connection_reached_is_local(
 ) -> None:
     # As a browser on this machine connects from, having looked its name up
     # as one of the machine's network addresses (#395).
-    assert is_local_client(address, reached)
+    assert is_local_client(address, reached=reached)
 
 
 @mark.parametrize(
@@ -57,7 +57,7 @@ def test_the_address_of_this_machine_the_connection_reached_is_local(
     ],
 )
 def test_an_address_other_than_the_one_reached_is_not_local(address: str, reached: str) -> None:
-    assert not is_local_client(address, reached)
+    assert not is_local_client(address, reached=reached)
 
 
 def test_an_address_is_parsed_unwrapped_if_ipv4_mapped() -> None:

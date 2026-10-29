@@ -53,7 +53,7 @@ class ConnectedPeers:
             if node_id in self._node_ids.get(direction, frozenset())
         )
 
-    def node_ids(self, direction: ConnectionDirection | None = None) -> frozenset[ContentId]:
+    def node_ids(self, *, direction: ConnectionDirection | None = None) -> frozenset[ContentId]:
         """Every peer connected now ``direction``, or either way, if it is ``None``."""
         if direction is not None:
             return self._node_ids.get(direction, frozenset())

@@ -56,9 +56,9 @@ from libranet.webserver.version_edits import ReplacedVersions
 
 _LOGGER = getLogger(__name__)
 
-# Provisional: how often a list looked for is looked for again. Each look is
-# a search of its drop, so a build looking for many lists searches as often
-# for each.
+#: Provisional: how often a list looked for is looked for again. Each look is
+#: a search of its drop, so a build looking for many lists searches as often
+#: for each.
 DEFAULT_TRUST_POLL_INTERVAL_SECONDS: Final = 1.0
 
 # What a build's thread is called.

@@ -61,16 +61,17 @@ from libranet.webserver.errors import RegistryFileError
 
 _LOGGER = getLogger(__name__)
 
-# The application served at `/` (HttpApi §13).
+#: The application served at ``/`` (HttpApi §13).
 ROOT_APPLICATION: Final = "/"
 
-# The application serving `/config` itself (HttpApi §2.3).
+#: The application serving ``/config`` itself (HttpApi §2.3).
 CONFIG_APPLICATION: Final = "config"
 
-# Top-level names that are never an ordinary application's (HttpApi §2).
+#: Top-level names that are never an ordinary application's (HttpApi §2).
 RESERVED_APPLICATION_NAMES: Final = frozenset({"data", "web", "chaos", CONFIG_APPLICATION})
 
-# The first segment beneath /config that is the API's, never the application's.
+#: The first segment beneath /config that is the API's, never
+#: the application's.
 CONFIG_API_SEGMENT: Final = "api"
 
 _UNUSABLE_SEGMENTS: Final = frozenset({"", ".", ".."})

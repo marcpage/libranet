@@ -56,7 +56,8 @@ from libranet.webserver.request_refusals import (
 
 _LOGGER = getLogger(__name__)
 
-#: Where a local client's page reads what this node knows of its peers (HttpApi §10.8).
+#: Where a local client's page reads what this node knows of its peers
+#: (HttpApi §10.8).
 PEERS_PATH: Final = API_PREFIX + "/peers"
 
 

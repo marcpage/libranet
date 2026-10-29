@@ -16,7 +16,7 @@ from zlib import decompressobj, error as ZlibError
 
 from libranet.cas.errors import NotZlibStreamError, StreamTooLargeError
 
-# Most decompressed bytes held in memory at once.
+#: Most decompressed bytes held in memory at once.
 CHUNK_BYTES: Final = 64 * 1024
 
 _NOT_A_STREAM: Final = "Not one complete zlib stream"

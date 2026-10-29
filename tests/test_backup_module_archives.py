@@ -409,7 +409,7 @@ def test_an_unexpected_failure_fails_it_and_is_logged(
 ) -> None:
     module = start(config, queues, now)
 
-    def broken(*_: object) -> tuple[ContentId, ...]:
+    def broken(*_: object, **__: object) -> tuple[ContentId, ...]:
         raise RuntimeError("something unexpected")
 
     monkeypatch.setattr(KeptArchive, "attempt", broken)

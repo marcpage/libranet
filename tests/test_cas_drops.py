@@ -40,7 +40,7 @@ def ticking(*readings: float) -> Callable[[], float]:
 
 @fixture
 def searchers() -> Iterator[NonceSearchers]:
-    made = NonceSearchers(2)
+    made = NonceSearchers(processes=2)
     yield made
     made.close()
 
@@ -144,13 +144,13 @@ def test_a_search_asking_the_impossible_is_refused(seconds: float, minimum_bits:
 
 def test_there_is_a_searching_process_for_each_cpu_unless_asked_otherwise() -> None:
     assert NonceSearchers().processes == (cpu_count() or 1)
-    assert NonceSearchers(3).processes == 3
+    assert NonceSearchers(processes=3).processes == 3
 
 
 @mark.parametrize("processes", [0, -1])
 def test_a_search_needs_a_process(processes: int) -> None:
     with raises(ValueError, match="processes must be at least 1"):
-        NonceSearchers(processes)
+        NonceSearchers(processes=processes)
 
 
 def test_a_round_tries_every_count_of_each_processs_share(searchers: NonceSearchers) -> None:

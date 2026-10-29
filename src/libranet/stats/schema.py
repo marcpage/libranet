@@ -76,7 +76,7 @@ OWN_NODE: Final = ""
 class SeekKind(StrEnum):
     """What one ``seek_entries`` row names, matching the two keys of §10.7.1."""
 
-    DATA = "data"  # an exact `{algorithm}/{hash}` content identifier
+    DATA = "data"  # an exact ``{algorithm}/{hash}`` content identifier
     SEARCH = "search"  # a hash prefix being searched for
 
 

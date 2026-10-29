@@ -141,8 +141,8 @@ from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 
-# Other nodes that must hold an object before it is deleted: the best match
-# that accepts it, alone (HighLevelDesign §4.5).
+#: Other nodes that must hold an object before it is deleted: the best match
+#: that accepts it, alone (HighLevelDesign §4.5).
 HAND_OFF_COPIES: Final = 1
 
 # By default, a hand-off is given up on once it has gone unanswered this many

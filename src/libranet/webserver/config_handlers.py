@@ -80,13 +80,13 @@ fixing or removing it by hand is the way back.
 
 ``POST /config/api/connections`` ``{"address"}`` has the connection manager
 dial an address at once (Phase 5 Step 109), and, unlike the backup endpoints,
-waits to hear what came of it (:mod:`libranet.webserver.dial_outcomes`),
-since the operator asking wants to know whether the node could be reached.
-A node reached there is ``200``, with its id, whether it was connected
-already or not; the address of this node itself is ``409``, one where a node
-this node does not connect to was reached ``403``, and one where no node was
-reached ``502``, each saying why (Phase 5 Step 113). No answer in time is ``504``: the dial
-may still reach the node, which the nodes application then shows.
+waits to hear what came of it (:mod:`libranet.webserver.dial_outcomes`), since
+the operator asking wants to know whether the node could be reached. A node
+reached there is ``200``, with its id, whether it was connected already or not;
+the address of this node itself is ``409``, one where a node this node does not
+connect to was reached ``403``, and one where no node was reached ``502``, each
+saying why (Phase 5 Step 113). No answer in time is ``504``: the dial may still
+reach the node, which the nodes application then shows.
 
 ``POST /config/api/karma/root``, with no body, has the Karma module make a
 root, and follow it (KarmaLedger §7, Phase 6 Step 125), as the backup
@@ -202,7 +202,7 @@ DATA_APPLICATIONS_PATH: Final = API_PREFIX + "/applications"
 # API's (§2.3), as /CONFIG/page.html is the /config application's.
 _CONFIG_SEGMENT: Final = rf"/(?i:{escape(CONFIG_APPLICATION)})"
 
-# How the same paths are written where a person reads them.
+#: How the same paths are written where a person reads them.
 BACKUP_JOB_TEMPLATE: Final = BACKUPS_PATH + "/{job_id}"
 BACKUP_RUN_TEMPLATE: Final = BACKUP_JOB_TEMPLATE + "/run"
 APPLICATION_TEMPLATE: Final = APPLICATIONS_PATH + "/{name}"

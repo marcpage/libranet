@@ -197,7 +197,7 @@ class ChainHistory:
     it, as a chain holds each once (§4.4, §6.4).
     """
 
-    def __init__(self, directory: Path, generations: Sequence[ChainGeneration] = ()) -> None:
+    def __init__(self, directory: Path, *, generations: Sequence[ChainGeneration] = ()) -> None:
         self._directory = directory
         self._generations: list[ChainGeneration] = []
         self._keys: dict[TransactionKey, int] = {}

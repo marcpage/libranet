@@ -238,13 +238,13 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     alone too, and says how each import is doing from what ``backup_state``
     holds (Phase 3 Step 69). ``/data/store`` keeps each application's values
     in ``storage``'s data directory, as large as it allows, read by any client
-    and changed by local clients alone (Phase 3 Step 70). Any client may read into a bundle
-    ``content`` holds, as an application's files are served (Phase 3 Step
-    71). Given ``node``, ``/data/bundles`` makes bundles for local clients
-    alone, from what ``content`` holds, storing what it makes as uploads
-    from ``node``, each no more than ``max_update_layers`` update layers
-    above the last bundle stored whole; none, by default, from a request no
-    larger than ``node``'s network settings allow (Phase 3 Step 72).
+    and changed by local clients alone (Phase 3 Step 70). Any client may read
+    into a bundle ``content`` holds, as an application's files are served
+    (Phase 3 Step 71). Given ``node``, ``/data/bundles`` makes bundles for
+    local clients alone, from what ``content`` holds, storing what it makes as
+    uploads from ``node``, each no more than ``max_update_layers`` update
+    layers above the last bundle stored whole; none, by default, from a request
+    no larger than ``node``'s network settings allow (Phase 3 Step 72).
     ``/data/drop`` makes drops for any client, stored as those are, searching
     for each no longer, and asked to match no more bits, than ``node``'s
     network settings allow (Phase 4 Step 89). ``/data/drop/{target}``
@@ -842,7 +842,8 @@ class LibranetHTTPServer(ThreadingHTTPServer):
         without either being told. Linux refuses such a bind, and so does
         this, on every platform.
 
-        At :data:`ANY_ADDRESS` it takes IPv4 too, even on Windows, where IPv6 alone is the default.
+        At :data:`ANY_ADDRESS` it takes IPv4 too, even on Windows, where IPv6
+        alone is the default.
 
         It binds without ``HTTPServer``'s reverse DNS lookup of the host:
         ``socket.getfqdn`` can stall for seconds (notably on macOS), and the
@@ -943,7 +944,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             response = self.server.router.dispatch(request)
 
         except IncompleteBodyError as error:
-            # The client stopped mid-body, so the connection is unusable (RFC 9112 §8).
+            # The client stopped mid-body, so the connection is unusable
+            # (RFC 9112 §8).
             self.log_error("%s", error)
             self.close_connection = True
             return
@@ -978,7 +980,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         )
         self._send(problem_response(problem), close=True)
 
-    # BaseHTTPRequestHandler names the parameter `format`.
+    # BaseHTTPRequestHandler names the parameter ``format``.
     def log_message(self, format: str, *args: Any) -> None:  # pylint: disable=redefined-builtin
         """Send the access log to the web server's logger rather than stderr, without keys."""
         self.server.logger.info(

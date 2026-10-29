@@ -30,7 +30,7 @@ from typing import Callable, Final
 from libranet.bundle.parts import PartPath
 from libranet.messaging.events import PathOutcome
 
-# Provisional default: a few hundred KiB at most.
+#: Provisional default: a few hundred KiB at most.
 DEFAULT_MAX_OUTCOMES: Final = 4096
 
 

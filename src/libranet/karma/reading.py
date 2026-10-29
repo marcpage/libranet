@@ -149,7 +149,8 @@ class TargetReader:  # pylint: disable=too-many-instance-attributes
         self._answer_seconds = answer_seconds
         self._max_bytes = max_bytes
         self._clock = clock
-        # When each piece of content asked for and not yet stored is given up on.
+        # When each piece of content asked for and not yet stored is given
+        # up on.
         self._waiting: dict[ContentId, float] = {}
         # What peers have named at each target being read, by its hash.
         self._answers: dict[str, _Answers] = {}
@@ -530,12 +531,12 @@ class HeldChain:
     ) -> Mapping[ContentId, Balance]:
         """Each of ``identities``' balance, as the chain's transaction block ``generation`` left it.
 
-        That is the latest stated of it in that block, or in those before it
-        as far back as its ``reach``, which state every identity holding any
+        That is the latest stated of it in that block, or in those before it as
+        far back as its ``reach``, which state every identity holding any
         Kismet, or :data:`~libranet.karma.ledger.WEIGHT_GENERATIONS` blocks,
         whichever is further, which state every ``last_won`` that lowers a
-        stake's weight; or else :data:`~libranet.protocol.karma_balances.NO_BALANCE`
-        (§5.3, §6.6).
+        stake's weight; or else
+        :data:`~libranet.protocol.karma_balances.NO_BALANCE` (§5.3, §6.6).
 
         Raises:
             IndexError: the history holds no such generation.

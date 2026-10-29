@@ -160,7 +160,8 @@ class BackupJob:
         """The jobs saved at ``path``, by id; none if nothing has been saved there.
 
         Raises:
-            JobFileError: the file cannot be read, or does not hold backup jobs.
+            JobFileError: the file cannot be read, or does not hold backup
+                jobs.
         """
         try:
             value = loads(path.read_bytes())

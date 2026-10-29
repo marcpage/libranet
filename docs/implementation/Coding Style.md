@@ -365,7 +365,10 @@ do.
   `queue.Queue` objects.
 - **The clock is a parameter**: `clock: Callable[[], float] = time`. Code
   that stamps or compares wall-clock time calls `self._clock()`, so a test
-  can set the time. `monotonic()` is called directly for deadlines.
+  can set the time. `monotonic()` is called directly for deadlines, unless
+  a test must move one: then it is the clock's default,
+  `clock: Callable[[], float] = monotonic`, as for how long a session has
+  gone unused (`Sessions`) or a nonce has been searched for.
 - **No mutable default arguments.**
 - **Optional collaborators and tuning are keyword-only**, after a `*`:
 
@@ -697,8 +700,8 @@ New code comes with tests, and coverage is gated at 90%.
 
 ## 12. Where the Code Departs
 
-These are in the code as of Phase 5 Step 108 and the cleanup merged after
-it, through #367. New code follows the rules above. None of these is fixed
+These are in the code as of Phase 6 Step 143 and the cleanup of #464. New
+code follows the rules above. None of these is fixed
 in passing: a change set keeps to its task.
 Paths are relative to `src/libranet/`, except those that start with `tests/`.
 
@@ -712,9 +715,7 @@ Paths are relative to `src/libranet/`, except those that start with `tests/`.
 | `problems.py` `Problem` | Its JSON form is `to_dict()`, and its body `to_json()`, rather than `value()` (§6.3) |
 | `webserver/config_credential.py` `StoredCredential` | `from_json()` and `to_json()` read and write the file's bytes, rather than `from_value()` and `value()` (§6.3) |
 | 82 public callables in 42 files, listed in §12.1 | An optional parameter a call may pass by position (§6.4) |
-| 69 public constants and type aliases in 29 files, listed in §12.2; `stats/lists.py` `_NODE_LIST_BASE_BYTES`, `_SEEK_LIST_BASE_BYTES` | A public name's comment starts `#` rather than `#:`, and a private one's `#:` rather than `#` (§7) |
-| `cas/archive.py`, `config/models.py` (eleven lines), `connections/request_encoding.py`, `messaging/events.py` (two), `stats/database.py` (four), `stats/lists.py` (two), `stats/schema.py`, `supervisor.py`, `webserver/app_handler.py`, `webserver/app_registry.py` (two), `webserver/server.py` | A comment marks a literal with Markdown's single backticks rather than reStructuredText's double ones (§8.2) |
-| `backup/imports.py`, `backup/tasks.py`, `connections/peer_session.py`, `messaging/queues.py`, `stats/records.py`, `stats/schema.py`, `webserver/data_handler.py`, `webserver/search_handler.py`, `webserver/shun_handler.py`, `webserver/signed_versions.py`, `webserver/site_checks.py` | No test file of its own: each is tested through the code that uses it (§11) |
+| `backup/imports.py`, `connections/peer_session.py`, `messaging/queues.py`, `protocol/karma_carried.py`, `protocol/karma_payments.py`, `stats/records.py`, `stats/schema.py`, `webserver/data_handler.py`, `webserver/search_handler.py`, `webserver/shun_handler.py`, `webserver/signed_versions.py`, `webserver/site_checks.py` | No test file of its own: each is tested through the code that uses it (§11) |
 
 ### 12.1 Optional Parameters Taken Positionally
 
@@ -767,39 +768,3 @@ the signature of the one it overrides or stands in for is not counted
 | `webserver/bundle_edits.py` | `BundleEdit.read(max_bundle_bytes)` |
 | `webserver/http_types.py` | `RequestBody(stream)`, `bytes_response(content_type, headers)`, `json_response(status)`, `problem_response(headers)` |
 | `webserver/own_pages.py` | `OwnPages.refusal(application)`, `OwnPages.refused(application)` |
-
-### 12.2 Public Names Commented with `#`
-
-Each public constant or type alias whose comment is not yet a Sphinx doc
-comment (§7).
-
-| File | Names |
-| --- | --- |
-| `bundle/encryption.py` | `BLOCK_BYTES`, `KEY_BYTES`, `DEFAULT_IV`, `ENCRYPTION_COMPRESSION_LEVEL` |
-| `bundle/parts.py` | `CIPHER` |
-| `bundle/protection.py` | `DESCRIPTOR_SEPARATOR`, `NORMAL_FORM` |
-| `bundle/shapes.py` | `PATH_SEPARATOR`, `NO_STEP_SEGMENTS`, `DEFAULT_MAX_EXTENSIONS`, `XattrValue` |
-| `bundle/storing.py` | `STORAGE_COMPRESSION_LEVEL` |
-| `bundle/symlinks.py` | `MAX_SYMLINK_HOPS` |
-| `bundle/xattrs.py` | `INLINE_LIMIT_BYTES` |
-| `cas/compression.py` | `CHUNK_BYTES` |
-| `cas/content_id.py` | `HEX_DIGITS` |
-| `config/models.py` | `HOUR_SECONDS`, `IDLE_TIMEOUT_SECONDS`, `CONFIG_PORT_STEP`, `CONFIG_LISTEN_ADDRESS`, `DEFAULT_CONFIG_HOSTS`, `DEFAULT_SESSION_IDLE_SECONDS`, `MIN_PERSON_KEY_BITS`, `DEFAULT_PERSON_KEY_BITS`, `DEFAULT_READ_AHEAD_PARTS`, `DEFAULT_TRUST_MAX_STEPS`, `DEFAULT_TRUST_LIST_WAIT_SECONDS`, `TARGET_BITS`, `DEFAULT_MAX_BUNDLES_REQUEST_BYTES`, `DEFAULT_MAX_BUNDLE_BYTES`, `DEFAULT_MAX_APPLICATION_VALUE_BYTES`, `DEFAULT_HIDDEN_NAMES` |
-| `connections/response_parser.py` | `MAX_HEAD_BYTES` |
-| `eviction/module.py` | `HAND_OFF_COPIES` |
-| `identity/authentication.py` | `MAX_TRACKED_SIGNERS` |
-| `identity/keys.py` | `MAX_PUBLIC_KEY_BYTES` |
-| `protocol/http_syntax.py` | `API_PREFIX`, `DEFAULT_PORTS`, `TOKEN`, `CRLF`, `BODILESS_STATUSES`, `REQUEST_PATH_HEADER` |
-| `protocol/search.py` | `RESULTS_FIELD` |
-| `unbundler/module.py` | `DEFAULT_MAX_WAITING_PATHS` |
-| `webserver/app_handler.py` | `APP_PATTERN`, `CONFIG_APP_PATTERN`, `CONFIG_APP_POLICY`, `APP_METHODS` |
-| `webserver/app_outcomes.py` | `DEFAULT_MAX_OUTCOMES` |
-| `webserver/app_registry.py` | `ROOT_APPLICATION`, `CONFIG_APPLICATION`, `RESERVED_APPLICATION_NAMES`, `CONFIG_API_SEGMENT` |
-| `webserver/bundle_reads.py` | `BUNDLE_PATTERN`, `BUNDLE_METHODS` |
-| `webserver/byte_range.py` | `BYTES_UNIT` |
-| `webserver/config_credential.py` | `COST`, `MAX_COST` |
-| `webserver/config_handlers.py` | `BACKUP_JOB_TEMPLATE` |
-| `webserver/file_stream.py` | `DEFAULT_PART_POLL_INTERVAL_SECONDS` |
-| `webserver/http_types.py` | `NOT_STORED`, `IMMUTABLE_CACHE_CONTROL`, `NOT_SNIFFED`, `READ_METHODS` |
-| `webserver/request_refusals.py` | `MAX_JSON_BODY_BYTES` |
-| `webserver/trust_builds.py` | `DEFAULT_TRUST_POLL_INTERVAL_SECONDS` |

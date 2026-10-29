@@ -410,7 +410,7 @@ def signing(
         sessions,
         recorder,
         transaction_bits=8,
-        moments=CreatedMoments(NOW.timestamp),
+        moments=CreatedMoments(clock=NOW.timestamp),
     )
 
 

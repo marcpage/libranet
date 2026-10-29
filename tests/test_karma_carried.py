@@ -51,7 +51,7 @@ def chain_of(
     listed = witnessed or {}
     return ChainHistory(
         directory,
-        [
+        generations=[
             ChainGeneration(
                 generation,
                 ContentId("sha256", f"{generation:064x}"),

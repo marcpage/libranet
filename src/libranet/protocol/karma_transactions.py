@@ -217,14 +217,14 @@ class Transaction:
     ) -> Transaction:
         """This transaction, with the nonce, of those tried, that gives it the most work (§4.3).
 
-        Its work is the leading bits its hash, that of its :meth:`text`,
-        shares with :data:`TRANSACTION_WORK_TARGET`. Nonces are tried for
-        ``seconds``, by ``clock``, and after that until the best gives at
-        least ``minimum_bits``: by default :data:`MIN_TRANSACTION_BITS`, the
-        fewest a valid transaction has. ``searchers`` try them, as they do a drop's
+        Its work is the leading bits its hash, that of its :meth:`text`, shares
+        with :data:`TRANSACTION_WORK_TARGET`. Nonces are tried for ``seconds``,
+        by ``clock``, and after that until the best gives at least
+        ``minimum_bits``: by default :data:`MIN_TRANSACTION_BITS`, the fewest a
+        valid transaction has. ``searchers`` try them, as they do a drop's
         (:meth:`~libranet.cas.drops.NonceSearchers.found`), hashing the text
-        before the nonce once, and the ``"}`` after it with each. The nonce
-        it had is not kept.
+        before the nonce once, and the ``"}`` after it with each. The nonce it
+        had is not kept.
 
         Raises:
             ValueError: ``seconds`` is negative, or ``minimum_bits`` is
@@ -330,7 +330,8 @@ class SignedTransaction:
     def work_bits(self) -> int:
         """Its proof of work: the leading bits its :attr:`hash` shares with the target of its work.
 
-        That is the SHA-256 of ``transaction``, :data:`TRANSACTION_WORK_TARGET` (§4.3).
+        That is the SHA-256 of ``transaction``, :data:`TRANSACTION_WORK_TARGET`
+        (§4.3).
         """
         return matching_bits(TRANSACTION_WORK_TARGET.hex, self.hash)
 

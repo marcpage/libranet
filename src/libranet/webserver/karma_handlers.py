@@ -151,7 +151,8 @@ from libranet.webserver.sessions import Sessions
 
 _LOGGER = getLogger(__name__)
 
-#: Where a client reads the head the node follows, and its own balance (HttpApi §10.10).
+#: Where a client reads the head the node follows, and its own balance
+#: (HttpApi §10.10).
 KARMA_PATH: Final = API_PREFIX + "/karma"
 
 #: Where a client reads one identity's balance.
@@ -373,7 +374,7 @@ class CreatedMoments:
     request threads may stamp at once.
     """
 
-    def __init__(self, clock: Callable[[], float] = time) -> None:
+    def __init__(self, *, clock: Callable[[], float] = time) -> None:
         self._clock = clock
         self._last: dict[ContentId, datetime] = {}
         self._lock = Lock()
@@ -435,7 +436,8 @@ class KarmaSigning:
             return asked
 
         try:
-            # A payment asks for no bits: it needs a transaction's, whatever a drop may ask.
+            # A payment asks for no bits: it needs a transaction's, whatever a
+            # drop may ask.
             self.drops.within_ceilings(asked.seconds, 0)
 
         except InvalidRequestError as error:

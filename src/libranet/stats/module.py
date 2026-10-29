@@ -1,11 +1,10 @@
 """The stats module process: the node's memory of data and peers.
 
 It is the only process that opens the SQLite file. Everything it records
-arrives as a broadcast from another module, and everything it publishes
-leaves as one of the derived list files plus a notice that the node or
-candidate list changed, or in answer to the eviction module. Between derivations
-it does nothing but record, so a burst of requests costs one small statement
-each.
+arrives as a broadcast from another module, and everything it publishes leaves
+as one of the derived list files plus a notice that the node or candidate list
+changed, or in answer to the eviction module. Between derivations it does
+nothing but record, so a burst of requests costs one small statement each.
 
 The payloads it consumes, by event:
 
@@ -516,7 +515,7 @@ class StatsModule(ModuleBase):
         """Keep the peers connected one way, in place of those named before, to list and rate."""
         self._connected.named_in(message)
         _started(self._running).ratings.connected(
-            self._connected.node_ids(ConnectionDirection.OUTBOUND)
+            self._connected.node_ids(direction=ConnectionDirection.OUTBOUND)
         )
 
     def _on_node_trust(self, message: Message) -> None:
@@ -532,7 +531,8 @@ class StatsModule(ModuleBase):
     def _on_ratings_requested(self, _message: Message) -> None:
         """Tell the Karma module how each server dialed since it last asked served the node."""
         ratings = _started(self._running).ratings.answer(
-            self.database.all_node_stats(), self._connected.node_ids(ConnectionDirection.OUTBOUND)
+            self.database.all_node_stats(),
+            self._connected.node_ids(direction=ConnectionDirection.OUTBOUND),
         )
         self.publish(EventType.KARMA_RATINGS, ratings.payload())
         self.logger.debug("Rated %d servers for the Karma module", len(ratings.servers))

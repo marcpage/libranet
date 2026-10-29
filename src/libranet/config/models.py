@@ -38,102 +38,102 @@ from libranet.modules import ModuleName
 KIB: Final = 1024
 MIB: Final = 1024 * KIB
 
-# An hour and a day, in seconds, as every setting gives a duration.
+#: An hour and a day, in seconds, as every setting gives a duration.
 HOUR_SECONDS: Final = 60 * 60.0
 DAY_SECONDS: Final = 24 * HOUR_SECONDS
 
-# How long the web server keeps a connection with no request on it open. A
-# connection to a peer is kept open by fetching its seek list more often
-# than this, and every node is taken to wait as long, so it is defined here,
-# where the settings are checked against it, rather than with the server.
+#: How long the web server keeps a connection with no request on it open. A
+#: connection to a peer is kept open by fetching its seek list more often
+#: than this, and every node is taken to wait as long, so it is defined here,
+#: where the settings are checked against it, rather than with the server.
 IDLE_TIMEOUT_SECONDS: Final = 60.0
 
 HIGHEST_PORT: Final = 65535
 
-# How far apart the ports /config may listen on are, starting from the one
-# above listen_port, so that nodes on one machine 1 port apart have their
-# /config ports 1 apart too, at a predictable distance (Phase 2 Step 58).
+#: How far apart the ports /config may listen on are, starting from the one
+#: above listen_port, so that nodes on one machine 1 port apart have their
+#: /config ports 1 apart too, at a predictable distance (Phase 2 Step 58).
 CONFIG_PORT_STEP: Final = 100
 
-# /config is served only to this machine (HttpApi §2.3), so it listens only
-# where this machine reaches it.
+#: /config is served only to this machine (HttpApi §2.3), so it listens only
+#: where this machine reaches it.
 CONFIG_LISTEN_ADDRESS: Final = "127.0.0.1"
 
-# The address that stands for every address of both IPv4 and IPv6: a server
-# listening at it takes IPv4 connections too, on a dual-stack socket.
+#: The address that stands for every address of both IPv4 and IPv6: a server
+#: listening at it takes IPv4 connections too, on a dual-stack socket.
 ANY_ADDRESS: Final = "::"
 
-# The address that stands for every IPv4 address, listened at instead of
-# ANY_ADDRESS on a host with no IPv6.
+#: The address that stands for every IPv4 address, listened at instead of
+#: ANY_ADDRESS on a host with no IPv6.
 ANY_IPV4_ADDRESS: Final = "0.0.0.0"
 
-# Where this machine reaches a server listening at an address that stands
-# for every address of its family.
+#: Where this machine reaches a server listening at an address that stands
+#: for every address of its family.
 LOOPBACK_FOR_ANY: Final[Mapping[str, str]] = {
     "": "127.0.0.1",
     ANY_IPV4_ADDRESS: "127.0.0.1",
     ANY_ADDRESS: "::1",
 }
 
-# The hosts /config, and every endpoint serving only local clients, are
-# served as by default: this machine's own names for itself (HttpApi §2.3.3,
-# §2.4).
+#: The hosts /config, and every endpoint serving only local clients, are
+#: served as by default: this machine's own names for itself (HttpApi §2.3.3,
+#: §2.4).
 DEFAULT_CONFIG_HOSTS: Final = ("localhost", "127.0.0.1", "::1")
 
-# How long a person's session lasts unused before it ends, by default
-# (HttpApi §11.4, Phase 4 Step 79).
+#: How long a person's session lasts unused before it ends, by default
+#: (HttpApi §11.4, Phase 4 Step 79).
 DEFAULT_SESSION_IDLE_SECONDS: Final = DAY_SECONDS
 
-# The smallest RSA key a person's identity has, made or opened (HttpApi
-# §11.3, Phase 4 Step 79). Every node opens what any other makes, so it is
-# no setting.
+#: The smallest RSA key a person's identity has, made or opened (HttpApi
+#: §11.3, Phase 4 Step 79). Every node opens what any other makes, so it is
+#: no setting.
 MIN_PERSON_KEY_BITS: Final = 2048
 
-# The sizes a person's RSA key is made at, by default, which a page offers
-# as quick, stronger, and strongest (HttpApi §11.3, Phase 4 Step 79).
+#: The sizes a person's RSA key is made at, by default, which a page offers
+#: as quick, stronger, and strongest (HttpApi §11.3, Phase 4 Step 79).
 DEFAULT_PERSON_KEY_BITS: Final = (2048, 3072, 4096)
 
-# How many parts of an application file past the one being sent are asked
-# for, when not held, by default (HttpApi §13.2, Phase 3 Step 65).
+#: How many parts of an application file past the one being sent are asked
+#: for, when not held, by default (HttpApi §13.2, Phase 3 Step 65).
 DEFAULT_READ_AHEAD_PARTS: Final = 8
 
-# How far a person's trust scores reach by default: the steps out from their
-# own list, and the lists read, as the specification says a node should go
-# (Trust Network §4.2, Phase 5 Step 99).
+#: How far a person's trust scores reach by default: the steps out from their
+#: own list, and the lists read, as the specification says a node should go
+#: (Trust Network §4.2, Phase 5 Step 99).
 DEFAULT_TRUST_MAX_STEPS: Final = 4
 DEFAULT_TRUST_MAX_LISTS: Final = 1000
 
-# How long a build of a person's scores looks for a list, by default, before
-# it reads what it holds of it (Trust Network §4.3, Phase 5 Step 99).
+#: How long a build of a person's scores looks for a list, by default, before
+#: it reads what it holds of it (Trust Network §4.3, Phase 5 Step 99).
 DEFAULT_TRUST_LIST_WAIT_SECONDS: Final = 30.0
 
-# How often the node builds its own trust scores again by default (Phase 5
-# Step 113).
+#: How often the node builds its own trust scores again by default (Phase 5
+#: Step 113).
 DEFAULT_NODE_TRUST_REBUILD_SECONDS: Final = HOUR_SECONDS
 
-# How many bits a target hash has, and so the most a drop can match it by
-# (HttpApi §9). It is defined here, where the settings are checked against
-# it, rather than with drops.
+#: How many bits a target hash has, and so the most a drop can match it by
+#: (HttpApi §9). It is defined here, where the settings are checked against
+#: it, rather than with drops.
 TARGET_BITS: Final = 256
 
-# The largest body a request to make bundles may have, by default: room for a
-# poster as base64 beside the rest of an edit (HttpApi §21, Phase 3 Step 72).
+#: The largest body a request to make bundles may have, by default: room for a
+#: poster as base64 beside the rest of an edit (HttpApi §21, Phase 3 Step 72).
 DEFAULT_MAX_BUNDLES_REQUEST_BYTES: Final = 4 * MIB
 
-# How large a bundle is read once decompressed or decrypted, by default.
-# Bundle JSON is mostly paths and hex hashes, which compress about 2-4 times,
-# so 1 MiB as stored is well within it (HttpApi §21).
+#: How large a bundle is read once decompressed or decrypted, by default.
+#: Bundle JSON is mostly paths and hex hashes, which compress about 2-4 times,
+#: so 1 MiB as stored is well within it (HttpApi §21).
 DEFAULT_MAX_BUNDLE_BYTES: Final = 16 * MIB
 
-# How large a value in an application's store, and the store itself, may be,
-# by default, each counted as compact JSON (HttpApi §13.3, §21). A store holds
-# where to find what an application keeps, not what it keeps, so a value is
-# about as small as a /config/api body, and a store holds many of them.
+#: How large a value in an application's store, and the store itself, may be,
+#: by default, each counted as compact JSON (HttpApi §13.3, §21). A store holds
+#: where to find what an application keeps, not what it keeps, so a value is
+#: about as small as a /config/api body, and a store holds many of them.
 DEFAULT_MAX_APPLICATION_VALUE_BYTES: Final = 64 * KIB
 DEFAULT_MAX_APPLICATION_STORE_BYTES: Final = 1 * MIB
 
-# The names in the folders offered to local clients that are kept back from
-# them, by default: hidden names, beginning with "." (HttpApi §12.2).
+#: The names in the folders offered to local clients that are kept back from
+#: them, by default: hidden names, beginning with "." (HttpApi §12.2).
 DEFAULT_HIDDEN_NAMES: Final = (".*",)
 
 # How often, at most, an application in use is reported used: once an hour,
@@ -167,22 +167,22 @@ class NetworkConfig(_Section):
     listen_address: str = ANY_ADDRESS
     listen_port: int = Field(default=8080, ge=1, le=HIGHEST_PORT)
 
-    # Self-description in `/data/nodes` (HttpApi §10.1). With neither field
-    # set the node advertises `http://localhost:{listen_port}`, meaning "the
+    # Self-description in ``/data/nodes`` (HttpApi §10.1). With neither field
+    # set the node advertises ``http://localhost:{listen_port}``, meaning "the
     # address you reached me from".
     external_scheme: Scheme = "http"
     external_address: str | None = None
     external_port: int | None = Field(default=None, ge=1, le=HIGHEST_PORT)
 
-    # `Retry-After` sent with a `503` for content still being retrieved
+    # ``Retry-After`` sent with a ``503`` for content still being retrieved
     # (HttpApi §5.2). The fetcher asks peers for the same content at most
     # once per this period (Step 12).
     retry_after_seconds: int = Field(default=5, ge=0)
 
     # How long a request for an application file waits for what it lacks,
-    # its entry or a part, before it is answered `503`, or, once its body
-    # has begun, cut short (HttpApi §13.2, Phase 3 Step 65). A `<video>`
-    # does not retry a `503`. Provisional.
+    # its entry or a part, before it is answered ``503``, or, once its body
+    # has begun, cut short (HttpApi §13.2, Phase 3 Step 65). A ``<video>``
+    # does not retry a ``503``. Provisional.
     app_wait_seconds: float = Field(default=10.0, ge=0)
 
     # How many parts of an application file past the one being sent are asked
@@ -219,8 +219,8 @@ class NetworkConfig(_Section):
     client_grace_requests: int = Field(default=12, ge=0)
     client_value_seconds: float = Field(default=600.0, gt=0)
 
-    # The hosts `/config` is served as, beside the name this machine gives
-    # itself (served_as). A request there whose `Host` header names any other
+    # The hosts ``/config`` is served as, beside the name this machine gives
+    # itself (served_as). A request there whose ``Host`` header names any other
     # is refused, so a site that points a name of its own at this machine is
     # not taken for this node (HttpApi §2.3.3, Phase 2 Step 41). Shell-style
     # patterns, matched whatever their case against the host without its
@@ -319,7 +319,7 @@ class PeerConfig(_Section):
     # the connection after answering, as a server does a client of too little
     # Karma (HandshakeProtocol §5.2), so that other peers are tried meanwhile
     # (Phase 6 Step 143). Provisional default.
-    turned_away_rest_seconds: float = Field(default=3600.0, gt=0)
+    turned_away_rest_seconds: float = Field(default=HOUR_SECONDS, gt=0)
 
     # How often a connected peer's seek list is fetched again, so content it
     # still wants can be pushed (HandshakeProtocol §3.3). It must be shorter
@@ -526,11 +526,11 @@ class StorageConfig(_Section):
     # held to it, and each drop this node places for itself matches as many.
     search_min_bits: int = Field(default=24, ge=0, le=TARGET_BITS)
 
-    # Zip files of CAS objects, each named `{algorithm}/{hash}`, read after
+    # Zip files of CAS objects, each named ``{algorithm}/{hash}``, read after
     # the source of truth and before those shipped with the package (Step
     # 34). Their content is never evicted, nor counted as content held. One
     # that cannot be opened stops the node. Those the node keeps for itself
-    # are in `kept_archives_dir`, and read last.
+    # are in ``kept_archives_dir``, and read last.
     archives: tuple[Path, ...] = ()
 
     def use_report_seconds(self) -> float:
@@ -652,7 +652,7 @@ class IdentityConfig(_Section):
     provisional_trust_attempts: int = Field(default=3, ge=2)
 
     # RFC 9421 freshness (HandshakeProtocol §2): how old a signature's
-    # `created` time may be, plus the tolerance allowed for clock
+    # ``created`` time may be, plus the tolerance allowed for clock
     # differences between peers. Provisional defaults.
     signature_max_age_seconds: float = Field(default=5.0, gt=0)
     signature_clock_skew_seconds: float = Field(default=30.0, ge=0)
@@ -740,7 +740,7 @@ class StatsConfig(_Section):
     max_list_bytes: int = Field(default=MIB, ge=64, le=MIB)
 
     # An outstanding request this node never satisfied stops being advertised
-    # in its own `/data/seek` list once it is this old. Provisional default.
+    # in its own ``/data/seek`` list once it is this old. Provisional default.
     seek_entry_ttl_seconds: float = Field(default=HOUR_SECONDS, gt=0)
 
     # Most addresses kept for any one peer node. Past it, addresses that have
@@ -757,7 +757,7 @@ class StatsConfig(_Section):
 
     # A peer is given up on once this many attempts in a row to reach it,
     # each dialing every address it was to be tried at, have failed: it is
-    # left out of the candidate list for `node_cool_off_seconds`, then tried
+    # left out of the candidate list for ``node_cool_off_seconds``, then tried
     # once more. Reaching it, or a node list it sends naming itself, starts
     # the count again. Its addresses and statistics are kept (Phase 2 Step
     # 26). Provisional default.
@@ -865,7 +865,7 @@ class KarmaConfig(_Section):
     # How long after the node's last transaction the Karma module puts up the
     # payments it has queued, however few (KarmaLedger §4.6, Phase 6 Step
     # 132).
-    payment_interval_seconds: float = Field(default=3600.0, gt=0)
+    payment_interval_seconds: float = Field(default=HOUR_SECONDS, gt=0)
 
     # How long the Karma module searches for the nonce of a transaction it
     # makes of the node's payments, before taking the best found, once that
@@ -877,7 +877,7 @@ class KarmaConfig(_Section):
     # as a client, by the data each sent it, and by the requests each
     # fulfilled, since it last rated them, and pays the best by each
     # (KarmaLedger §4.6, Phase 6 Step 133).
-    rating_interval_seconds: float = Field(default=3600.0, gt=0)
+    rating_interval_seconds: float = Field(default=HOUR_SECONDS, gt=0)
 
     # How often the Karma module combines the transaction blocks at its
     # head's targets, and what it carries, into one, as full as it can be,
@@ -1027,10 +1027,10 @@ class LibranetConfig(_Section):
     ) -> LibranetConfig:
         """The configuration a YAML file gives, plus overrides.
 
-        ``path`` is the YAML file to read. A missing file yields an all-defaults
-        configuration, unless ``required`` is set, when it is an error.
-        ``overrides`` is a nested mapping merged over the file's contents, used
-        for command-line flags such as ``--log-level``.
+        ``path`` is the YAML file to read. A missing file yields an
+        all-defaults configuration, unless ``required`` is set, when it is an
+        error. ``overrides`` is a nested mapping merged over the file's
+        contents, used for command-line flags such as ``--log-level``.
 
         Raises:
             ConfigError: the file is unreadable, is not a YAML mapping, or the

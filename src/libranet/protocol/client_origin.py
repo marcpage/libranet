@@ -13,7 +13,7 @@ from __future__ import annotations
 from ipaddress import IPv4Address, IPv6Address, ip_address
 
 
-def is_local_client(address: str, reached: str = "") -> bool:
+def is_local_client(address: str, *, reached: str = "") -> bool:
     """Whether ``address`` is a loopback address, or ``reached``.
 
     ``reached`` is the address of this machine the client's connection

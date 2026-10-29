@@ -30,7 +30,7 @@ from libranet.bundle.shapes import (
     Symlink,
 )
 
-# As Linux's MAXSYMLINKS.
+#: As Linux's MAXSYMLINKS.
 MAX_SYMLINK_HOPS: Final = 40
 
 

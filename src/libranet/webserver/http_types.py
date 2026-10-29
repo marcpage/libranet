@@ -31,21 +31,21 @@ from libranet.webserver.inbound_peers import InboundConnection
 
 _LOGGER = getLogger(__name__)
 
-# What has no cache keep a response (RFC 9111 §5.2.2.5).
+#: What has no cache keep a response (RFC 9111 §5.2.2.5).
 NOT_STORED: Final[Mapping[str, str]] = {"Cache-Control": "no-store"}
 
-# What lets any cache keep a response for good: CAS content never changes
-# under its identifier (HttpApi §20).
+#: What lets any cache keep a response for good: CAS content never changes
+#: under its identifier (HttpApi §20).
 IMMUTABLE_CACHE_CONTROL: Final = "public, max-age=31536000, immutable"
 CACHED_FOR_GOOD: Final[Mapping[str, str]] = {"Cache-Control": IMMUTABLE_CACHE_CONTROL}
 
-# What has a browser take a response as the type it says it is, never one it
-# guesses from its body. Reads into a bundle and untrusted applications send
-# it (HttpApi §12.1, §13.5).
+#: What has a browser take a response as the type it says it is, never one it
+#: guesses from its body. Reads into a bundle and untrusted applications send
+#: it (HttpApi §12.1, §13.5).
 NOT_SNIFFED: Final[Mapping[str, str]] = {"X-Content-Type-Options": "nosniff"}
 
-# The methods that only read. A HEAD is answered as a GET would be, with
-# the body left out (RFC 9110 §9.3.2).
+#: The methods that only read. A HEAD is answered as a GET would be, with
+#: the body left out (RFC 9110 §9.3.2).
 READ_METHODS: Final = ("GET", "HEAD")
 
 
@@ -156,7 +156,7 @@ class Request:  # pylint: disable=too-many-instance-attributes
 
     def from_local_client(self) -> bool:
         """Whether the client that sent it is on this machine (HttpApi §2.4)."""
-        return is_local_client(self.client_address, self.server_address)
+        return is_local_client(self.client_address, reached=self.server_address)
 
     def carries_json(self) -> bool:
         """Whether the request says its body is JSON: its ``Content-Type`` is ``application/json``.

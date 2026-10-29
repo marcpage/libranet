@@ -356,7 +356,7 @@ def test_a_mined_transaction_shares_at_least_the_bits_asked(
 
 
 def test_a_mined_transaction_is_the_nearest_of_every_nonce_tried(alice: ContentId) -> None:
-    searchers = NonceSearchers(2)
+    searchers = NonceSearchers(processes=2)
     target = int(TRANSACTION_WORK_TARGET.hex, 16)
 
     def work(nonce: str) -> int:

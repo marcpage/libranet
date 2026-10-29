@@ -23,8 +23,8 @@ from http_message_signatures.structures import CaseInsensitiveDict
 from libranet.connections.errors import MalformedResponseError
 from libranet.protocol.http_syntax import BODILESS_STATUSES, CRLF, TOKEN
 
-# The most bytes a status line and header section, or any single line of
-# chunked framing, may take. Libranet responses need a small fraction of it.
+#: The most bytes a status line and header section, or any single line of
+#: chunked framing, may take. Libranet responses need a small fraction of it.
 MAX_HEAD_BYTES: Final = 64 * 1024
 
 _LINE_END: Final = CRLF.encode("ascii")

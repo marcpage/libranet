@@ -52,9 +52,9 @@ _LOGGER = getLogger(__name__)
 
 _Parsed = TypeVar("_Parsed")
 
-# A JSON body an endpoint reads, unless it sets a limit of its own, is a small
-# object of a few fields: a backup job, a restore, an application, a sign-in.
-# Anything larger is a mistake, and is refused before it is read.
+#: A JSON body an endpoint reads, unless it sets a limit of its own, is a small
+#: object of a few fields: a backup job, a restore, an application, a sign-in.
+#: Anything larger is a mistake, and is refused before it is read.
 MAX_JSON_BODY_BYTES: Final = 64 * 1024
 
 #: The ``/{algorithm}/{hash}`` segments that end a path naming content, whose
