@@ -5,5 +5,5 @@ This package is the reference Python node implementation. See
 ``docs/specs/`` for the normative protocol behavior.
 """
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 __all__ = ["__version__"]

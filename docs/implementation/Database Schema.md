@@ -1,6 +1,6 @@
 # Libranet Database Schema
 
-Version 0.2 • October 2026
+Version 0.3 • October 2026
 
 ---
 
@@ -10,7 +10,7 @@ This document describes the SQLite database a Libranet node keeps: its
 tables, columns, and indexes, what each value means, which event writes it,
 what reads it, and how long a row lives. It is written for someone about to
 read or change `src/libranet/stats/`, or to look inside a node's database,
-and describes the implementation as of version 0.5 and Phase 3, up to Step
+and describes the implementation as of version 0.6 and Phase 3, up to Step
 77, Phase 4's Steps 30, 78–82, and 89–93, Phase 5's Steps 94 and 96–114,
 and Phase 6's Steps 56 and 116–143. Phase 3 changed no table, and Phase 5
 added one (Step 113); §9.2 lists every change.

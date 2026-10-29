@@ -1,6 +1,6 @@
 # Libranet App Developer Guide
 
-Version 0.1 • October 2026
+Version 0.2 • October 2026
 
 ---
 

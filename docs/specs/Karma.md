@@ -2,8 +2,8 @@
 
 ## A Decentralized Reputation and Contribution System
 
-**Technical White Paper - Draft v0.2**  
-**August 2026**
+**Technical White Paper - Draft v0.3**  
+**October 2026**
 
 ---
 

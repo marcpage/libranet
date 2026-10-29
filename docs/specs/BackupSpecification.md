@@ -1,7 +1,7 @@
 # Libranet Backup Specification
 
 - Status: Draft
-- Version: 0.1.0
+- Version: 0.2.0
 - Editors: Marc (author), Claude (drafting assistance)
 
 ## 1. Overview

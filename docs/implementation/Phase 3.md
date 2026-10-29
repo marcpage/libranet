@@ -1,6 +1,6 @@
 # Libranet Python Implementation Plan — Phase 3
 
-Version 0.4 • October 2026
+Version 0.5 • October 2026
 
 ---
 

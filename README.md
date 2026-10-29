@@ -261,7 +261,7 @@ applications, and running test networks and super nodes.
 
 ## Project Status
 
-**Version 0.5** — October 2026
+**Version 0.6** — October 2026
 
 | Area | State |
 | ------------------------------------- | -------------------------- |
