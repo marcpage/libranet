@@ -49,7 +49,13 @@ from libranet.bundle.errors import BundleError, BundleSignatureError, MissingCon
 from libranet.bundle.signing import SignedBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DROP_SEPARATOR
-from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds, BlockFinding, ValidationBlock
+from libranet.karma.blocks import (
+    BLOCK_BOUNDS,
+    BlockBounds,
+    BlockFinding,
+    ValidationBlock,
+    unchecked_level,
+)
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.claims import ClaimedChain, FalseStatement, HeadClaim
@@ -146,7 +152,8 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
                 return False
 
             except (BundleError, ValueError) as error:
-                _LOGGER.warning(
+                _LOGGER.log(
+                    unchecked_level(error),
                     "Not following the Karma chain through %s, which cannot be checked: %s",
                     claim.head,
                     error,
@@ -309,7 +316,7 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
         why = self._why(false.block_id, found)
 
         if found.builder is not None and false.invalid:
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "Shunning Karma block %s, no block of the ledger: %s",
                 false.block_id,
                 false.statement,

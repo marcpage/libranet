@@ -62,6 +62,7 @@ from libranet.karma.blocks import (
     BlockDrop,
     TransactionBlock,
     ValidationBlock,
+    unchecked_level,
 )
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.checking import ChainBefore, ChainView, TransactionBlockCheck
@@ -532,7 +533,8 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
             except (BundleError, ValueError) as error:
                 if each.block_id not in self._passed_over:
                     self._passed_over.add(each.block_id)
-                    _LOGGER.warning(
+                    _LOGGER.log(
+                        unchecked_level(error),
                         "Taking no Karma transactions from %s, which is no transaction block: %s",
                         each.block_id,
                         error,
@@ -569,7 +571,7 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
 
             except BundleSignatureError as error:
                 self._passed_over.add(signed.hash)
-                _LOGGER.warning(
+                _LOGGER.debug(
                     "Passing over Karma transaction %s, whose signature must check: %s",
                     signed.hash,
                     error,

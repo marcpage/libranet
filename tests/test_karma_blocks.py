@@ -5,11 +5,19 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from json import loads
+from logging import DEBUG, WARNING
 from typing import Any, Callable
 
 from pytest import fixture, mark, raises
 
-from libranet.bundle.errors import MalformedBundleError, MissingContentError
+from libranet.bundle.errors import (
+    BundleSignatureError,
+    BundleVerificationError,
+    MalformedBundleError,
+    MissingContentError,
+    ShunnedContentError,
+    UnsupportedBundleError,
+)
 from libranet.bundle.signing import SignedBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import UnknownAlgorithmError
@@ -22,6 +30,7 @@ from libranet.karma.blocks import (
     BlockFinding,
     TransactionBlock,
     ValidationBlock,
+    unchecked_level,
 )
 from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets, new_kismet
@@ -905,3 +914,30 @@ def test_the_fewest_fit_when_no_more_do(alice: NodeIdentity) -> None:
 
     assert fullest is not None
     assert len(fullest[0].block.witnessed) == 1
+
+
+@mark.parametrize(
+    "error",
+    [
+        UnknownAlgorithmError("Unknown algorithm 'md5'"),
+        UnsupportedBundleError("Unsupported signature scheme"),
+        BundleVerificationError("What is held is not it"),
+    ],
+)
+def test_a_block_not_checked_for_what_the_node_lacks_or_holds_wrongly_is_a_warning(
+    error: Exception,
+) -> None:
+    assert unchecked_level(error) == WARNING
+
+
+@mark.parametrize(
+    "error",
+    [
+        BundleSignatureError("The hash is not of its contents"),
+        MalformedBundleError("Not a signed bundle"),
+        ShunnedContentError(ContentId.for_data(b"Shunned", "sha256")),
+        ValueError("No transaction block"),
+    ],
+)
+def test_a_block_not_checked_for_what_is_wrong_with_it_is_debug(error: Exception) -> None:
+    assert unchecked_level(error) == DEBUG

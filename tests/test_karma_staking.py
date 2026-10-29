@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from datetime import UTC, datetime, timedelta
-from logging import INFO, WARNING
+from logging import DEBUG, INFO
 
 from pytest import LogCaptureFixture, fixture
 
@@ -413,12 +413,13 @@ def test_a_stake_whose_signature_fails_is_passed_over_and_logged_once_at_a_head(
     forged = SignedStake.of(SignedBundle.signed(stake.text(), dave.private_key, bob.node_id))
     hold(truth, signed_at(first.targets.validation, bob, ValidationBlock(2, None, (forged,), ())))
 
-    with caplog.at_level(WARNING):
+    with caplog.at_level(DEBUG):
         taken = stakes.staked(follower.checked()[0], alice)
         stakes.staked(follower.checked()[0], alice)
 
     assert taken is not None and stakers(taken.stakes) == [alice.node_id]
-    assert caplog.text.count(f"Passing over Karma stake {forged.hash}") == 1
+    passing = f"Passing over Karma stake {forged.hash}"
+    assert [r.levelno for r in caplog.records if passing in r.getMessage()] == [DEBUG]
 
 
 def test_a_stake_whose_stakers_key_is_not_held_is_taken_once_it_is(

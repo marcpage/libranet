@@ -102,6 +102,45 @@ def test_only_zip_files_not_being_written_are_read(tmp_path: Path) -> None:
     folder.close()
 
 
+def test_anything_else_there_is_logged_once_while_it_stays(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    write_archive(tmp_path / "a.zip", FIRST)
+    write_archive(tmp_path / ".b.zip", FIRST)
+    (tmp_path / ".hidden").write_text("being written, say")
+    (tmp_path / "notes.txt").write_text("not an archive")
+    (tmp_path / "nested.zip").mkdir()
+    # Never settled, so that every look lists the folder again.
+    folder = ArchiveFolder(tmp_path, clock=lambda: 0.0)
+
+    with caplog.at_level(WARNING, logger="libranet.cas.archive_folder"):
+        folder.refresh()
+        folder.refresh()
+
+    assert names(folder) == ["a.zip"]
+    first, second = (record.getMessage() for record in caplog.records)
+    assert "nested.zip" in first
+    assert "notes.txt" in second
+    folder.close()
+
+
+def test_a_stray_removed_and_put_back_is_logged_again(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    stray = tmp_path / "notes.txt"
+    stray.write_text("not an archive")
+    folder = ArchiveFolder(tmp_path, clock=lambda: 0.0)
+
+    with caplog.at_level(WARNING, logger="libranet.cas.archive_folder"):
+        folder.refresh()
+        stray.unlink()
+        folder.refresh()
+        stray.write_text("not an archive")
+        folder.refresh()
+
+    assert len(caplog.records) == 2
+
+
 def test_an_archive_that_cannot_be_opened_is_logged_once_and_left_out(
     tmp_path: Path, caplog: LogCaptureFixture
 ) -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from dataclasses import replace
-from logging import ERROR, INFO, WARNING
+from logging import DEBUG, ERROR, INFO, WARNING
 
 from pytest import LogCaptureFixture, fixture
 
@@ -535,13 +535,11 @@ def test_a_head_that_is_no_block_is_passed_over_and_logged(
     hold(truth, junk)
     changes.told(PEER, id_of(junk))
 
-    with caplog.at_level(WARNING):
+    with caplog.at_level(DEBUG):
         assert not changes.look()
 
-    assert (
-        f"Not following the Karma chain through {id_of(junk)}, which cannot be checked"
-        in caplog.text
-    )
+    not_following = f"Not following the Karma chain through {id_of(junk)}, which cannot be checked"
+    assert [r.levelno for r in caplog.records if not_following in r.getMessage()] == [DEBUG]
     assert recorder.said(EventType.KARMA_FALSE_BLOCK) == []
     assert recorder.shunned(keys) == []
     assert len(history) == 1

@@ -3,7 +3,7 @@
 from __future__ import annotations
 from dataclasses import replace
 from datetime import timedelta
-from logging import INFO, WARNING
+from logging import DEBUG, INFO
 from zlib import compress
 
 from pytest import LogCaptureFixture, fixture
@@ -659,12 +659,13 @@ def test_a_transaction_whose_signature_fails_is_passed_over_and_logged_once_at_a
     )
     put_up(truth, first, dave, forged)
 
-    with caplog.at_level(WARNING):
+    with caplog.at_level(DEBUG):
         builder.build()
         builder.build()
 
     assert placed.drops == []
-    assert caplog.text.count(f"Passing over Karma transaction {forged.hash}") == 1
+    passing = f"Passing over Karma transaction {forged.hash}"
+    assert [r.levelno for r in caplog.records if passing in r.getMessage()] == [DEBUG]
 
 
 def test_a_transaction_whose_senders_key_is_not_held_is_taken_once_it_is(
@@ -723,12 +724,13 @@ def test_what_is_no_transaction_block_at_a_target_is_passed_over_and_logged_once
     misplaced = validating(first.targets.transaction, bob, first.generations[1].transaction)
     hold(truth, misplaced)
 
-    with caplog.at_level(WARNING):
+    with caplog.at_level(DEBUG):
         builder.build()
         builder.build()
 
     assert placed.drops == []
-    assert caplog.text.count(f"Taking no Karma transactions from {id_of(misplaced)}") == 1
+    taking_none = f"Taking no Karma transactions from {id_of(misplaced)}"
+    assert [r.levelno for r in caplog.records if taking_none in r.getMessage()] == [DEBUG]
 
 
 def test_blocks_whose_transactions_a_block_held_holds_more_of_are_superseded_by_it(

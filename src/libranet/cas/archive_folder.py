@@ -15,7 +15,8 @@ starts with ``.``, as a file being written there does
 opened, or that holds anything but objects, is logged as an error and left
 out, rather than stopping the node, since the node put it there itself; it is
 tried again once it has changed, as a file copied in by hand does while it is
-copied, and the folder is next looked at.
+copied, and the folder is next looked at. Anything else there is logged as a
+warning, once while it stays, and left out.
 
 An archive no longer there is closed, once any read of it under way is done,
 and so left out of every lookup from then on, and the space its file took is
@@ -70,6 +71,8 @@ class ArchiveFolder:  # pylint: disable=too-many-instance-attributes
         # Each archive that could not be opened, by name, with the
         # modification time and size it had then.
         self._refused: dict[str, tuple[int, int]] = {}
+        # Each name there, as last listed, that is no archive file.
+        self._strays: set[str] = set()
         self._archives: tuple[ArchiveSource, ...] = ()
 
     @property
@@ -119,6 +122,9 @@ class ArchiveFolder:  # pylint: disable=too-many-instance-attributes
     def _listed(self) -> dict[str, tuple[int, int]] | None:
         """Each archive file in the folder, by name, with its modification time and size.
 
+        Anything else is logged, unless it was there when last listed, or is
+        a file being written.
+
         Returns:
             Those listed; ``None`` if the folder cannot be listed.
         """
@@ -130,9 +136,14 @@ class ArchiveFolder:  # pylint: disable=too-many-instance-attributes
             return None
 
         listed: dict[str, tuple[int, int]] = {}
+        strays: set[str] = set()
 
         for entry in entries:
-            if not entry.name.endswith(ARCHIVE_SUFFIX) or entry.name.startswith(TEMP_PREFIX):
+            if entry.name.startswith(TEMP_PREFIX):
+                continue
+
+            if not entry.name.endswith(ARCHIVE_SUFFIX):
+                strays.add(entry.name)
                 continue
 
             try:
@@ -148,6 +159,17 @@ class ArchiveFolder:  # pylint: disable=too-many-instance-attributes
             if S_ISREG(found.st_mode):
                 listed[entry.name] = (found.st_mtime_ns, found.st_size)
 
+            else:
+                strays.add(entry.name)
+
+        for name in sorted(strays - self._strays):
+            _LOGGER.warning(
+                "Leaving out %s from the kept archives, as it is not a %s file",
+                self._directory / name,
+                ARCHIVE_SUFFIX,
+            )
+
+        self._strays = strays
         return listed
 
     def _open_only(self, listed: dict[str, tuple[int, int]]) -> bool:

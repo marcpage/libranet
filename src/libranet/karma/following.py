@@ -16,9 +16,10 @@ A block whose check needs what the node lacks, a signer's key or a block of
 the chain, is checked again once that has come: the reader asks for it
 (Phase 6 Step 124). A block checked is not checked again while the head is
 the same, and what was found of it is said once. A block found unsigned, or
-whose signature fails, is shunned (§3.7, §3.8); one found false is logged
-as a warning, and said, for its builder, and the staker of a stake that
-alone exceeds what covers it, to be distrusted (Phase 6 Step 127)::
+whose signature fails, is shunned (§3.7, §3.8); one found false is said, for
+its builder, and the staker of a stake that alone exceeds what covers it, to
+be distrusted (Phase 6 Step 127). Each is logged at debug, as what anyone
+may place (Coding Style §9.3)::
 
     data.shunned       {"algorithm", "hash"}
     karma.false_block  {"block": "sha256/…", "builder": "sha256/…",
@@ -26,7 +27,9 @@ alone exceeds what covers it, to be distrusted (Phase 6 Step 127)::
 
 A block this node cannot check, as one signed in a way it cannot check, or
 naming an id under a hash algorithm it lacks, or one naming a block it
-shuns, is passed over, and logged as a warning. A block of another target,
+shuns, is passed over, and logged: as a warning if the node lacks what
+checking it takes, or holds what it names wrongly, and otherwise at debug
+(:func:`~libranet.karma.blocks.unchecked_level`). A block of another target,
 which anyone may place a copy of at this one, since a drop's nonce is not
 signed, is passed over too, and logged: one of the other kind, or one built
 on, or staking on one built on, another validation block than the one the
@@ -41,7 +44,7 @@ from functools import partial
 from logging import getLogger
 from typing import Callable, Iterator, Mapping, TypeVar
 
-from libranet.bundle.errors import BundleError, MissingContentError, UnsupportedBundleError
+from libranet.bundle.errors import BundleError, MissingContentError
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.karma.blocks import (
@@ -50,6 +53,7 @@ from libranet.karma.blocks import (
     BlockFinding,
     TransactionBlock,
     ValidationBlock,
+    unchecked_level,
 )
 from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.errors import MisplacedBlockError
@@ -89,8 +93,9 @@ class _AtTarget(Mapping[ContentId, TransactionBlockCheck | BlockFinding]):
     target: reading its check raises
     :class:`~libranet.bundle.errors.MissingContentError`, naming what
     ``lacking`` says its check lacks, so that the validation block waits for
-    it too; or :class:`~libranet.bundle.errors.UnsupportedBundleError` for
-    one passed over, so that the validation block is passed over too.
+    it too; or :class:`ValueError` for one passed over, so that the
+    validation block is passed over too, at debug, as what was wrong was
+    logged of the block it names.
     """
 
     def __init__(
@@ -108,7 +113,7 @@ class _AtTarget(Mapping[ContentId, TransactionBlockCheck | BlockFinding]):
         check = self._checks[block_id]
 
         if check is None:
-            raise UnsupportedBundleError(f"It names {block_id}, which is passed over")
+            raise ValueError(f"It names {block_id}, which is passed over")
 
         return check
 
@@ -298,7 +303,8 @@ class ChainFollower:
             MissingContentError: names what its check lacks.
             BundleError: it, or a block it names, cannot be checked here.
             ValueError: it names an id under a hash algorithm this node
-                lacks, or a block that is no block of its kind.
+                lacks, a block that is no block of its kind, or a block of
+                ``transactions`` passed over.
         """
         return ValidationBlockCheck.of_held(
             held, named_for, self._chain, transactions=transactions, bounds=self._bounds
@@ -336,8 +342,11 @@ class ChainFollower:
             checked = None
 
         except (BundleError, ValueError) as error:
-            _LOGGER.warning(
-                "Passing over Karma block %s, which cannot be checked: %s", block_id, error
+            _LOGGER.log(
+                unchecked_level(error),
+                "Passing over Karma block %s, which cannot be checked: %s",
+                block_id,
+                error,
             )
             checked = None
 
@@ -372,17 +381,17 @@ def say_found(publish: Publish, block_id: ContentId, found: object) -> None:
     """Say with ``publish`` what block ``block_id`` was ``found``, if unsigned or false (§3.8).
 
     One unsigned is shunned, and one false said, for its builder to be
-    distrusted; each is logged as a warning.
+    distrusted; each is logged at debug, as what anyone may place.
     """
     if not isinstance(found, BlockFinding):
         return
 
     if found.builder is None:
-        _LOGGER.warning("Shunning Karma block %s, which is unsigned: %s", block_id, found.statement)
+        _LOGGER.debug("Shunning Karma block %s, which is unsigned: %s", block_id, found.statement)
         publish(EventType.DATA_SHUNNED, block_id.fields())
         return
 
-    _LOGGER.warning(
+    _LOGGER.debug(
         "Karma block %s, built by %s, states something false: %s",
         block_id,
         found.builder,
