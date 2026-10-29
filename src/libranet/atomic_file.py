@@ -23,6 +23,9 @@ from tempfile import NamedTemporaryFile
 from threading import Lock
 from typing import IO, Callable, Final, Generic, Iterator, TypeVar
 
+#: Prefix of the temporary file, so it is hidden while it is written.
+TEMP_PREFIX: Final = "."
+
 #: Suffix of the temporary file, so a leftover from a crash is recognizable.
 TEMP_SUFFIX: Final = ".partial"
 
@@ -175,7 +178,7 @@ def atomic_writer(path: Path) -> Iterator[IO[bytes]]:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with NamedTemporaryFile(
-        dir=path.parent, prefix=f".{path.name}.", suffix=TEMP_SUFFIX, delete=False
+        dir=path.parent, prefix=f"{TEMP_PREFIX}{path.name}.", suffix=TEMP_SUFFIX, delete=False
     ) as temp:
         temp_path = Path(temp.name)
 

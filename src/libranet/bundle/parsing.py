@@ -42,6 +42,7 @@ from libranet.bundle.shapes import (
     Symlink,
     XattrValue,
 )
+from libranet.bundle.signing import SIGNATURE_FIELD
 from libranet.json_fields import is_integer
 
 _ABSENT: Final = object()
@@ -91,7 +92,7 @@ def _bundle_object(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
         raise MalformedBundleError("A bundle must be a JSON object")
 
-    if "signature" in value:
+    if SIGNATURE_FIELD in value:
         raise UnsupportedBundleError("Signed bundles (BundleSpecification §5) are not supported")
 
     return value

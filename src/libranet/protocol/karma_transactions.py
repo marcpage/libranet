@@ -37,7 +37,12 @@ from libranet.bundle.errors import (
     UnsupportedBundleError,
 )
 from libranet.bundle.shapes import is_utf8
-from libranet.bundle.signing import SIGNED_HASH_ALGORITHM, SignedBundle
+from libranet.bundle.signing import (
+    SIGNATURE_FIELD,
+    SIGNED_HASH_ALGORITHM,
+    SIGNER_FIELD,
+    SignedBundle,
+)
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import NONCE_SEARCHERS, DropTarget, NonceSearchers
 from libranet.cas.nonce_search import NonceSearch
@@ -62,9 +67,12 @@ MIN_TRANSACTION_BITS: Final = 24
 #: ``transaction``, which is no block's target (§4.3).
 TRANSACTION_WORK_TARGET: Final = DropTarget.of("transaction")
 
-# The members of a transaction (§4.1), and of a payout, which has the first
-# three (§5.2).
-_FROM: Final = "from"
+#: The member of a transaction naming its sender: an id, where a payout's
+#: names an object of them (§4.1, §5.2).
+FROM_MEMBER: Final = "from"
+
+# The other members of a transaction (§4.1), and of a payout, which has the
+# first two (§5.2).
 _TO: Final = "to"
 _GENERATION: Final = "generation"
 _FEE: Final = "fee_kismet"
@@ -81,7 +89,7 @@ _NEW_KARMA: Final = "null"
 # The members of a payout as a block holds it, each a string, and those a
 # signed transaction has that a payout does not (§5.2).
 _PAYOUT_MEMBERS: Final = ("algorithm", "contents", "hash")
-_SIGNED_ONLY: Final = ("signer", "signature")
+_SIGNED_ONLY: Final = (SIGNER_FIELD, SIGNATURE_FIELD)
 
 
 @dataclass(frozen=True)
@@ -109,13 +117,13 @@ class TransactionKey:
             raise ValueError(f"{named} must be a JSON object, got {type(value).__name__}")
 
         return cls(
-            id_member(value.get(_FROM), named=f'{named}\'s "{_FROM}"'),
+            id_member(value.get(FROM_MEMBER), named=f'{named}\'s "{FROM_MEMBER}"'),
             moment_member(value.get(CREATED_MEMBER), named=f'{named}\'s "{CREATED_MEMBER}"'),
         )
 
     def value(self) -> dict[str, str]:
         """This key as JSON: its ``from`` and ``created``, as its transaction writes them."""
-        return {_FROM: str(self.sender), CREATED_MEMBER: self.created.strftime(MOMENT_FORMAT)}
+        return {FROM_MEMBER: str(self.sender), CREATED_MEMBER: self.created.strftime(MOMENT_FORMAT)}
 
 
 @dataclass(frozen=True)
@@ -171,7 +179,7 @@ class Transaction:
             raise ValueError(f"{named} must be a JSON object, got {type(value).__name__}")
 
         return cls(
-            id_member(value.get(_FROM), named=f'"{_FROM}"'),
+            id_member(value.get(FROM_MEMBER), named=f'"{FROM_MEMBER}"'),
             amounts_member(value.get(_TO), named=f'"{_TO}"'),
             Kismet.from_value(value.get(_FEE), named=f'"{_FEE}"'),
             integer_field(value, _GENERATION),
@@ -182,7 +190,7 @@ class Transaction:
     def value(self) -> dict[str, Any]:
         """This transaction as JSON, its ``to`` sorted, and its ``nonce`` last (§4.1)."""
         return {
-            _FROM: str(self.sender),
+            FROM_MEMBER: str(self.sender),
             _TO: {str(identity): amount.value() for identity, amount in sorted(self.to.items())},
             _FEE: self.fee.value(),
             _GENERATION: self.generation,
@@ -272,7 +280,7 @@ class SignedTransaction:
     def __post_init__(self) -> None:
         if self.transaction.sender != self.bundle.signer:
             raise ValueError(
-                f'A transaction\'s "{_FROM}" must be its signer, {self.bundle.signer}, '
+                f'A transaction\'s "{FROM_MEMBER}" must be its signer, {self.bundle.signer}, '
                 f"got {self.transaction.sender}"
             )
 
@@ -369,7 +377,7 @@ class Payout:
 
         if paid != given:
             raise ValueError(
-                f'A payout\'s "{_TO}" must total its "{_FROM}", {given.value()} Kismet, '
+                f'A payout\'s "{_TO}" must total its "{FROM_MEMBER}", {given.value()} Kismet, '
                 f"got {paid.value()}"
             )
 
@@ -392,7 +400,7 @@ class Payout:
             for source, amount in sources.items()
         }
         contents = {
-            _FROM: dict(sorted(given.items())),
+            FROM_MEMBER: dict(sorted(given.items())),
             _TO: {str(identity): amount.value() for identity, amount in sorted(to.items())},
             _GENERATION: generation,
         }
@@ -436,19 +444,19 @@ class Payout:
 
         terms = contents_value(contents, named="A payout")
 
-        if not isinstance(terms, dict) or not isinstance(terms.get(_FROM), dict):
-            raise ValueError(f'A payout must be a JSON object with a "{_FROM}" object')
+        if not isinstance(terms, dict) or not isinstance(terms.get(FROM_MEMBER), dict):
+            raise ValueError(f'A payout must be a JSON object with a "{FROM_MEMBER}" object')
 
-        given = terms[_FROM]
+        given = terms[FROM_MEMBER]
         sources: dict[ContentId | None, Kismet] = dict(
             amounts_member(
                 {name: amount for name, amount in given.items() if name != _NEW_KARMA},
-                named=f'"{_FROM}"',
+                named=f'"{FROM_MEMBER}"',
             ).items()
         )
 
         if _NEW_KARMA in given:
-            sources[None] = Kismet.from_value(given[_NEW_KARMA], named=f'"{_FROM}" for null')
+            sources[None] = Kismet.from_value(given[_NEW_KARMA], named=f'"{FROM_MEMBER}" for null')
 
         return cls(
             sources,

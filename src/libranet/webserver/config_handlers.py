@@ -162,6 +162,7 @@ from libranet.webserver.karma_handlers import OwnKarma
 from libranet.webserver.metadata_handlers import OwnMetadata
 from libranet.webserver.node_trust_handlers import Connecting, OwnTrust
 from libranet.webserver.request_refusals import (
+    CONTENT_ID_SEGMENTS,
     body_or_refusal,
     invalid_request_response,
     json_or_refusal,
@@ -190,7 +191,7 @@ KARMA_ROOT_PATH: Final = CONFIG_KARMA_PATH + "/root"
 BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-fA-F]{{{IDENTIFIER_LENGTH}}})"
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
 APPLICATION_PATTERN: Final = APPLICATIONS_PATH + "/(?P<name>[^/]+)"
-CONFIG_TRUST_PATTERN: Final = CONFIG_TRUST_PATH + "/(?P<algorithm>[^/]+)/(?P<hash>[^/]+)"
+CONFIG_TRUST_PATTERN: Final = CONFIG_TRUST_PATH + CONTENT_ID_SEGMENTS
 
 #: Where any client asks the main port which applications it serves
 #: (HttpApi §13.4).

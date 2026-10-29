@@ -93,7 +93,9 @@ from libranet.bundle.shapes import (
     is_utf8,
 )
 from libranet.bundle.signing import (
+    SIGNATURE_FIELD,
     SIGNED_HASH_ALGORITHM,
+    SIGNER_FIELD,
     SignedBundle,
     has_small_order,
     person_public_key,
@@ -135,7 +137,9 @@ __all__ = [
     "PARENT_SEGMENT",
     "PATH_SEPARATOR",
     "PLAIN_PATH_SEGMENTS",
+    "SIGNATURE_FIELD",
     "SIGNED_HASH_ALGORITHM",
+    "SIGNER_FIELD",
     "STORAGE_COMPRESSION_LEVEL",
     "Aes256Cbc",
     "Bundle",

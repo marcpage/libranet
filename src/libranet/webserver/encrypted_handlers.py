@@ -64,6 +64,7 @@ from libranet.webserver.http_types import (
     typed_response,
 )
 from libranet.webserver.request_refusals import (
+    CONTENT_ID_SEGMENTS,
     content_id_or_refusal,
     parsed_or_refusal,
     unusable_bundle_response,
@@ -75,7 +76,7 @@ _LOGGER = getLogger(__name__)
 #: Where a page has the node open a block encrypted for whoever is signed in,
 #: or by a username and password.
 ENCRYPTED_PATH: Final = API_PREFIX + "/encrypted"
-ENCRYPTED_PATTERN: Final = rf"{ENCRYPTED_PATH}/(?P<algorithm>[^/]+)/(?P<hash>[^/]+)"
+ENCRYPTED_PATTERN: Final = ENCRYPTED_PATH + CONTENT_ID_SEGMENTS
 
 #: The most bytes a block opens to: as many as a drop's content can be given
 #: in, as base64 or not.

@@ -70,6 +70,7 @@ from libranet.webserver.http_types import (
     typed_response,
 )
 from libranet.webserver.request_refusals import (
+    CONTENT_ID_SEGMENTS,
     content_id_or_refusal,
     content_unavailable_response,
     parsed_or_refusal,
@@ -83,7 +84,7 @@ _LOGGER = getLogger(__name__)
 SIGNED_PATH: Final = API_PREFIX + "/signed"
 
 #: Where any client has the node check signed content, and read what it signs.
-SIGNED_PATTERN: Final = rf"{SIGNED_PATH}/(?P<algorithm>[^/]+)/(?P<hash>[^/]+)"
+SIGNED_PATTERN: Final = SIGNED_PATH + CONTENT_ID_SEGMENTS
 
 
 @dataclass(frozen=True)

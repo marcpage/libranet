@@ -57,6 +57,10 @@ _Parsed = TypeVar("_Parsed")
 # Anything larger is a mistake, and is refused before it is read.
 MAX_JSON_BODY_BYTES: Final = 64 * 1024
 
+#: The ``/{algorithm}/{hash}`` segments that end a path naming content, whose
+#: groups :func:`content_id_or_refusal` reads.
+CONTENT_ID_SEGMENTS: Final = "/(?P<algorithm>[^/]+)/(?P<hash>[^/]+)"
+
 
 def unreadable_body_response(request: Request, max_bytes: int) -> Response | None:
     """The response refusing ``request``'s body unread, or ``None`` if it may be read.
