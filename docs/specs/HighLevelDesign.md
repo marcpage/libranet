@@ -2,7 +2,7 @@
 
 Decentralized Peer-to-Peer Content Network over HTTP/HTTPS
 
-Version 0.3 • September 2026
+Version 0.4 • October 2026
 
 ---
 

@@ -1,6 +1,6 @@
 # Libranet Operator Guide
 
-Version 0.2 • October 2026
+Version 0.3 • October 2026
 
 ---
 

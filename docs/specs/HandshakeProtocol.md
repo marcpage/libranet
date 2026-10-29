@@ -1,6 +1,6 @@
 # Libranet Handshake Protocol
 
-Version 0.1 • September 2026
+Version 0.2 • October 2026
 
 ---
 

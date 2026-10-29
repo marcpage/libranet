@@ -1,6 +1,6 @@
 # Libranet Module System
 
-Version 0.2 • October 2026
+Version 0.3 • October 2026
 
 ---
 
@@ -11,7 +11,7 @@ those processes work together: which modules there are and what each one is
 responsible for, how the supervisor starts, restarts, and stops them, and the
 message bus, shared files, and signals they communicate through. It is
 written for someone about to read or change the code, and describes the
-implementation as of version 0.5 and Phase 3, up to Step 77, Phase 4's
+implementation as of version 0.6 and Phase 3, up to Step 77, Phase 4's
 Steps 30, 78–82, and 89–93, Phase 5's Steps 94 and 96–114, Phase 6's Steps
 56 and 116–143, and the movie application's Step 115.
 

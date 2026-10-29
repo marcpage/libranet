@@ -1,5 +1,8 @@
 # Bundle Format Specification
 
+- Status: Draft
+- Version: 0.2.0
+
 ## 1. Overview
 
 A **bundle** is a JSON container used to describe a file or directory,
