@@ -6,20 +6,21 @@ from os import chmod, geteuid, mkfifo
 from os.path import realpath
 from pathlib import Path
 
-from pytest import fixture, mark, raises
+from pytest import fixture, mark
 
 from libranet.config.models import DEFAULT_CONFIG_HOSTS
 from libranet.messaging.envelope import Message
-from libranet.messaging.events import EventType
+from libranet.messaging.events import IMPORTS_FIELD, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.problems import INVALID_REQUEST, PROBLEM_CONTENT_TYPE
 from libranet.protocol.backup_requests import ImportRequest
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.webserver.backup_state import BackupReport, BackupState
+from libranet.webserver.config_handlers import BackupReportHandler
 from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.local_folders import LocalFolders
-from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler, ImportListHandler
+from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler
 from libranet.webserver.local_only import LocalOnly
 from libranet.webserver.router import Router
 from libranet.webserver.site_checks import SiteChecks
@@ -61,9 +62,8 @@ def router(machine: Path, queues: ModuleQueues, state: BackupState) -> Router:
         IMPORTS_PATH,
         LocalOnly(ImportHandler(folders, StubModule(ModuleName.WEBSERVER, queues).publish), checks),
     )
-    router.add(
-        "GET", IMPORTS_PATH, LocalOnly(ImportListHandler(state, RETRY_AFTER_SECONDS), checks)
-    )
+    imports = BackupReportHandler(state, IMPORTS_FIELD, RETRY_AFTER_SECONDS, by="import_id")
+    router.add("GET", IMPORTS_PATH, LocalOnly(imports, checks))
     return router
 
 
@@ -250,8 +250,3 @@ def test_no_imports_reported_are_none_read_back(router: Router, state: BackupSta
     response = router.dispatch(Request("GET", IMPORTS_PATH, client_address="127.0.0.1"))
 
     assert loads(response.body) == {"imports": {}}
-
-
-def test_an_import_list_refuses_a_negative_retry_after(state: BackupState) -> None:
-    with raises(ValueError, match="retry_after_seconds"):
-        ImportListHandler(state, -1)

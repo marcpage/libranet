@@ -38,7 +38,6 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import matching_bits
 from libranet.karma.blocks import (
     BLOCK_BOUNDS,
-    Balance,
     BlockBounds,
     BlockDrop,
     BlockFinding,
@@ -47,9 +46,11 @@ from libranet.karma.blocks import (
     ValidationBlock,
 )
 from libranet.karma.generations import GenerationTargets
-from libranet.karma.ledger import NO_BALANCE, BalanceSheet, Reward, reach_of
+from libranet.karma.ledger import BalanceSheet, Reward, reach_of
+from libranet.karma.reading import HeldBlock
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import NO_BALANCE, Balance
 from libranet.protocol.karma_transactions import Payout, SignedTransaction, TransactionKey
 
 
@@ -228,7 +229,7 @@ class ChainView(Protocol):
         """Each of ``identities``' balance, as the chain's transaction block ``generation`` left it.
 
         That is the latest stated of it through that block, or
-        :data:`~libranet.karma.ledger.NO_BALANCE` for one stated nowhere
+        :data:`~libranet.protocol.karma_balances.NO_BALANCE` for one stated nowhere
         (§5.3).
 
         Raises:
@@ -419,6 +420,33 @@ class TransactionBlockCheck:
 
         before = ChainBefore.read(chain, named_for)
         return cls._on_chain(found, bits, before, compressed_bytes=compressed_bytes, bounds=bounds)
+
+    @classmethod
+    def of_held(
+        cls,
+        held: HeldBlock,
+        named_for: ContentId | None,
+        chain: ChainView,
+        *,
+        bounds: BlockBounds = BLOCK_BOUNDS,
+    ) -> TransactionBlockCheck | BlockFinding:
+        """Transaction block ``held``, as the node holds it, checked, as :meth:`of` checks it.
+
+        Raises:
+            MisplacedBlockError: as :meth:`of`.
+            MissingContentError: as :meth:`of`.
+            UnsupportedBundleError: as :meth:`of`.
+            UnknownAlgorithmError: as :meth:`of`.
+        """
+        return cls.of(
+            held.block_id,
+            held.data,
+            named_for,
+            chain,
+            held.keys,
+            compressed_bytes=held.compressed_bytes,
+            bounds=bounds,
+        )
 
     @property
     def is_correct(self) -> bool:

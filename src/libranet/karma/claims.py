@@ -258,15 +258,7 @@ class ClaimedChain:
             ValueError: it names an id under a hash algorithm this node lacks.
         """
         held = reader.block(block_id, TransactionBlock)
-        return TransactionBlockCheck.of(
-            block_id,
-            held.data,
-            named_for,
-            chain,
-            held.keys,
-            compressed_bytes=held.compressed_bytes,
-            bounds=bounds,
-        )
+        return TransactionBlockCheck.of_held(held, named_for, chain, bounds=bounds)
 
     def _validation(
         self,
@@ -305,15 +297,8 @@ class ClaimedChain:
                     block_id, claimed.previous, chain, reader, bounds
                 )
 
-        return ValidationBlockCheck.of(
-            claimed.validation,
-            held.data,
-            claimed.previous,
-            chain,
-            held.keys,
-            transactions=at_target,
-            compressed_bytes=held.compressed_bytes,
-            bounds=bounds,
+        return ValidationBlockCheck.of_held(
+            held, claimed.previous, chain, transactions=at_target, bounds=bounds
         )
 
 

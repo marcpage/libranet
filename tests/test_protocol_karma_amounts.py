@@ -88,6 +88,25 @@ def test_an_amount_is_never_taken_below_zero() -> None:
         Kismet(74) - Kismet(75)  # pylint: disable=expression-not-assigned
 
 
+@mark.parametrize(
+    ("percent", "kismet"), [(0.0, 0), (0.01, 1), (2.5, 499), (10, 1_999), (100, 19_999)]
+)
+def test_a_percent_of_an_amount_is_rounded_down_to_whole_kismet(
+    percent: float, kismet: int
+) -> None:
+    assert Kismet(19_999).percent(percent) == Kismet(kismet)
+
+
+def test_a_percent_is_read_as_the_decimal_it_is_written_as() -> None:
+    # 0.1 is a little more than 1/10 in binary, which would give 555,111,512 Kismet more.
+    assert Kismet(10**28).percent(0.1) == Kismet(10**25)
+
+
+def test_a_percent_below_zero_is_refused() -> None:
+    with raises(ValueError):
+        Kismet(250).percent(-1)
+
+
 def test_amounts_are_compared() -> None:
     assert Kismet(74) < Kismet(75)
     assert max(Kismet(2), Kismet(10), Kismet(3)) == Kismet(10)

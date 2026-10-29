@@ -23,9 +23,9 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import BlockDrop, TransactionBlock, ValidationBlock
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration
-from libranet.karma.ledger import NO_BALANCE
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import NO_BALANCE
 from libranet.protocol.karma_stakes import SignedStake, Stake
 from libranet.protocol.karma_transactions import (
     MIN_TRANSACTION_BITS,

@@ -9,7 +9,8 @@ from pytest import LogCaptureFixture, fixture
 
 from libranet.cas.content_id import ContentId
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
-from libranet.protocol.karma_balances import KarmaBalance, KarmaBalances
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import Balance, KarmaBalances
 from libranet.protocol.karma_head import KarmaHead
 from libranet.webserver.client_keeping import ClientKeeping, HeldKarma, SoughtContent
 
@@ -49,7 +50,7 @@ def clock() -> Clock:
 @fixture
 def keeping(storage: StorageConfig, clock: Clock) -> ClientKeeping:
     """Keeping that has :data:`RICH` hold more Karma than :data:`POOR`, both connected."""
-    KarmaBalances(HEAD, {RICH: KarmaBalance(250, 3)}).write(storage.karma_dir)
+    KarmaBalances(HEAD, {RICH: Balance(Kismet(250), 3)}).write(storage.karma_dir)
     seek_list(storage, data=[str(SOUGHT)])
     keeping = ClientKeeping(
         GRACE_REQUESTS,
@@ -247,7 +248,7 @@ def test_keeping_follows_the_configuration(storage: StorageConfig, clock: Clock)
     config = LibranetConfig(
         network=NetworkConfig(client_grace_requests=1, client_value_seconds=5.0), storage=storage
     )
-    KarmaBalances(HEAD, {RICH: KarmaBalance(250, 3)}).write(storage.karma_dir)
+    KarmaBalances(HEAD, {RICH: Balance(Kismet(250), 3)}).write(storage.karma_dir)
     keeping = ClientKeeping.of(config, clock=clock)
     keeping.connected(POOR)
     keeping.connected(RICH)

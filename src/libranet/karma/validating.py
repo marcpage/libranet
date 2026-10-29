@@ -40,7 +40,6 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import matching_bits
 from libranet.karma.blocks import (
     BLOCK_BOUNDS,
-    Balance,
     BlockBounds,
     BlockDrop,
     BlockFinding,
@@ -51,7 +50,9 @@ from libranet.karma.blocks import (
 from libranet.karma.checking import ChainView, TransactionBlockCheck
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.ledger import Reward, StakeWeight
+from libranet.karma.reading import HeldBlock
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import Balance
 
 
 def balances_left(
@@ -394,6 +395,35 @@ class ValidationBlockCheck:
         generation = chain.validation(named_for).block.generation + 1
         checking = _Validating(block_id, found, named_for, generation, chain, transactions)
         return cls._on_chain(checking, bits, compressed_bytes=compressed_bytes, bounds=bounds)
+
+    @classmethod
+    def of_held(
+        cls,
+        held: HeldBlock,
+        named_for: ContentId | None,
+        chain: ChainView,
+        *,
+        transactions: Mapping[ContentId, TransactionBlockCheck | BlockFinding],
+        bounds: BlockBounds = BLOCK_BOUNDS,
+    ) -> ValidationBlockCheck | BlockFinding:
+        """Validation block ``held``, as the node holds it, checked, as :meth:`of` checks it.
+
+        Raises:
+            MisplacedBlockError: as :meth:`of`.
+            MissingContentError: as :meth:`of`.
+            UnsupportedBundleError: as :meth:`of`.
+            UnknownAlgorithmError: as :meth:`of`.
+        """
+        return cls.of(
+            held.block_id,
+            held.data,
+            named_for,
+            chain,
+            held.keys,
+            transactions=transactions,
+            compressed_bytes=held.compressed_bytes,
+            bounds=bounds,
+        )
 
     @property
     def is_correct(self) -> bool:

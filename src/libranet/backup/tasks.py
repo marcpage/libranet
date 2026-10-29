@@ -8,8 +8,11 @@ memory only, so a restart forgets them.
 """
 
 from __future__ import annotations
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import Any, Collection, Sequence
+
+from libranet.cas.content_id import ContentId
 
 
 class TaskStatus(StrEnum):
@@ -67,6 +70,54 @@ class Task:
     def _failed(self, reason: str, now: float) -> None:
         """Note that the task failed, for ``reason``."""
         self._status, self._error, self._finished_at = TaskStatus.FAILED, reason, now
+
+
+@dataclass
+class ContentWaiting:
+    """Where a task waiting on content stands: a restore, or an archive being kept.
+
+    It is next to carry on at ``due_at``. ``arrived_at`` is when content it
+    waits on last arrived, or it was last asked for, and ``asked_at`` when
+    it last asked for all it lacks; ``None`` until it first does, and again
+    once asked for itself.
+    """
+
+    due_at: float
+    arrived_at: float
+    asked_at: float | None = None
+
+    def ask_again(self, now: float) -> None:
+        """Carry on at ``now``, asking for all it lacks, and wait anew before giving up."""
+        self.due_at = self.arrived_at = now
+        self.asked_at = None
+
+    def asking(
+        self,
+        missing: Sequence[ContentId],
+        waited: Collection[ContentId],
+        now: float,
+        *,
+        ask_interval_seconds: float,
+        give_up_at: float,
+    ) -> tuple[ContentId, ...]:
+        """What of ``missing`` to ask for at ``now``, waiting on it until it is due to carry on.
+
+        That is all of it once each ``ask_interval_seconds``, and otherwise
+        only what is not of ``waited``, the content waited on before. It is
+        due when it is next to ask for all of it, or at ``give_up_at``, if
+        that is sooner.
+        """
+        asked_at = self.asked_at
+
+        if asked_at is None or now >= asked_at + ask_interval_seconds:
+            asked_at = self.asked_at = now
+            asking = tuple(missing)
+
+        else:
+            asking = tuple(content_id for content_id in missing if content_id not in waited)
+
+        self.due_at = min(asked_at + ask_interval_seconds, give_up_at)
+        return asking
 
 
 def failure_reason(error: Exception) -> str:

@@ -27,8 +27,9 @@ from typing import Any, Final, Mapping
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
-from libranet.json_fields import decimal_count, is_integer
+from libranet.json_fields import is_integer
 from libranet.json_format import compact_json
+from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_head import KarmaHead
 
 #: The file of the Karma module's history stating every holder's balance.
@@ -43,49 +44,55 @@ _LAST_WON: Final = "last_won"
 
 
 @dataclass(frozen=True)
-class KarmaBalance:
+class Balance:
     """The ``kismet`` an identity holds, and ``last_won``, the generation it last won a share in.
 
     ``last_won`` is ``None`` for one that has won none (KarmaLedger §5.3).
 
     Raises:
-        ValueError: ``kismet`` or ``last_won`` is negative.
+        ValueError: ``last_won`` is negative.
     """
 
-    kismet: int = 0
+    kismet: Kismet
     last_won: int | None = None
 
     def __post_init__(self) -> None:
-        if self.kismet < 0:
-            raise ValueError(f"A balance must not be negative, got {self.kismet}")
-
         if self.last_won is not None and self.last_won < 0:
             raise ValueError(
                 f'A balance\'s "{_LAST_WON}" must not be negative, got {self.last_won}'
             )
 
     @classmethod
-    def from_value(cls, value: object, *, named: str = "A balance") -> KarmaBalance:
-        """The balance ``value``, as a transaction block states one, is.
+    def from_value(cls, value: object, *, named: str = "A balance") -> Balance:
+        """The balance ``value``, an object of a block's ``balances``, is (KarmaLedger §5.3).
 
         Raises:
             ValueError: ``value``, called ``named``, is not an object, its
-                ``kismet`` is not decimal digits, or its ``last_won`` is
-                missing or is neither a generation nor ``null``.
+                ``kismet`` is no amount, or its ``last_won`` is missing or is
+                neither a generation nor ``null``.
         """
         if not isinstance(value, dict):
             raise ValueError(f"{named} must be a JSON object, got {type(value).__name__}")
 
         won = value.get(_LAST_WON)
+        last_won: int | None = None
 
-        if not (is_integer(won) or (won is None and _LAST_WON in value)):
+        if is_integer(won):
+            last_won = won
+
+        elif won is not None or _LAST_WON not in value:
             raise ValueError(f'{named}\'s "{_LAST_WON}" must be a generation or null')
 
-        return cls(decimal_count(value.get(_KISMET), named=f'{named}\'s "{_KISMET}"'), won)
+        return cls(Kismet.from_value(value.get(_KISMET), named=f'{named}\'s "{_KISMET}"'), last_won)
 
     def value(self) -> dict[str, Any]:
-        """This balance as a transaction block states it, its Kismet in decimal digits."""
-        return {_KISMET: str(self.kismet), _LAST_WON: self.last_won}
+        """This balance as a block states it (KarmaLedger §5.3)."""
+        return {_KISMET: self.kismet.value(), _LAST_WON: self.last_won}
+
+
+#: The balance of an identity stated nowhere: it holds nothing, and has won
+#: nothing (KarmaLedger §5.3).
+NO_BALANCE: Final = Balance(Kismet(0))
 
 
 @dataclass(frozen=True)
@@ -97,7 +104,7 @@ class KarmaBalances:
     """
 
     head: KarmaHead = KarmaHead()
-    balances: Mapping[ContentId, KarmaBalance] = field(default_factory=dict)
+    balances: Mapping[ContentId, Balance] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.head.follows and self.balances:
@@ -125,9 +132,7 @@ class KarmaBalances:
         return cls(
             KarmaHead.from_value(value),
             {
-                ContentId.parse(name): KarmaBalance.from_value(
-                    balance, named=f"The balance of {name}"
-                )
+                ContentId.parse(name): Balance.from_value(balance, named=f"The balance of {name}")
                 for name, balance in stated.items()
             },
         )
@@ -148,11 +153,21 @@ class KarmaBalances:
             # Not logged: the Karma module has not read a head's balances yet.
             return cls()
 
+        return cls.parsed(data)
+
+    @classmethod
+    def parsed(cls, data: bytes) -> KarmaBalances:
+        """The balances ``data``, what ``balances.json`` holds, states.
+
+        Raises:
+            ValueError: it is not JSON, or states no balances, as
+                :meth:`from_value` says.
+        """
         return cls.from_value(loads(data))
 
-    def balance(self, identity: ContentId) -> KarmaBalance:
+    def balance(self, identity: ContentId) -> Balance:
         """``identity``'s balance, as stated, or else none: it holds nothing (KarmaLedger §5.3)."""
-        return self.balances.get(identity, KarmaBalance())
+        return self.balances.get(identity, NO_BALANCE)
 
     def value(self) -> dict[str, Any]:
         """These balances as ``balances.json`` states them, sorted by identity."""

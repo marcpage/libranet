@@ -14,14 +14,14 @@ the same way, its transactions and stakes with it.
 """
 
 from __future__ import annotations
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from json import loads
 from re import compile as compile_pattern
 from typing import Final
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
-from libranet.json_format import MOMENT_FORMAT
+from libranet.json_format import parsed_moment
 from libranet.protocol.karma_amounts import Kismet
 
 #: The member of a transaction or a stake saying when it was made (§4.1, §6.2).
@@ -129,7 +129,7 @@ def moment_member(value: object, *, named: str) -> datetime:
         raise ValueError(wrong)
 
     try:
-        return datetime.strptime(value, MOMENT_FORMAT).replace(tzinfo=UTC)
+        return parsed_moment(value)
 
     except ValueError:
         raise ValueError(wrong) from None

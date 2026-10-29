@@ -1,12 +1,21 @@
 """Tests for whole-file replacement."""
 
 from __future__ import annotations
+from logging import WARNING, getLogger
 from pathlib import Path
 from typing import cast
 
-from pytest import raises
+from pytest import LogCaptureFixture, raises
 
-from libranet.atomic_file import FileVersion, KeptRead, atomic_writer, write_atomically
+from libranet.atomic_file import (
+    FileVersion,
+    KeptRead,
+    LastGoodRead,
+    atomic_writer,
+    write_atomically,
+)
+
+_LOGGER = getLogger(__name__)
 
 
 def test_missing_parent_directories_are_created(tmp_path: Path) -> None:
@@ -142,3 +151,66 @@ def test_a_forgotten_read_is_made_again_whatever_the_version(tmp_path: Path) -> 
     kept.forget()
 
     assert (kept.current(), read.reads) == (b"first", 2)
+
+
+def parsed(data: bytes) -> str:
+    """The text ``data`` holds, unless it says it is unreadable."""
+    if data == b"unreadable":
+        raise ValueError("unreadable")
+
+    return data.decode("ascii")
+
+
+def test_the_last_good_read_is_empty_until_the_file_is_written(tmp_path: Path) -> None:
+    path = tmp_path / "file.json"
+    last = LastGoodRead(path, parsed, "", what="the file", logger=_LOGGER)
+
+    assert last.current() == ""
+
+    write_atomically(path, b"first")
+
+    assert last.current() == "first"
+
+
+def test_a_file_that_cannot_be_read_leaves_the_last_good_read_and_is_logged(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    path = write_atomically(tmp_path / "file.json", b"first")
+    last = LastGoodRead(path, parsed, "", what="the file", logger=_LOGGER)
+    last.current()
+    write_atomically(path, b"unreadable")
+
+    with caplog.at_level(WARNING, logger=_LOGGER.name):
+        assert (last.current(), last.current()) == ("first", "first")
+
+    assert caplog.text.count(f"Cannot read the file at {path}: unreadable") == 1
+
+    write_atomically(path, b"second")
+
+    assert last.current() == "second"
+
+
+def test_a_file_that_is_removed_is_read_as_empty_again(tmp_path: Path) -> None:
+    path = write_atomically(tmp_path / "file.json", b"first")
+    last = LastGoodRead(path, parsed, "", what="the file", logger=_LOGGER)
+    last.current()
+
+    path.unlink()
+
+    assert last.current() == ""
+
+
+def test_a_file_that_cannot_be_looked_at_leaves_the_last_good_read_and_is_logged(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    path = write_atomically(tmp_path / "lists" / "file.json", b"first")
+    last = LastGoodRead(path, parsed, "", what="the file", logger=_LOGGER)
+    last.current()
+    path.unlink()
+    path.parent.rmdir()
+    path.parent.write_bytes(b"a file where the directory would be")
+
+    with caplog.at_level(WARNING, logger=_LOGGER.name):
+        assert last.current() == "first"
+
+    assert f"Cannot look at the file at {path}" in caplog.text

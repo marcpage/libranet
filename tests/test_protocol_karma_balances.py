@@ -3,11 +3,13 @@
 from __future__ import annotations
 from json import dumps, loads
 from pathlib import Path
+from typing import Any
 
 from pytest import mark, raises
 
 from libranet.cas.content_id import ContentId
-from libranet.protocol.karma_balances import KarmaBalance, KarmaBalances
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import Balance, KarmaBalances
 from libranet.protocol.karma_head import KarmaHead
 
 HEAD = KarmaHead(ContentId("sha256", "c1" * 32), 41, 1208)
@@ -19,7 +21,9 @@ CAROL = ContentId("sha256", "c0" * 32)
 def test_balances_are_written_and_read_back_with_the_head_they_were_read_at(
     tmp_path: Path,
 ) -> None:
-    balances = KarmaBalances(HEAD, {BOB: KarmaBalance(0, 40), ALICE: KarmaBalance(10**28, None)})
+    balances = KarmaBalances(
+        HEAD, {BOB: Balance(Kismet(0), 40), ALICE: Balance(Kismet(10**28), None)}
+    )
 
     balances.write(tmp_path)
 
@@ -36,10 +40,10 @@ def test_balances_are_written_and_read_back_with_the_head_they_were_read_at(
 
 
 def test_an_identity_not_stated_holds_nothing_and_has_won_nothing() -> None:
-    balances = KarmaBalances(HEAD, {ALICE: KarmaBalance(250, 40)})
+    balances = KarmaBalances(HEAD, {ALICE: Balance(Kismet(250), 40)})
 
-    assert balances.balance(ALICE) == KarmaBalance(250, 40)
-    assert balances.balance(CAROL) == KarmaBalance(0, None)
+    assert balances.balance(ALICE) == Balance(Kismet(250), 40)
+    assert balances.balance(CAROL) == Balance(Kismet(0), None)
     assert balances.balance(CAROL).value() == {"kismet": "0", "last_won": None}
 
 
@@ -62,7 +66,7 @@ def test_a_node_following_no_chain_states_no_balances(tmp_path: Path) -> None:
     assert KarmaBalances.read(tmp_path) == KarmaBalances()
 
     with raises(ValueError, match="Only the chain followed states balances"):
-        KarmaBalances(KarmaHead(), {ALICE: KarmaBalance(1)})
+        KarmaBalances(KarmaHead(), {ALICE: Balance(Kismet(1))})
 
 
 @mark.parametrize(
@@ -112,6 +116,41 @@ def test_a_balance_must_say_when_it_last_won(tmp_path: Path) -> None:
         KarmaBalances.read(tmp_path)
 
 
-def test_a_balance_cannot_be_negative() -> None:
-    with raises(ValueError, match="must not be negative"):
-        KarmaBalance(-1)
+def test_a_balance_reads_back_as_written() -> None:
+    balance = Balance(Kismet(1_250_000), 40)
+
+    assert Balance.from_value(balance.value()) == balance
+    assert balance.value() == {"kismet": "1250000", "last_won": 40}
+
+
+def test_a_balance_that_has_won_nothing_is_stated_with_null() -> None:
+    assert Balance.from_value({"kismet": "0", "last_won": None}) == Balance(Kismet(0))
+
+
+@mark.parametrize(
+    "value, member",
+    [
+        ({"kismet": "0"}, "last_won"),
+        ({"kismet": "0", "last_won": "40"}, "last_won"),
+        ({"kismet": "0", "last_won": True}, "last_won"),
+        ({"kismet": "0", "last_won": 4.5}, "last_won"),
+        ({"kismet": "-1", "last_won": None}, "kismet"),
+        ({"kismet": "1.5", "last_won": None}, "kismet"),
+        ({"last_won": None}, "kismet"),
+    ],
+)
+def test_a_balance_not_as_it_must_be_is_refused_naming_its_member(
+    value: dict[str, Any], member: str
+) -> None:
+    with raises(ValueError, match=f'"{member}"'):
+        Balance.from_value(value)
+
+
+def test_a_balance_won_before_the_root_is_refused() -> None:
+    with raises(ValueError, match='"last_won" must not be negative'):
+        Balance(Kismet(0), -1)
+
+
+def test_what_is_no_object_is_no_balance() -> None:
+    with raises(ValueError, match="must be a JSON object"):
+        Balance.from_value("0")

@@ -26,19 +26,17 @@ tried once at a head, so a key is put up there once.
 from __future__ import annotations
 from dataclasses import dataclass, replace
 from logging import getLogger
-from typing import Callable
 
 from libranet.bundle.errors import BundleError, BundleSignatureError, MissingContentError
 from libranet.bundle.storing import HASH_ALGORITHM
 from libranet.cas.content_id import ContentId
-from libranet.cas.drops import NONCE_SEARCHERS, NonceSearchers
-from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds, BlockDrop, TransactionBlock
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.checking import ChainBefore, ChainView, TransactionVerdict
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainHistory
 from libranet.karma.ledger import BalanceSheet
+from libranet.karma.placing import BlockPlacing
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_carried import CarriedTransaction
@@ -95,12 +93,10 @@ class TransactionsPutUp:  # pylint: disable=too-many-instance-attributes
     """Puts up the transactions the node is given, each as a block of its own at the head (§5.6).
 
     Each is checked against the chain ``history`` keeps, its blocks read from
-    what ``reader`` holds, and carried in ``carried``. A block is signed as
-    ``identity`` gives the node, its nonce searched for by ``searchers`` for
-    ``block_seconds``, and after that until it shares ``drop_bits`` with its
-    target, and handed to ``store``, with the node's id, to be stored and
-    announced. Each transaction's work is checked against ``bounds``: the
-    specification's, unless a test gives less.
+    what ``reader`` holds, and carried in ``carried``. A block is signed,
+    placed, and stored as ``placing`` says. Each transaction's work is
+    checked against ``bounds``: the specification's, unless a test gives
+    less.
     """
 
     def __init__(
@@ -108,22 +104,14 @@ class TransactionsPutUp:  # pylint: disable=too-many-instance-attributes
         history: ChainHistory,
         reader: TargetReader,
         carried: CarriedTransactions,
-        identity: Callable[[], NodeIdentity],
-        store: Callable[[bytes, ContentId], None],
+        placing: BlockPlacing,
         *,
-        block_seconds: float,
-        drop_bits: int,
-        searchers: NonceSearchers = NONCE_SEARCHERS,
         bounds: BlockBounds = BLOCK_BOUNDS,
     ) -> None:
         self._history = history
         self._reader = reader
         self._carried = carried
-        self._identity = identity
-        self._store = store
-        self._block_seconds = block_seconds
-        self._drop_bits = drop_bits
-        self._searchers = searchers
+        self._placing = placing
         self._bounds = bounds
         self._chain = HeldChain(history, reader)
         # The head the keys tried, put up or found pending, were tried at.
@@ -311,14 +299,10 @@ class TransactionsPutUp:  # pylint: disable=too-many-instance-attributes
             )
             return
 
-        identity = self._identity()
-        drop = GenerationTargets.after(head).transaction.placed(
-            BlockDrop(identity.signed(own.block.text()), own.block).content(),
-            self._block_seconds,
-            minimum_bits=self._drop_bits,
-            searchers=self._searchers,
+        drop = self._placing.placed(
+            BlockDrop(self._placing.identity().signed(own.block.text()), own.block),
+            GenerationTargets.after(head).transaction,
         )
-        self._store(drop.data, identity.node_id)
         _LOGGER.info(
             "Put up Karma transaction %s as block %s, sharing %d bits with the transaction "
             "target of %s",

@@ -70,11 +70,12 @@ from libranet.cas.layered import LayeredSource
 from libranet.cas.prefix import nearest
 from libranet.cas.shunned import ShunnedContent
 from libranet.config.models import LibranetConfig
-from libranet.karma.blocks import Balance, BlockDrop, TransactionBlock, ValidationBlock
+from libranet.karma.blocks import BlockDrop, TransactionBlock, ValidationBlock
 from libranet.karma.history import ChainGeneration
-from libranet.karma.ledger import NO_BALANCE, WEIGHT_GENERATIONS
+from libranet.karma.ledger import WEIGHT_GENERATIONS
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
+from libranet.protocol.karma_balances import NO_BALANCE, Balance
 from libranet.protocol.karma_transactions import TransactionKey
 from libranet.protocol.search import LocalSearch
 
@@ -533,7 +534,7 @@ class HeldChain:
         as far back as its ``reach``, which state every identity holding any
         Kismet, or :data:`~libranet.karma.ledger.WEIGHT_GENERATIONS` blocks,
         whichever is further, which state every ``last_won`` that lowers a
-        stake's weight; or else :data:`~libranet.karma.ledger.NO_BALANCE`
+        stake's weight; or else :data:`~libranet.protocol.karma_balances.NO_BALANCE`
         (§5.3, §6.6).
 
         Raises:

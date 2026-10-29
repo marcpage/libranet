@@ -247,14 +247,8 @@ from libranet.webserver.list_handlers import (
     SeekListHandler,
 )
 from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
-from libranet.webserver.kept_archives import (
-    ARCHIVE_PATTERN,
-    ARCHIVES_PATH,
-    ArchiveHandler,
-    ArchiveListHandler,
-    ArchiveRemovalHandler,
-)
-from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler, ImportListHandler
+from libranet.webserver.kept_archives import ARCHIVE_PATTERN, ARCHIVES_PATH, ArchiveHandler
+from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler
 from libranet.webserver.local_only import (
     CLIENT_PATH,
     LocalOnly,
@@ -444,8 +438,6 @@ __all__ = [
     "ApplicationTrustHandler",
     "ApplicationUse",
     "ArchiveHandler",
-    "ArchiveListHandler",
-    "ArchiveRemovalHandler",
     "BackupJobEventHandler",
     "BackupReport",
     "BackupReportHandler",
@@ -488,7 +480,6 @@ __all__ = [
     "Identities",
     "IfMatch",
     "ImportHandler",
-    "ImportListHandler",
     "InboundConnection",
     "InboundPeers",
     "IncompleteBodyError",

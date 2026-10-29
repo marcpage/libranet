@@ -9,7 +9,7 @@ derives the lists. The modules that refuse shunned content read the file::
     {"shunned": ["sha256/<hex>", ...]}
 
 A reader keeps what the file held, and reads it again only once it has been
-replaced (:class:`~libranet.atomic_file.KeptRead`). Until the file is
+replaced (:class:`~libranet.atomic_file.LastGoodRead`). Until the file is
 first written, nothing is shunned.
 """
 
@@ -17,10 +17,9 @@ from __future__ import annotations
 from json import loads
 from logging import getLogger
 from pathlib import Path
-from threading import Lock
 from typing import Final, Iterable
 
-from libranet.atomic_file import KeptRead
+from libranet.atomic_file import LastGoodRead
 from libranet.cas.algorithms import UnsupportedAlgorithms
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
@@ -41,10 +40,9 @@ class ShunnedContent:
 
     def __init__(self, path: Path) -> None:
         self._path = path
-        self._lock = Lock()
-        self._file = KeptRead(path, self._read)
-        # What was last read, kept when the file cannot be read again.
-        self._shunned: frozenset[ContentId] = frozenset()
+        self._file: LastGoodRead[frozenset[ContentId]] = LastGoodRead(
+            path, self._parsed, frozenset(), what="the shunned list", logger=_LOGGER
+        )
 
     @classmethod
     def of(cls, storage: StorageConfig) -> ShunnedContent:
@@ -58,48 +56,26 @@ class ShunnedContent:
 
     def shuns(self, content_id: ContentId) -> bool:
         """Whether ``content_id`` is shunned, as the list file says now."""
-        with self._lock:
-            return content_id in self._current()
+        return content_id in self._file.current()
 
     def unshunned(self, content_ids: Iterable[ContentId]) -> list[ContentId]:
         """``content_ids``, in their order, less those shunned, as the list file says now."""
-        with self._lock:
-            shunned = self._current()
-
+        shunned = self._file.current()
         return [content_id for content_id in content_ids if content_id not in shunned]
 
-    def _current(self) -> frozenset[ContentId]:
-        """What the file holds now, read again only if it was replaced.
-
-        A file that cannot be read leaves what was read before.
-        """
-        try:
-            self._shunned = self._file.current()
-
-        except FileNotFoundError:
-            # Not logged: the stats module has not derived the list yet.
-            self._shunned = frozenset()
-
-        except OSError as error:
-            _LOGGER.warning("Cannot look at the shunned list at %s: %s", self._path, error)
-
-        return self._shunned
-
-    def _read(self, path: Path) -> frozenset[ContentId]:
-        """The content ids the file at ``path`` names; those read before, if it cannot be read.
+    def _parsed(self, data: bytes) -> frozenset[ContentId]:
+        """The content ids the list file's ``data`` names.
 
         An entry that is not a content id is left out, and logged.
-        """
-        try:
-            listed = loads(path.read_bytes())[_SHUNNED_FIELD]
 
-        except (OSError, ValueError, KeyError, TypeError) as error:
-            _LOGGER.warning("Cannot read the shunned list at %s: %s", self._path, error)
-            return self._shunned
+        Raises:
+            ValueError: it is not JSON, or names no array of what is shunned.
+        """
+        value = loads(data)
+        listed = value.get(_SHUNNED_FIELD) if isinstance(value, dict) else None
 
         if not isinstance(listed, list):
-            _LOGGER.warning("Ignoring the shunned list at %s, which names no array", self._path)
-            return self._shunned
+            raise ValueError(f'It names no array, "{_SHUNNED_FIELD}", of what is shunned')
 
         shunned: set[ContentId] = set()
         unsupported = UnsupportedAlgorithms()

@@ -17,6 +17,7 @@ from libranet.karma.carried import CarriedTransactions
 from libranet.karma.checking import TransactionBlockCheck, TransactionVerdict
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
+from libranet.karma.placing import BlockPlacing
 from libranet.karma.putting import OwnBlock, TransactionsPutUp
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.protocol.karma_amounts import Kismet
@@ -140,10 +141,7 @@ def putting_up(
         history,
         reader,
         carried,
-        lambda: carol,
-        placed,
-        block_seconds=0.0,
-        drop_bits=MINIMUM_BITS,
+        BlockPlacing(lambda: carol, placed, block_seconds=0.0, drop_bits=MINIMUM_BITS),
         bounds=bounds,
     )
 
@@ -172,15 +170,7 @@ def checked(
 ) -> TransactionBlockCheck:
     """The transaction block placed as ``data``, checked at the target named for ``head``."""
     held = reader.block(id_of(data), TransactionBlock)
-    check = TransactionBlockCheck.of(
-        held.block_id,
-        held.data,
-        head,
-        HeldChain(history, reader),
-        held.keys,
-        compressed_bytes=held.compressed_bytes,
-        bounds=bounds,
-    )
+    check = TransactionBlockCheck.of_held(held, head, HeldChain(history, reader), bounds=bounds)
     assert isinstance(check, TransactionBlockCheck)
     return check
 

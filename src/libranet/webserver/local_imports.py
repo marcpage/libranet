@@ -17,7 +17,8 @@ where the file lies beside the path asked for::
     backup.import_requested  {"import_id", "path", "local_path"}
 
 ``GET /data/imports`` says how each import is doing, by id, from what the
-backup module last reported (:mod:`libranet.webserver.backup_state`)::
+backup module last reported (:mod:`libranet.webserver.backup_state`,
+:class:`~libranet.webserver.config_handlers.BackupReportHandler`)::
 
     {"imports": {"<import_id>": {"path": "Movies/Film.mp4", "status": "done",
                                 "bytes_read": 4294967296, "size": 4294967296,
@@ -40,14 +41,9 @@ from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.backup_requests import ImportRequest
 from libranet.protocol.http_syntax import API_PREFIX
-from libranet.webserver.backup_state import BackupState
 from libranet.webserver.http_types import Request, Response, json_response, status_response
 from libranet.webserver.local_folders import LocalFolders
-from libranet.webserver.request_refusals import (
-    invalid_request_response,
-    parsed_or_refusal,
-    unreported_response,
-)
+from libranet.webserver.request_refusals import invalid_request_response, parsed_or_refusal
 
 _LOGGER = getLogger(__name__)
 
@@ -92,38 +88,3 @@ class ImportHandler:
 
         self.publish(EventType.IMPORT_REQUESTED, asked.payload(found))
         return json_response({"import_id": asked.import_id}, HTTPStatus.ACCEPTED)
-
-
-@dataclass(frozen=True)
-class ImportListHandler:
-    """``GET /data/imports``: how each import is doing, by id, as the backup module last said.
-
-    Raises:
-        ValueError: ``retry_after_seconds`` is negative.
-    """
-
-    state: BackupState
-    retry_after_seconds: int
-
-    def __post_init__(self) -> None:
-        if self.retry_after_seconds < 0:
-            raise ValueError(
-                f"retry_after_seconds must not be negative, got {self.retry_after_seconds}"
-            )
-
-    def __call__(self, request: Request) -> Response:
-        report = self.state.latest
-
-        if report is None:
-            return unreported_response(request, self.retry_after_seconds)
-
-        return json_response(
-            {
-                "imports": {
-                    entry["import_id"]: {
-                        name: value for name, value in entry.items() if name != "import_id"
-                    }
-                    for entry in report.imports
-                }
-            }
-        )

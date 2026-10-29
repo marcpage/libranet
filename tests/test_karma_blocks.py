@@ -3,8 +3,9 @@
 from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from json import loads
-from typing import Any
+from typing import Any, Callable
 
 from pytest import fixture, mark, raises
 
@@ -16,7 +17,6 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.json_format import compact_json
 from libranet.karma.blocks import (
     BLOCK_BOUNDS,
-    Balance,
     BlockBounds,
     BlockDrop,
     BlockFinding,
@@ -27,6 +27,7 @@ from libranet.karma.blocks import (
 from libranet.karma.generations import GenerationTargets, new_kismet
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import Balance
 from libranet.protocol.karma_stakes import SignedStake, Stake
 from libranet.protocol.karma_transactions import Payout, SignedTransaction, Transaction
 from tests.helpers import new_identity
@@ -144,46 +145,6 @@ def block(alice: NodeIdentity, bob: NodeIdentity) -> TransactionBlock:
 @fixture(scope="module")
 def validation(alice: NodeIdentity, bob: NodeIdentity) -> ValidationBlock:
     return validation_of(staked(alice), staked(bob, 25))
-
-
-def test_a_balance_reads_back_as_written() -> None:
-    balance = Balance(Kismet(1_250_000), 40)
-
-    assert Balance.from_value(balance.value()) == balance
-    assert balance.value() == {"kismet": "1250000", "last_won": 40}
-
-
-def test_a_balance_that_has_won_nothing_is_stated_with_null() -> None:
-    assert Balance.from_value({"kismet": "0", "last_won": None}) == Balance(Kismet(0))
-
-
-@mark.parametrize(
-    "value, member",
-    [
-        ({"kismet": "0"}, "last_won"),
-        ({"kismet": "0", "last_won": "40"}, "last_won"),
-        ({"kismet": "0", "last_won": True}, "last_won"),
-        ({"kismet": "0", "last_won": 4.5}, "last_won"),
-        ({"kismet": "-1", "last_won": None}, "kismet"),
-        ({"kismet": "1.5", "last_won": None}, "kismet"),
-        ({"last_won": None}, "kismet"),
-    ],
-)
-def test_a_balance_not_as_it_must_be_is_refused_naming_its_member(
-    value: dict[str, Any], member: str
-) -> None:
-    with raises(ValueError, match=f'"{member}"'):
-        Balance.from_value(value)
-
-
-def test_a_balance_won_before_the_root_is_refused() -> None:
-    with raises(ValueError, match='"last_won" must not be negative'):
-        Balance(Kismet(0), -1)
-
-
-def test_what_is_no_object_is_no_balance() -> None:
-    with raises(ValueError, match="must be a JSON object"):
-        Balance.from_value("0")
 
 
 def test_a_transaction_block_reads_back_as_written(block: TransactionBlock) -> None:
@@ -897,3 +858,50 @@ def test_bounds_no_block_could_meet_are_refused(
 ) -> None:
     with raises(ValueError):
         BlockBounds(most_bytes, room_bytes, transaction_bits)
+
+
+def listings(witnesser: NodeIdentity) -> Callable[[int], BlockDrop[ValidationBlock]]:
+    """What makes the drop of a validation block ``witnesser`` signs, listing as many witnesses."""
+    witnesses = sorted(sha256(str(each).encode("ascii")).hexdigest() for each in range(100))
+
+    def listing(count: int) -> BlockDrop[ValidationBlock]:
+        block = replace(validation_of(staked(witnesser)), witnessed=tuple(witnesses[:count]))
+        return BlockDrop(witnesser.signed(block.text()), block)
+
+    return listing
+
+
+def test_the_fullest_drop_that_fits_is_found_by_halves(alice: NodeIdentity) -> None:
+    listing = listings(alice)
+    measured_bytes = listing(40).measured_bytes()
+    made: list[int] = []
+
+    def counted(count: int) -> BlockDrop[ValidationBlock]:
+        made.append(count)
+        return listing(count)
+
+    fullest = BlockBounds(most_bytes=measured_bytes, room_bytes=0).fullest(counted, 100)
+
+    assert fullest is not None
+    assert (len(fullest[0].block.witnessed), fullest[1]) == (40, measured_bytes)
+    assert len(made) < 10
+
+
+@mark.parametrize("fewest", [0, 1])
+def test_no_drop_is_the_fullest_when_not_even_the_fewest_fit(
+    alice: NodeIdentity, fewest: int
+) -> None:
+    listing = listings(alice)
+    bounds = BlockBounds(most_bytes=listing(fewest).measured_bytes() - 1, room_bytes=0)
+
+    assert bounds.fullest(listing, 100, fewest=fewest) is None
+
+
+def test_the_fewest_fit_when_no_more_do(alice: NodeIdentity) -> None:
+    listing = listings(alice)
+    bounds = BlockBounds(most_bytes=listing(1).measured_bytes(), room_bytes=0)
+
+    fullest = bounds.fullest(listing, 100, fewest=1)
+
+    assert fullest is not None
+    assert len(fullest[0].block.witnessed) == 1

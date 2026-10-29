@@ -9,6 +9,7 @@ number above 2^53 exactly. A chain's weight is written the same way
 
 from __future__ import annotations
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import Final
 
 from libranet.json_fields import decimal_count
@@ -70,3 +71,14 @@ class Kismet:
                 is below 0.
         """
         return Kismet(self.count - other.count)
+
+    def percent(self, percent: float) -> Kismet:
+        """``percent`` of this amount, rounded down to whole Kismet.
+
+        ``percent`` is read as the decimal it is written as, so that it is
+        exact.
+
+        Raises:
+            ValueError: it is negative, or more than there can be.
+        """
+        return Kismet(self.count * Fraction(str(percent)) // 100)

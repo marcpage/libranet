@@ -25,7 +25,7 @@ from libranet.modules import ModuleName
 from libranet.problems import SESSION_REQUIRED
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.karma_amounts import Kismet
-from libranet.protocol.karma_balances import KarmaBalance, KarmaBalances
+from libranet.protocol.karma_balances import Balance, KarmaBalances
 from libranet.protocol.karma_carried import CarriedTransaction
 from libranet.protocol.karma_head import KARMA_HEAD_PATH, KarmaGeneration, KarmaHead
 from libranet.protocol.karma_payments import Payment, PaymentQueue
@@ -127,7 +127,7 @@ def following(karma_dir: Path) -> Path:
         encoding="utf-8",
     )
     KarmaBalances(
-        head_at(NEWEST), {NODE: KarmaBalance(250, 139), ALICE: KarmaBalance(10**28)}
+        head_at(NEWEST), {NODE: Balance(Kismet(250), 139), ALICE: Balance(Kismet(10**28))}
     ).write(karma_dir)
     return karma_dir
 
@@ -424,7 +424,7 @@ def cookie(sessions: Sessions, person: PersonKey) -> dict[str, str]:
 @fixture
 def holding(following: Path, person: PersonKey) -> Path:
     """The history the node follows, its balances stating the person's 1,000 Kismet."""
-    KarmaBalances(head_at(NEWEST), {person.person_id: KarmaBalance(1_000)}).write(following)
+    KarmaBalances(head_at(NEWEST), {person.person_id: Balance(Kismet(1_000))}).write(following)
     return following
 
 
@@ -681,7 +681,7 @@ def test_the_operator_reads_the_chain_followed_and_the_nodes_balance_there(own: 
 def test_the_nodes_balance_is_null_until_read_at_the_head_followed(
     own: OwnKarma, karma_dir: Path
 ) -> None:
-    KarmaBalances(head_at(NEWEST - 1), {NODE: KarmaBalance(250)}).write(karma_dir)
+    KarmaBalances(head_at(NEWEST - 1), {NODE: Balance(Kismet(250))}).write(karma_dir)
 
     status, read = asked_of(own)
 

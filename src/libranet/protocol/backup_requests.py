@@ -33,7 +33,7 @@ warning, since the node may need a newer release.
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from hashlib import sha256
 from logging import getLogger
 from math import isfinite
@@ -47,7 +47,7 @@ from libranet.bundle.shapes import is_entry_path
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 from libranet.json_fields import is_number
-from libranet.json_format import MOMENT_FORMAT
+from libranet.json_format import MOMENT_FORMAT, parsed_moment
 from libranet.messaging.events import ConflictBehavior
 from libranet.protocol.errors import InvalidRequestError
 
@@ -621,7 +621,7 @@ def _moment(text: str) -> datetime:
         ValueError: it is not one.
     """
     try:
-        return datetime.strptime(text, MOMENT_FORMAT).replace(tzinfo=UTC)
+        return parsed_moment(text)
 
     except ValueError:
         raise ValueError(

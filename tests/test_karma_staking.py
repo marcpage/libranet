@@ -16,6 +16,7 @@ from libranet.karma.blocks import BlockBounds, BlockDrop, ValidationBlock
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
+from libranet.karma.placing import BlockPlacing
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.staking import HeadStakes, StakeCover, ValidationBuilder
 from libranet.protocol.karma_amounts import Kismet
@@ -574,12 +575,9 @@ def building(
         follower,
         reader,
         carried,
-        lambda: node,
-        store=placed,
+        BlockPlacing(lambda: node, placed, block_seconds=0.0, drop_bits=MINIMUM_BITS),
         distrusts=lambda identity: False,
         stake_percent=lambda: 10.0,
-        block_seconds=0.0,
-        drop_bits=MINIMUM_BITS,
         clock=NOW.timestamp,
         bounds=bounds,
     )

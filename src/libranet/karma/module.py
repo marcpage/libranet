@@ -133,7 +133,6 @@ gives it, keeping it until its head changes (Phase 6 Step 137)::
 """
 
 from __future__ import annotations
-from datetime import UTC, datetime
 from functools import partial
 from logging import Logger
 from time import time
@@ -148,6 +147,7 @@ from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.trust import TrustState
+from libranet.json_format import moment_at
 from libranet.karma.balances import HeadBalances
 from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds
 from libranet.karma.building import BlockBuilder
@@ -156,6 +156,7 @@ from libranet.karma.changing import HeadChanges
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
 from libranet.karma.payments import NodePayments
+from libranet.karma.placing import BlockPlacing
 from libranet.karma.putting import TransactionsPutUp
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.root import ChainRoot
@@ -294,22 +295,21 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._changes = HeadChanges(
             self._history, self._reader, self.publish, carried, bounds=self._bounds
         )
-        self._putting = TransactionsPutUp(
-            self._history,
-            self._reader,
-            carried,
+        placing = BlockPlacing(
             partial(NodeIdentity.load, self._config),
             self._stored,
             block_seconds=self._config.karma.block_seconds,
             drop_bits=self._config.storage.search_min_bits,
             searchers=self._searchers,
-            bounds=self._bounds,
+        )
+        self._putting = TransactionsPutUp(
+            self._history, self._reader, carried, placing, bounds=self._bounds
         )
         self._payments = NodePayments(
             karma_dir,
             self._history,
             self._reader,
-            partial(NodeIdentity.load, self._config),
+            placing.identity,
             self._putting,
             clock=self._clock,
             percent=self._config.karma.payment_percent,
@@ -320,29 +320,17 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             bounds=self._bounds,
         )
         self._building = BlockBuilder(
-            self._history,
-            self._reader,
-            carried,
-            partial(NodeIdentity.load, self._config),
-            self._stored,
-            block_seconds=self._config.karma.block_seconds,
-            drop_bits=self._config.storage.search_min_bits,
-            searchers=self._searchers,
-            bounds=self._bounds,
+            self._history, self._reader, carried, placing, bounds=self._bounds
         )
         self._validating = ValidationBuilder(
             self._history,
             self._follower,
             self._reader,
             carried,
-            partial(NodeIdentity.load, self._config),
-            store=self._stored,
+            placing,
             distrusts=self._distrusts,
             stake_percent=StakingRule(karma_dir, self._config.karma.stake_percent).percent,
-            block_seconds=self._config.karma.block_seconds,
-            drop_bits=self._config.storage.search_min_bits,
             clock=self._clock,
-            searchers=self._searchers,
             bounds=self._bounds,
         )
         self._balances = HeadBalances(
@@ -542,7 +530,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self.logger.info("Making a Karma root as %s", identity.node_id)
         root = ChainRoot.made(
             identity,
-            datetime.fromtimestamp(int(self._clock()), UTC),
+            moment_at(self._clock()),
             drop_bits=self._config.storage.search_min_bits,
             transaction_bits=self._bounds.transaction_bits,
             searchers=self._searchers,

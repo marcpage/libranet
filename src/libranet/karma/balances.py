@@ -18,7 +18,7 @@ from pathlib import Path
 
 from libranet.karma.history import ChainHistory
 from libranet.karma.reading import HeldChain
-from libranet.protocol.karma_balances import KarmaBalance, KarmaBalances
+from libranet.protocol.karma_balances import KarmaBalances
 from libranet.protocol.karma_head import KarmaHead
 
 
@@ -57,13 +57,6 @@ class HeadBalances:
             return False
 
         stated = {} if head is None else self._chain.every_balance(head.generation)
-        balances = KarmaBalances(
-            karma_head,
-            {
-                identity: KarmaBalance(balance.kismet.count, balance.last_won)
-                for identity, balance in stated.items()
-            },
-        )
-        balances.write(self._directory)
+        KarmaBalances(karma_head, stated).write(self._directory)
         self._written = karma_head
         return True

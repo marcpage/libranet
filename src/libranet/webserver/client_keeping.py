@@ -16,7 +16,7 @@ is its balance as the chain this node follows states it, in
 ``balances.json`` (:class:`~libranet.protocol.karma_balances.KarmaBalances`).
 What it pushes is sought if this node's own seek list names it, or a search
 the list names would find it (HttpApi §10.7.2). Each file is kept as it was
-read until it is replaced (:class:`~libranet.atomic_file.KeptRead`), and
+read until it is replaced (:class:`~libranet.atomic_file.LastGoodRead`), and
 until it is first written, nothing is sought, and no client holds Karma.
 """
 
@@ -30,7 +30,7 @@ from threading import Lock
 from time import time
 from typing import Callable, Iterable
 
-from libranet.atomic_file import KeptRead
+from libranet.atomic_file import LastGoodRead
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, StorageConfig
@@ -48,6 +48,16 @@ class _SeekList:
     data: frozenset[str] = frozenset()
     searches: tuple[str, ...] = ()
 
+    @classmethod
+    def parsed(cls, data: bytes) -> _SeekList:
+        """What the seek list ``data`` names.
+
+        Raises:
+            ValueError: it is not JSON, or no seek list.
+        """
+        named, searches = parse_seek_list(loads(data))
+        return cls(frozenset(named), tuple(searches))
+
 
 class SoughtContent:
     """What this node's own seek list at ``path`` asks for, read again whenever it is replaced.
@@ -57,12 +67,10 @@ class SoughtContent:
     """
 
     def __init__(self, path: Path, search: LocalSearch) -> None:
-        self._path = path
         self._search = search
-        self._lock = Lock()
-        self._file = KeptRead(path, self._read)
-        # What was last read, kept when the file cannot be read again.
-        self._sought = _SeekList()
+        self._file = LastGoodRead(
+            path, _SeekList.parsed, _SeekList(), what="this node's own seek list", logger=_LOGGER
+        )
 
     @classmethod
     def of(cls, storage: StorageConfig) -> SoughtContent:
@@ -73,37 +81,10 @@ class SoughtContent:
 
     def seeks(self, content_id: ContentId) -> bool:
         """Whether the seek list asks for ``content_id``, as it says now."""
-        with self._lock:
-            sought = self._current()
-
+        sought = self._file.current()
         return str(content_id) in sought.data or any(
             self._search.matching(prefix, [content_id]) for prefix in sought.searches
         )
-
-    def _current(self) -> _SeekList:
-        """What the file holds now, read again only if it was replaced."""
-        try:
-            self._sought = self._file.current()
-
-        except FileNotFoundError:
-            # Not logged: the stats module has not derived the list yet.
-            self._sought = _SeekList()
-
-        except OSError as error:
-            _LOGGER.warning("Cannot look at this node's own seek list at %s: %s", self._path, error)
-
-        return self._sought
-
-    def _read(self, path: Path) -> _SeekList:
-        """What the file at ``path`` asks for; what was read before, if it cannot be read."""
-        try:
-            data, searches = parse_seek_list(loads(path.read_bytes()))
-
-        except (OSError, ValueError) as error:
-            _LOGGER.warning("Cannot read this node's own seek list at %s: %s", path, error)
-            return self._sought
-
-        return _SeekList(frozenset(data), tuple(searches))
 
 
 class HeldKarma:
@@ -114,45 +95,18 @@ class HeldKarma:
     """
 
     def __init__(self, karma_dir: Path) -> None:
-        self._path = karma_dir / KARMA_BALANCES_FILE
-        self._lock = Lock()
-        self._file = KeptRead(self._path, self._read)
-        # What was last read, kept when the file cannot be read again.
-        self._balances = KarmaBalances()
+        self._file = LastGoodRead(
+            karma_dir / KARMA_BALANCES_FILE,
+            KarmaBalances.parsed,
+            KarmaBalances(),
+            what="the Karma balances",
+            logger=_LOGGER,
+        )
 
     def kismet(self, identities: Iterable[ContentId]) -> dict[ContentId, int]:
         """The Kismet each of ``identities`` holds; none for one the balances do not name."""
-        with self._lock:
-            balances = self._current()
-
-        return {identity: balances.balance(identity).kismet for identity in identities}
-
-    def _current(self) -> KarmaBalances:
-        """What the file holds now, read again only if it was replaced."""
-        try:
-            self._balances = self._file.current()
-
-        except FileNotFoundError:
-            # Not logged: the Karma module has not read a head's balances yet.
-            self._balances = KarmaBalances()
-
-        except OSError as error:
-            _LOGGER.warning("Cannot look at the Karma balances at %s: %s", self._path, error)
-
-        return self._balances
-
-    def _read(self, path: Path) -> KarmaBalances:
-        """The balances the file at ``path`` states; those read before, if it cannot be read."""
-        try:
-            return KarmaBalances.from_value(loads(path.read_bytes()))
-
-        except (OSError, ValueError) as error:
-            _LOGGER.warning(
-                "Cannot read the Karma balances at %s, so clients are kept as before: %s",
-                path,
-                error,
-            )
-            return self._balances
+        balances = self._file.current()
+        return {identity: balances.balance(identity).kismet.count for identity in identities}
 
 
 @dataclass(frozen=True)

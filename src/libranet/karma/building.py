@@ -47,18 +47,17 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, replace
 from logging import getLogger
-from typing import Callable, Iterable, Mapping, Sequence
+from typing import Iterable, Mapping, Sequence
 from zlib import compress
 
 from libranet.bundle.errors import BundleError, BundleSignatureError, MissingContentError
 from libranet.bundle.storing import HASH_ALGORITHM, STORAGE_COMPRESSION_LEVEL
 from libranet.cas.content_id import ContentId
-from libranet.cas.drops import NONCE_SEARCHERS, DropTarget, NonceSearchers
+from libranet.cas.drops import DropTarget
 from libranet.cas.prefix import matching_bits
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import (
     BLOCK_BOUNDS,
-    Balance,
     BlockBounds,
     BlockDrop,
     TransactionBlock,
@@ -69,8 +68,10 @@ from libranet.karma.checking import ChainBefore, ChainView, TransactionBlockChec
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.ledger import BalanceSheet, reach_of
+from libranet.karma.placing import BlockPlacing
 from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import Balance
 from libranet.protocol.karma_transactions import Payout, SignedTransaction, TransactionKey
 
 _LOGGER = getLogger(__name__)
@@ -287,35 +288,23 @@ class FilledBlock:
         """The block of the most transactions ``combined`` takes, in order, that ``bounds`` hold.
 
         It is signed by ``identity``, and measured as :attr:`measured_bytes`
-        says. The most that fit are searched for by halves, since a block is
-        signed and compressed to be measured.
+        says (:meth:`~libranet.karma.blocks.BlockBounds.fullest`).
 
         Returns:
             The block, or ``None`` if ``combined`` takes none, or not one
             fits.
         """
-        fitting: FilledBlock | None = None
-        low, high = 0, len(combined.taken) + 1
-        count = len(combined.taken)
+        fullest = bounds.fullest(
+            lambda count: cls._signed(combined.block(count), identity),
+            len(combined.taken),
+            fewest=1,
+        )
+        return None if fullest is None else cls(*fullest)
 
-        while low + 1 < high:
-            filled = cls._signed(combined.block(count), identity)
-
-            if filled.measured_bytes <= bounds.most_bytes:
-                low, fitting = count, filled
-
-            else:
-                high = count
-
-            count = (low + high) // 2
-
-        return fitting
-
-    @classmethod
-    def _signed(cls, block: TransactionBlock, identity: NodeIdentity) -> FilledBlock:
-        """``block``, signed by ``identity``, and measured."""
-        drop = BlockDrop(identity.signed(block.text()), block)
-        return cls(drop, drop.measured_bytes())
+    @staticmethod
+    def _signed(block: TransactionBlock, identity: NodeIdentity) -> BlockDrop[TransactionBlock]:
+        """``block``, signed by ``identity``."""
+        return BlockDrop(identity.signed(block.text()), block)
 
 
 class BlockBuilder:  # pylint: disable=too-many-instance-attributes
@@ -323,13 +312,10 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
 
     The chain is the one ``history`` keeps, its blocks read from what
     ``reader`` holds, and what is carried is in ``carried``. A block is
-    signed as ``identity`` gives the node, its nonce searched for by
-    ``searchers`` for ``block_seconds``, and after that until it shares
-    ``drop_bits`` with its target, and handed to ``store``, with the node's
-    id, to be stored and announced. It is filled within ``bounds``: the
-    specification's, unless a test gives others. It also finds the blocks held
-    at the head's transaction target that another held there supersedes, for
-    the node to shun (§3.7).
+    signed, placed, and stored as ``placing`` says. It is filled within
+    ``bounds``: the specification's, unless a test gives others. It also
+    finds the blocks held at the head's transaction target that another held
+    there supersedes, for the node to shun (§3.7).
     """
 
     def __init__(
@@ -337,22 +323,14 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
         history: ChainHistory,
         reader: TargetReader,
         carried: CarriedTransactions,
-        identity: Callable[[], NodeIdentity],
-        store: Callable[[bytes, ContentId], None],
+        placing: BlockPlacing,
         *,
-        block_seconds: float,
-        drop_bits: int,
-        searchers: NonceSearchers = NONCE_SEARCHERS,
         bounds: BlockBounds = BLOCK_BOUNDS,
     ) -> None:
         self._history = history
         self._reader = reader
         self._carried = carried
-        self._identity = identity
-        self._store = store
-        self._block_seconds = block_seconds
-        self._drop_bits = drop_bits
-        self._searchers = searchers
+        self._placing = placing
         self._bounds = bounds
         self._chain = HeldChain(history, reader)
         # The head these were found at: the blocks and transactions passed
@@ -394,7 +372,7 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
             if not combined.taken or self._held(combined.taken, at_target):
                 return
 
-            filled = FilledBlock.of(combined, self._identity(), bounds=self._bounds)
+            filled = FilledBlock.of(combined, self._placing.identity(), bounds=self._bounds)
 
             if filled is None:
                 _LOGGER.warning(
@@ -643,13 +621,10 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
             return self._correct[held.block_id]
 
         try:
-            check = TransactionBlockCheck.of(
-                held.block_id,
-                held.data,
+            check = TransactionBlockCheck.of_held(
+                held,
                 self._head,
                 self._chain,
-                held.keys,
-                compressed_bytes=held.compressed_bytes,
                 bounds=replace(self._bounds, room_bytes=self._bounds.most_bytes),
             )
 
@@ -674,13 +649,7 @@ class BlockBuilder:  # pylint: disable=too-many-instance-attributes
             OSError: a searching process could not be started, or exited
                 during the search, or the drop could not be written.
         """
-        drop = GenerationTargets.after(head).transaction.placed(
-            filled.drop.content(),
-            self._block_seconds,
-            minimum_bits=self._drop_bits,
-            searchers=self._searchers,
-        )
-        self._store(drop.data, filled.drop.builder)
+        drop = self._placing.placed(filled.drop, GenerationTargets.after(head).transaction)
         compressed_bytes = len(compress(drop.data, STORAGE_COMPRESSION_LEVEL))
         _LOGGER.info(
             "Built Karma transaction block %s of %d transactions, %d bytes compressed, %s, "

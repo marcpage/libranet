@@ -21,7 +21,6 @@ from libranet.cas.store import CasStore
 from libranet.config.models import MIB, KarmaConfig, LibranetConfig, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import (
-    Balance,
     BlockBounds,
     BlockDrop,
     BlockFinding,
@@ -31,13 +30,13 @@ from libranet.karma.blocks import (
 from libranet.karma.checking import BlockScore, ChainView, TransactionBlockCheck
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
-from libranet.karma.ledger import NO_BALANCE
 from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore
 from libranet.karma.weight import ChainWeight
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import NO_BALANCE, Balance
 from libranet.protocol.karma_stakes import SignedStake, Stake
 from libranet.protocol.karma_transactions import (
     Payout,
@@ -733,25 +732,10 @@ def test_the_roots_blocks_read_at_their_targets_are_checked_against_the_chain_he
     chain: ChainView = HeldChain(ChainHistory.open(storage.karma_dir), reader)
 
     [held] = reader.read(ROOT.transaction, TransactionBlock)
-    transaction = TransactionBlockCheck.of(
-        held.block_id,
-        held.data,
-        None,
-        chain,
-        held.keys,
-        compressed_bytes=held.compressed_bytes,
-        bounds=NO_WORK,
-    )
+    transaction = TransactionBlockCheck.of_held(held, None, chain, bounds=NO_WORK)
     [held] = reader.read(ROOT.validation, ValidationBlock)
-    validated = ValidationBlockCheck.of(
-        held.block_id,
-        held.data,
-        None,
-        chain,
-        held.keys,
-        transactions={root_id: transaction},
-        compressed_bytes=held.compressed_bytes,
-        bounds=NO_WORK,
+    validated = ValidationBlockCheck.of_held(
+        held, None, chain, transactions={root_id: transaction}, bounds=NO_WORK
     )
 
     root_bits = matching_bits(ROOT.transaction.hex, root_id.hash)

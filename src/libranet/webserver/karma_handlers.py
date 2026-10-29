@@ -105,7 +105,7 @@ it stakes, served as every endpoint beneath ``/config/api`` is (Phase 6 Step
 
 from __future__ import annotations
 from dataclasses import KW_ONLY, dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from http import HTTPStatus
 from logging import getLogger
 from pathlib import Path
@@ -119,7 +119,7 @@ from libranet.cas.content_id import ContentId
 from libranet.config.models import TARGET_BITS, KarmaConfig
 from libranet.identity.people import PersonKey
 from libranet.json_fields import decimal_count
-from libranet.json_format import MOMENT_FORMAT
+from libranet.json_format import MOMENT_FORMAT, moment_at
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.errors import InvalidRequestError
@@ -380,7 +380,7 @@ class CreatedMoments:
     def stamped(self, person: ContentId) -> datetime:
         """When what ``person`` makes now is created: a UTC time to the second."""
         with self._lock:
-            created = datetime.fromtimestamp(int(self._clock()), UTC)
+            created = moment_at(self._clock())
             last = self._last.get(person)
 
             if last is not None and created <= last:
@@ -462,7 +462,7 @@ class KarmaSigning:
         signed = SignedTransaction.of(person.signed(mined.text()))
         self._publish(person, EventType.KARMA_TRANSACTION, {"transaction": signed.value()})
         sends = mined.sends()
-        covered = balances.balance(person.person_id).kismet >= sends.count
+        covered = balances.balance(person.person_id).kismet >= sends
         _LOGGER.info(
             "Putting up Karma transaction %s, %s Kismet in all, for %s, %s",
             signed.hash,
@@ -563,7 +563,7 @@ class OwnKarma:
                 f"What the Karma module keeps cannot be read: {error}",
             )
 
-        now = datetime.fromtimestamp(int(self.clock()), UTC)
+        now = moment_at(self.clock())
         due = queue.due_at(now, self.config.payment_batch, self.config.payment_interval_seconds)
         return json_response(
             {

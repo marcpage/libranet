@@ -281,15 +281,7 @@ class ChainFollower:
             ValueError: it names an id under a hash algorithm this node
                 lacks.
         """
-        return TransactionBlockCheck.of(
-            held.block_id,
-            held.data,
-            named_for,
-            self._chain,
-            held.keys,
-            compressed_bytes=held.compressed_bytes,
-            bounds=self._bounds,
-        )
+        return TransactionBlockCheck.of_held(held, named_for, self._chain, bounds=self._bounds)
 
     def _validation(
         self, named_for: ContentId | None, transactions: _AtTarget, held: HeldBlock
@@ -306,15 +298,8 @@ class ChainFollower:
             ValueError: it names an id under a hash algorithm this node
                 lacks, or a block that is no block of its kind.
         """
-        return ValidationBlockCheck.of(
-            held.block_id,
-            held.data,
-            named_for,
-            self._chain,
-            held.keys,
-            transactions=transactions,
-            compressed_bytes=held.compressed_bytes,
-            bounds=self._bounds,
+        return ValidationBlockCheck.of_held(
+            held, named_for, self._chain, transactions=transactions, bounds=self._bounds
         )
 
     def _found(

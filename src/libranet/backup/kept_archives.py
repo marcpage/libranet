@@ -28,14 +28,14 @@ as any kept archive is, but never expires, and is not listed.
 
 from __future__ import annotations
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import datetime
 from json import loads
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from libranet.atomic_file import write_atomically
 from libranet.backup.errors import KeptArchivesFileError
-from libranet.backup.tasks import Task, TaskStatus
+from libranet.backup.tasks import ContentWaiting, Task, TaskStatus
 from libranet.bundle.content import ContentSource
 from libranet.bundle.errors import BundleVerificationError, MissingContentError
 from libranet.bundle.needed import NeededObjects
@@ -44,7 +44,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError
 from libranet.cas.verification import content_matches
 from libranet.json_fields import integer_field, number_field, string_field
-from libranet.json_format import MOMENT_FORMAT, pretty_json
+from libranet.json_format import MOMENT_FORMAT, parsed_moment, pretty_json
 from libranet.protocol.backup_requests import ArchiveRequest
 
 # What a record's file holds its records under.
@@ -123,11 +123,7 @@ class KeptRecord:  # pylint: disable=too-many-instance-attributes
                 number_field(value, "finished_at"),
                 integer_field(value, "object_count"),
                 integer_field(value, "size_bytes"),
-                (
-                    None
-                    if expires is None
-                    else datetime.strptime(expires, MOMENT_FORMAT).replace(tzinfo=UTC)
-                ),
+                (None if expires is None else parsed_moment(expires)),
             )
 
         except InvalidContentIdError as error:
@@ -203,21 +199,6 @@ class _Settings:
 
 
 @dataclass
-class _Waiting:
-    """Where a kept archive stands in waiting on content.
-
-    It is next to carry on at ``due_at``. ``arrived_at`` is when content it
-    waits on last arrived, or it was last asked for, and ``asked_at`` when
-    it last asked for all it lacks; ``None`` until it first does, and again
-    once asked for itself.
-    """
-
-    due_at: float
-    arrived_at: float
-    asked_at: float | None = None
-
-
-@dataclass
 class _Counts:
     """How many objects a kept archive needs, as far as is known, and how many it has written."""
 
@@ -247,7 +228,7 @@ class KeptArchive(Task):
         super().__init__(requested_at)
         self._request = request
         self._settings = _Settings(ask_interval_seconds, give_up_after_seconds, max_bundle_bytes)
-        self._waiting = _Waiting(requested_at, requested_at)
+        self._waiting = ContentWaiting(requested_at, requested_at)
         self._missing: set[ContentId] = set()
         self._counts = _Counts()
         self._record: KeptRecord | None = None
@@ -291,8 +272,7 @@ class KeptArchive(Task):
         The time it waits before giving up starts again.
         """
         self._request = request
-        self._waiting.due_at = self._waiting.arrived_at = now
-        self._waiting.asked_at = None
+        self._waiting.ask_again(now)
 
     def landed(self, content_id: ContentId, now: float) -> bool:
         """Note that ``content_id`` is now held, and say whether it waited on it."""
@@ -475,19 +455,14 @@ class KeptArchive(Task):
             self._missing.clear()
             return ()
 
-        asked_at = self._waiting.asked_at
-        ask_interval_seconds = self._settings.ask_interval_seconds
-
-        if asked_at is None or now >= asked_at + ask_interval_seconds:
-            asked_at = self._waiting.asked_at = now
-            asking = tuple(missing)
-
-        else:
-            asking = tuple(content_id for content_id in missing if content_id not in waited)
-
         self._status = TaskStatus.WAITING
-        self._waiting.due_at = min(asked_at + ask_interval_seconds, give_up_at)
-        return asking
+        return self._waiting.asking(
+            missing,
+            waited,
+            now,
+            ask_interval_seconds=self._settings.ask_interval_seconds,
+            give_up_at=give_up_at,
+        )
 
 
 def _expired(expires: datetime | None, now: float) -> bool:

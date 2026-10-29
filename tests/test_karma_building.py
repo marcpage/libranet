@@ -14,14 +14,16 @@ from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import KIB, MIB, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
-from libranet.karma.blocks import Balance, BlockBounds, BlockDrop, TransactionBlock
+from libranet.karma.blocks import BlockBounds, BlockDrop, TransactionBlock
 from libranet.karma.building import BlockBuilder, CombinedBlock, FilledBlock
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
+from libranet.karma.placing import BlockPlacing
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import Balance
 from libranet.protocol.karma_carried import CarriedTransaction
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from libranet.protocol.search import LocalSearch
@@ -173,10 +175,7 @@ def building(
         history,
         reader,
         carried,
-        lambda: carol,
-        placed,
-        block_seconds=0.0,
-        drop_bits=MINIMUM_BITS,
+        BlockPlacing(lambda: carol, placed, block_seconds=0.0, drop_bits=MINIMUM_BITS),
         bounds=bounds,
     )
 
@@ -221,15 +220,7 @@ def checked(
 ) -> TransactionBlockCheck:
     """The transaction block placed as ``data``, checked at the target named for ``head``."""
     held = reader.block(id_of(data), TransactionBlock)
-    check = TransactionBlockCheck.of(
-        held.block_id,
-        held.data,
-        head,
-        HeldChain(history, reader),
-        held.keys,
-        compressed_bytes=held.compressed_bytes,
-        bounds=bounds,
-    )
+    check = TransactionBlockCheck.of_held(held, head, HeldChain(history, reader), bounds=bounds)
     assert isinstance(check, TransactionBlockCheck)
     return check
 

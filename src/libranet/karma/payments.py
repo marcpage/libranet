@@ -26,7 +26,6 @@ server reads them too (Phase 6 Step 138).
 
 from __future__ import annotations
 from dataclasses import replace
-from datetime import UTC, datetime
 from logging import getLogger
 from pathlib import Path
 from typing import Callable
@@ -35,7 +34,7 @@ from libranet.bundle.errors import BundleError, MissingContentError
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import NONCE_SEARCHERS, NonceSearchers
 from libranet.identity.node_identity import NodeIdentity
-from libranet.json_format import MOMENT_FORMAT
+from libranet.json_format import MOMENT_FORMAT, moment_at
 from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds
 from libranet.karma.history import ChainHistory
 from libranet.karma.putting import TransactionsPutUp
@@ -166,7 +165,7 @@ class NodePayments:  # pylint: disable=too-many-instance-attributes
             transaction = queue.transaction
 
             if transaction is None:
-                now = datetime.fromtimestamp(int(self._clock()), UTC)
+                now = moment_at(self._clock())
 
                 if not queue.due(now, self._batch, self._interval_seconds):
                     return
