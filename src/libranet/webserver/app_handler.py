@@ -87,17 +87,17 @@ _LOGGER = getLogger(__name__)
 # A pattern matching any one of the reserved names.
 _RESERVED: Final = "|".join(escape(name) for name in sorted(RESERVED_APPLICATION_NAMES))
 
-# Every path but the reserved names' own, in any case. A reserved name spelled
-# with percent-encoding matches, and the handler refuses it instead.
+#: Every path but the reserved names' own, in any case. A reserved name spelled
+#: with percent-encoding matches, and the handler refuses it instead.
 APP_PATTERN: Final = rf"/(?!(?i:{_RESERVED})(?:/|$)).*"
 
-# `/config`, in any case, and every path beneath it but the API's.
+#: ``/config``, in any case, and every path beneath it but the API's.
 CONFIG_APP_PATTERN: Final = (
     rf"/(?i:{escape(CONFIG_APPLICATION)})(?:/(?!{CONFIG_API_SEGMENT}(?:/|$)).*)?"
 )
 
-# What a file the /config application serves may load: its own files, inline
-# script and styles, and requests to this node. No other site may frame it.
+#: What a file the /config application serves may load: its own files, inline
+#: script and styles, and requests to this node. No other site may frame it.
 CONFIG_APP_POLICY: Final = (
     "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
     "base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
@@ -116,7 +116,7 @@ UNTRUSTED_APP_HEADERS: Final = {
 
 DEFAULT_FILE: Final = "index.html"
 
-# What an application's route answers.
+#: What an application's route answers.
 APP_METHODS: Final = READ_METHODS
 
 

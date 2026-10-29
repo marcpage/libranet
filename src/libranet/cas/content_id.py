@@ -8,8 +8,8 @@ from typing import Any, Final, Mapping
 from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry, UnsupportedAlgorithms
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 
-# The digits a hash may be written with, and the ones it is stored with
-# (HttpApi §5.4).
+#: The digits a hash may be written with, and the ones it is stored with
+#: (HttpApi §5.4).
 HEX_DIGITS: Final = frozenset(hexdigits)
 LOWER_HEX_DIGITS: Final = frozenset(hexdigits.lower())
 BITS_PER_HEX_DIGIT: Final = 4

@@ -118,8 +118,8 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.unbundler.lookup import FoundDirectory, ResolvedDirectory
 
-# Provisional default: paths waiting on content at once. Each is a request
-# holding one of the web server's threads, or was lately.
+#: Provisional default: paths waiting on content at once. Each is a request
+#: holding one of the web server's threads, or was lately.
 DEFAULT_MAX_WAITING_PATHS: Final = 1024
 
 # A path in a bundle: the bundle, as the path naming it, and the entry path.

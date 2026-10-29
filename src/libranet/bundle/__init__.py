@@ -1,6 +1,6 @@
 """Bundle format library (Phase 1 Steps 13 and 17).
 
-Shape-based bundle type discrimination, the `extensions` overlay algorithm,
+Shape-based bundle type discrimination, the ``extensions`` overlay algorithm,
 and whole-file hash verification for multi-part files, plus writing a bundle
 back out as JSON. Building bundles from local files and directories, storing
 them in CAS within the object limit, and password protection (Step 17).

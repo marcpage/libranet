@@ -35,7 +35,7 @@ from libranet.config.models import MIB
 
 HASH_ALGORITHM: Final = "sha256"
 
-# Storage compression changes no identifier, so its level is free to change.
+#: Storage compression changes no identifier, so its level is free to change.
 STORAGE_COMPRESSION_LEVEL: Final = 9
 
 # What storing a chunk may add to its entries' JSON: the object around them,

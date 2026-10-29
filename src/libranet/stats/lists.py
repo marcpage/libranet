@@ -23,10 +23,10 @@ from typing import Final, Iterable, Sequence
 from libranet.json_format import compact_json
 from libranet.protocol.lists import node_list_body
 
-#: `{"nodes":{}}`, the smallest node list.
+# ``{"nodes":{}}``, the smallest node list.
 _NODE_LIST_BASE_BYTES: Final = 12
 
-#: `{"data":[],"search":[]}`, the smallest seek list.
+# ``{"data":[],"search":[]}``, the smallest seek list.
 _SEEK_LIST_BASE_BYTES: Final = 23
 
 

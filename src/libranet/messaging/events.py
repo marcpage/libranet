@@ -71,9 +71,9 @@ class EventType(StrEnum):
     APP_PATH_NOT_FOUND = "app.path_not_found"  # webserver → unbundler
     APP_PATH_RESOLVED = "app.path_resolved"  # unbundler → webserver
 
-    # `/config` administration surface and the backup module (Steps 18-20, 38),
-    # importing a local file (Phase 3 Step 69), and keeping content offline
-    # (Step 115).
+    # ``/config`` administration surface and the backup module (Steps 18-20,
+    # 38), importing a local file (Phase 3 Step 69), and keeping content
+    # offline (Step 115).
     BACKUP_JOB_CONFIGURED = "backup.job_configured"  # webserver → backup
     BACKUP_JOB_REMOVED = "backup.job_removed"  # webserver → backup
     BACKUP_RUN_REQUESTED = "backup.run_requested"  # webserver → backup
@@ -136,7 +136,7 @@ class AddressSource(StrEnum):
     RELAYED = "relayed"  # in the node list of some other node
     REVERSE_DNS = "reverse_dns"  # a name found for an observed address
     ADVERTISED = "advertised"  # in the node's own node list, as its own
-    OBSERVED = "observed"  # a `localhost` entry resolved to the connection's address
+    OBSERVED = "observed"  # a ``localhost`` entry resolved to the connection's address
     DIALED = "dialed"  # this node reached the node there
 
 
@@ -146,8 +146,8 @@ class DialOutcome(StrEnum):
     CONNECTED = "connected"  # a node proved its id there, and was taken into the mix
     ALREADY_CONNECTED = "already_connected"  # the node there was connected already
     THIS_NODE = "this_node"  # the address is this node's own
-    NOT_TRUSTED = "not_trusted"  # a node this node does not connect to; `detail` says why
-    UNREACHED = "unreached"  # no node proved its id there; the message's `detail` says why
+    NOT_TRUSTED = "not_trusted"  # a node this node does not connect to; ``detail`` says why
+    UNREACHED = "unreached"  # no node proved its id there; the message's ``detail`` says why
 
 
 class ConnectionDirection(StrEnum):

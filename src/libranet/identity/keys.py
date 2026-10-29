@@ -41,8 +41,8 @@ _LOGGER = getLogger(__name__)
 
 BACKUP_SECRET_BYTES: Final = 32
 
-# Node keys are a few hundred bytes. A key held compressed is never expanded
-# past this, so a small body cannot expand without bound.
+#: Node keys are a few hundred bytes. A key held compressed is never expanded
+#: past this, so a small body cannot expand without bound.
 MAX_PUBLIC_KEY_BYTES: Final = 64 * 1024
 _PRIVATE_DIR_MODE: Final = 0o700
 

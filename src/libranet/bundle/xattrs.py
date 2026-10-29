@@ -40,7 +40,7 @@ from libranet.bundle.shapes import XattrValue
 
 _LOGGER = getLogger(__name__)
 
-# The largest value held inline; a larger one is stored as parts.
+#: The largest value held inline; a larger one is stored as parts.
 INLINE_LIMIT_BYTES: Final = 1024
 
 # What listing attributes fails with where the filesystem keeps none.

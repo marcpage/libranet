@@ -34,7 +34,7 @@ from libranet.protocol.http_syntax import API_PREFIX
 
 _LOGGER = getLogger(__name__)
 
-# The member of a search response that lists what was found (HttpApi §6.1).
+#: The member of a search response that lists what was found (HttpApi §6.1).
 RESULTS_FIELD: Final = "results"
 
 #: Where a search is asked for, followed by ``/{prefix}`` (HttpApi §6).
@@ -184,7 +184,7 @@ class SearchAnswer:
             for index, content_id in enumerate(found)
         ]
         compressor = compressobj(_ANSWER_COMPRESSION_LEVEL)
-        # The answer naming none, less the `]}` closing it.
+        # The answer naming none, less the ``]}`` closing it.
         written = [compressor.compress(cls._json([], members)[:-2])]
         written_bytes = len(written[0])
         named = 0

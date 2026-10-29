@@ -14,7 +14,7 @@ from threading import Event
 from types import FrameType
 from typing import Final, Generator, Sequence
 
-# `sys.stderr` is looked up at call time, not imported by name, so output
+# ``sys.stderr`` is looked up at call time, not imported by name, so output
 # follows any later redirection of the stream (e.g. pytest's capsys).
 import sys
 

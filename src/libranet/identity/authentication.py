@@ -25,9 +25,9 @@ from libranet.identity.signatures import MessageVerifier
 
 _LOGGER = getLogger(__name__)
 
-# Bounds the provisional-attempt table, so requests naming endless made-up
-# node ids cannot grow it without limit. The least recently seen signer is
-# forgotten first.
+#: Bounds the provisional-attempt table, so requests naming endless made-up
+#: node ids cannot grow it without limit. The least recently seen signer is
+#: forgotten first.
 MAX_TRACKED_SIGNERS: Final = 4096
 
 

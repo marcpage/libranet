@@ -97,11 +97,11 @@ from libranet.webserver.request_refusals import (
 
 _LOGGER = getLogger(__name__)
 
-# A path that goes on past an id. The id's own segments are as DATA_PATTERN
-# has them, so no endpoint's name is taken for a hash algorithm.
+#: A path that goes on past an id. The id's own segments are as DATA_PATTERN
+#: has them, so no endpoint's name is taken for a hash algorithm.
 BUNDLE_PATTERN: Final = rf"{DATA_PATTERN}/(?P<path>.*)"
 
-# What a read into a bundle answers.
+#: What a read into a bundle answers.
 BUNDLE_METHODS: Final = READ_METHODS
 
 # Carried by every response to a read into a bundle (HttpApi §12.1).

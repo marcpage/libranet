@@ -1,7 +1,7 @@
 """Node and data statistics, and the only owner of the SQLite file (Step 8).
 
 Owns node stats, data stats, where nodes may be reached, and this node's
-own `/data/seek` list, and derives the plain files the web server serves,
+own ``/data/seek`` list, and derives the plain files the web server serves,
 the peer list among them, and the candidate list the connection manager
 dials from. It counts how the servers this node is a client of served it,
 for the Karma module to pay the best (Phase 6 Step 133).

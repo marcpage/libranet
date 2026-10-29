@@ -240,7 +240,8 @@ class ArchiveSink:
             OSError: the archive could not be written or moved into place.
         """
         # Pylint wants atomic_writer to catch GeneratorExit, which its
-        # `except BaseException` does, so the temporary file is always removed.
+        # ``except BaseException`` does, so the temporary file is always
+        # removed.
         with (  # pylint: disable=contextmanager-generator-missing-cleanup
             atomic_writer(path) as file,
             cls(file) as sink,

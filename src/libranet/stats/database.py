@@ -75,8 +75,8 @@ _STRONGER_SOURCE: Final = (
 _TRY_ORDER: Final = "last_success IS NULL, last_success DESC, last_learned DESC, endpoint"
 
 # The rows of content held, but for the public key of the node named by
-# `:algorithm` and `:hash`: what eviction chooses from (Phase 2 Step 28).
-# They are read in table order, `NOT INDEXED`: the index of held hashes
+# ``:algorithm`` and ``:hash``: what eviction chooses from (Phase 2 Step 28).
+# They are read in table order, ``NOT INDEXED``: the index of held hashes
 # would visit every one too, but out of order, which is several times slower
 # once the table outgrows SQLite's cache.
 _HELD_ROWS: Final = (
@@ -105,7 +105,7 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
     def __init__(self, path: Path, *, clock: Callable[[], float] = time) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._clock = clock
-        # Autocommit: `isolation_level=None` stops sqlite3 from opening an
+        # Autocommit: ``isolation_level=None`` stops sqlite3 from opening an
         # implicit transaction that would hold writes until a commit.
         self._connection: Connection = connect(path, isolation_level=None)
         self._connection.row_factory = Row
@@ -695,7 +695,7 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
         return self._connection.execute(statement, parameters)
 
     def _query(self, statement: str, parameters: Mapping[str, Any]) -> list[Row]:
-        # Annotated because `fetchall` is typed as returning `list[Any]`.
+        # Annotated because ``fetchall`` is typed as returning ``list[Any]``.
         rows: list[Row] = self._execute(statement, parameters).fetchall()
         return rows
 

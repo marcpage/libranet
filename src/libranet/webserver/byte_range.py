@@ -25,8 +25,8 @@ from typing import Final
 
 _LOGGER = getLogger(__name__)
 
-# The one range unit (RFC 9110 §14.1), as Range, Accept-Ranges, and
-# Content-Range name it.
+#: The one range unit (RFC 9110 §14.1), as Range, Accept-Ranges, and
+#: Content-Range name it.
 BYTES_UNIT: Final = "bytes"
 
 # One range: its first byte, its last, or both, each in ASCII decimal (RFC

@@ -75,7 +75,7 @@ from libranet.config.models import MIB
 
 _LOGGER = getLogger(__name__)
 
-# The one cipher read or written, and how a path names an IV after it (§7.1).
+#: The one cipher read or written, and how a path names an IV after it (§7.1).
 CIPHER: Final = "AES256-CBC"
 _IV_SEPARATOR: Final = "-IV:"
 

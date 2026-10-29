@@ -202,7 +202,7 @@ DATA_APPLICATIONS_PATH: Final = API_PREFIX + "/applications"
 # API's (§2.3), as /CONFIG/page.html is the /config application's.
 _CONFIG_SEGMENT: Final = rf"/(?i:{escape(CONFIG_APPLICATION)})"
 
-# How the same paths are written where a person reads them.
+#: How the same paths are written where a person reads them.
 BACKUP_JOB_TEMPLATE: Final = BACKUPS_PATH + "/{job_id}"
 BACKUP_RUN_TEMPLATE: Final = BACKUP_JOB_TEMPLATE + "/run"
 APPLICATION_TEMPLATE: Final = APPLICATIONS_PATH + "/{name}"

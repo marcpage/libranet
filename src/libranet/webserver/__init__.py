@@ -1,4 +1,4 @@
-"""Peer-facing and `/config` HTTP endpoint (Phase 1 Steps 5, 7, 9, 14, 18, 35-37).
+"""Peer-facing and ``/config`` HTTP endpoint (Phase 1 Steps 5, 7, 9, 14, 18, 35-37).
 
 Serves the content-addressed source of truth, the derived node and seek
 lists, and applications' files, from their parts, by the entries the
@@ -7,26 +7,25 @@ PUT bodies to the sending node's directory, and publishes messages about what
 happened, including the lists peers POST and the application files it lacks.
 It does not validate, fetch, evict, or resolve bundles itself.
 
-`/config` is the node's own administration surface: it is served only to
+``/config`` is the node's own administration surface: it is served only to
 authenticated clients on this machine, and its backup and restore endpoints
-publish a message each rather than doing any of that work here. Its
-application endpoints change the application registry, the file naming each
-application's bundle, which the web server owns, and which names the pages
-shipped with the node at `/` and at `/config` until an administrator changes
-them. The one at `/config` drives all of them, and has the node read and
-change what it says of itself (Phase 5 Step 104), and whom it trusts (Phase 5
-Step 110), and whether it connects only to the nodes it trusts (Phase 5 Step
-113). It builds the node's own trust scores, which say which peers the node
-connects to and serves, and distrusts whoever built a false Karma block (Phase
-6 Step 127). Any client may read what the Karma chain the node follows
-states: its head, any identity's balance, and its generations (Phase 6 Step
-128). Peers tell the node the Karma heads they follow, and ask for its own
-(Phase 6 Step 130). A person signed in pays, and stakes, through the node,
-which signs for them (Phase 6 Step 137). A peer of lower Karma than the
-others connected, that pushes nothing the node seeks, is closed (Phase 6
-Step 142).
+publish a message each rather than doing any of that work here. Its application
+endpoints change the application registry, the file naming each application's
+bundle, which the web server owns, and which names the pages shipped with the
+node at ``/`` and at ``/config`` until an administrator changes them. The one
+at ``/config`` drives all of them, and has the node read and change what it
+says of itself (Phase 5 Step 104), and whom it trusts (Phase 5 Step 110), and
+whether it connects only to the nodes it trusts (Phase 5 Step 113). It builds
+the node's own trust scores, which say which peers the node connects to and
+serves, and distrusts whoever built a false Karma block (Phase 6 Step 127). Any
+client may read what the Karma chain the node follows states: its head, any
+identity's balance, and its generations (Phase 6 Step 128). Peers tell the node
+the Karma heads they follow, and ask for its own (Phase 6 Step 130). A person
+signed in pays, and stakes, through the node, which signs for them (Phase 6
+Step 137). A peer of lower Karma than the others connected, that pushes nothing
+the node seeks, is closed (Phase 6 Step 142).
 
-A few `/data` endpoints serve only clients on this machine, and only this
+A few ``/data`` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
 (Phase 3 Step 68), importing a file from one (Phase 3 Step 69), and making a
 bundle, or a new version of one, from the bundles a request names, stored as
@@ -40,7 +39,7 @@ their list scores again (Phase 5 Step 100). Any client may read into a
 bundle, by its id, as an application's files are served (Phase 3 Step 71).
 
 Every endpoint meant only for browsers but reading into a bundle,
-`/config/api` included, is served only to a request whose `Referer` names
+``/config/api`` included, is served only to a request whose ``Referer`` names
 one of this node's pages, and some only to a trusted application's. An
 application the operator has not trusted is served in a sandbox (Phase 3
 Step 74).

@@ -55,9 +55,9 @@ from libranet.cas.compression import decompressed
 from libranet.cas.errors import NotZlibStreamError, StreamTooLargeError
 from libranet.config.models import MIB
 
-# The ciphertext ends at the last 0x00, before the descriptor (§6.1), and a
-# drop's placement bytes follow a further 0x00 (§6.4). JSON text never holds
-# a raw 0x00 (§6.5).
+#: The ciphertext ends at the last 0x00, before the descriptor (§6.1), and a
+#: drop's placement bytes follow a further 0x00 (§6.4). JSON text never holds
+#: a raw 0x00 (§6.5).
 DESCRIPTOR_SEPARATOR: Final = b"\0"
 
 # A descriptor names its scheme in four fields, "PW-{hash}-{cipher}-{mode}",
@@ -86,9 +86,9 @@ _ARGON2ID_LANES: Final = 4
 # from any other hash of a username.
 _SALT_PREFIX: Final = "libranet-user:"
 
-# A username and password are normalized before they are encoded, so that
-# one typed with its characters composed another way derives the same key
-# (§6.2.1).
+#: A username and password are normalized before they are encoded, so that
+#: one typed with its characters composed another way derives the same key
+#: (§6.2.1).
 NORMAL_FORM: Final = "NFC"
 
 

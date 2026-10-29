@@ -14,7 +14,7 @@ from libranet.identity.signatures import MessageSigner
 from libranet.protocol.http_syntax import CRLF, TOKEN
 
 # Methods that define a meaning for a body, so even an empty one is framed
-# with `Content-Length: 0` (RFC 9110 §8.6).
+# with ``Content-Length: 0`` (RFC 9110 §8.6).
 _BODY_METHODS: Final = frozenset({"POST", "PUT", "PATCH"})
 
 # Lower-cased names of the header fields that frame the message.
