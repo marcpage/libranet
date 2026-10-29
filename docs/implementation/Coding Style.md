@@ -444,11 +444,10 @@ _MAX_EXPANDED_BYTES: Final = 1 << 40
 
 Every module, every class, and every public function and method has a
 docstring, which `pylint` checks. Most private helpers do too. Dunder
-methods do not, nor does a method that only implements a documented
-`Protocol`, nor does a test. The `Protocol` documents each method it asks
-for, and a class whose methods only implement it turns
-`missing-function-docstring` off for itself, with a comment naming the
-`Protocol` (§2.1).
+methods do not, nor does a test. A method that implements a `Protocol` has
+its own, saying what this implementation gives or does where the
+`Protocol` says only what is asked for: `missing-function-docstring` is
+never turned off in `src/`.
 
 ```Python
 @classmethod
