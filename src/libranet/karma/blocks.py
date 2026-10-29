@@ -33,7 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from itertools import pairwise
 from re import compile as compile_pattern
-from typing import Any, Final, Generic, Mapping, Sequence, TypeVar
+from typing import Any, Callable, Final, Generic, Mapping, Sequence, TypeVar
 from zlib import compress
 
 from libranet.bundle.errors import (
@@ -436,6 +436,9 @@ class ValidationBlock:
         return tuple(stake.bundle for stake in self.stakes)
 
 
+_Block = TypeVar("_Block", TransactionBlock, ValidationBlock)
+
+
 @dataclass(frozen=True)
 class BlockBounds:
     """What a block is measured against: how large it may be, and how much work it holds.
@@ -477,6 +480,39 @@ class BlockBounds:
         """
         return self.most_bytes - self.room_bytes < compressed_bytes <= self.most_bytes
 
+    def fullest(
+        self, made: Callable[[int], BlockDrop[_Block]], most: int, *, fewest: int = 0
+    ) -> tuple[BlockDrop[_Block], int] | None:
+        """The drop ``made`` makes of the most it may hold, ``fewest`` to ``most``, that fits.
+
+        ``made`` makes a block's drop of as many transactions or witnesses as
+        it is given, and the drop fits when it measures no more than
+        ``most_bytes`` (:meth:`BlockDrop.measured_bytes`). The most that fit
+        are searched for by halves, since a block is signed and compressed to
+        be measured.
+
+        Returns:
+            The drop, and what it measures, or ``None`` if not even
+            ``fewest`` fit.
+        """
+        fitting: tuple[BlockDrop[_Block], int] | None = None
+        low, high = fewest - 1, most + 1
+        count = most
+
+        while low + 1 < high:
+            drop = made(count)
+            measured_bytes = drop.measured_bytes()
+
+            if measured_bytes <= self.most_bytes:
+                low, fitting = count, (drop, measured_bytes)
+
+            else:
+                high = count
+
+            count = (low + high) // 2
+
+        return fitting
+
 
 #: The bounds the specification sets: full within 128 KiB under 1 MiB, and
 #: 24 bits of work to each transaction (§4.3, §5.4).
@@ -509,9 +545,6 @@ class BlockFinding:
     statement: str
     builder: ContentId | None = None
     staker: ContentId | None = None
-
-
-_Block = TypeVar("_Block", TransactionBlock, ValidationBlock)
 
 
 @dataclass(frozen=True)

@@ -46,7 +46,6 @@ again only while stakes come that those held lack.
 from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from fractions import Fraction
 from logging import getLogger
 from time import time
 from typing import Callable, Iterable, Mapping, Sequence
@@ -54,7 +53,7 @@ from typing import Callable, Iterable, Mapping, Sequence
 from libranet.bundle.errors import BundleError, BundleSignatureError, MissingContentError
 from libranet.bundle.storing import HASH_ALGORITHM
 from libranet.cas.content_id import ContentId
-from libranet.cas.drops import NONCE_SEARCHERS, DropTarget, NonceSearchers
+from libranet.cas.drops import DropTarget
 from libranet.cas.prefix import matching_bits
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import (
@@ -71,6 +70,7 @@ from libranet.karma.following import ChainFollower
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainHistory
 from libranet.karma.ledger import Reward
+from libranet.karma.placing import BlockPlacing
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore, balances_left
 from libranet.protocol.karma_amounts import Kismet
@@ -387,7 +387,7 @@ class HeadStakes:  # pylint: disable=too-many-instance-attributes
         if validated_id not in self._own:
             covering = cover.covering(identity.node_id)
             percent = self._stake_percent()
-            kismet = Kismet(covering.count * Fraction(str(percent)) // 100)
+            kismet = covering.percent(percent)
 
             if kismet == Kismet(0):
                 _LOGGER.info(
@@ -415,19 +415,16 @@ class HeadStakes:  # pylint: disable=too-many-instance-attributes
         return [] if own is None else [own]
 
 
-class ValidationBuilder:  # pylint: disable=too-many-instance-attributes
+class ValidationBuilder:
     """Builds a validation block of the stakes on the best block at the head's target (§6).
 
     The chain is the one ``history`` keeps, whose blocks at the head's
     targets ``follower`` checks, read from what ``reader`` holds, and what is
     carried is in ``carried``. The stakes are taken as :class:`HeadStakes`
     takes them, of the share ``stake_percent`` gives, as ``distrusts`` says
-    whom the node distrusts, at the time ``clock`` gives. A block is signed
-    as ``identity`` gives the node, its nonce searched for by ``searchers``
-    for ``block_seconds``, and after that until it shares ``drop_bits`` with
-    its target, and handed to ``store``, with the node's id, to be stored and
-    announced. It fits within ``bounds``: the specification's, unless a test
-    gives others.
+    whom the node distrusts, at the time ``clock`` gives. A block is signed,
+    placed, and stored as ``placing`` says. It fits within ``bounds``: the
+    specification's, unless a test gives others.
     """
 
     def __init__(
@@ -436,25 +433,17 @@ class ValidationBuilder:  # pylint: disable=too-many-instance-attributes
         follower: ChainFollower,
         reader: TargetReader,
         carried: CarriedTransactions,
-        identity: Callable[[], NodeIdentity],
+        placing: BlockPlacing,
         *,
-        store: Callable[[bytes, ContentId], None],
         distrusts: Callable[[ContentId], bool],
         stake_percent: Callable[[], float],
-        block_seconds: float,
-        drop_bits: int,
         clock: Callable[[], float] = time,
-        searchers: NonceSearchers = NONCE_SEARCHERS,
         bounds: BlockBounds = BLOCK_BOUNDS,
     ) -> None:
         self._history = history
         self._follower = follower
         self._carried = carried
-        self._identity = identity
-        self._store = store
-        self._block_seconds = block_seconds
-        self._drop_bits = drop_bits
-        self._searchers = searchers
+        self._placing = placing
         self._bounds = bounds
         self._chain = HeldChain(history, reader)
         self._stakes = HeadStakes(
@@ -510,7 +499,7 @@ class ValidationBuilder:  # pylint: disable=too-many-instance-attributes
                 drop could not be written.
         """
         transactions, validations = self._follower.checked()
-        identity = self._identity()
+        identity = self._placing.identity()
         staked = self._stakes.staked(
             transactions,
             identity,
@@ -604,30 +593,18 @@ class ValidationBuilder:  # pylint: disable=too-many-instance-attributes
         """``block`` listing the most of ``witnesses``, in order, that fit, signed by ``identity``.
 
         It fits when its drop measures no more than the bounds allow
-        (:meth:`~libranet.karma.blocks.BlockDrop.measured_bytes`). The most
-        that fit are searched for by halves, since a block is signed and
-        compressed to be measured.
+        (:meth:`~libranet.karma.blocks.BlockBounds.fullest`).
 
         Returns:
             The block, or ``None`` if it does not fit listing none.
         """
-        fitting: BlockDrop[ValidationBlock] | None = None
-        low, high = -1, len(witnesses) + 1
-        count = len(witnesses)
 
-        while low + 1 < high:
-            listing = replace(block, witnessed=tuple(sorted(witnesses[:count])))
-            drop = BlockDrop(identity.signed(listing.text()), listing)
+        def listing(count: int) -> BlockDrop[ValidationBlock]:
+            listed = replace(block, witnessed=tuple(sorted(witnesses[:count])))
+            return BlockDrop(identity.signed(listed.text()), listed)
 
-            if drop.measured_bytes() <= self._bounds.most_bytes:
-                low, fitting = count, drop
-
-            else:
-                high = count
-
-            count = (low + high) // 2
-
-        return fitting
+        fullest = self._bounds.fullest(listing, len(witnesses))
+        return None if fullest is None else fullest[0]
 
     def _place(
         self, drop: BlockDrop[ValidationBlock], target: DropTarget, validated_id: ContentId
@@ -640,13 +617,7 @@ class ValidationBuilder:  # pylint: disable=too-many-instance-attributes
             OSError: a searching process could not be started, or exited
                 during the search, or the drop could not be written.
         """
-        placed = target.placed(
-            drop.content(),
-            self._block_seconds,
-            minimum_bits=self._drop_bits,
-            searchers=self._searchers,
-        )
-        self._store(placed.data, drop.builder)
+        placed = self._placing.placed(drop, target)
         _LOGGER.info(
             "Built Karma validation block %s of %d stakes and %d witnesses, validating %s, "
             "naming %s its runner-up, sharing %d bits with its target",

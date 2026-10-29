@@ -3,8 +3,9 @@
 from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from json import loads
-from typing import Any
+from typing import Any, Callable
 
 from pytest import fixture, mark, raises
 
@@ -897,3 +898,50 @@ def test_bounds_no_block_could_meet_are_refused(
 ) -> None:
     with raises(ValueError):
         BlockBounds(most_bytes, room_bytes, transaction_bits)
+
+
+def listings(witnesser: NodeIdentity) -> Callable[[int], BlockDrop[ValidationBlock]]:
+    """What makes the drop of a validation block ``witnesser`` signs, listing as many witnesses."""
+    witnesses = sorted(sha256(str(each).encode("ascii")).hexdigest() for each in range(100))
+
+    def listing(count: int) -> BlockDrop[ValidationBlock]:
+        block = replace(validation_of(staked(witnesser)), witnessed=tuple(witnesses[:count]))
+        return BlockDrop(witnesser.signed(block.text()), block)
+
+    return listing
+
+
+def test_the_fullest_drop_that_fits_is_found_by_halves(alice: NodeIdentity) -> None:
+    listing = listings(alice)
+    measured_bytes = listing(40).measured_bytes()
+    made: list[int] = []
+
+    def counted(count: int) -> BlockDrop[ValidationBlock]:
+        made.append(count)
+        return listing(count)
+
+    fullest = BlockBounds(most_bytes=measured_bytes, room_bytes=0).fullest(counted, 100)
+
+    assert fullest is not None
+    assert (len(fullest[0].block.witnessed), fullest[1]) == (40, measured_bytes)
+    assert len(made) < 10
+
+
+@mark.parametrize("fewest", [0, 1])
+def test_no_drop_is_the_fullest_when_not_even_the_fewest_fit(
+    alice: NodeIdentity, fewest: int
+) -> None:
+    listing = listings(alice)
+    bounds = BlockBounds(most_bytes=listing(fewest).measured_bytes() - 1, room_bytes=0)
+
+    assert bounds.fullest(listing, 100, fewest=fewest) is None
+
+
+def test_the_fewest_fit_when_no_more_do(alice: NodeIdentity) -> None:
+    listing = listings(alice)
+    bounds = BlockBounds(most_bytes=listing(1).measured_bytes(), room_bytes=0)
+
+    fullest = bounds.fullest(listing, 100, fewest=1)
+
+    assert fullest is not None
+    assert len(fullest[0].block.witnessed) == 1

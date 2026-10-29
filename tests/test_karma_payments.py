@@ -16,6 +16,7 @@ from libranet.karma.carried import CarriedTransactions
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
 from libranet.karma.payments import NodePayments
+from libranet.karma.placing import BlockPlacing
 from libranet.karma.putting import TransactionsPutUp
 from libranet.karma.reading import TargetReader
 from libranet.protocol.karma_amounts import MAX_KISMET, Kismet
@@ -195,10 +196,7 @@ def paying_as(
         history,
         reader,
         CarriedTransactions(storage.karma_dir, 3),
-        lambda: node,
-        placed,
-        block_seconds=0.0,
-        drop_bits=MINIMUM_BITS,
+        BlockPlacing(lambda: node, placed, block_seconds=0.0, drop_bits=MINIMUM_BITS),
         bounds=BOUNDS,
     )
     return NodePayments(

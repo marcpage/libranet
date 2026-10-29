@@ -17,7 +17,6 @@ show (Phase 6 Step 138).
 from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
-from fractions import Fraction
 from json import loads
 from pathlib import Path
 from typing import Any, Final
@@ -63,7 +62,7 @@ class Payment:
         It is rounded down to whole Kismet, ``percent`` read as the decimal
         it is written as, so that it is exact.
         """
-        amount = Kismet(balance.count * Fraction(str(percent)) // 100)
+        amount = balance.percent(percent)
         return None if amount == Kismet(0) else cls(recipient, amount)
 
     @classmethod

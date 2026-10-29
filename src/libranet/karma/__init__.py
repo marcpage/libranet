@@ -16,8 +16,9 @@ heavier chain, and carrying over the transactions of the chain left (Phase
 6 Step 129); putting a transaction up as a block of its own (Phase 6 Step
 131); queuing the node's payments, and putting them up together (Phase 6
 Step 132); combining transaction blocks into one, as full as it can be
-(Phase 6 Step 134); and staking on the best of them, and building
-validation blocks of the stakes (Phase 6 Step 136).
+(Phase 6 Step 134); staking on the best of them, and building
+validation blocks of the stakes (Phase 6 Step 136); and how each block the
+node builds is signed, placed, and stored.
 
 Kismet, the unit an amount is counted in, and the transactions, payouts,
 and stakes blocks are made of (Phase 6 Steps 116 and 117), are in
@@ -70,6 +71,7 @@ from libranet.karma.ledger import (
 )
 from libranet.karma.module import KarmaModule
 from libranet.karma.payments import NodePayments
+from libranet.karma.placing import BlockPlacing
 from libranet.karma.putting import OwnBlock, TransactionsPutUp
 from libranet.karma.reading import ChainGenerations, HeldBlock, HeldChain, TargetReader
 from libranet.karma.root import ChainRoot
@@ -93,6 +95,7 @@ __all__ = [
     "BlockBounds",
     "BlockDrop",
     "BlockFinding",
+    "BlockPlacing",
     "BlockScore",
     "CarriedTransactions",
     "ChainBefore",

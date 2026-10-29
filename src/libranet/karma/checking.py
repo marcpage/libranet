@@ -48,6 +48,7 @@ from libranet.karma.blocks import (
 )
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.ledger import NO_BALANCE, BalanceSheet, Reward, reach_of
+from libranet.karma.reading import HeldBlock
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_transactions import Payout, SignedTransaction, TransactionKey
@@ -419,6 +420,33 @@ class TransactionBlockCheck:
 
         before = ChainBefore.read(chain, named_for)
         return cls._on_chain(found, bits, before, compressed_bytes=compressed_bytes, bounds=bounds)
+
+    @classmethod
+    def of_held(
+        cls,
+        held: HeldBlock,
+        named_for: ContentId | None,
+        chain: ChainView,
+        *,
+        bounds: BlockBounds = BLOCK_BOUNDS,
+    ) -> TransactionBlockCheck | BlockFinding:
+        """Transaction block ``held``, as the node holds it, checked, as :meth:`of` checks it.
+
+        Raises:
+            MisplacedBlockError: as :meth:`of`.
+            MissingContentError: as :meth:`of`.
+            UnsupportedBundleError: as :meth:`of`.
+            UnknownAlgorithmError: as :meth:`of`.
+        """
+        return cls.of(
+            held.block_id,
+            held.data,
+            named_for,
+            chain,
+            held.keys,
+            compressed_bytes=held.compressed_bytes,
+            bounds=bounds,
+        )
 
     @property
     def is_correct(self) -> bool:
