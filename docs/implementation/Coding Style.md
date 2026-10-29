@@ -391,7 +391,11 @@ must also normalize, which a frozen `__post_init__` cannot easily do.
 
   A method that overrides or stands in for a standard-library one keeps that
   one's signature, as an override of `BaseHTTPRequestHandler.send_error` or
-  a stand-in for `Queue.get` does.
+  a stand-in for `Queue.get` does, but for a parameter named for a builtin.
+  That one is renamed and made positional-only, since the standard library
+  passes it by position: an override of `BaseHTTPRequestHandler.log_message`,
+  whose parameter is `format`, takes `(self, template, /, *args)`.
+  `redefined-builtin` is never turned off.
 
 - **No more than five parameters are positional**, not counting `self` or
   `cls`, which `pylint` checks. Any more go after the `*`, where a call has

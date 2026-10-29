@@ -980,11 +980,12 @@ class RequestHandler(BaseHTTPRequestHandler):
         )
         self._send(problem_response(problem), close=True)
 
-    # BaseHTTPRequestHandler names the parameter ``format``.
-    def log_message(self, format: str, *args: Any) -> None:  # pylint: disable=redefined-builtin
+    # BaseHTTPRequestHandler names the parameter ``format``, a builtin, and
+    # passes it by position.
+    def log_message(self, template: str, /, *args: Any) -> None:
         """Send the access log to the web server's logger rather than stderr, without keys."""
         self.server.logger.info(
-            "%s %s", self.address_string(), PartPath.without_keys(format % args)
+            "%s %s", self.address_string(), PartPath.without_keys(template % args)
         )
 
     def _request_body(self) -> RequestBody | None:
