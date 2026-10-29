@@ -19,14 +19,16 @@ server publishes the request, keys and all, to the backup module alone::
 
 ``GET /data/archives`` says how each archive is doing, by id, as the backup
 module last reported (:mod:`libranet.webserver.backup_state`), naming each
-bundle by its plain id, never with its key::
+bundle by its plain id, never with its key
+(:class:`~libranet.webserver.config_handlers.BackupReportHandler`)::
 
     {"archives": {"<archive_id>": {"bundles": ["sha256/…"], "status": "done",
                                    "expires": "2026-11-20T00:00:00Z", ...}}}
 
 Before its first report there is nothing to read, and the answer is ``503``
 with a ``Retry-After``, as for imports. ``DELETE /data/archives/{archive_id}``
-stops keeping one, deleting it, and is answered ``202``::
+stops keeping one, deleting it, and is answered ``202``, as a backup job is
+removed (:class:`~libranet.webserver.config_handlers.BackupJobEventHandler`)::
 
     backup.archive_removed  {"archive_id"}
 
@@ -41,18 +43,12 @@ from logging import getLogger
 from time import time
 from typing import Callable, Final
 
-from libranet.messaging.events import ARCHIVES_FIELD, EventType
+from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.backup_requests import IDENTIFIER_LENGTH, ArchiveRequest
 from libranet.protocol.http_syntax import API_PREFIX
-from libranet.webserver.backup_state import BackupState
 from libranet.webserver.http_types import Request, Response, json_response
-from libranet.webserver.request_refusals import (
-    body_or_refusal,
-    invalid_request_response,
-    parsed_or_refusal,
-    unreported_response,
-)
+from libranet.webserver.request_refusals import invalid_request_response, parsed_or_refusal
 
 _LOGGER = getLogger(__name__)
 
@@ -89,60 +85,3 @@ class ArchiveHandler:
 
         self.publish(EventType.ARCHIVE_REQUESTED, asked.payload())
         return json_response({"archive_id": asked.archive_id}, HTTPStatus.ACCEPTED)
-
-
-@dataclass(frozen=True)
-class ArchiveListHandler:
-    """``GET /data/archives``: how each archive kept is doing, by id, as the backup module said.
-
-    Raises:
-        ValueError: ``retry_after_seconds`` is negative.
-    """
-
-    state: BackupState
-    retry_after_seconds: int
-
-    def __post_init__(self) -> None:
-        if self.retry_after_seconds < 0:
-            raise ValueError(
-                f"retry_after_seconds must not be negative, got {self.retry_after_seconds}"
-            )
-
-    def __call__(self, request: Request) -> Response:
-        report = self.state.latest
-
-        if report is None:
-            return unreported_response(request, self.retry_after_seconds)
-
-        return json_response(
-            {
-                ARCHIVES_FIELD: {
-                    entry["archive_id"]: {
-                        name: value for name, value in entry.items() if name != "archive_id"
-                    }
-                    for entry in report.archives
-                }
-            }
-        )
-
-
-@dataclass(frozen=True)
-class ArchiveRemovalHandler:
-    """``DELETE /data/archives/{archive_id}``: stop keeping an archive, deleting it.
-
-    One this node does not keep is accepted like any other: the web server
-    holds no state to check it against, and the backup module reports what
-    it keeps.
-    """
-
-    publish: Publish
-
-    def __call__(self, request: Request) -> Response:
-        body = body_or_refusal(request)
-
-        if isinstance(body, Response):
-            return body
-
-        archive_id = request.params["archive_id"].lower()
-        self.publish(EventType.ARCHIVE_REMOVED, {"archive_id": archive_id})
-        return json_response({"archive_id": archive_id}, HTTPStatus.ACCEPTED)

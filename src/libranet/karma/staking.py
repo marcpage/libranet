@@ -45,7 +45,6 @@ again only while stakes come that those held lack.
 
 from __future__ import annotations
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
 from logging import getLogger
 from time import time
 from typing import Callable, Iterable, Mapping, Sequence
@@ -56,9 +55,9 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.cas.prefix import matching_bits
 from libranet.identity.node_identity import NodeIdentity
+from libranet.json_format import moment_at
 from libranet.karma.blocks import (
     BLOCK_BOUNDS,
-    Balance,
     BlockBounds,
     BlockDrop,
     TransactionBlock,
@@ -74,6 +73,7 @@ from libranet.karma.placing import BlockPlacing
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore, balances_left
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import Balance
 from libranet.protocol.karma_stakes import SignedStake, Stake
 
 _LOGGER = getLogger(__name__)
@@ -400,7 +400,7 @@ class HeadStakes:  # pylint: disable=too-many-instance-attributes
                 self._own[validated_id] = None
 
             else:
-                created = datetime.fromtimestamp(int(self._clock()), UTC)
+                created = moment_at(self._clock())
                 stake = Stake(identity.node_id, validated_id, kismet, created)
                 self._own[validated_id] = SignedStake.of(identity.signed(stake.text()))
                 _LOGGER.info(

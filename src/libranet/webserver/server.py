@@ -71,6 +71,7 @@ from libranet.config.models import (
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner
+from libranet.messaging.events import ARCHIVES_FIELD, IMPORTS_FIELD, EventType
 from libranet.messaging.publishing import Publish
 from libranet.problems import Problem
 from libranet.protocol.http_syntax import BODILESS_STATUSES, REQUEST_PATH_HEADER
@@ -115,6 +116,8 @@ from libranet.webserver.config_guard import (
 from libranet.webserver.config_handlers import (
     DATA_APPLICATIONS_PATH,
     ApplicationListHandler,
+    BackupJobEventHandler,
+    BackupReportHandler,
     ConnectHandler,
     KarmaRootHandler,
     NodeDescription,
@@ -160,14 +163,8 @@ from libranet.webserver.list_handlers import (
     SeekListHandler,
 )
 from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
-from libranet.webserver.kept_archives import (
-    ARCHIVE_PATTERN,
-    ARCHIVES_PATH,
-    ArchiveHandler,
-    ArchiveListHandler,
-    ArchiveRemovalHandler,
-)
-from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler, ImportListHandler
+from libranet.webserver.kept_archives import ARCHIVE_PATTERN, ARCHIVES_PATH, ArchiveHandler
+from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler
 from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, OwnSiteOnly, client_handler
 from libranet.webserver.metadata_handlers import OwnMetadata
 from libranet.webserver.node_trust_handlers import Connecting, OwnTrust
@@ -345,24 +342,27 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
         DIRECTORY_PATTERN,
         LocalOnly(OwnPageOnly(DirectoryHandler(folders), pages, trusted=True), checks),
     )
-    imports = ImportListHandler(state, retry_after_seconds)
+    imports = BackupReportHandler(state, IMPORTS_FIELD, retry_after_seconds, by="import_id")
     router.add("GET", IMPORTS_PATH, LocalOnly(OwnPageOnly(imports, pages, trusted=True), checks))
     router.add(
         "POST",
         IMPORTS_PATH,
         LocalOnly(OwnPageOnly(ImportHandler(folders, publish), pages, trusted=True), checks),
     )
-    archives = ArchiveListHandler(state, retry_after_seconds)
+    archives = BackupReportHandler(state, ARCHIVES_FIELD, retry_after_seconds, by="archive_id")
     router.add("GET", ARCHIVES_PATH, LocalOnly(OwnPageOnly(archives, pages, trusted=True), checks))
     router.add(
         "POST",
         ARCHIVES_PATH,
         LocalOnly(OwnPageOnly(ArchiveHandler(publish), pages, trusted=True), checks),
     )
+    archive_removal = BackupJobEventHandler(
+        publish, EventType.ARCHIVE_REMOVED, id_field="archive_id"
+    )
     router.add(
         "DELETE",
         ARCHIVE_PATTERN,
-        LocalOnly(OwnPageOnly(ArchiveRemovalHandler(publish), pages, trusted=True), checks),
+        LocalOnly(OwnPageOnly(archive_removal, pages, trusted=True), checks),
     )
     router.add("GET", STORE_PATTERN, StoreHandler(app_store, pages))
     router.add("GET", STORE_KEY_PATTERN, StoreValueHandler(app_store, pages))

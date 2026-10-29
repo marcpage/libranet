@@ -9,15 +9,18 @@ file is created beside its target rather than in the system temp directory.
 
 A reader that keeps what such a file held, rather than reading it on every
 use, tells whether it has been replaced by its :class:`FileVersion`, as a
-:class:`KeptRead` does for it.
+:class:`KeptRead` does for it. A :class:`LastGoodRead` also keeps what it last
+read while the file cannot be read, rather than fail.
 """
 
 from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
+from logging import Logger
 from os import replace
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from threading import Lock
 from typing import IO, Callable, Final, Generic, Iterator, TypeVar
 
 #: Suffix of the temporary file, so a leftover from a crash is recognizable.
@@ -87,6 +90,59 @@ class KeptRead(Generic[_Read]):
     def forget(self) -> None:
         """Read the file again on the next use, whatever its version."""
         self._kept = None
+
+
+class LastGoodRead(Generic[_Read]):  # pylint: disable=too-many-instance-attributes
+    """What ``parse`` makes of the file at ``path``, read again whenever it is replaced.
+
+    It is ``empty`` while there is no file. A file that cannot be looked at,
+    or read, leaves what was last read, and is logged with ``logger``, as
+    ``what`` names the file. Safe to use from several threads at once, as
+    the web server's are.
+    """
+
+    def __init__(
+        self,
+        path: Path,
+        parse: Callable[[bytes], _Read],
+        empty: _Read,
+        *,
+        what: str,
+        logger: Logger,
+    ) -> None:
+        self._path = path
+        self._parse = parse
+        self._empty = empty
+        self._what = what
+        self._logger = logger
+        self._lock = Lock()
+        self._file = KeptRead(path, self._read)
+        # What was last read, kept when the file cannot be read again.
+        self._last = empty
+
+    def current(self) -> _Read:
+        """What the file holds now, read again only if it was replaced."""
+        with self._lock:
+            try:
+                self._last = self._file.current()
+
+            except FileNotFoundError:
+                # Not logged: it is not written yet.
+                self._last = self._empty
+
+            except OSError as error:
+                self._logger.warning("Cannot look at %s at %s: %s", self._what, self._path, error)
+
+            return self._last
+
+    def _read(self, path: Path) -> _Read:
+        """What the file at ``path`` holds; what was read before, if it cannot be read."""
+        try:
+            return self._parse(path.read_bytes())
+
+        except (OSError, ValueError) as error:
+            self._logger.warning("Cannot read %s at %s: %s", self._what, path, error)
+            return self._last
 
 
 def write_atomically(path: Path, data: bytes) -> Path:

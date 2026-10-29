@@ -12,7 +12,8 @@ from libranet.cas.content_id import ContentId
 from libranet.config.models import StatsConfig, StorageConfig
 from libranet.messaging.connected_peers import ConnectedPeers
 from libranet.messaging.events import AddressSource, ConnectionDirection
-from libranet.protocol.karma_balances import KarmaBalance, KarmaBalances
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import Balance, KarmaBalances
 from libranet.protocol.karma_head import KarmaHead
 from libranet.stats.database import StatsDatabase
 from libranet.stats.derivation import DerivedLists, ListDeriver
@@ -57,7 +58,7 @@ def listed_ids(lists: DerivedLists) -> list[str]:
 
 def hold_karma(storage: StorageConfig, kismet: dict[ContentId, int]) -> None:
     """Write the balances the Karma module would, each node named holding its Kismet."""
-    balances = {node_id: KarmaBalance(amount) for node_id, amount in kismet.items()}
+    balances = {node_id: Balance(Kismet(amount)) for node_id, amount in kismet.items()}
     KarmaBalances(HEAD, balances).write(storage.karma_dir)
 
 

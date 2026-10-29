@@ -58,7 +58,6 @@ from libranet.cas.prefix import matching_bits
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import (
     BLOCK_BOUNDS,
-    Balance,
     BlockBounds,
     BlockDrop,
     TransactionBlock,
@@ -72,6 +71,7 @@ from libranet.karma.ledger import BalanceSheet, reach_of
 from libranet.karma.placing import BlockPlacing
 from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import Balance
 from libranet.protocol.karma_transactions import Payout, SignedTransaction, TransactionKey
 
 _LOGGER = getLogger(__name__)

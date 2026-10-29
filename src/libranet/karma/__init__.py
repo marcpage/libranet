@@ -25,7 +25,9 @@ and stakes blocks are made of (Phase 6 Steps 116 and 117), are in
 :mod:`libranet.protocol`, since the web server makes transactions and
 stakes for whoever is signed in (Phase 6 Step 137), and so are the node's
 payments queued, and the transactions it carries, as the module keeps them,
-since ``/config`` shows them (Phase 6 Step 138).
+since ``/config`` shows them (Phase 6 Step 138), and the balances a block
+states, since the web server and the stats module read them as the module
+writes them (Phase 6 Step 128).
 """
 
 from libranet.karma.balances import HeadBalances
@@ -33,7 +35,6 @@ from libranet.karma.blocks import (
     BLOCK_BOUNDS,
     FULL_BLOCK_ROOM_BYTES,
     MAX_BLOCK_BYTES,
-    Balance,
     BlockBounds,
     BlockDrop,
     BlockFinding,
@@ -61,14 +62,7 @@ from libranet.karma.generations import (
     new_kismet,
 )
 from libranet.karma.history import ChainGeneration, ChainHistory
-from libranet.karma.ledger import (
-    NO_BALANCE,
-    WEIGHT_GENERATIONS,
-    BalanceSheet,
-    Reward,
-    StakeWeight,
-    reach_of,
-)
+from libranet.karma.ledger import WEIGHT_GENERATIONS, BalanceSheet, Reward, StakeWeight, reach_of
 from libranet.karma.module import KarmaModule
 from libranet.karma.payments import NodePayments
 from libranet.karma.placing import BlockPlacing
@@ -87,9 +81,7 @@ __all__ = [
     "MAX_BLOCK_BYTES",
     "MisplacedBlockError",
     "NEW_KISMET_DECREASE",
-    "NO_BALANCE",
     "WEIGHT_GENERATIONS",
-    "Balance",
     "BalanceSheet",
     "BlockBuilder",
     "BlockBounds",

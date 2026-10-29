@@ -133,7 +133,6 @@ gives it, keeping it until its head changes (Phase 6 Step 137)::
 """
 
 from __future__ import annotations
-from datetime import UTC, datetime
 from functools import partial
 from logging import Logger
 from time import time
@@ -148,6 +147,7 @@ from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.trust import TrustState
+from libranet.json_format import moment_at
 from libranet.karma.balances import HeadBalances
 from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds
 from libranet.karma.building import BlockBuilder
@@ -530,7 +530,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self.logger.info("Making a Karma root as %s", identity.node_id)
         root = ChainRoot.made(
             identity,
-            datetime.fromtimestamp(int(self._clock()), UTC),
+            moment_at(self._clock()),
             drop_bits=self._config.storage.search_min_bits,
             transaction_bits=self._bounds.transaction_bits,
             searchers=self._searchers,

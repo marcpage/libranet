@@ -63,7 +63,7 @@ from pathlib import Path
 from typing import Any, Final, Iterable, Mapping
 
 from libranet.backup.builds import BuildRecord
-from libranet.backup.tasks import Task, TaskStatus
+from libranet.backup.tasks import ContentWaiting, Task, TaskStatus
 from libranet.backup.writing import DirectoryWriter
 from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.content import ContentSource, check_held
@@ -129,18 +129,9 @@ class _Settings:
 
 
 @dataclass
-class _Waiting:
-    """Where a restore stands in waiting on content.
+class _Waiting(ContentWaiting):
+    """Where a restore stands in waiting on content, and whether it ``gave_up`` waiting."""
 
-    It is next to carry on at ``due_at``. ``arrived_at`` is when content it
-    waits on last arrived, or it was last asked for, and ``asked_at`` when
-    it last asked for all it lacks; ``None`` until it first does, and again
-    once asked for itself. ``gave_up`` is whether it gave up waiting.
-    """
-
-    due_at: float
-    arrived_at: float
-    asked_at: float | None = None
     gave_up: bool = False
 
 
@@ -234,8 +225,7 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
         gave up carries on where it left off.
         """
         self._request = request
-        self._waiting.due_at = self._waiting.arrived_at = now
-        self._waiting.asked_at = None
+        self._waiting.ask_again(now)
 
         if self._waiting.gave_up:
             self._status, self._error, self._finished_at = TaskStatus.WAITING, None, None
@@ -542,19 +532,14 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
             self._give_up(now)
             return ()
 
-        asked_at = self._waiting.asked_at
-        ask_interval_seconds = self._settings.ask_interval_seconds
-
-        if asked_at is None or now >= asked_at + ask_interval_seconds:
-            asked_at = self._waiting.asked_at = now
-            asking = tuple(missing)
-
-        else:
-            asking = tuple(content_id for content_id in missing if content_id not in waited)
-
         self._status = TaskStatus.WAITING
-        self._waiting.due_at = min(asked_at + ask_interval_seconds, give_up_at)
-        return asking
+        return self._waiting.asking(
+            missing,
+            waited,
+            now,
+            ask_interval_seconds=self._settings.ask_interval_seconds,
+            give_up_at=give_up_at,
+        )
 
     def _give_up(self, now: float) -> None:
         """Fail for want of the content waited on, saying what was not restored for it."""

@@ -21,7 +21,6 @@ from libranet.cas.store import CasStore
 from libranet.config.models import MIB, KarmaConfig, LibranetConfig, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import (
-    Balance,
     BlockBounds,
     BlockDrop,
     BlockFinding,
@@ -31,13 +30,13 @@ from libranet.karma.blocks import (
 from libranet.karma.checking import BlockScore, ChainView, TransactionBlockCheck
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
-from libranet.karma.ledger import NO_BALANCE
 from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore
 from libranet.karma.weight import ChainWeight
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import NO_BALANCE, Balance
 from libranet.protocol.karma_stakes import SignedStake, Stake
 from libranet.protocol.karma_transactions import (
     Payout,

@@ -73,7 +73,8 @@ from libranet.protocol.karma_amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet
 from libranet.protocol.karma_balances import (
     BALANCES_FIELD,
     KARMA_BALANCES_FILE,
-    KarmaBalance,
+    NO_BALANCE,
+    Balance,
     KarmaBalances,
 )
 from libranet.protocol.karma_carried import CARRIED_FILE, CarriedTransaction
@@ -162,6 +163,7 @@ __all__ = [
     "MIN_PASSWORD_CHARACTERS",
     "MIN_TRANSACTION_BITS",
     "NODES_PATH",
+    "NO_BALANCE",
     "OCTET_STREAM",
     "ONLY_TRUSTED_FIELD",
     "PAYMENTS_FILE",
@@ -178,6 +180,7 @@ __all__ = [
     "WEIGHT_FIELD",
     "ArchiveRequest",
     "BackupJobRequest",
+    "Balance",
     "BuildRequest",
     "BundleEditRequest",
     "BytesSource",
@@ -195,7 +198,6 @@ __all__ = [
     "ImportRequest",
     "InvalidListError",
     "InvalidRequestError",
-    "KarmaBalance",
     "KarmaBalances",
     "KarmaGeneration",
     "KarmaHead",

@@ -17,7 +17,6 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.json_format import compact_json
 from libranet.karma.blocks import (
     BLOCK_BOUNDS,
-    Balance,
     BlockBounds,
     BlockDrop,
     BlockFinding,
@@ -28,6 +27,7 @@ from libranet.karma.blocks import (
 from libranet.karma.generations import GenerationTargets, new_kismet
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import Balance
 from libranet.protocol.karma_stakes import SignedStake, Stake
 from libranet.protocol.karma_transactions import Payout, SignedTransaction, Transaction
 from tests.helpers import new_identity
@@ -145,46 +145,6 @@ def block(alice: NodeIdentity, bob: NodeIdentity) -> TransactionBlock:
 @fixture(scope="module")
 def validation(alice: NodeIdentity, bob: NodeIdentity) -> ValidationBlock:
     return validation_of(staked(alice), staked(bob, 25))
-
-
-def test_a_balance_reads_back_as_written() -> None:
-    balance = Balance(Kismet(1_250_000), 40)
-
-    assert Balance.from_value(balance.value()) == balance
-    assert balance.value() == {"kismet": "1250000", "last_won": 40}
-
-
-def test_a_balance_that_has_won_nothing_is_stated_with_null() -> None:
-    assert Balance.from_value({"kismet": "0", "last_won": None}) == Balance(Kismet(0))
-
-
-@mark.parametrize(
-    "value, member",
-    [
-        ({"kismet": "0"}, "last_won"),
-        ({"kismet": "0", "last_won": "40"}, "last_won"),
-        ({"kismet": "0", "last_won": True}, "last_won"),
-        ({"kismet": "0", "last_won": 4.5}, "last_won"),
-        ({"kismet": "-1", "last_won": None}, "kismet"),
-        ({"kismet": "1.5", "last_won": None}, "kismet"),
-        ({"last_won": None}, "kismet"),
-    ],
-)
-def test_a_balance_not_as_it_must_be_is_refused_naming_its_member(
-    value: dict[str, Any], member: str
-) -> None:
-    with raises(ValueError, match=f'"{member}"'):
-        Balance.from_value(value)
-
-
-def test_a_balance_won_before_the_root_is_refused() -> None:
-    with raises(ValueError, match='"last_won" must not be negative'):
-        Balance(Kismet(0), -1)
-
-
-def test_what_is_no_object_is_no_balance() -> None:
-    with raises(ValueError, match="must be a JSON object"):
-        Balance.from_value("0")
 
 
 def test_a_transaction_block_reads_back_as_written(block: TransactionBlock) -> None:

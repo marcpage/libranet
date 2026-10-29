@@ -4,27 +4,22 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from json import dumps, loads
 
-from pytest import fixture, mark, raises
+from pytest import fixture, mark
 
 from libranet.bundle.parts import PartPath
 from libranet.cas.content_id import ContentId
 from libranet.config.models import DEFAULT_CONFIG_HOSTS
 from libranet.messaging.envelope import Message
-from libranet.messaging.events import EventType
+from libranet.messaging.events import ARCHIVES_FIELD, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.problems import PROBLEM_CONTENT_TYPE
 from libranet.protocol.backup_requests import ArchiveRequest
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.webserver.backup_state import BackupReport, BackupState
+from libranet.webserver.config_handlers import BackupJobEventHandler, BackupReportHandler
 from libranet.webserver.http_types import Request, RequestBody, Response
-from libranet.webserver.kept_archives import (
-    ARCHIVE_PATTERN,
-    ARCHIVES_PATH,
-    ArchiveHandler,
-    ArchiveListHandler,
-    ArchiveRemovalHandler,
-)
+from libranet.webserver.kept_archives import ARCHIVE_PATTERN, ARCHIVES_PATH, ArchiveHandler
 from libranet.webserver.local_only import LocalOnly
 from libranet.webserver.request_refusals import MAX_JSON_BODY_BYTES
 from libranet.webserver.router import Router
@@ -55,10 +50,10 @@ def router(queues: ModuleQueues, state: BackupState) -> Router:
     checks = SiteChecks(DEFAULT_CONFIG_HOSTS, "This endpoint")
     router = Router()
     router.add("POST", ARCHIVES_PATH, LocalOnly(ArchiveHandler(publish, clock=lambda: NOW), checks))
-    router.add(
-        "GET", ARCHIVES_PATH, LocalOnly(ArchiveListHandler(state, RETRY_AFTER_SECONDS), checks)
-    )
-    router.add("DELETE", ARCHIVE_PATTERN, LocalOnly(ArchiveRemovalHandler(publish), checks))
+    archives = BackupReportHandler(state, ARCHIVES_FIELD, RETRY_AFTER_SECONDS, by="archive_id")
+    router.add("GET", ARCHIVES_PATH, LocalOnly(archives, checks))
+    removal = BackupJobEventHandler(publish, EventType.ARCHIVE_REMOVED, id_field="archive_id")
+    router.add("DELETE", ARCHIVE_PATTERN, LocalOnly(removal, checks))
     return router
 
 
@@ -184,11 +179,6 @@ def test_an_archive_is_removed_by_its_id(
     assert loads(response.body) == {"archive_id": ARCHIVE_ID}
     (message,) = sent(queues, EventType.ARCHIVE_REMOVED)
     assert message["archive_id"] == ARCHIVE_ID
-
-
-def test_an_archive_list_refuses_a_negative_retry_after(state: BackupState) -> None:
-    with raises(ValueError, match="retry_after_seconds"):
-        ArchiveListHandler(state, -1)
 
 
 def test_a_removal_carrying_too_large_a_body_is_refused_unread(

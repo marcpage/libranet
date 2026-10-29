@@ -14,7 +14,7 @@ from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.balances import HeadBalances
-from libranet.karma.blocks import Balance, TransactionBlock
+from libranet.karma.blocks import TransactionBlock
 from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.weight import ChainWeight
@@ -22,6 +22,7 @@ from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import EventType
 from libranet.modules import ModuleName
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import Balance
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from tests.helpers import new_identity
 

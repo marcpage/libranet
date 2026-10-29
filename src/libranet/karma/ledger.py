@@ -21,18 +21,15 @@ from dataclasses import dataclass, replace
 from typing import Final, Mapping, Sequence
 
 from libranet.cas.content_id import ContentId
-from libranet.karma.blocks import Balance, TransactionBlock, ValidationBlock
+from libranet.karma.blocks import TransactionBlock, ValidationBlock
 from libranet.karma.generations import new_kismet
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import NO_BALANCE, Balance
 from libranet.protocol.karma_transactions import Payout
 
 #: How many generations after a win a staker's weight takes to grow back
 #: whole, a tenth each generation (§6.6, Karma §23).
 WEIGHT_GENERATIONS: Final = 10
-
-#: The balance of an identity stated nowhere: it holds nothing, and has won
-#: nothing (§5.3).
-NO_BALANCE: Final = Balance(Kismet(0))
 
 
 @dataclass(frozen=True, order=True)

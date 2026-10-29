@@ -16,9 +16,9 @@ from libranet.json_format import compact_json
 from libranet.karma.blocks import TransactionBlock, ValidationBlock
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
-from libranet.karma.ledger import NO_BALANCE
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import NO_BALANCE
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction, TransactionKey
 from tests.helpers import new_identity
 

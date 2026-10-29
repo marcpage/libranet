@@ -318,7 +318,11 @@ class NodeHandler:
 
 @dataclass(frozen=True)
 class BackupReportHandler:
-    """Serves one list of the backup module's latest report.
+    """Serves one list of the backup module's latest report, named ``field``.
+
+    It is an array of the entries, or, given ``by``, an object of them by
+    what each is known by, the member ``by`` names, which is left out of
+    each, as ``GET /data/imports`` and ``GET /data/archives`` serve them.
 
     Raises:
         ValueError: ``retry_after_seconds`` is negative.
@@ -327,6 +331,8 @@ class BackupReportHandler:
     state: BackupState
     field: str
     retry_after_seconds: int
+    _: KW_ONLY
+    by: str | None = None
 
     def __post_init__(self) -> None:
         if self.retry_after_seconds < 0:
@@ -340,7 +346,21 @@ class BackupReportHandler:
         if report is None:
             return unreported_response(request, self.retry_after_seconds)
 
-        return json_response({self.field: [dict(entry) for entry in report.entries(self.field)]})
+        entries = report.entries(self.field)
+
+        if self.by is None:
+            return json_response({self.field: [dict(entry) for entry in entries]})
+
+        return json_response(
+            {
+                self.field: {
+                    entry[self.by]: {
+                        name: value for name, value in entry.items() if name != self.by
+                    }
+                    for entry in entries
+                }
+            }
+        )
 
 
 class BackupRequest(Protocol):
@@ -380,13 +400,17 @@ class BackupRequestHandler:
 class BackupJobEventHandler:
     """A request naming a backup job in its path, published as ``event`` for the backup module.
 
-    A job this node never had is accepted like any other: the web server
-    holds no job state to check it against, and the backup module reports
-    what it did.
+    The job is named by ``id_field``, in the path and in what is published
+    and answered: ``job_id``, or ``archive_id`` for an archive kept. One
+    this node never had is accepted like any other: the web server holds no
+    job state to check it against, and the backup module reports what it
+    did.
     """
 
     publish: Publish
     event: EventType
+    _: KW_ONLY
+    id_field: str = "job_id"
 
     def __call__(self, request: Request) -> Response:
         body = body_or_refusal(request)
@@ -394,9 +418,9 @@ class BackupJobEventHandler:
         if isinstance(body, Response):
             return body
 
-        job_id = request.params["job_id"].lower()
-        self.publish(self.event, {"job_id": job_id})
-        return json_response({"job_id": job_id}, HTTPStatus.ACCEPTED)
+        job_id = request.params[self.id_field].lower()
+        self.publish(self.event, {self.id_field: job_id})
+        return json_response({self.id_field: job_id}, HTTPStatus.ACCEPTED)
 
 
 @dataclass(frozen=True)

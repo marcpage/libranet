@@ -7,18 +7,12 @@ from pytest import fixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.identity.node_identity import NodeIdentity
-from libranet.karma.blocks import Balance, TransactionBlock, ValidationBlock
+from libranet.karma.blocks import TransactionBlock, ValidationBlock
 from libranet.karma.generations import LAST_ISSUING_GENERATION, new_kismet
-from libranet.karma.ledger import (
-    NO_BALANCE,
-    WEIGHT_GENERATIONS,
-    BalanceSheet,
-    Reward,
-    StakeWeight,
-    reach_of,
-)
+from libranet.karma.ledger import WEIGHT_GENERATIONS, BalanceSheet, Reward, StakeWeight, reach_of
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import NO_BALANCE, Balance
 from libranet.protocol.karma_stakes import SignedStake, Stake
 from libranet.protocol.karma_transactions import Payout, SignedTransaction, Transaction
 from tests.helpers import new_identity

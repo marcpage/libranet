@@ -51,3 +51,17 @@ def pretty_json(value: Any) -> bytes:
 def moment_text(seconds: float) -> str:
     """The moment ``seconds`` after the epoch, as JSON writes it (:data:`MOMENT_FORMAT`)."""
     return datetime.fromtimestamp(seconds, UTC).strftime(MOMENT_FORMAT)
+
+
+def moment_at(seconds: float) -> datetime:
+    """The moment ``seconds`` after the epoch, a UTC time to the second, as a moment is stated."""
+    return datetime.fromtimestamp(int(seconds), UTC)
+
+
+def parsed_moment(text: str) -> datetime:
+    """The UTC time to the second ``text`` writes, as JSON writes a moment (:data:`MOMENT_FORMAT`).
+
+    Raises:
+        ValueError: it is not one.
+    """
+    return datetime.strptime(text, MOMENT_FORMAT).replace(tzinfo=UTC)

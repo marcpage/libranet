@@ -59,7 +59,7 @@ from libranet.cas.errors import InvalidContentIdError
 from libranet.config.models import MIN_PERSON_KEY_BITS
 from libranet.identity.errors import KeyFileError
 from libranet.identity.versions import FIELDS_FIELD, FIRST_VERSION, VERSION_FIELD
-from libranet.json_format import MOMENT_FORMAT, compact_json
+from libranet.json_format import MOMENT_FORMAT, compact_json, parsed_moment
 
 #: The most characters a normalized username has (HttpApi §11.3).
 MAX_USERNAME_CHARACTERS: Final = 64
@@ -239,7 +239,7 @@ class PersonKey:
             raise KeyFileError(f'An identity block is an object with a "{_CREATED_FIELD}"')
 
         try:
-            made = datetime.strptime(created, MOMENT_FORMAT).replace(tzinfo=UTC)
+            made = parsed_moment(created)
 
         except ValueError:
             raise KeyFileError(

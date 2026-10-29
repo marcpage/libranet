@@ -30,7 +30,7 @@ from libranet.backup.runs import (
     MakeRoom,
     back_up,
 )
-from libranet.backup.tasks import Task, TaskStatus, failure_reason
+from libranet.backup.tasks import ContentWaiting, Task, TaskStatus, failure_reason
 from libranet.backup.writing import DirectoryWriter
 
 __all__ = [
@@ -45,6 +45,7 @@ __all__ = [
     "BuildRecord",
     "BuildRecordError",
     "BuildSettings",
+    "ContentWaiting",
     "DirectoryWriter",
     "ExpandedBackups",
     "Export",

@@ -48,11 +48,12 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DROP_SEPARATOR
 from libranet.cas.errors import UnknownAlgorithmError
 from libranet.config.models import KIB, MIB, TARGET_BITS
-from libranet.json_fields import integer_field, is_integer
+from libranet.json_fields import integer_field
 from libranet.json_format import compact_json
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import Balance
 from libranet.protocol.karma_members import contents_value, id_member
 from libranet.protocol.karma_stakes import SignedStake
 from libranet.protocol.karma_transactions import (
@@ -80,8 +81,6 @@ _BALANCES: Final = "balances"
 _RUNNER_UP: Final = "runner_up"
 _STAKES: Final = "stakes"
 _WITNESSED: Final = "witnessed"
-_KISMET: Final = "kismet"
-_LAST_WON: Final = "last_won"
 
 # The member of a transaction's contents naming its sender: an id, where a
 # payout's names an object of them (§4.1, §5.2).
@@ -99,53 +98,6 @@ _BALANCES_PER_IDENTITY: Final = 2
 # searched for once the block is filled: a count in decimal, which takes
 # fewer bytes than this, compressed, however long the search.
 _NONCE_ROOM_BYTES: Final = 32
-
-
-@dataclass(frozen=True)
-class Balance:
-    """The ``kismet`` an identity holds, and ``last_won``, the generation it last won a share in.
-
-    ``last_won`` is ``None`` for one that has won none (§5.3).
-
-    Raises:
-        ValueError: ``last_won`` is negative.
-    """
-
-    kismet: Kismet
-    last_won: int | None = None
-
-    def __post_init__(self) -> None:
-        if self.last_won is not None and self.last_won < 0:
-            raise ValueError(
-                f'A balance\'s "{_LAST_WON}" must not be negative, got {self.last_won}'
-            )
-
-    @classmethod
-    def from_value(cls, value: object, *, named: str = "A balance") -> Balance:
-        """The balance ``value``, an object of a block's ``balances``, is (§5.3).
-
-        Raises:
-            ValueError: ``value``, called ``named``, is not an object, its
-                ``kismet`` is no amount, or its ``last_won`` is missing or is
-                neither a generation nor ``null``.
-        """
-        if not isinstance(value, dict):
-            raise ValueError(f"{named} must be a JSON object, got {type(value).__name__}")
-
-        won = value.get(_LAST_WON)
-        last_won: int | None = None
-
-        if is_integer(won):
-            last_won = won
-
-        elif won is not None or _LAST_WON not in value:
-            raise ValueError(f'{named}\'s "{_LAST_WON}" must be a generation or null')
-
-        return cls(Kismet.from_value(value.get(_KISMET), named=f'{named}\'s "{_KISMET}"'), last_won)
-
-    def value(self) -> dict[str, Any]:
-        """This balance as a block states it (§5.3)."""
-        return {_KISMET: self.kismet.value(), _LAST_WON: self.last_won}
 
 
 @dataclass(frozen=True)

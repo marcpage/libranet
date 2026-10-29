@@ -199,7 +199,9 @@ class ListDeriver:
             )
             return _HeldKismet({})
 
-        held = {str(identity): balance.kismet for identity, balance in balances.balances.items()}
+        held = {
+            str(identity): balance.kismet.count for identity, balance in balances.balances.items()
+        }
         return _HeldKismet(held, held.get(str(self._node_id), 0))
 
     def _node_list_body(self, kismet: _HeldKismet) -> bytes:
