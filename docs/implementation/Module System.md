@@ -1346,7 +1346,7 @@ sequenceDiagram
 
     val-)evict: data.stored
     evict->>evict: storage is within a batch of hand-offs of its limits
-    opt free space is short, and no reclaim asked for in the last hour
+    opt free space is short, and no reclaim asked for within storage.reclaim_interval_seconds
         evict-)stats: resolved.reclaim_requested
         stats-)unb: resolved.reclaim, the bundles used lately
         unb->>unb: delete every other bundle's resolved files
@@ -1367,11 +1367,12 @@ sequenceDiagram
     end
 ```
 
-Each question the eviction module asks has a timeout: 60 seconds for the
-reclaim and for the candidates, and for a hand-off, as long as offering it
-to every peer of the mix could take, each taking its whole
-`peers.request_timeout_seconds`, and a quarter as long again: 1,200 seconds
-by default. A module that restarts mid-conversation therefore costs a delay,
+Each question the eviction module asks has a timeout:
+`storage.reclaim_timeout_seconds` for the reclaim and
+`storage.candidates_timeout_seconds` for the candidates, 60 seconds each by
+default, and for a hand-off, as long as offering it to every peer of the mix
+could take, each taking its whole `peers.request_timeout_seconds`, and a
+quarter as long again: 1,200 seconds by default. A module that restarts mid-conversation therefore costs a delay,
 never a stall.
 
 Throughout, the eviction module keeps the public keys of this node and of

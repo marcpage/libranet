@@ -477,6 +477,12 @@ class StorageConfig(_Section):
     # Provisional default.
     candidates_timeout_seconds: float = Field(default=60.0, gt=0)
 
+    # The most objects one ranking of the content to let go of lists, the
+    # eviction module asking for another once it has handed them all off. A
+    # node holding a great deal, and handing off many at once, ranks less
+    # often with more. Provisional default.
+    max_candidates: int = Field(default=256, ge=1)
+
     # How long content just stored is kept from being let go of, whatever
     # brought it, so that a request waiting for it reads it first (Phase 3
     # Step 75). Parts of an application file asked for ahead of the one being
@@ -488,6 +494,13 @@ class StorageConfig(_Section):
     # the resolved files of every application not used for this long, to be
     # resolved again from its bundle when next asked for (Phase 2 Step 29).
     resolved_idle_seconds: float = Field(default=30 * DAY_SECONDS, gt=0)
+
+    # How long eviction waits for the unbundler to say it has deleted those
+    # files, before it gives up and hands content off, and how often, at most,
+    # it has them deleted while free space stays short. At 0, they are deleted
+    # again before each content hand-off for free space. Provisional defaults.
+    reclaim_timeout_seconds: float = Field(default=60.0, gt=0)
+    reclaim_interval_seconds: float = Field(default=HOUR_SECONDS, ge=0)
 
     # How many bundles the unbundler keeps the directories of in memory, the
     # least recently used let go of first, so that each path asked for in one

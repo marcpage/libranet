@@ -86,9 +86,9 @@ class Modules:
             clock=lambda: self._now[0],
             poll_interval_seconds=0.01,
             free_bytes=lambda: self._free[0],
-            reclaim_timeout_seconds=RECLAIM_TIMEOUT,
-            reclaim_interval_seconds=RECLAIM_INTERVAL,
             **{
+                "reclaim_timeout_seconds": RECLAIM_TIMEOUT,
+                "reclaim_interval_seconds": RECLAIM_INTERVAL,
                 "candidates_timeout_seconds": CANDIDATES_TIMEOUT,
                 "hand_off_timeout_seconds": TIMEOUT,
                 "headroom_bytes": 0,
@@ -1424,6 +1424,43 @@ def test_resolved_files_are_deleted_at_most_once_an_interval_while_space_stays_s
     module.handle(candidates())
 
     now[0] += RECLAIM_INTERVAL - RETRY_DELAY
+    module.on_idle()
+
+    assert events(queues) == [(EventType.RESOLVED_RECLAIM_REQUESTED, "")]
+
+
+def test_resolved_files_are_waited_on_and_deleted_as_the_config_says_by_default(
+    modules: Modules,
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    free: list[int],
+) -> None:
+    storage = short_of_space(config, free).storage.model_copy(
+        update={"reclaim_timeout_seconds": 45.0, "reclaim_interval_seconds": 900.0}
+    )
+    module = modules.start(
+        config.model_copy(update={"storage": storage}),
+        reclaim_timeout_seconds=None,
+        reclaim_interval_seconds=None,
+    )
+    assert events(queues) == [(EventType.RESOLVED_RECLAIM_REQUESTED, "")]
+
+    now[0] += 44.0
+    module.on_idle()
+    assert published(queues) == []
+
+    now[0] += 1.0
+    module.on_idle()
+    assert requested(queues) == (5, [])
+    module.handle(candidates())
+
+    now[0] += 899.0 - 45.0
+    module.on_idle()
+    assert requested(queues) == (5, [])
+    module.handle(candidates())
+
+    now[0] += RETRY_DELAY
     module.on_idle()
 
     assert events(queues) == [(EventType.RESOLVED_RECLAIM_REQUESTED, "")]

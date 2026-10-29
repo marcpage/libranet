@@ -176,6 +176,27 @@ def test_stats_is_given_a_minute_to_rank_content_to_let_go_of_by_default() -> No
         StorageConfig(candidates_timeout_seconds=0)
 
 
+def test_a_ranking_of_content_to_let_go_of_lists_256_objects_by_default() -> None:
+    assert StorageConfig().max_candidates == 256
+    assert StorageConfig(max_candidates=1).max_candidates == 1
+
+    with raises(ValidationError):
+        StorageConfig(max_candidates=0)
+
+
+def test_resolved_files_are_waited_on_a_minute_and_deleted_hourly_by_default() -> None:
+    assert StorageConfig().reclaim_timeout_seconds == 60.0
+    assert StorageConfig().reclaim_interval_seconds == 3600.0
+    assert StorageConfig(reclaim_timeout_seconds=0.5).reclaim_timeout_seconds == 0.5
+    assert StorageConfig(reclaim_interval_seconds=0).reclaim_interval_seconds == 0
+
+    with raises(ValidationError):
+        StorageConfig(reclaim_timeout_seconds=0)
+
+    with raises(ValidationError):
+        StorageConfig(reclaim_interval_seconds=-1)
+
+
 def test_content_just_stored_is_kept_thirty_seconds_by_default_or_none() -> None:
     assert StorageConfig().stored_grace_seconds == 30.0
     assert StorageConfig(stored_grace_seconds=0).stored_grace_seconds == 0
@@ -901,7 +922,10 @@ def test_the_example_config_states_the_default_limits_waits_and_hidden_names() -
     storage = (
         "max_decompressed_bundle_bytes",
         "candidates_timeout_seconds",
+        "max_candidates",
         "stored_grace_seconds",
+        "reclaim_timeout_seconds",
+        "reclaim_interval_seconds",
         "max_cached_bundles",
         "max_application_store_bytes",
         "max_application_value_bytes",

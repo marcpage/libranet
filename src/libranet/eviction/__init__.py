@@ -5,17 +5,10 @@ low-priority content to closer nodes before deleting the local copy. The
 stats module ranks what to let go of first (Phase 2 Step 28).
 """
 
-from libranet.eviction.module import (
-    DEFAULT_RECLAIM_INTERVAL_SECONDS,
-    DEFAULT_RECLAIM_TIMEOUT_SECONDS,
-    HAND_OFF_COPIES,
-    EvictionModule,
-)
+from libranet.eviction.module import HAND_OFF_COPIES, EvictionModule
 from libranet.eviction.pressure import FreeBytes, StoragePressure, free_bytes_under
 
 __all__ = [
-    "DEFAULT_RECLAIM_INTERVAL_SECONDS",
-    "DEFAULT_RECLAIM_TIMEOUT_SECONDS",
     "HAND_OFF_COPIES",
     "EvictionModule",
     "FreeBytes",

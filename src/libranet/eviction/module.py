@@ -15,7 +15,7 @@ of than it has content to hand off (Phase 2 Step 28)::
 ``bytes`` is how much more is to be freed, and ``exclude`` the content
 already being handed off and the keys of the peers connected. Stats
 answers with the held content to let go of first, best first, as much of
-it as covers ``bytes``, up to a limit::
+it as covers ``bytes``, up to ``storage.max_candidates`` objects::
 
     eviction.candidates            {"objects": [{"algorithm", "hash", "size"}, ...]}
 
@@ -115,9 +115,10 @@ deletes the rest and answers::
     resolved.reclaim_requested  {}
     resolved.reclaimed          {"bundles", "bytes"}
 
-No hand-off starts until it answers, or until ``reclaim_timeout_seconds``
-pass without an answer. While free space stays short, it is asked again at
-most once every ``reclaim_interval_seconds``. Storage over
+No hand-off starts until it answers, or until
+``storage.reclaim_timeout_seconds`` pass without an answer. While free space
+stays short, it is asked again at most once every
+``storage.reclaim_interval_seconds``. Storage over
 ``max_storage_bytes`` alone deletes none, since they are not counted there.
 """
 
@@ -130,7 +131,7 @@ from typing import Callable, ClassVar, Final
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore, HeldObject
-from libranet.config.models import HOUR_SECONDS, LibranetConfig
+from libranet.config.models import LibranetConfig
 from libranet.eviction.pressure import FreeBytes, StoragePressure
 from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.connected_peers import ConnectedPeers
@@ -150,14 +151,6 @@ HAND_OFF_COPIES: Final = 1
 # (Phase 2 Step 25), each taking its full request timeout, that is 1,200
 # seconds.
 _HAND_OFF_SPARE: Final = 1.25
-
-# Provisional default: how long the unbundler may take to answer that it has
-# deleted the resolved files not used lately.
-DEFAULT_RECLAIM_TIMEOUT_SECONDS: Final = 60.0
-
-# Provisional default: how often those are deleted while free space stays
-# short. A file is deleted only once unused for far longer.
-DEFAULT_RECLAIM_INTERVAL_SECONDS: Final = HOUR_SECONDS
 
 
 @dataclass(frozen=True)
@@ -324,8 +317,8 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         free_bytes: FreeBytes | None = None,
         hand_off_timeout_seconds: float | None = None,
         candidates_timeout_seconds: float | None = None,
-        reclaim_timeout_seconds: float = DEFAULT_RECLAIM_TIMEOUT_SECONDS,
-        reclaim_interval_seconds: float = DEFAULT_RECLAIM_INTERVAL_SECONDS,
+        reclaim_timeout_seconds: float | None = None,
+        reclaim_interval_seconds: float | None = None,
         headroom_bytes: int | None = None,
         stored_grace_seconds: float | None = None,
     ) -> None:
@@ -335,6 +328,12 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
 
         if candidates_timeout_seconds is None:
             candidates_timeout_seconds = config.storage.candidates_timeout_seconds
+
+        if reclaim_timeout_seconds is None:
+            reclaim_timeout_seconds = config.storage.reclaim_timeout_seconds
+
+        if reclaim_interval_seconds is None:
+            reclaim_interval_seconds = config.storage.reclaim_interval_seconds
 
         if candidates_timeout_seconds <= 0:
             raise ValueError(

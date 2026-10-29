@@ -217,6 +217,10 @@ storage:
   # hand off first before it asks again. Ranking reads a row for every object
   # held, so a node holding millions may need longer.
   candidates_timeout_seconds: 60.0
+  # Provisional: the most objects one ranking names, the node ranking again
+  # once it has handed them all off. A node holding millions, and handing
+  # off many at once, ranks less often with more. At least 1.
+  max_candidates: 256
   # Provisional: content just stored is not handed off for this long, so that
   # the request waiting for it reads it first. Parts of a film asked for ahead
   # of the one playing (network.read_ahead_parts) are reached later, so a node
@@ -228,6 +232,12 @@ storage:
   # for. An application in use is noted at most once an hour, or ten times
   # within this time if that is more often.
   resolved_idle_seconds: 2592000.0
+  # Provisional: how long the node waits for those files to be deleted before
+  # it hands content off all the same, and how often, at most, it deletes
+  # them while free space stays short (an hour). At 0, they are deleted again
+  # before each content hand-off for free space.
+  reclaim_timeout_seconds: 60.0
+  reclaim_interval_seconds: 3600.0
   # Provisional: how many applications' directories are kept in memory, the
   # least recently used dropped first, so that each file asked for is not
   # read from disk again. At least 1.

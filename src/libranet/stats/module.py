@@ -64,7 +64,7 @@ what ``data.deleted`` reported gone. Asked by the eviction module for
 content to let go of, it answers with the held content that scores highest
 (:class:`~libranet.stats.priority.EvictionScorer`), best first, leaving
 out what ``exclude`` names, until the sizes listed add up to ``bytes`` or
-the list reaches ``max_candidates`` entries::
+the list reaches ``storage.max_candidates`` entries::
 
     eviction.candidates    {"objects": [{"algorithm", "hash", "size"}, ...]}
 
@@ -161,10 +161,6 @@ _Component = TypeVar("_Component")
 # How a node list marks the entries in which its sender names itself.
 _SENDERS_OWN: Final = frozenset({AddressSource.ADVERTISED, AddressSource.OBSERVED})
 
-# Provisional default: the most objects one answer to the eviction module
-# lists. It asks again when it has handed them all off.
-DEFAULT_MAX_CANDIDATES: Final = 256
-
 
 @dataclass(frozen=True)
 class _Running:
@@ -242,8 +238,11 @@ class StatsModule(ModuleBase):
         logger: Logger | None = None,
         clock: Callable[[], float] = time,
         poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
-        max_candidates: int = DEFAULT_MAX_CANDIDATES,
+        max_candidates: int | None = None,
     ) -> None:
+        if max_candidates is None:
+            max_candidates = config.storage.max_candidates
+
         if max_candidates < 1:
             raise ValueError(f"max_candidates must be at least 1, got {max_candidates}")
 
