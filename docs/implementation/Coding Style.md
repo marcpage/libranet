@@ -531,7 +531,7 @@ phase plan or an issue.
 
 Catch the narrowest exception that can happen, and name it `error`.
 `except Exception` is only for a boundary that must survive whatever it runs:
-a module's receive loop, a worker thread, a request handler, a task whose
+a module's receive loop, a worker thread's loop, a request handler, a task whose
 failure must be recorded, a callback that a library calls and would otherwise
 log for itself. A boundary catches what it is known to meet by name first, at
 the level §9.3 gives it, and leaves `except Exception` to what no one
@@ -556,7 +556,10 @@ be.
 
 An exception that nothing catches, and that ends a thread or the process, is
 logged at error, with its traceback, by the hooks `configure_logging`
-installs in every process, rather than printed to stderr by Python's own.
+installs in every process, rather than printed to stderr by Python's own. So
+a thread that would do no more than log what ends it has no catch of its own,
+and puts what it must do either way in `finally`. Its name says what it works
+on, as `send {host}` does, so that the hook's message says it too.
 
 ### 9.3 Logging
 
