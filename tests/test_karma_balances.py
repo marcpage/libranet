@@ -1,33 +1,27 @@
 """Tests for writing every holder's balance each time the head changes (KarmaLedger §5.3)."""
 
 from __future__ import annotations
-from datetime import UTC, datetime
 from json import loads
 from typing import Any, Mapping
 
 from pytest import fixture, raises
 
 from libranet.bundle.errors import MissingContentError
-from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.balances import HeadBalances
-from libranet.karma.blocks import TransactionBlock
+from libranet.karma.blocks import BlockDrop, ValidationBlock
 from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.reading import HeldChain, TargetReader
-from libranet.karma.weight import ChainWeight
 from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import EventType
 from libranet.modules import ModuleName
 from libranet.protocol.karma_amounts import Kismet
-from libranet.protocol.karma_balances import Balance
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from tests.helpers import new_identity
-
-CREATED = datetime(2026, 10, 21, 14, 3, 22, tzinfo=UTC)
-HEAD = ContentId("sha256", "c1" * 32)
+from tests.karma_chains import CREATED, Chain, hold, id_of
 
 
 def ignored(event: EventType, payload: Mapping[str, Any] | None = None) -> Message:
@@ -37,6 +31,11 @@ def ignored(event: EventType, payload: Mapping[str, Any] | None = None) -> Messa
 
 @fixture
 def alice() -> NodeIdentity:
+    return new_identity()
+
+
+@fixture
+def bob() -> NodeIdentity:
     return new_identity()
 
 
@@ -56,21 +55,16 @@ def balances(storage: StorageConfig, history: ChainHistory) -> HeadBalances:
     return HeadBalances(history, HeldChain(history, reader), storage.karma_dir)
 
 
-def root(truth: CasStore, alice: NodeIdentity) -> ChainGeneration:
-    """Generation 0, Alice's root, its transaction block held, stating her balance of 250."""
-    transaction = Transaction(alice.node_id, {alice.node_id: Kismet(0)}, Kismet(0), 0, CREATED)
-    block = TransactionBlock(
-        0,
-        None,
-        ChainWeight(0),
-        0,
-        (SignedTransaction.of(alice.signed(transaction.text())),),
-        {alice.node_id: Balance(Kismet(250), 3)},
+def generation(truth: CasStore, chain: Chain, number: int) -> ChainGeneration:
+    """Generation ``number`` of ``chain``, its drops held."""
+    drops = chain.generations[number]
+    hold(truth, drops.transaction, drops.validation)
+    return ChainGeneration.of(
+        id_of(drops.validation),
+        BlockDrop.parsed(drops.validation, ValidationBlock).block,
+        id_of(drops.transaction),
+        chain.transaction(number),
     )
-    data = alice.signed(block.text()).encoded() + b"\x007"
-    block_id = ContentId.for_data(data, "sha256")
-    truth.write(block_id, data)
-    return ChainGeneration(0, HEAD, block_id, ChainWeight(80), (), ())
 
 
 def written(storage: StorageConfig) -> Any:
@@ -86,24 +80,53 @@ def test_while_no_chain_is_followed_no_head_and_no_balance_are_written_once(
     assert not balances.write()
 
 
-def test_every_balance_stated_at_the_head_is_written_with_it_once_for_each_head(
+def test_the_roots_creator_is_written_holding_the_roots_reward_once_for_the_head(
     balances: HeadBalances,
     history: ChainHistory,
     truth: CasStore,
     storage: StorageConfig,
     alice: NodeIdentity,
 ) -> None:
+    chain = Chain.root(alice)
     balances.write()
-    history.add(root(truth, alice))
+    history.add(generation(truth, chain, 0))
 
     assert balances.write()
+    # 20 Karma, paid by the payout of the block after the root (§7.4).
     assert written(storage) == {
-        "head": str(HEAD),
+        "head": str(chain.head),
         "generation": 0,
-        "weight": "80",
-        "balances": {str(alice.node_id): {"kismet": "250", "last_won": 3}},
+        "weight": chain.weight().value(),
+        "balances": {str(alice.node_id): {"kismet": "2000000000000000", "last_won": 0}},
     }
     assert not balances.write()
+
+
+def test_every_balance_stated_at_the_head_is_written_with_the_heads_reward_paid(
+    balances: HeadBalances,
+    history: ChainHistory,
+    truth: CasStore,
+    storage: StorageConfig,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+) -> None:
+    first = Chain.root(alice).then(bob, alice)
+    sent = Transaction(alice.node_id, {bob.node_id: Kismet(7)}, Kismet(0), 1, CREATED)
+    chain = first.then(
+        bob, alice, first.block_after(SignedTransaction.of(alice.signed(sent.text())))
+    )
+
+    for number in range(3):
+        history.add(generation(truth, chain, number))
+
+    balances.write()
+
+    # Alice staked on generation 2, whose reward pays her, and Bob holds what
+    # she paid him.
+    assert written(storage)["balances"] == {
+        str(alice.node_id): chain.block_after().balances[alice.node_id].value(),
+        str(bob.node_id): {"kismet": "7", "last_won": None},
+    }
 
 
 def test_balances_read_from_a_block_not_held_are_written_once_it_is(
@@ -113,17 +136,19 @@ def test_balances_read_from_a_block_not_held_are_written_once_it_is(
     storage: StorageConfig,
     alice: NodeIdentity,
 ) -> None:
-    generation = root(truth, alice)
-    history.add(generation)
-    data = truth.read(generation.transaction)
-    truth.delete(generation.transaction)
+    root = generation(truth, Chain.root(alice), 0)
+    history.add(root)
 
-    with raises(MissingContentError):
-        balances.write()
+    for block_id in (root.transaction, root.validation):
+        data = truth.read(block_id)
+        truth.delete(block_id)
 
-    assert not (storage.karma_dir / "balances.json").exists()
+        with raises(MissingContentError):
+            balances.write()
 
-    truth.write(generation.transaction, data)
+        assert not (storage.karma_dir / "balances.json").exists()
+
+        truth.write(block_id, data)
 
     assert balances.write()
     assert written(storage)["generation"] == 0

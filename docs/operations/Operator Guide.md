@@ -458,8 +458,9 @@ about half a minute on one core, as `karma.mining_processes` gives it (§3),
 though it may take several times that. It places the root's two blocks, and
 follows the chain on it, as `libranet-karma.log` (§7.2) says once it is done.
 `karma/head.json` in the data directory (§2.3) then names the root's
-validation block as the head, in generation 0. It is `409`, and places no
-root, while the node follows a chain.
+validation block as the head, in generation 0, and the node holds the
+root's reward, 20 Karma, which it may spend in generation 1. It is `409`,
+and places no root, while the node follows a chain.
 
 A node that follows no chain looks for a root as it starts, and every
 `karma.look_seconds` after (§3), and follows the heaviest it finds that
@@ -519,9 +520,11 @@ block, as full as it can be: the free ones with the most work first, and the
 paid ones with the largest fees, at least half of them free, and each only
 while its sender can pay for it. It places the block, searching for its
 nonce for `karma.block_seconds`, which holds up its other Karma work, unless
-a block there already holds every transaction it would take.
-`libranet-karma.log` says each block it builds, how many transactions it
-holds, and whether it is full.
+a block there already holds every transaction it would take. With none to
+take, and no correct block there, it places a block of the payout alone,
+which pays the last generation's reward, so that the balances it leaves are
+stated there. `libranet-karma.log` says each block it builds, how many
+transactions it holds, and whether it is full.
 
 Each time it looks and each time it builds, the node shuns each smaller block
 at its head's target whose transactions are all in a correct block it holds

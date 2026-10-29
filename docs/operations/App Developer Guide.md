@@ -1440,9 +1440,12 @@ follows, and its own balance there:
 `kismet` is how many Kismet it holds, 10^14 to a Karma, written as decimal
 digits, since a JavaScript number holds no whole number above 2^53 exactly:
 read it with `BigInt`. `last_won` is the generation whose reward last paid
-it, or `null`. `GET /data/karma/balances/{id}` gives anyone's balance, as the
-chain states it at the same head, `{"kismet": "0", "last_won": null}` for
-someone it does not name. `GET /data/karma/generations` lists the newest 100
+it, or `null`. Each balance is the chain's at the head, with the head's
+reward paid, so whoever that reward pays holds it at once, the creator of a
+root its 20 Karma among them. `GET /data/karma/balances/{id}` gives anyone's
+balance, as the chain states it at the same head,
+`{"kismet": "0", "last_won": null}` for someone it does not name.
+`GET /data/karma/generations` lists the newest 100
 generations followed, the newest first, each with its validation block, its
 transaction block, and the chain's weight through them; ask again with
 `?before=` the oldest listed for those before it.

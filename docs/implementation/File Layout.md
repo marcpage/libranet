@@ -534,7 +534,9 @@ it names a head (Phase 6 Step 125). It reads the generations' files too
 `balances.json` is every balance the chain states at the head (KarmaLedger
 §5.3): the latest stated of each identity in the head's transaction block, or
 in those before it as far back as its reach, or ten blocks, whichever is
-further, with the head it was read at, as `head.json` names it. Each of the
+further, with the payout of the block after applied, which pays the reward
+of the head's validation block (KarmaLedger §2), and with the head it was
+read at, as `head.json` names it. Each of the
 head's members is `null`, and `balances` empty, while the module follows no
 chain:
 
@@ -594,7 +596,8 @@ held. The web server reads it (`CarriedTransaction` in
 one transaction (KarmaLedger §4.6, Phase 6 Step 132): each a recipient, as
 the servers the node rates highest every `karma.rating_interval_seconds`
 are (Phase 6 Step 133), and an amount, `karma.payment_percent` of the
-node's balance at the head when it was queued; the
+node's balance at the head, with the head's reward paid, when it was
+queued; the
 `created` of the node's last transaction, or `null` before it has made one;
 and the transaction made of the queue, as its sender writes it, its nonce
 not yet searched for, until it is put up, or `null`:

@@ -1727,8 +1727,13 @@ A node's Karma, and any identity's, is its balance as the chain the node
 follows states it
 ([Karma Ledger §5.3](KarmaLedger.md#53-balances-and-reach)): the latest
 stated of it in the head's transaction block, or in those before it as far
-back as that block's reach, or ten blocks, whichever is further. A node
-reads no peer's claim of its own Karma, so there is none to check. Any
+back as that block's reach, or ten blocks, whichever is further, with the
+reward of the head's validation block paid, as the next generation's
+transactions are checked against it
+([Karma Ledger §2](KarmaLedger.md#2-relationship-to-other-documents)). So
+the creator of a root holds generation 0's reward, 20 Karma, as soon as the
+node follows the root. A node reads no peer's claim of its own Karma, so
+there is none to check. Any
 client may read what the chain states, another node as well as a page,
 since a chain is public:
 
@@ -1744,7 +1749,8 @@ GET /data/karma
 `head` is the head the node follows (§10.9), `generation` its generation,
 and `weight` the chain's weight through it, in decimal digits (Karma Ledger
 §3.3). `balance` is the balance of the node, `node_id`, as the chain states
-it at that head: `kismet` is the Kismet it holds, in decimal digits, and
+it at that head, its reward paid: `kismet` is the Kismet it holds, in
+decimal digits, and
 `last_won` the generation whose reward last paid it, or `null` if none has.
 
 ```http

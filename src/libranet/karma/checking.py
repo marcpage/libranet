@@ -113,6 +113,24 @@ class ChainBefore:
         )
         return reward.payout()
 
+    def paid(self, identities: Collection[ContentId] = ()) -> BalanceSheet:
+        """The sheet of a block built on it holding only the payout, read for ``identities`` too.
+
+        Its ``after`` are the balances of those the payout names, with its
+        validation block's reward paid, and its
+        :meth:`~libranet.karma.ledger.BalanceSheet.balance` is each of
+        ``identities``': what a block built on it checks their transactions
+        against (§5.2, §5.3).
+
+        Raises:
+            MissingContentError: names the blocks ``chain`` lacks.
+            ValueError: the payout takes more from an identity than it holds.
+        """
+        last = self.generation - 1
+        payout = self.payout(self.chain.balances(self.stakers(), last))
+        block = TransactionBlock(self.generation, self.validation_id, self.weight, 0, (payout,), {})
+        return BalanceSheet.of(block, self.chain.balances(block.named() | set(identities), last))
+
     def reach(self, block: TransactionBlock) -> int:
         """The ``reach`` of ``block``, built on it (§5.3).
 
