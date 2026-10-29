@@ -516,8 +516,8 @@ its contents change.
 
 | File | Built from | Order |
 | --- | --- | --- |
-| `nodes.json` | This node's own endpoints, then `last_good_endpoints` | Each node's last reached address, if it has not failed since; most Karma first, then most recently reached first |
-| `candidates.json` | `candidate_endpoints`, less `given_up_nodes`, with `reached_nodes` | Nodes that have been reached first, then the rest; in each, most Karma first, then the most recently reached, or of the rest the most recently learned, first |
+| `nodes.json` | This node's own endpoints, then `last_good_endpoints` | Each node's last reached address, if it has not failed since; Karma nearest this node's own first, then most recently reached first |
+| `candidates.json` | `candidate_endpoints`, less `given_up_nodes`, with `reached_nodes` | Nodes that have been reached first, then the rest; in each, those holding as much Karma as this node or more, the least first, then those holding less, the most first; then the most recently reached, or of the rest the most recently learned, first |
 | `seek.json` | `seek_values` for this node, of each kind | Most recently asked for first |
 | `shunned.json` | `shunned_ids` | By hash |
 | `peers.json` | `all_node_stats` and `all_node_addresses`, with the peers connected now | Those connected first, then the most recently connected, then the most recently learned of; up to `stats.max_peers_listed` (1000) |

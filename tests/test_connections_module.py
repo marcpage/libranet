@@ -50,6 +50,7 @@ from libranet.modules import ModuleName
 from libranet.protocol.karma_head import KarmaHead
 from libranet.stats.module import StatsModule
 from libranet.webserver.config_handlers import NodeDescription
+from libranet.webserver.http_types import Response
 from libranet.webserver.router import Router
 from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_router
 
@@ -58,6 +59,7 @@ from tests.stubs import StubModule
 
 TIMEOUT = 5.0
 RETRY_DELAY = 30.0
+TURNED_AWAY_REST = 300.0
 SEEK_REFRESH = 10.0
 # The Retry-After a fixture peer sends with a 503.
 PEER_RETRY_AFTER = 7
@@ -1259,6 +1261,56 @@ def test_a_connection_the_peer_closes_is_reported_and_rests(
     assert len(bus.events(EventType.CONNECTION_OPENED)) == 1
 
     now[0] += RETRY_DELAY
+    module.on_idle()
+
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+
+def test_a_peer_that_turns_this_node_away_rests_longer(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    now: list[float],
+    caplog: LogCaptureFixture,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    send = RequestHandler._send  # pylint: disable=protected-access
+    turning_away = Event()
+
+    def answering(handler: RequestHandler, response: Response, *, close: bool = False) -> None:
+        # As a server does a client it does not keep, once past its first
+        # requests (HandshakeProtocol §5.2).
+        send(handler, response, close=close or turning_away.is_set())
+
+    monkeypatch.setattr(RequestHandler, "_send", answering)
+    caplog.set_level(INFO)
+    write_lists(config.storage, node_list(identity, peers[0]))
+
+    module = modules.start(with_peers(config, turned_away_rest_seconds=TURNED_AWAY_REST))
+    bus.wait_for(EventType.CONNECTION_OPENED)
+    turning_away.set()
+
+    def refreshed() -> bool:
+        now[0] += SEEK_REFRESH
+        module.on_idle()
+        return bool(bus.events(EventType.CONNECTION_CLOSED))
+
+    wait_until(refreshed, "the peer to turn this node away")
+
+    (closed,) = bus.events(EventType.CONNECTION_CLOSED)
+    assert (closed["node_id"], closed["remote"]) == (str(peers[0].node_id), True)
+    assert "turning this node away" in caplog.text
+
+    # Not once the rest after an ordinary close is over.
+    turning_away.clear()
+    now[0] += RETRY_DELAY
+    module.on_idle()
+    sleep(0.2)
+    assert len(bus.events(EventType.CONNECTION_OPENED)) == 1
+
+    now[0] += TURNED_AWAY_REST - RETRY_DELAY
     module.on_idle()
 
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)

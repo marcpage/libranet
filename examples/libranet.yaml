@@ -114,6 +114,11 @@ peers:
   # every address known for it, or after the connection to it closed, before
   # it is tried again.
   retry_delay_seconds: 60.0
+  # Provisional: how long a peer rests instead once it has turned this node
+  # away, closing the connection after answering, as a server does a client
+  # of too little Karma (Handshake Protocol §5.2), so that other peers are
+  # tried meanwhile.
+  turned_away_rest_seconds: 3600.0
   # Provisional: how often each connected peer's /data/seek list is fetched
   # again so content it still wants can be pushed (Handshake Protocol §3.3).
   # It must be under the peers' idle timeout (60 seconds for this

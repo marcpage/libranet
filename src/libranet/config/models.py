@@ -315,6 +315,12 @@ class PeerConfig(_Section):
     # dialed again. Provisional default.
     retry_delay_seconds: float = Field(default=60.0, gt=0)
 
+    # How long a peer rests instead once it has turned this node away, closing
+    # the connection after answering, as a server does a client of too little
+    # Karma (HandshakeProtocol §5.2), so that other peers are tried meanwhile
+    # (Phase 6 Step 143). Provisional default.
+    turned_away_rest_seconds: float = Field(default=3600.0, gt=0)
+
     # How often a connected peer's seek list is fetched again, so content it
     # still wants can be pushed (HandshakeProtocol §3.3). It must be shorter
     # than a peer's idle timeout, IDLE_TIMEOUT_SECONDS for this

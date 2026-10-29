@@ -377,10 +377,13 @@ trust scores call untrusted, and, if its operator says so, only those they
 call trusted (Trust Network §4.5).
 
 Among those, it prefers the nodes it has reached before to the rest, and
-within each, the nodes of more Karma, as the chain it follows states their
-balances (Handshake Protocol §5.1). It fills each bucket with the best node
-it knows there, so it connects to a node of more Karma wherever it has a
-choice, and to no fewer for it: holding no Karma leaves no node out.
+within each, climbs from its own Karma, as the chain it follows states the
+balances: the nodes holding as much as it does or more, the least of them
+first, then those holding less, the nearest first (Handshake Protocol §5.1).
+It fills each bucket with the best node it knows there, so it connects to a
+node near its own Karma wherever it has a choice, where it is likeliest to
+be kept, and to no fewer for it: holding no Karma leaves no node out. A node
+that turned it away is passed over for a while, so it tries others.
 
 As a server, a node keeps the clients of more Karma connected, and past each
 client's first requests, closes one holding less than the median of those

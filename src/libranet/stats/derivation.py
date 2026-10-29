@@ -11,19 +11,24 @@ that says nothing new.
 The candidate list names every node this node knows an address for, but
 itself and those it has given up on for now (Phase 2 Step 26), with every
 address it knows, in the order to try them. Nodes that have been reached
-come first, then the rest; within each part, those of more Karma first
-(Phase 6 Step 141), then the most recently reached first, or, of those never
+come first, then the rest. Within each part, those holding as much Karma as
+this node or more come first, those holding least of them first, then those
+holding less, those holding most of them first (Phase 6 Step 143), so that
+this node dials those likeliest to keep it connected (HandshakeProtocol
+§5.2). Then come the most recently reached first, or, of those never
 reached, the most recently learned of first. Each node's addresses are in
 the order the database tries them in::
 
     {"nodes": [{"node_id": "sha256/<hex>", "endpoints": ["http://203.0.113.9:4300", ...]}]}
 
-The node list puts the nodes of more Karma first as well, so that what its
-cap leaves out is what holds least (HttpApi §10.6). A node's Karma is its
-balance as the chain this node follows states it, which the Karma module
-writes to ``balances.json``, read afresh at each derivation; a node the
-chain does not name holds none, as every node does while this one follows no
-chain. Karma only orders the lists: no node is left out of either for it.
+The node list puts first the nodes whose Karma is nearest this node's own,
+so that what its cap leaves out is what holds least like it (HttpApi
+§10.6), and a peer is told most of the nodes near its own Karma, as it
+likely is. A node's Karma is its balance as the chain this node follows
+states it, which the Karma module writes to ``balances.json``, read afresh
+at each derivation; a node the chain does not name holds none, as every
+node does while this one follows no chain. Karma only orders the lists: no
+node is left out of either for it.
 
 The shunned list names the content this node will not hold, for the modules
 that refuse it (Phase 4 Step 30), in the shape
@@ -75,6 +80,26 @@ class DerivedLists:
     peer_list: Path
     node_list_changed: bool
     candidate_list_changed: bool
+
+
+@dataclass(frozen=True)
+class _HeldKismet:
+    """The Kismet each node holds, by node id, and this node's own (Phase 6 Step 143)."""
+
+    held: Mapping[str, int]
+    own: int = 0
+
+    def distance(self, node_id: str) -> int:
+        """How far the Kismet ``node_id`` holds is from this node's own, either way."""
+        return abs(self.held.get(node_id, 0) - self.own)
+
+    def climbing(self, node_id: str) -> tuple[bool, int]:
+        """Where ``node_id`` falls, climbing from this node's own Kismet and then descending.
+
+        Those holding as much as this node or more sort first, those holding
+        least of them first, then those holding less, the nearest first.
+        """
+        return self.held.get(node_id, 0) < self.own, self.distance(node_id)
 
 
 class ListDeriver:
@@ -157,8 +182,8 @@ class ListDeriver:
             self._storage.shunned_list_path, ShunnedContent.body(self._database.shunned_ids())
         )
 
-    def _held_kismet(self) -> Mapping[str, int]:
-        """The Kismet each node the chain this node follows names holds, by node id.
+    def _held_kismet(self) -> _HeldKismet:
+        """The Kismet each node the chain this node follows names holds, this node's own too.
 
         It names none while this node follows no chain, or if its balances
         cannot be read, which is logged.
@@ -172,29 +197,32 @@ class ListDeriver:
                 self._storage.karma_dir,
                 error,
             )
-            return {}
+            return _HeldKismet({})
 
-        return {str(identity): balance.kismet for identity, balance in balances.balances.items()}
+        held = {str(identity): balance.kismet for identity, balance in balances.balances.items()}
+        return _HeldKismet(held, held.get(str(self._node_id), 0))
 
-    def _node_list_body(self, kismet: Mapping[str, int]) -> bytes:
+    def _node_list_body(self, kismet: _HeldKismet) -> bytes:
         """This node's own entries, then each peer's last known good address, best first.
 
-        Best is the node of most ``kismet``, then the most recently reached.
+        Best is the node whose Kismet is nearest this node's own, then the
+        most recently reached.
         """
         entries = [(endpoint, str(self._node_id)) for endpoint in self._endpoints]
         entries.extend(
             sorted(
                 self._database.last_good_endpoints(exclude=self._node_id),
-                key=lambda entry: -kismet.get(entry[1], 0),
+                key=lambda entry: kismet.distance(entry[1]),
             )
         )
         return render_node_list(entries, self._stats.max_list_bytes)
 
-    def _candidates(self, kismet: Mapping[str, int]) -> list[tuple[str, list[str]]]:
+    def _candidates(self, kismet: _HeldKismet) -> list[tuple[str, list[str]]]:
         """Every peer to try, with its endpoints, but those given up on for now.
 
-        Those reached come first, and within each part those of more
-        ``kismet``, then in the order the database gives.
+        Those reached come first, and within each part, in the order
+        :meth:`_HeldKismet.climbing` gives, then in the order the database
+        gives.
         """
         given_up = self._database.given_up_nodes(
             self._stats.max_node_failures, self._stats.node_cool_off_seconds
@@ -206,7 +234,7 @@ class ListDeriver:
                 for node_id, endpoints in self._database.candidate_endpoints(exclude=self._node_id)
                 if node_id not in given_up
             ),
-            key=lambda candidate: (candidate[0] not in reached, -kismet.get(candidate[0], 0)),
+            key=lambda candidate: (candidate[0] not in reached, *kismet.climbing(candidate[0])),
         )
 
     def _peer_list(self) -> PeerList:

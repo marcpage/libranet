@@ -86,8 +86,9 @@ see [Project Status](#project-status).
   which node it is talking to.
 - **Fairness.** Priority for nodes that
   [add more to the network than they take](docs/specs/Karma.md): nodes
-  connect first to those holding more Karma, list them first, and keep
-  them connected when they bring nothing, closing those holding less.
+  connect first to those holding about as much Karma as they do, list them
+  first, and keep those holding more connected when they bring nothing,
+  closing those holding less.
 
 [Vote for the next feature](https://github.com/marcpage/libranet/issues?q=is%3Aissue+state%3Aopen+sort%3Areactions-%2B1+label%3Aenhancement)
 by giving a Thumbs Up to the description of your favorite issues.

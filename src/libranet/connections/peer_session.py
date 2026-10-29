@@ -108,6 +108,14 @@ class PeerSession:
         """
         return self._closed_locally
 
+    @property
+    def turned_away(self) -> bool:
+        """Whether the peer closed the connection once it had answered, turning this node away.
+
+        As :attr:`PeerConnection.turned_away` says.
+        """
+        return self._connection.turned_away
+
     def exchange(self, requests: Sequence[PeerRequest]) -> list[PeerResponse]:
         """Send ``requests`` pipelined and return their verified responses, in order.
 

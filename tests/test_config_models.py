@@ -151,6 +151,15 @@ def test_a_peer_is_given_up_on_after_five_failures_for_a_day() -> None:
         StatsConfig(node_cool_off_seconds=0)
 
 
+def test_a_peer_that_turned_this_node_away_rests_an_hour_by_default() -> None:
+    assert PeerConfig().turned_away_rest_seconds == 3600.0
+    assert PeerConfig(turned_away_rest_seconds=0.5).turned_away_rest_seconds == 0.5
+
+    for wrong in (0, -1):
+        with raises(ValidationError):
+            PeerConfig(turned_away_rest_seconds=wrong)
+
+
 def test_eight_hand_offs_run_at_once_by_default_and_never_none() -> None:
     assert StorageConfig().max_hand_offs == 8
     assert StorageConfig(max_hand_offs=1).max_hand_offs == 1
@@ -905,6 +914,7 @@ def test_the_example_config_states_the_default_limits_waits_and_hidden_names() -
         stated["network"]["max_bundles_request_bytes"] == NetworkConfig().max_bundles_request_bytes
     )
     assert stated["backup"]["restore_resume_seconds"] == BackupConfig().restore_resume_seconds
+    assert stated["peers"]["turned_away_rest_seconds"] == PeerConfig().turned_away_rest_seconds
     assert stated["karma"]["mining_processes"] == KarmaConfig().mining_processes
     assert stated["karma"]["fetch_wait_seconds"] == KarmaConfig().fetch_wait_seconds
     assert stated["karma"]["payment_percent"] == KarmaConfig().payment_percent

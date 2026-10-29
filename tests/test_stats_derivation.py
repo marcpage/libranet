@@ -23,6 +23,8 @@ PEER_ID = ContentId.for_data(b"a peer's public key", "sha256")
 OTHER_PEER_ID = ContentId.for_data(b"another peer's public key", "sha256")
 THIRD_PEER_ID = ContentId.for_data(b"a third peer's public key", "sha256")
 FOURTH_PEER_ID = ContentId.for_data(b"a fourth peer's public key", "sha256")
+FIFTH_PEER_ID = ContentId.for_data(b"a fifth peer's public key", "sha256")
+SIXTH_PEER_ID = ContentId.for_data(b"a sixth peer's public key", "sha256")
 CONTENT_ID = ContentId.for_data(b"content this node wants", "sha256")
 SELF_ENDPOINT = "http://localhost:8080"
 DIRECT_ENDPOINT = "http://localhost:9090"
@@ -328,7 +330,125 @@ def test_the_peer_list_names_the_peers_known_and_how_each_is_connected(
     assert second["peers"][0]["connected"] == []
 
 
-def test_the_node_list_puts_the_nodes_of_more_karma_first(storage: StorageConfig) -> None:
+def test_the_node_list_puts_the_nodes_nearest_this_nodes_karma_first(
+    storage: StorageConfig,
+) -> None:
+    now = [1_000.0]
+
+    with StatsDatabase(storage.database_path, clock=lambda: now[0]) as database:
+        deriver = ListDeriver(database, storage, StatsConfig(), [SELF_ENDPOINT], SELF_ID)
+
+        for node_id, endpoint in [
+            (PEER_ID, "http://203.0.113.9:4300"),
+            (OTHER_PEER_ID, "http://198.51.100.7:8080"),
+            (THIRD_PEER_ID, "http://192.0.2.4:4300"),
+            (FOURTH_PEER_ID, "http://192.0.2.5:4300"),
+        ]:
+            database.record_address_worked(node_id, endpoint)
+            now[0] += 10
+
+        unordered = listed_ids(deriver.derive())
+        hold_karma(
+            storage, {SELF_ID: 100, PEER_ID: 250, THIRD_PEER_ID: 10**14, FOURTH_PEER_ID: 200}
+        )
+        ordered = listed_ids(deriver.derive())
+
+    # The most recently reached first, while none holds Karma.
+    assert unordered == [
+        str(SELF_ID),
+        str(FOURTH_PEER_ID),
+        str(THIRD_PEER_ID),
+        str(OTHER_PEER_ID),
+        str(PEER_ID),
+    ]
+    # As near above as below, the most recently reached first; one of no
+    # balance is still listed.
+    assert ordered == [
+        str(SELF_ID),
+        str(FOURTH_PEER_ID),
+        str(OTHER_PEER_ID),
+        str(PEER_ID),
+        str(THIRD_PEER_ID),
+    ]
+
+
+def test_the_node_list_cap_leaves_out_the_nodes_farthest_from_this_nodes_karma(
+    storage: StorageConfig,
+) -> None:
+    now = [1_000.0]
+
+    with StatsDatabase(storage.database_path, clock=lambda: now[0]) as database:
+        # Room for this node and one peer.
+        deriver = ListDeriver(
+            database, storage, StatsConfig(max_list_bytes=250), [SELF_ENDPOINT], SELF_ID
+        )
+        database.record_address_worked(PEER_ID, "http://203.0.113.9:4300")
+        now[0] += 10
+        database.record_address_worked(OTHER_PEER_ID, "http://198.51.100.7:8080")
+        hold_karma(storage, {OTHER_PEER_ID: 1})
+        lists = deriver.derive()
+
+    # The one holding none, as this node does, though reached longer ago.
+    assert listed_ids(lists) == [str(SELF_ID), str(PEER_ID)]
+
+
+def test_the_candidate_list_puts_nodes_reached_first_then_climbs_from_this_nodes_karma(
+    storage: StorageConfig,
+) -> None:
+    now = [1_000.0]
+
+    with StatsDatabase(storage.database_path, clock=lambda: now[0]) as database:
+        deriver = ListDeriver(database, storage, StatsConfig(), [SELF_ENDPOINT], SELF_ID)
+
+        for node_id, endpoint in [
+            (PEER_ID, "http://203.0.113.9:4300"),
+            (OTHER_PEER_ID, "http://198.51.100.7:8080"),
+            (FIFTH_PEER_ID, "http://192.0.2.6:4300"),
+            (SIXTH_PEER_ID, "http://192.0.2.7:4300"),
+        ]:
+            database.record_address_worked(node_id, endpoint)
+            now[0] += 10
+
+        database.record_addresses({"http://192.0.2.4:4300": THIRD_PEER_ID}, AddressSource.RELAYED)
+        now[0] += 10
+        database.record_addresses({"http://192.0.2.5:4300": FOURTH_PEER_ID}, AddressSource.RELAYED)
+        unordered = candidate_ids(deriver.derive())
+        hold_karma(
+            storage,
+            {
+                SELF_ID: 100,
+                PEER_ID: 300,
+                OTHER_PEER_ID: 100,
+                FIFTH_PEER_ID: 50,
+                THIRD_PEER_ID: 10**14,
+            },
+        )
+        ordered = candidate_ids(deriver.derive())
+
+    assert unordered == [
+        str(SIXTH_PEER_ID),
+        str(FIFTH_PEER_ID),
+        str(OTHER_PEER_ID),
+        str(PEER_ID),
+        str(FOURTH_PEER_ID),
+        str(THIRD_PEER_ID),
+    ]
+    # Climbing from this node's own Karma, then those holding less, the
+    # nearest first. A node never reached waits behind those reached,
+    # whatever it holds.
+    assert ordered == [
+        str(OTHER_PEER_ID),
+        str(PEER_ID),
+        str(FIFTH_PEER_ID),
+        str(SIXTH_PEER_ID),
+        str(THIRD_PEER_ID),
+        str(FOURTH_PEER_ID),
+    ]
+
+
+def test_a_node_holding_no_karma_puts_the_nodes_holding_none_first(
+    storage: StorageConfig,
+) -> None:
     now = [1_000.0]
 
     with StatsDatabase(storage.database_path, clock=lambda: now[0]) as database:
@@ -342,54 +462,16 @@ def test_the_node_list_puts_the_nodes_of_more_karma_first(storage: StorageConfig
             database.record_address_worked(node_id, endpoint)
             now[0] += 10
 
-        unordered = listed_ids(deriver.derive())
         hold_karma(storage, {PEER_ID: 250, THIRD_PEER_ID: 10**14})
-        ordered = listed_ids(deriver.derive())
-
-    # The most recently reached first, while none holds Karma.
-    assert unordered == [str(SELF_ID), str(THIRD_PEER_ID), str(OTHER_PEER_ID), str(PEER_ID)]
-    # One of no balance is still listed, after those that hold some.
-    assert ordered == [str(SELF_ID), str(THIRD_PEER_ID), str(PEER_ID), str(OTHER_PEER_ID)]
-
-
-def test_the_node_list_cap_leaves_out_the_nodes_of_least_karma(storage: StorageConfig) -> None:
-    now = [1_000.0]
-
-    with StatsDatabase(storage.database_path, clock=lambda: now[0]) as database:
-        # Room for this node and one peer.
-        deriver = ListDeriver(
-            database, storage, StatsConfig(max_list_bytes=250), [SELF_ENDPOINT], SELF_ID
-        )
-        database.record_address_worked(PEER_ID, "http://203.0.113.9:4300")
-        now[0] += 10
-        database.record_address_worked(OTHER_PEER_ID, "http://198.51.100.7:8080")
-        hold_karma(storage, {PEER_ID: 1})
         lists = deriver.derive()
 
-    assert listed_ids(lists) == [str(SELF_ID), str(PEER_ID)]
-
-
-def test_the_candidate_list_puts_nodes_reached_first_then_those_of_more_karma(
-    storage: StorageConfig,
-) -> None:
-    now = [1_000.0]
-
-    with StatsDatabase(storage.database_path, clock=lambda: now[0]) as database:
-        deriver = ListDeriver(database, storage, StatsConfig(), [SELF_ENDPOINT], SELF_ID)
-        database.record_address_worked(PEER_ID, "http://203.0.113.9:4300")
-        now[0] += 10
-        database.record_address_worked(OTHER_PEER_ID, "http://198.51.100.7:8080")
-        now[0] += 10
-        database.record_addresses({"http://192.0.2.4:4300": THIRD_PEER_ID}, AddressSource.RELAYED)
-        now[0] += 10
-        database.record_addresses({"http://192.0.2.5:4300": FOURTH_PEER_ID}, AddressSource.RELAYED)
-        unordered = candidate_ids(deriver.derive())
-        hold_karma(storage, {PEER_ID: 250, THIRD_PEER_ID: 10**14})
-        ordered = candidate_ids(deriver.derive())
-
-    assert unordered == [str(OTHER_PEER_ID), str(PEER_ID), str(FOURTH_PEER_ID), str(THIRD_PEER_ID)]
-    # A node never reached waits behind those reached, whatever it holds.
-    assert ordered == [str(PEER_ID), str(OTHER_PEER_ID), str(THIRD_PEER_ID), str(FOURTH_PEER_ID)]
+    assert candidate_ids(lists) == [str(OTHER_PEER_ID), str(PEER_ID), str(THIRD_PEER_ID)]
+    assert listed_ids(lists) == [
+        str(SELF_ID),
+        str(OTHER_PEER_ID),
+        str(PEER_ID),
+        str(THIRD_PEER_ID),
+    ]
 
 
 def test_nodes_are_not_ordered_by_karma_while_no_chain_is_followed(
@@ -404,7 +486,7 @@ def test_nodes_are_not_ordered_by_karma_while_no_chain_is_followed(
         database.record_addresses(
             {"http://198.51.100.7:8080": OTHER_PEER_ID}, AddressSource.RELAYED
         )
-        hold_karma(storage, {PEER_ID: 250})
+        hold_karma(storage, {SELF_ID: 250, PEER_ID: 250})
         ordered = candidate_ids(deriver.derive())
         KarmaBalances().write(storage.karma_dir)
         unordered = candidate_ids(deriver.derive())
