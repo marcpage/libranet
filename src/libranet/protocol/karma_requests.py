@@ -12,6 +12,10 @@ A stake names the transaction block it is on, and what it stakes
 
     {"transaction_block": "sha256/…", "kismet": "1000000000000000"}
 
+The operator pays out of the node's own Karma, on ``/config``, with
+``POST /config/api/karma/payments``, which names no ``seconds``
+(:class:`NodePaymentRequest`).
+
 Each amount is decimal digits, as the ledger writes one (KarmaLedger §4.1).
 The node stamps what the person does not say: when each was made, and the
 generation a payment is made in. Members neither knows are ignored.
@@ -85,6 +89,77 @@ class PaymentRequest:
 
         except ValueError as error:
             raise InvalidRequestError(str(error)) from None
+
+    def transaction(self, sender: ContentId, generation: int, created: datetime) -> Transaction:
+        """This payment, as ``sender``'s transaction made at ``created``, in ``generation``.
+
+        Its nonce is not yet searched for (:meth:`Transaction.mined`).
+
+        Raises:
+            ValueError: ``generation`` is negative, or ``created`` is not a
+                UTC time to the second.
+        """
+        return Transaction(sender, self.to, self.fee, generation, created)
+
+
+@dataclass(frozen=True)
+class NodePaymentRequest:
+    """Paying each of ``to`` its amount, and ``fee`` to the validators, as the node itself.
+
+    What ``POST /config/api/karma/payments`` accepts, the operator paying
+    out of the node's own Karma, and what the web server gives the Karma
+    module to make the node's transaction of, as ``karma.node_payment``::
+
+        {"to": {"sha256/9f8e…": "250"}, "fee_kismet": "0"}
+
+    The node searches for its nonce as long as for its own payments
+    (KarmaLedger §4.6), so it names no ``seconds``.
+
+    Raises:
+        ValueError: it moves nothing, or more than there can be.
+    """
+
+    to: Mapping[ContentId, Kismet]
+    fee: Kismet = Kismet(0)
+
+    def __post_init__(self) -> None:
+        if self.sends() == Kismet(0):
+            raise ValueError("A payment must move more than 0 Kismet")
+
+    @classmethod
+    def from_value(cls, value: object) -> NodePaymentRequest:
+        """The payment a ``{"to", "fee_kismet"}`` object asks for, ``fee_kismet`` none if absent.
+
+        Raises:
+            InvalidRequestError: it is not such an object, or what it asks
+                for is no payment.
+        """
+        if not isinstance(value, dict):
+            raise InvalidRequestError("A payment must be a JSON object")
+
+        try:
+            return cls(
+                amounts_member(value.get(_TO), named=f'"{_TO}"'),
+                Kismet.from_value(value.get(_FEE, "0"), named=f'"{_FEE}"'),
+            )
+
+        except ValueError as error:
+            raise InvalidRequestError(str(error)) from None
+
+    def value(self) -> dict[str, object]:
+        """This payment as :meth:`from_value` reads it."""
+        return {
+            _TO: {str(identity): amount.value() for identity, amount in self.to.items()},
+            _FEE: self.fee.value(),
+        }
+
+    def sends(self) -> Kismet:
+        """All it moves: what it pays, and its fee.
+
+        Raises:
+            ValueError: that is more than there can be.
+        """
+        return sum(self.to.values(), self.fee)
 
     def transaction(self, sender: ContentId, generation: int, created: datetime) -> Transaction:
         """This payment, as ``sender``'s transaction made at ``created``, in ``generation``.

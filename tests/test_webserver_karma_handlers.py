@@ -63,6 +63,8 @@ RETRY_AFTER_SECONDS = 9
 NODE = ContentId("sha256", "e0" * 32)
 ALICE = ContentId("sha256", "a0" * 32)
 CAROL = ContentId("sha256", "c0" * 32)
+# Stated holding nothing, having spent all it held.
+SPENT = ContentId("sha256", "5e" * 32)
 NEWEST = 140
 PEER = ContentId("sha256", "9e" * 32)
 SIGNED_BY_PEER = AuthenticationResult(AuthenticationStatus.VERIFIED, PEER)
@@ -127,7 +129,12 @@ def following(karma_dir: Path) -> Path:
         encoding="utf-8",
     )
     KarmaBalances(
-        head_at(NEWEST), {NODE: Balance(Kismet(250), 139), ALICE: Balance(Kismet(10**28))}
+        head_at(NEWEST),
+        {
+            NODE: Balance(Kismet(250), 139),
+            ALICE: Balance(Kismet(10**28)),
+            SPENT: Balance(Kismet(0), 139),
+        },
     ).write(karma_dir)
     return karma_dir
 
@@ -139,7 +146,9 @@ def get(router: Router, path: str, **query: str) -> tuple[int, Any]:
 
 
 @mark.usefixtures("following")
-def test_the_head_and_the_nodes_own_balance_there_are_read(router: Router) -> None:
+def test_the_head_the_nodes_own_balance_and_how_many_hold_kismet_there_are_read(
+    router: Router,
+) -> None:
     assert get(router, "/data/karma") == (
         200,
         {
@@ -148,6 +157,8 @@ def test_the_head_and_the_nodes_own_balance_there_are_read(router: Router) -> No
             "weight": str(10 * (NEWEST + 1)),
             "node_id": str(NODE),
             "balance": {"kismet": "250", "last_won": 139},
+            # The node and Alice; one that spent all it held holds none.
+            "holders": 2,
         },
     )
 

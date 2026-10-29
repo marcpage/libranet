@@ -849,15 +849,34 @@ def test_a_block_is_full_within_its_room_under_the_most_it_may_be(
 ) -> None:
     bounds = BlockBounds(most_bytes=100, room_bytes=10)
 
-    assert bounds.is_full(compressed_bytes) is full
+    assert bounds.is_full(compressed_bytes, 1) is full
 
 
 @mark.parametrize(
     "compressed_bytes, full",
     [(917_503, False), (917_504, False), (917_505, True), (1_048_576, True), (1_048_577, False)],
 )
-def test_a_block_is_full_within_128_kib_under_1_mib(compressed_bytes: int, full: bool) -> None:
-    assert BLOCK_BOUNDS.is_full(compressed_bytes) is full
+def test_a_block_is_full_within_128_kib_under_1_mib_once_112_hold_kismet(
+    compressed_bytes: int, full: bool
+) -> None:
+    # 112 holders ask for 917,504 bytes, as much as 128 KiB under 1 MiB.
+    assert BLOCK_BOUNDS.full_above(112) == BLOCK_BOUNDS.full_above(1_000) == 917_504
+    assert BLOCK_BOUNDS.is_full(compressed_bytes, 112) is full
+
+
+@mark.parametrize(
+    "compressed_bytes, holders, full",
+    [(8_192, 1, False), (8_193, 1, True), (24_576, 3, False), (24_577, 3, True)],
+)
+def test_while_few_hold_kismet_a_block_is_full_above_8_kib_for_each(
+    compressed_bytes: int, holders: int, full: bool
+) -> None:
+    assert BLOCK_BOUNDS.is_full(compressed_bytes, holders) is full
+
+
+def test_bounds_whose_bytes_for_each_holder_are_negative_are_refused() -> None:
+    with raises(ValueError, match="holder_bytes"):
+        BlockBounds(holder_bytes=-1)
 
 
 @mark.parametrize(

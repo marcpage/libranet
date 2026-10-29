@@ -256,6 +256,7 @@ curl -u admin:secret -e http://127.0.0.1:8180/config/ \
 | `GET`, `PUT` | `/config/api/connecting` | Whether this node connects only to the nodes it trusts (§4.7) |
 | `POST` | `/config/api/karma/root` | Start a Karma ledger (§4.8) |
 | `GET`, `PUT` | `/config/api/karma` | What this node holds of Karma, and how much it stakes (§4.8) |
+| `POST` | `/config/api/karma/payments` | Pay out of this node's Karma (§4.8) |
 
 A backup, restore, build, or export is answered `202` at once, with the id
 it is known by, and its `GET` says how it is doing. Restores, builds, and
@@ -441,6 +442,24 @@ chain, and `balance` too, until the node has read the balances at its head.
 `payments_due` is when the payments queued go, and is `null` with none
 queued. A file of the node's Karma that cannot be read is `500`, saying why.
 
+In **Pay out of this node's Karma**, give the id of whom to pay, how much,
+in Karma, and a fee, if any, and **Pay**. The node signs the payment as
+itself and puts it up at once, apart from the payments it queues, and it
+shows among the transactions carried until the chain holds it. This is how
+the node that started a ledger sends out the 20 Karma its root earned. A
+script pays the same way:
+
+```bash
+curl -u admin:secret -e http://127.0.0.1:8180/config/ \
+  -X POST http://127.0.0.1:8180/config/api/karma/payments \
+  -H 'Content-Type: application/json' \
+  -d '{"to": {"sha256/9f8e…": "100000000000000"}, "fee_kismet": "0"}'
+```
+
+It is answered `202` with `{"covered": true}`, or `false` when the Karma
+the node holds does not cover it yet, and `409` while the node follows no
+chain.
+
 A ledger begins with a root. A new network has none until one node places
 it, and every node then follows the chain built on it. While the node
 follows no chain, **Karma** offers **Start a ledger**, which places one.
@@ -533,6 +552,10 @@ them, or as many with a drop sharing fewer bits with the target. It never
 shuns one that a validation block names, nor one that is full.
 `libranet-karma.log` names each it shuns, and the block that holds its
 transactions.
+
+A block is full once it is over 8 KiB, compressed, for each identity holding
+Karma, up to 128 KiB under 1 MiB once 112 hold any. So block 1, on a new
+ledger, is full above 8 KiB, which a dozen or so payments fill.
 
 Once a full block is placed at its head's target, so that the generation
 may close, the node stakes on it as it next builds: `karma.stake_percent`,

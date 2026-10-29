@@ -131,6 +131,27 @@ class ChainBefore:
         block = TransactionBlock(self.generation, self.validation_id, self.weight, 0, (payout,), {})
         return BalanceSheet.of(block, self.chain.balances(block.named() | set(identities), last))
 
+    def holders(self) -> int:
+        """How many identities hold Kismet in the balances a block built on it is checked against.
+
+        Each holds what the block it validates leaves, the latest stated of
+        it as far back as that block's reach, which states every holder, with
+        the payout applied (§5.2, §5.3). Their number sets how large the
+        block must be to be full (§5.4).
+
+        Raises:
+            MissingContentError: names the blocks ``chain`` lacks.
+            ValueError: the payout takes more from an identity than it holds.
+        """
+        latest: dict[ContentId, Balance] = {}
+
+        for stated in self._stated_back():
+            for identity, balance in stated.items():
+                latest.setdefault(identity, balance)
+
+        latest.update(self.paid().after)
+        return sum(1 for balance in latest.values() if balance.kismet != Kismet(0))
+
     def reach(self, block: TransactionBlock) -> int:
         """The ``reach`` of ``block``, built on it (§5.3).
 
@@ -141,12 +162,23 @@ class ChainBefore:
             MissingContentError: names a block in that reach, which ``chain``
                 lacks.
         """
+        return reach_of([block.balances, *self._stated_back()])
+
+    def _stated_back(self) -> list[Mapping[ContentId, Balance]]:
+        """The balances the block it validates states, and those before, as far as its reach.
+
+        The newest are first.
+
+        Raises:
+            MissingContentError: names a block in that reach, which ``chain``
+                lacks.
+        """
         last = self.generation - 1
         back = min(self.validated.reach, last)
         older = [
             self.chain.stated(generation) for generation in range(last - 1, last - back - 1, -1)
         ]
-        return reach_of([block.balances, self.validated.balances, *older])
+        return [self.validated.balances, *older]
 
     def false_basis(self, block: TransactionBlock) -> str:
         """What ``block``, read at the target named for it, states falsely of it, or ``""``.
@@ -543,10 +575,11 @@ class TransactionBlockCheck:
         if statement:
             return BlockFinding(statement, drop.builder)
 
-        incorrect = cls._incorrect(sheet, verdicts, compressed_bytes, bounds)
+        holders = before.holders()
+        incorrect = cls._incorrect(sheet, verdicts, compressed_bytes, bounds, holders)
 
         if incorrect:
-            return cls(drop, None, incorrect, bounds.is_full(compressed_bytes))
+            return cls(drop, None, incorrect, bounds.is_full(compressed_bytes, holders))
 
         return cls(drop, BlockScore.of(block, bits, before.chain))
 
@@ -594,14 +627,19 @@ class TransactionBlockCheck:
         verdicts: Mapping[str, TransactionVerdict],
         compressed_bytes: int,
         bounds: BlockBounds,
+        holders: int,
     ) -> str:
-        """Why ``sheet``'s block is incorrect, though it states nothing false, or ``""`` (§5.5)."""
+        """Why ``sheet``'s block is incorrect, though it states nothing false, or ``""`` (§5.5).
+
+        ``holders`` hold Kismet in the balances it is checked against, which
+        sets how large it must be to be full (§5.4).
+        """
         block = sheet.block
 
-        if not bounds.is_full(compressed_bytes):
+        if not bounds.is_full(compressed_bytes, holders):
             return (
                 f"A transaction block must be full, more than "
-                f"{bounds.most_bytes - bounds.room_bytes} bytes compressed and at most "
+                f"{bounds.full_above(holders)} bytes compressed and at most "
                 f"{bounds.most_bytes}, got {compressed_bytes}"
             )
 

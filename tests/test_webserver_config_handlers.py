@@ -34,6 +34,9 @@ from libranet.protocol.backup_requests import (
     RestoreRequest,
 )
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
+from libranet.protocol.karma_amounts import Kismet
+from libranet.protocol.karma_balances import Balance, KarmaBalances
+from libranet.protocol.karma_head import KarmaHead
 from libranet.webserver.app_registry import (
     CONFIG_APPLICATION,
     ROOT_APPLICATION,
@@ -56,11 +59,13 @@ from libranet.webserver.config_handlers import (
     KARMA_ROOT_PATH,
     METADATA_PATH,
     NODE_PATH,
+    NODE_PAYMENTS_PATH,
     RESTORES_PATH,
     BackupReportHandler,
     ConnectHandler,
     KarmaRootHandler,
     NodeDescription,
+    NodePaymentHandler,
     config_routes,
 )
 from libranet.webserver.http_types import Request, RequestBody, Response
@@ -193,6 +198,7 @@ def test_the_index_names_every_endpoint(router: Router) -> None:
         ("POST", "/config/api/karma/root"),
         ("GET", "/config/api/karma"),
         ("PUT", "/config/api/karma"),
+        ("POST", "/config/api/karma/payments"),
     }
 
 
@@ -1081,6 +1087,75 @@ def test_a_karma_head_that_cannot_be_read_leaves_the_karma_module_to_tell(
         "The Karma head could not be read, so the Karma module is left to tell whether it "
         "follows a chain: "
     )
+
+
+@fixture
+def paying(
+    queues: ModuleQueues, state: BackupState, registry: ApplicationRegistry, karma_dir: Path
+) -> Router:
+    """``/config/api``, paying out of the node's Karma as the balances in ``karma_dir`` say."""
+    publish = StubModule(ModuleName.WEBSERVER, queues).publish
+    router = Router()
+
+    for method, pattern, handler in config_routes(
+        publish,
+        state,
+        registry,
+        NodeDescription(NODE_ID, NETWORK),
+        RETRY_AFTER_SECONDS,
+        karma_payments=NodePaymentHandler(publish, karma_dir, NODE_ID),
+    ):
+        router.add(method, pattern, handler)
+
+    return router
+
+
+def holding(karma_dir: Path, kismet: int) -> None:
+    """As if the Karma module followed a chain, at whose head the node holds ``kismet``."""
+    KarmaBalances(KarmaHead(BUNDLE, 41, 96), {NODE_ID: Balance(Kismet(kismet), 40)}).write(
+        karma_dir
+    )
+
+
+@mark.parametrize(("held", "covered"), [(255, True), (254, False)])
+def test_a_payment_out_of_the_nodes_karma_is_given_the_karma_module_covered_or_not(
+    paying: Router, queues: ModuleQueues, karma_dir: Path, held: int, covered: bool
+) -> None:
+    holding(karma_dir, held)
+    payment = {"to": {str(BUNDLE): "250"}, "fee_kismet": "5"}
+
+    response = paying.dispatch(request("POST", NODE_PAYMENTS_PATH, payment))
+
+    assert (response.status, loads(response.body)) == (202, {"covered": covered})
+    (message,) = published(queues)
+    assert message["event"] == EventType.KARMA_NODE_PAYMENT
+    assert message["to"] == payment["to"] and message["fee_kismet"] == "5"
+
+
+def test_no_payment_out_of_the_nodes_karma_is_made_while_it_follows_no_chain(
+    paying: Router, queues: ModuleQueues
+) -> None:
+    response = paying.dispatch(request("POST", NODE_PAYMENTS_PATH, {"to": {str(BUNDLE): "1"}}))
+
+    assert response.status == 409
+    assert published(queues) == []
+
+
+@mark.parametrize(
+    "payment",
+    [{"to": {}}, {"to": {str(BUNDLE): "0"}}, {"to": {"not an id": "1"}}, []],
+    ids=["nothing", "zero", "no id", "no object"],
+)
+def test_what_is_no_payment_out_of_the_nodes_karma_is_refused(
+    paying: Router, queues: ModuleQueues, karma_dir: Path, payment: object
+) -> None:
+    holding(karma_dir, 1_000)
+
+    response = paying.dispatch(request("POST", NODE_PAYMENTS_PATH, payment))
+
+    assert response.status == 400
+    assert problem_type(response) == INVALID_REQUEST
+    assert published(queues) == []
 
 
 def test_asking_for_a_karma_root_reads_and_ignores_a_body(

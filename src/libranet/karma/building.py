@@ -385,7 +385,7 @@ class BlockBuilder:
                 return
 
             if not self._held(filled.drop.block.signed, at_target):
-                self._place(filled, head.validation)
+                self._place(filled, head.validation, combined.before.holders())
 
         except MissingContentError:
             # Not logged: what it lacks is asked for, and it is built once
@@ -406,7 +406,10 @@ class BlockBuilder:
         holding more of them, or as many and sharing more bits with the
         target (§3.7). One that a validation block held at the head's
         validation target names is not, nor one full, as the copy held
-        measures it. Each is named once at a head.
+        measures it. Each is named once at a head. None is while how many
+        hold Kismet, which sets how large a full one is, cannot be read: a
+        block of the chain lacked is asked for, and one that cannot be read
+        is logged.
 
         Returns:
             Each block superseded, and the block of most transactions, and of
@@ -415,6 +418,18 @@ class BlockBuilder:
         head = self._history.head
 
         if head is None:
+            return {}
+
+        try:
+            holders = ChainBefore.read(self._chain, head.validation).holders()
+
+        except MissingContentError:
+            # Not logged: what it lacks is asked for, and it is read once
+            # that comes.
+            return {}
+
+        except (BundleError, ValueError) as error:
+            _LOGGER.warning("Cannot read how many hold Karma at the head: %s", error)
             return {}
 
         targets = GenerationTargets.after(head.validation)
@@ -443,7 +458,7 @@ class BlockBuilder:
             if (
                 held.block_id in self._superseded
                 or held.block_id in named
-                or self._bounds.is_full(held.compressed_bytes)
+                or self._bounds.is_full(held.compressed_bytes, holders)
             ):
                 continue
 
@@ -647,8 +662,11 @@ class BlockBuilder:
         self._correct[held.block_id] = isinstance(check, TransactionBlockCheck) and check.is_correct
         return self._correct[held.block_id]
 
-    def _place(self, filled: FilledBlock, head: ContentId) -> None:
+    def _place(self, filled: FilledBlock, head: ContentId, holders: int) -> None:
         """Place ``filled`` at the transaction target named for ``head``, and store it.
+
+        It is logged as full, or not, as ``holders`` holding Kismet in the
+        balances it is checked against have it (§5.4).
 
         Raises:
             BundleError: it is larger than an object may be, even compressed.
@@ -664,7 +682,7 @@ class BlockBuilder:
             ContentId.for_data(drop.data, HASH_ALGORITHM),
             len(filled.drop.block.signed),
             compressed_bytes,
-            "full" if self._bounds.is_full(compressed_bytes) else "not full",
+            "full" if self._bounds.is_full(compressed_bytes, holders) else "not full",
             drop.matching_bits,
             head,
         )

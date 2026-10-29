@@ -21,6 +21,7 @@ from libranet.karma.putting import TransactionsPutUp
 from libranet.karma.reading import TargetReader
 from libranet.protocol.karma_amounts import MAX_KISMET, Kismet
 from libranet.protocol.karma_payments import PAYMENTS_FILE, Payment, PaymentQueue
+from libranet.protocol.karma_requests import NodePaymentRequest
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from libranet.protocol.search import LocalSearch
 from tests.helpers import new_identity
@@ -236,6 +237,34 @@ def test_a_payment_is_queued_at_the_percent_of_the_nodes_balance_rounded_down(
     # Carol holds 19,999 Kismet.
     assert payment == Payment(bob.node_id, Kismet(kismet))
     assert PaymentQueue.read(storage.karma_dir) == PaymentQueue((payment,))
+
+
+def test_a_payment_the_operator_makes_is_put_up_at_once_created_after_the_nodes_last(
+    storage: StorageConfig,
+    history: ChainHistory,
+    reader: TargetReader,
+    truth: CasStore,
+    placed: Placed,
+    clock: Clock,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+) -> None:
+    following(history, reader, truth, Chain.root(alice, 9))
+    # As if the node's last transaction were created a second from now.
+    last = clock.moment + timedelta(seconds=1)
+    PaymentQueue((Payment(bob.node_id, Kismet(3)),), last).write(storage.karma_dir)
+    payments = paying_as(alice, storage, history, reader, placed, clock)
+
+    signed = payments.pay_out(NodePaymentRequest({bob.node_id: Kismet(250)}, Kismet(5)))
+
+    (transaction,) = placed.transactions()
+    assert signed is not None and signed.transaction == transaction
+    assert (transaction.to, transaction.fee) == ({bob.node_id: Kismet(250)}, Kismet(5))
+    assert transaction.created == last + timedelta(seconds=1)
+    # The payments queued wait for their own transaction.
+    assert PaymentQueue.read(storage.karma_dir) == PaymentQueue(
+        (Payment(bob.node_id, Kismet(3)),), transaction.created
+    )
 
 
 def test_a_percent_is_read_as_the_decimal_it_is_written_as(bob: NodeIdentity) -> None:

@@ -210,9 +210,7 @@ class PaymentQueue:
         """The payments queued, made into one transaction by ``sender`` in ``generation``.
 
         It pays each recipient the payments to it summed, and no fee. It is
-        created at ``now``, or a second after the node's last, if that is
-        not earlier, so that no two transactions of the node's share a key
-        (§4.2).
+        created as :meth:`next_created` says.
 
         Raises:
             ValueError: it sends more than there can be.
@@ -222,12 +220,18 @@ class PaymentQueue:
         for payment in self.payments:
             to[payment.recipient] = to.get(payment.recipient, Kismet(0)) + payment.amount
 
-        created = now
+        return Transaction(sender, to, Kismet(0), generation, self.next_created(now))
 
-        if self.last_created is not None and created <= self.last_created:
-            created = self.last_created + timedelta(seconds=1)
+    def next_created(self, now: datetime) -> datetime:
+        """When the node's next transaction is created: ``now``, or a second after its last.
 
-        return Transaction(sender, to, Kismet(0), generation, created)
+        It is a second after the last if ``now`` is not later, so that no two
+        transactions of the node's share a key (§4.2).
+        """
+        if self.last_created is not None and now <= self.last_created:
+            return self.last_created + timedelta(seconds=1)
+
+        return now
 
     @classmethod
     def keeping(cls, transaction: Transaction) -> PaymentQueue:

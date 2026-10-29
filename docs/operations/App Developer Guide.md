@@ -1430,11 +1430,12 @@ unless the person asks to keep it for good.
 An identity's Karma, to a node, is its balance as the Karma chain the node
 follows states it, the same on every node following that chain (HTTP API
 §10.10). Any client may read it. `GET /data/karma` gives the head the node
-follows, and its own balance there:
+follows, its own balance there, and how many identities hold Kismet:
 
 ```json
 {"head": "sha256/…", "generation": 41, "weight": "1208",
- "node_id": "sha256/…", "balance": {"kismet": "250", "last_won": 40}}
+ "node_id": "sha256/…", "balance": {"kismet": "250", "last_won": 40},
+ "holders": 12}
 ```
 
 `kismet` is how many Kismet it holds, 10^14 to a Karma, written as decimal
@@ -1497,11 +1498,12 @@ A stake is taken only on the block the node itself builds validation
 blocks on: the best full transaction block placed for the generation after
 the head, at `karma transaction:{head}` (Karma Ledger §3.1). A page finds
 it by searching that drop (§6.9), reading each block found with
-`GET /data/{id}`, and taking those whose size is between 1 MiB less 128 KiB
-and 1 MiB (Karma Ledger §5.4). A block held compressed is answered as the
-node holds it, a zlib stream, whose size is the one that counts; one held
-as it is begins with the `{` of a signed bundle, and a page compresses it
-with `CompressionStream("deflate")` to measure it. Of those full, the best
+`GET /data/{id}`, and taking those whose size is over the lesser of 1 MiB
+less 128 KiB and 8 KiB for each of the `holders` `GET /data/karma` gives,
+and at most 1 MiB (Karma Ledger §5.4). A block held compressed is answered
+as the node holds it, a zlib stream, whose size is the one that counts; one
+held as it is begins with the `{` of a signed bundle, and a page compresses
+it with `CompressionStream("deflate")` to measure it. Of those full, the best
 shares the most bits with the target, then has the shortest `reach`, read
 with `GET /data/signed/{id}` (§6.13).
 

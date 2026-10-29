@@ -98,6 +98,11 @@ the node follows a chain, as the head the Karma module writes says
 change how much it stakes (Phase 6 Step 138). Their handlers are given to
 :func:`config_routes`
 (:class:`~libranet.webserver.karma_handlers.OwnKarma`).
+``POST /config/api/karma/payments`` ``{"to": {"sha256/…": "250"},
+"fee_kismet": "0"}`` has the Karma module pay out of the node's own Karma,
+as the operator asks: it publishes ``karma.node_payment`` and answers ``202``
+``{"covered": true}`` at once, saying whether the node's balance covers it,
+and is ``409`` while the node follows no chain.
 
 ``GET /config/api`` names the endpoints, so a client has somewhere to start.
 A browser has the ``/config`` application instead, served like any other
@@ -146,7 +151,9 @@ from libranet.protocol.backup_requests import (
 )
 from libranet.protocol.dial_requests import DialRequest
 from libranet.protocol.http_syntax import API_PREFIX
+from libranet.protocol.karma_balances import KarmaBalances
 from libranet.protocol.karma_head import KarmaHead
+from libranet.protocol.karma_requests import NodePaymentRequest
 from libranet.webserver.app_registry import CONFIG_APPLICATION, Application, ApplicationRegistry
 from libranet.webserver.backup_state import BackupState
 from libranet.webserver.dial_outcomes import DialOutcomes, DialReport
@@ -188,6 +195,7 @@ CONFIG_TRUST_PATH: Final = CONFIG_API_PATH + "/trust"
 CONNECTING_PATH: Final = CONFIG_API_PATH + "/connecting"
 CONFIG_KARMA_PATH: Final = CONFIG_API_PATH + "/karma"
 KARMA_ROOT_PATH: Final = CONFIG_KARMA_PATH + "/root"
+NODE_PAYMENTS_PATH: Final = CONFIG_KARMA_PATH + "/payments"
 BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-fA-F]{{{IDENTIFIER_LENGTH}}})"
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
 APPLICATION_PATTERN: Final = APPLICATIONS_PATH + "/(?P<name>[^/]+)"
@@ -268,6 +276,11 @@ ENDPOINTS: Final = (
         "description": "What this node holds of Karma, and how much it stakes",
     },
     {"method": "PUT", "path": CONFIG_KARMA_PATH, "description": "How much this node stakes"},
+    {
+        "method": "POST",
+        "path": NODE_PAYMENTS_PATH,
+        "description": "Pay out of this node's Karma",
+    },
 )
 
 
@@ -672,6 +685,59 @@ class KarmaRootHandler:
         return Response(HTTPStatus.ACCEPTED)
 
 
+@dataclass(frozen=True)
+class NodePaymentHandler:
+    """``POST /config/api/karma/payments``: have the Karma module pay out of the node's Karma.
+
+    The body is a payment (:class:`~libranet.protocol.karma_requests.NodePaymentRequest`),
+    which the Karma module makes a transaction of, signed by the node
+    ``node_id``, mines, and puts up, so it is answered ``202`` at once,
+    saying whether the node's balance, as the module last wrote it in
+    ``karma_dir``, covers it now. One not covered is put up all the same,
+    and is pending until it is (KarmaLedger §4.4). It is ``409`` while the
+    node follows no chain, and publishes nothing; balances that cannot be
+    read are ``500``.
+    """
+
+    publish: Publish
+    karma_dir: Path
+    node_id: ContentId
+
+    def __call__(self, request: Request) -> Response:
+        asked = parsed_or_refusal(request, NodePaymentRequest.from_value)
+
+        if isinstance(asked, Response):
+            return asked
+
+        try:
+            balances = KarmaBalances.read(self.karma_dir)
+
+        except (OSError, ValueError) as error:
+            _LOGGER.error("Cannot read the Karma balances in %s: %s", self.karma_dir, error)
+            return status_response(
+                request,
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                f"The node's Karma balance cannot be read: {error}",
+            )
+
+        if not balances.head.follows:
+            return status_response(
+                request,
+                HTTPStatus.CONFLICT,
+                "This node follows no Karma chain yet, so it holds no Karma to pay.",
+            )
+
+        self.publish(EventType.KARMA_NODE_PAYMENT, asked.value())
+        sends = asked.sends()
+        covered = balances.balance(self.node_id).kismet >= sends
+        _LOGGER.info(
+            "Paying %s Kismet in all out of the node's Karma, as the operator asks, %s",
+            sends.value(),
+            "covered" if covered else "not covered yet",
+        )
+        return json_response({"covered": covered}, HTTPStatus.ACCEPTED)
+
+
 def _not_registered_response(request: Request) -> Response:
     """The ``404`` for a path naming no registered application."""
     return status_response(
@@ -698,6 +764,7 @@ def config_routes(  # pylint: disable=too-many-locals
     connecting: Connecting | None = None,
     karma_root: Handler | None = None,
     karma: OwnKarma | None = None,
+    karma_payments: Handler | None = None,
 ) -> tuple[tuple[str, str, Handler], ...]:
     """Every ``/config/api`` route, as ``(method, pattern, handler)`` in route order.
 
@@ -705,9 +772,9 @@ def config_routes(  # pylint: disable=too-many-locals
     this node says of itself, ``connect`` connects to a node at an address,
     ``trust`` reads and changes this node's trust list, ``connecting``
     whether it connects only to the nodes it trusts, ``karma_root`` starts a
-    Karma ledger, and ``karma`` reads what the node holds of Karma, and
-    changes how much it stakes. Without one of them, no route does what it
-    does.
+    Karma ledger, ``karma`` reads what the node holds of Karma, and changes
+    how much it stakes, and ``karma_payments`` pays out of it. Without one
+    of them, no route does what it does.
     """
     configure = BackupRequestHandler(
         publish, BackupJobRequest.from_value, EventType.BACKUP_JOB_CONFIGURED, "job_id"
@@ -765,6 +832,7 @@ def config_routes(  # pylint: disable=too-many-locals
             )
         ),
         *(() if karma_root is None else (("POST", KARMA_ROOT_PATH, karma_root),)),
+        *(() if karma_payments is None else (("POST", NODE_PAYMENTS_PATH, karma_payments),)),
         *(
             ()
             if karma is None

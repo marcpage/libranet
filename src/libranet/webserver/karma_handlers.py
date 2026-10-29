@@ -209,6 +209,7 @@ class KarmaReads:
                 **balances.head.value(),
                 "node_id": str(self.node_id),
                 "balance": balances.balance(self.node_id).value(),
+                "holders": balances.holders(),
             }
         ).with_headers(NOT_STORED)
 

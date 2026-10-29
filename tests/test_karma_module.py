@@ -356,6 +356,7 @@ def test_the_supervisor_runs_the_karma_module_last(
                 EventType.KARMA_TRANSACTION,
                 EventType.KARMA_STAKE,
                 EventType.KARMA_RATINGS,
+                EventType.KARMA_NODE_PAYMENT,
             }
         ),
     )
@@ -1218,6 +1219,42 @@ def test_a_server_rated_highest_by_both_measures_is_paid_once(
     assert PaymentQueue.read(storage.karma_dir).payments == (
         Payment(BLOCK, Kismet(399_999_999_999)),
     )
+
+
+def test_a_payment_the_operator_makes_out_of_the_nodes_karma_is_put_up_at_once(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    karma = KarmaConfig(block_seconds=0.0, transaction_seconds=0.0)
+    module = paying_module(storage, queues, Clock(), karma)
+    published(queues)
+
+    module.handle(
+        make_message(
+            EventType.KARMA_NODE_PAYMENT,
+            ModuleName.WEBSERVER,
+            {"to": {str(PEER): "250"}, "fee_kismet": "0"},
+        )
+    )
+
+    (put_up,) = stored_ids(queues)
+    block = BlockDrop.parsed(module.reader.held(put_up), TransactionBlock).block
+    node = NodeIdentity.load(LibranetConfig(storage=storage)).node_id
+    assert [(each.transaction.sender, dict(each.transaction.to)) for each in block.signed] == [
+        (node, {PEER: Kismet(250)})
+    ]
+
+
+def test_what_is_no_payment_of_the_nodes_is_logged_and_passed_over(
+    storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    module = paying_module(storage, queues, Clock())
+    published(queues)
+
+    with caplog.at_level(WARNING):
+        module.handle(make_message(EventType.KARMA_NODE_PAYMENT, ModuleName.WEBSERVER, {"to": {}}))
+
+    assert stored_ids(queues) == []
+    assert "Passing over a payment of the node's that is none" in caplog.text
 
 
 def test_no_server_is_paid_when_none_served_the_node(
