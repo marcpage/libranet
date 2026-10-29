@@ -59,7 +59,6 @@ from libranet.karma.blocks import (
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.claims import ClaimedChain, FalseStatement, HeadClaim
-from libranet.karma.following import say_found
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainHistory
 from libranet.karma.reading import HeldChain, TargetReader
@@ -281,7 +280,7 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
 
         if block_id not in self._found:
             self._found[block_id] = found
-            say_found(self._publish, block_id, found)
+            found.say(self._publish, block_id)
 
         return f"{block_id} is not taken: {found.statement}"
 

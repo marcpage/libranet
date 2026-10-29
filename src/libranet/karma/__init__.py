@@ -54,7 +54,7 @@ from libranet.karma.checking import (
 )
 from libranet.karma.claims import ClaimedChain, ClaimedGeneration, FalseStatement, HeadClaim
 from libranet.karma.errors import MisplacedBlockError
-from libranet.karma.following import ChainFollower, say_found
+from libranet.karma.following import ChainFollower
 from libranet.karma.generations import (
     FIRST_NEW_KISMET,
     LAST_ISSUING_GENERATION,
@@ -130,6 +130,5 @@ __all__ = [
     "balances_left",
     "new_kismet",
     "reach_of",
-    "say_found",
     "unchecked_level",
 ]

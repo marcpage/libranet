@@ -61,7 +61,6 @@ from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
 from libranet.karma.validating import ValidationBlockCheck
-from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 
 _LOGGER = getLogger(__name__)
@@ -319,8 +318,8 @@ class ChainFollower:
         """What ``found`` keeps of block ``held``, checked by ``check`` unless it was before.
 
         What is found of a block checked now is kept, and said
-        (:func:`say_found`). One of another target, or that cannot be checked
-        here, is passed over, as ``None``, and logged.
+        (:meth:`BlockFinding.say`). One of another target, or that cannot be
+        checked here, is passed over, as ``None``, and logged.
 
         Raises:
             MissingContentError: names what ``check`` lacks, which is asked
@@ -351,7 +350,10 @@ class ChainFollower:
             checked = None
 
         found[block_id] = checked
-        say_found(self._publish, block_id, checked)
+
+        if isinstance(checked, BlockFinding):
+            checked.say(self._publish, block_id)
+
         return checked
 
     def _generation(self, check: ValidationBlockCheck) -> ChainGeneration | None:
@@ -375,34 +377,3 @@ class ChainFollower:
         return ChainGeneration.of(
             check.block_id, check.drop.block, validated_id, validated.drop.block
         )
-
-
-def say_found(publish: Publish, block_id: ContentId, found: object) -> None:
-    """Say with ``publish`` what block ``block_id`` was ``found``, if unsigned or false (§3.8).
-
-    One unsigned is shunned, and one false said, for its builder to be
-    distrusted; each is logged at debug, as what anyone may place.
-    """
-    if not isinstance(found, BlockFinding):
-        return
-
-    if found.builder is None:
-        _LOGGER.debug("Shunning Karma block %s, which is unsigned: %s", block_id, found.statement)
-        publish(EventType.DATA_SHUNNED, block_id.fields())
-        return
-
-    _LOGGER.debug(
-        "Karma block %s, built by %s, states something false: %s",
-        block_id,
-        found.builder,
-        found.statement,
-    )
-    publish(
-        EventType.KARMA_FALSE_BLOCK,
-        {
-            "block": str(block_id),
-            "builder": str(found.builder),
-            "staker": None if found.staker is None else str(found.staker),
-            "statement": found.statement,
-        },
-    )

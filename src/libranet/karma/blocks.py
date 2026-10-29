@@ -32,7 +32,7 @@ rule, states nothing false, and only scores zero (§5.5).
 from __future__ import annotations
 from dataclasses import dataclass
 from itertools import pairwise
-from logging import DEBUG, WARNING
+from logging import DEBUG, WARNING, getLogger
 from re import compile as compile_pattern
 from typing import Any, Callable, Final, Generic, Mapping, Sequence, TypeVar
 from zlib import compress
@@ -56,6 +56,8 @@ from libranet.json_format import compact_json
 from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.weight import ChainWeight
+from libranet.messaging.events import EventType
+from libranet.messaging.publishing import Publish
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import Balance
 from libranet.protocol.karma_members import contents_value, id_member
@@ -68,6 +70,8 @@ from libranet.protocol.karma_transactions import (
     Transaction,
     TransactionKey,
 )
+
+_LOGGER = getLogger(__name__)
 
 #: The most a block's drop may be, compressed: 1 MiB (§5.4).
 MAX_BLOCK_BYTES: Final = 1 * MIB
@@ -488,6 +492,35 @@ class BlockFinding:
     statement: str
     builder: ContentId | None = None
     staker: ContentId | None = None
+
+    def say(self, publish: Publish, block_id: ContentId) -> None:
+        """Say with ``publish`` that block ``block_id`` was found so (§3.8).
+
+        One unsigned is shunned, and one false said, for its builder to be
+        distrusted; each is logged at debug, as what anyone may place.
+        """
+        if self.builder is None:
+            _LOGGER.debug(
+                "Shunning Karma block %s, which is unsigned: %s", block_id, self.statement
+            )
+            publish(EventType.DATA_SHUNNED, block_id.fields())
+            return
+
+        _LOGGER.debug(
+            "Karma block %s, built by %s, states something false: %s",
+            block_id,
+            self.builder,
+            self.statement,
+        )
+        publish(
+            EventType.KARMA_FALSE_BLOCK,
+            {
+                "block": str(block_id),
+                "builder": str(self.builder),
+                "staker": None if self.staker is None else str(self.staker),
+                "statement": self.statement,
+            },
+        )
 
 
 @dataclass(frozen=True)
