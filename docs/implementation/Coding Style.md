@@ -388,7 +388,11 @@ do.
   ```
 
   A method that overrides or stands in for a standard-library one keeps that
-  one's signature (`RequestHandler.send_error`, `MessageQueue.get`).
+  one's signature (`RequestHandler.send_error`, `MessageQueue.get`), but for
+  a parameter named for a builtin. That one is renamed and made
+  positional-only, since the standard library passes it by position:
+  `RequestHandler.log_message(self, template, /, *args)`.
+  `redefined-builtin` is never turned off.
 
 - **No more than five parameters are positional**, not counting `self` or
   `cls`, which `pylint` checks. Any more go after the `*`, where a call has
