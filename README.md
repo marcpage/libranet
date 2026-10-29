@@ -340,7 +340,8 @@ you say so on `/config`.
 | [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |
 | [File Layout](docs/implementation/File%20Layout.md) | Every file a node reads or writes, and the settings that move them |
 | [Database Schema](docs/implementation/Database%20Schema.md) | The statistics database's tables, and what reads and writes them |
-| [Coding Style](docs/implementation/Coding%20Style.md) | The conventions the Python code follows |
+| [Coding Style](docs/implementation/Coding%20Style.md) | Rules for writing Python, general enough to carry to another project |
+| [Coding Style in Libranet](docs/implementation/Coding%20Style%20in%20Libranet.md) | The tools, helpers, and tests behind those rules here, and where the code departs from them |
 
 The guides describe the Python node in this repository. The specifications
 are normative; the implementation plans record the decisions the Python node

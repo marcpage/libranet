@@ -2234,7 +2234,7 @@ My calls while building, not yet reviewed:
 - **The store's own `413`, for a value or a store too large, still names
   no `max_bytes`**, since either of two limits may be what was passed.
 - **`status_response` takes its `detail` as required**, so it adds no
-  optional parameter taken positionally (Coding Style §12.1).
+  optional parameter taken positionally (Coding Style in Libranet §4.1).
 
 Looked at, and left as they are:
 
