@@ -506,7 +506,8 @@ one rated highest by requests fulfilled, once if they are one
 head's transaction target, and at the transaction targets of the head's
 rivals, and the transactions it carries, into one block, as full as it can
 be, and, once that would be full, places it, searching for its nonce for
-`karma.block_seconds`, unless a block it holds there already holds every
+`karma.block_seconds`, or once `karma.combine_transactions` of them are in no
+one block it holds there, unless a block it holds there already holds every
 transaction it would take; with none to take, and no
 correct block held there, it places a block of the payout alone, and it
 builds nothing while a block found there is being fetched, for up to

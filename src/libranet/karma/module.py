@@ -114,10 +114,11 @@ and to the one rated highest by requests fulfilled, once if they are one
 
 Every ``karma.build_interval_seconds``, it combines the transaction blocks at
 its head's transaction target, and at those of the head's false starts, and
-the transactions it carries, into one block, as full as it can be, and
-places it there as it places a block of its own, unless a block it holds
-there holds them all (:class:`~libranet.karma.building.BlockBuilder`, Phase 6
-Step 134).
+the transactions it carries, into one block, as full as it can be, and, once
+that would be full, or ``karma.combine_transactions`` of them are in no one
+block it holds there, places it there as it places a block of its own, unless
+a block it holds there holds them all
+(:class:`~libranet.karma.building.BlockBuilder`, Phase 6 Step 134).
 
 After each look and each build, it shuns each transaction block at its
 head's transaction target whose transactions are all in another it holds
@@ -339,7 +340,12 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             bounds=self._bounds,
         )
         self._building = BlockBuilder(
-            self._history, self._reader, carried, placing, bounds=self._bounds
+            self._history,
+            self._reader,
+            carried,
+            placing,
+            combine_transactions=self._config.karma.combine_transactions,
+            bounds=self._bounds,
         )
         self._validating = ValidationBuilder(
             self._history,

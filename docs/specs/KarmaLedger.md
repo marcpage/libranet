@@ -775,7 +775,11 @@ balances, and its `reach` truly (§3.8). Builders combine the blocks at a
 generation's targets, false starts among them (§3.4), into larger ones, for
 a better score. A builder need not place a combined block until it would be
 full: only a full block is validated (§5.4), and a search finds the blocks
-put up until then, however many there are. A builder that has no transaction
+put up until then, however many there are. It may place one sooner, so that
+one block takes the place of many that every node would otherwise read: the
+reference node does once enough of the transactions it would take, 100 unless
+its configuration says otherwise, are in no one block it holds there. A
+builder that has no transaction
 to take, and holds no correct block at the generation's transaction target,
 builds one holding
 the payout alone, so that the balances the reward of the head's validation

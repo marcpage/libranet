@@ -7,8 +7,10 @@ at the transaction targets of the head's rivals, the other validation blocks
 at the target the head was chosen from, whose blocks are false starts
 (§3.4), and builds one block of what they hold, and of what it carries
 (:mod:`libranet.karma.carried`), once that would be full. One that would not
-be is not mined, since only a full block is validated (§5.4): the blocks put
-up stay until there are enough of them.
+be is mined only once ``karma.combine_transactions`` of what it would take are
+in no one block held there: only a full block is validated (§5.4), but every
+node reads each block there each time, so that one of many, which supersedes
+them (§3.7), leaves fewer to read.
 
 Each transaction is taken on its own, whoever built the block it is read
 from, a distrusted identity among them (§3.8, §4.4): one whose signature
@@ -27,10 +29,9 @@ The block states its payout, the balances of everyone it names, its
 others holding Kismet too, those stated longest ago first, as many as
 shorten its reach within the cap of twice those it names (§5.3). It is
 signed by the node, its drop's nonce searched for for
-``karma.block_seconds``, since its bits score it, or, holding only the payout,
-not, and after that until it shares ``storage.search_min_bits`` with its
-target (§2), and it is stored and announced, as a block put up for a
-transaction alone is.
+``karma.block_seconds``, if it is full, since its bits then score it, and
+after that until it shares ``storage.search_min_bits`` with its target (§2),
+and it is stored and announced, as a block put up for a transaction alone is.
 
 Nothing is built while one block held at the head's transaction target,
 correct but perhaps for not being full, holds every transaction that would
@@ -313,15 +314,24 @@ class FilledBlock:
         return BlockDrop(identity.signed(block.text()), block)
 
 
+@dataclass(frozen=True)
+class _Filling:
+    """What a builder fills a block within, and how many it combines though not full."""
+
+    bounds: BlockBounds
+    combine_transactions: int
+
+
 class BlockBuilder:
     """Combines the blocks at the head's targets, and what is carried, into one (§5.6).
 
     The chain is the one ``history`` keeps, its blocks read from what
     ``reader`` holds, and what is carried is in ``carried``. A block is
     signed, placed, and stored as ``placing`` says. It is filled within
-    ``bounds``: the specification's, unless a test gives others. It also
-    finds the blocks held at the head's transaction target that another held
-    there supersedes, for the node to shun (§3.7).
+    ``bounds``: the specification's, unless a test gives others, and placed
+    though not full once ``combine_transactions`` of what it takes are in no
+    one block held. It also finds the blocks held at the head's transaction
+    target that another held there supersedes, for the node to shun (§3.7).
     """
 
     def __init__(
@@ -331,13 +341,14 @@ class BlockBuilder:
         carried: CarriedTransactions,
         placing: BlockPlacing,
         *,
+        combine_transactions: int,
         bounds: BlockBounds = BLOCK_BOUNDS,
     ) -> None:
         self._history = history
         self._reader = reader
         self._carried = carried
         self._placing = placing
-        self._bounds = bounds
+        self._filling = _Filling(bounds, combine_transactions)
         self._chain = HeldChain(history, reader)
         # The head these were found at: the blocks and transactions passed
         # over, each logged once, whether each block held at the head's
@@ -353,8 +364,9 @@ class BlockBuilder:
 
         It is built of the transactions in the blocks held at that target,
         and at the targets of the head's false starts (§3.4), and those
-        carried, once it would be full, or of the payout alone, if there are
-        none, and no correct block is held there. None is built while a block
+        carried, once it would be full, or ``combine_transactions`` of them are
+        in no one block held there, or of the payout alone, if there are none,
+        and no correct block is held there. None is built while a block
         found at that target is not held, and is waited for: it is built once
         that comes, or is given up on. A block of the chain it lacks is asked
         for, and it is built as this is next called; one that cannot be built for an
@@ -382,28 +394,32 @@ class BlockBuilder:
 
         try:
             combined = CombinedBlock.of(
-                self._verified(offered), head.validation, self._chain, bounds=self._bounds
+                self._verified(offered), head.validation, self._chain, bounds=self._filling.bounds
             )
 
             if self._held(combined.taken, at_target):
                 return
 
-            filled = FilledBlock.of(combined, self._placing.identity(), bounds=self._bounds)
+            filled = FilledBlock.of(combined, self._placing.identity(), bounds=self._filling.bounds)
 
             if filled is None:
                 _LOGGER.warning(
                     "Building no Karma transaction block at head %s: not one transaction fits "
                     "in %d bytes",
                     head.validation,
-                    self._bounds.most_bytes,
+                    self._filling.bounds.most_bytes,
                 )
                 return
 
             holders = combined.before.holders()
 
             # Not logged: it is looked at again each build, and is built once
-            # more transactions make it full.
-            if combined.taken and not self._bounds.is_full(filled.measured_bytes, holders):
+            # more transactions make it full, or enough to combine.
+            if (
+                combined.taken
+                and not self._filling.bounds.is_full(filled.measured_bytes, holders)
+                and self._uncombined(combined.taken, at_target) < self._filling.combine_transactions
+            ):
                 return
 
             if not self._held(filled.drop.block.signed, at_target):
@@ -480,7 +496,7 @@ class BlockBuilder:
             if (
                 held.block_id in self._superseded
                 or held.block_id in named
-                or self._bounds.is_full(held.compressed_bytes, holders)
+                or self._filling.bounds.is_full(held.compressed_bytes, holders)
             ):
                 continue
 
@@ -654,6 +670,26 @@ class BlockBuilder:
             for held, drop in at_target
         )
 
+    def _uncombined(
+        self,
+        taken: Sequence[SignedTransaction],
+        at_target: Sequence[tuple[HeldBlock, BlockDrop[TransactionBlock]]],
+    ) -> int:
+        """How many of ``taken`` the correct block ``at_target`` holding the most of them lacks.
+
+        A block is correct here but perhaps for being full.
+        """
+        hashes = {signed.hash for signed in taken}
+        holding = sorted(
+            (
+                (len(hashes & {signed.hash for signed in drop.block.signed}), held)
+                for held, drop in at_target
+            ),
+            key=lambda each: each[0],
+            reverse=True,
+        )
+        return len(hashes) - next((count for count, held in holding if self._is_correct(held)), 0)
+
     def _is_correct(self, held: HeldBlock) -> bool:
         """Whether ``held``, at the head's transaction target, is correct, but perhaps for fullness.
 
@@ -667,7 +703,7 @@ class BlockBuilder:
                 held,
                 self._head,
                 self._chain,
-                bounds=replace(self._bounds, room_bytes=self._bounds.most_bytes),
+                bounds=replace(self._filling.bounds, room_bytes=self._filling.bounds.most_bytes),
             )
 
         except MissingContentError:
@@ -688,7 +724,8 @@ class BlockBuilder:
         """Place ``filled`` at the transaction target named for ``head``, and store it.
 
         It is logged as full, or not, as ``holders`` holding Kismet in the
-        balances it is checked against have it (§5.4).
+        balances it is checked against have it (§5.4). Only if it is full, and
+        holds more than the payout, do its bits score it.
 
         Raises:
             BundleError: it is larger than an object may be, even compressed.
@@ -699,7 +736,8 @@ class BlockBuilder:
         drop = self._placing.placed(
             filled.drop,
             GenerationTargets.after(head).transaction,
-            scored=bool(filled.drop.block.signed),
+            scored=bool(filled.drop.block.signed)
+            and self._filling.bounds.is_full(filled.measured_bytes, holders),
         )
 
         if drop is None:
@@ -712,7 +750,7 @@ class BlockBuilder:
             ContentId.for_data(drop.data, HASH_ALGORITHM),
             len(filled.drop.block.signed),
             compressed_bytes,
-            "full" if self._bounds.is_full(compressed_bytes, holders) else "not full",
+            "full" if self._filling.bounds.is_full(compressed_bytes, holders) else "not full",
             drop.matching_bits,
             head,
         )

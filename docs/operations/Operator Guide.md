@@ -152,6 +152,7 @@ The settings an operator is most likely to change:
 | `karma.transaction_seconds` | `0.0` | How long Karma mines a transaction of the node's payments before taking the best nonce found, once it has the work a transaction needs. More only helps a free transaction when blocks are crowded (§4.8) |
 | `karma.rating_interval_seconds` | `3600.0` | How often Karma rates the servers the node is a client of, and pays the best (§4.8) |
 | `karma.build_interval_seconds` | `60.0` | How often Karma combines the transactions put up for the next generation into one block, as full as it can be, and stakes on a full one (§4.8) |
+| `karma.combine_transactions` | `100` | How many of the transactions Karma would take must be in no one block it holds before it places a combined block that would not be full, so that nodes have fewer blocks to read (§4.8) |
 | `karma.stake_percent` | `10.0` | What share of the Karma that covers its stakes the node stakes on each generation's best full block, in percent, until a share is saved on `/config`; `0` stakes nothing (§4.8) |
 | `local.folders` | Your desktop, documents, downloads, music, pictures, and videos folders | The folders offered to trusted applications (§6.3) |
 | `logging.level` | `INFO` | What is logged (§7.2) |
@@ -543,9 +544,13 @@ head's rivals, with those it carries in `karma/carried.json`, into one
 block, as full as it can be: the free ones with the most work first, and the
 paid ones with the largest fees, at least half of them free, and each only
 while its sender can pay for it. Only a full block can be validated, so it
-places that block only once it would be full, searching for its nonce for
-`karma.block_seconds`, which holds up its other Karma work, and not if a
-block there already holds every transaction it would take. With none to
+places that block once it would be full, searching for its nonce for
+`karma.block_seconds`, which holds up its other Karma work. So that nodes
+have fewer blocks to read, it also places it once
+`karma.combine_transactions`, 100 by default, of those transactions are in no
+one block it holds there, searching only until a search will find it. It
+places none if a block there already holds every transaction it would take.
+With none to
 take, and no correct block there, it places a block of the payout alone,
 which pays the last generation's reward, so that the balances it leaves are
 stated there. It builds nothing while a block found there is not held, and

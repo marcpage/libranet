@@ -890,6 +890,13 @@ class KarmaConfig(_Section):
     # karma.block_seconds.
     build_interval_seconds: float = Field(default=60.0, gt=0)
 
+    # How many of the transactions it would take must be in no one block it
+    # holds at its head's transaction target before the Karma module places a
+    # combined block that would not be full. Only a full block is validated,
+    # but every node reads each block there as often as it looks and builds,
+    # so that a block of many takes the place of many blocks (KarmaLedger §5.6).
+    combine_transactions: int = Field(default=100, ge=1)
+
     # What share of what covers the node's stakes the Karma module stakes on
     # the best transaction block of each generation, in percent, rounded down
     # to whole Kismet, as it builds a validation block (KarmaLedger §6.3,

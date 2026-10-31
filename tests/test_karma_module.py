@@ -106,6 +106,7 @@ def rooting_module(
     *,
     bounds: BlockBounds = BOUNDS,
     stake_percent: float = 10.0,
+    combine_transactions: int = 100,
 ) -> KarmaModule:
     """The Karma module of a node over ``storage``, started, which makes a root in moments.
 
@@ -115,7 +116,10 @@ def rooting_module(
         LibranetConfig(
             storage=storage.model_copy(update={"search_min_bits": SEARCH_MIN_BITS}),
             karma=KarmaConfig(
-                block_seconds=0.0, transaction_seconds=0.0, stake_percent=stake_percent
+                block_seconds=0.0,
+                transaction_seconds=0.0,
+                stake_percent=stake_percent,
+                combine_transactions=combine_transactions,
             ),
         )
     )
@@ -1000,6 +1004,29 @@ def test_the_module_mines_no_combined_block_until_it_would_be_full(
     module.on_idle()
 
     assert stored_ids(queues) == []
+
+
+def test_the_module_combines_as_many_as_it_is_configured_to_though_not_full(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    clock = Clock()
+    module = rooting_module(storage, queues, clock, combine_transactions=2)
+    module.handle(root_requested())
+    clock.now += LibranetConfig().karma.build_interval_seconds
+    module.on_idle()
+    published(queues)
+
+    for seconds in (1, 2, 3):
+        module.handle(given(paid_by_node(storage, seconds)))
+
+    assert len(stored_ids(queues)) == 3
+
+    clock.now += LibranetConfig().karma.build_interval_seconds
+    module.on_idle()
+
+    (combined,) = stored_ids(queues)
+    block = BlockDrop.parsed(module.reader.held(combined), TransactionBlock).block
+    assert len(block.signed) == 3
 
 
 def test_the_module_combines_the_blocks_at_the_heads_target_every_build_interval(

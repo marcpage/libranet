@@ -438,6 +438,13 @@ karma:
   # the block holds up the module's other work for block_seconds.
   build_interval_seconds: 60.0
 
+  # How many of those transactions must be in no one block it holds at its
+  # head's transaction target before the Karma module places a combined block
+  # that would not be full. Only a full block is validated, but every node
+  # reads each block there as often as it looks and builds, so that a block of
+  # many takes the place of many blocks.
+  combine_transactions: 100
+
   # What share of what covers the node's stakes the Karma module stakes on
   # the best transaction block of each generation, in percent, rounded down
   # to whole Kismet, as it builds a validation block every

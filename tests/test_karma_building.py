@@ -174,6 +174,7 @@ def building(
     carol: NodeIdentity,
     placed: Placed,
     bounds: BlockBounds = ROOMY,
+    combine_transactions: int = 100,
 ) -> BlockBuilder:
     """What builds blocks as Carol, placing each drop in moments."""
     return BlockBuilder(
@@ -183,6 +184,7 @@ def building(
         BlockPlacing(
             lambda: carol, placed, shunned=placed.shunned, block_seconds=0.0, drop_bits=MINIMUM_BITS
         ),
+        combine_transactions=combine_transactions,
         bounds=bounds,
     )
 
@@ -206,8 +208,8 @@ def shunning(
     carol: NodeIdentity,
     placed: Placed,
 ) -> BlockBuilder:
-    """What builds blocks as Carol, in which a block of a few transactions is not full."""
-    return building(history, reader, carried, carol, placed, LARGE)
+    """What builds blocks as Carol, in which few are not full, and combining takes 2 more."""
+    return building(history, reader, carried, carol, placed, LARGE, 2)
 
 
 def following(follower: ChainFollower, truth: CasStore, chain: Chain) -> None:
@@ -752,36 +754,30 @@ def test_nothing_is_built_while_a_block_found_at_the_target_is_waited_for(
     assert [block.signed for block in placed.blocks()] == [()]
 
 
-def test_no_combined_block_is_mined_until_it_would_be_full(
+def test_no_combined_block_is_mined_until_it_would_be_full_or_enough_would_combine(
     shunning: BlockBuilder,
-    builder: BlockBuilder,
     placed: Placed,
     follower: ChainFollower,
     truth: CasStore,
     first: Chain,
     alice: NodeIdentity,
     bob: NodeIdentity,
-    dave: NodeIdentity,
 ) -> None:
     following(follower, truth, first)
-    signed = [sent(alice, {bob.node_id: 1}, seconds) for seconds in (1, 2)]
+    counts = []
 
-    for each in signed:
-        put_up(truth, first, dave, each)
+    # Each is put up alone, so 2 are in no one block at the third, and again at the fifth.
+    for seconds in (1, 2, 3, 4, 5):
+        put_up(truth, first, alice, sent(alice, {bob.node_id: 1}, seconds))
+        shunning.build()
+        counts.append([len(block.signed) for block in placed.blocks()])
 
-    # Where a block of the two is short of full, as it is by far in LARGE.
-    shunning.build()
-
-    assert placed.drops == []
-
-    # Where it is full.
-    builder.build()
-
-    assert [len(block.signed) for block in placed.blocks()] == [2]
+    assert counts == [[], [], [3], [3], [3, 5]]
 
 
 def test_only_a_block_whose_bits_score_it_is_searched_for_longer_than_it_takes_to_find(
     builder: BlockBuilder,
+    shunning: BlockBuilder,
     follower: ChainFollower,
     truth: CasStore,
     root: Chain,
@@ -799,13 +795,17 @@ def test_only_a_block_whose_bits_score_it_is_searched_for_longer_than_it_takes_t
     monkeypatch.setattr(BlockPlacing, "placed", placing)
     following(follower, truth, root)
 
-    # A block of the payout alone is only to be found, and a full one competes.
-    builder.build()
-    put_up(truth, root, alice, sent(alice, {bob.node_id: 1}, 1))
-    put_up(truth, root, alice, sent(alice, {bob.node_id: 1}, 2))
+    # A block of the payout alone, or not full, is only to be found. A full one competes.
     builder.build()
 
-    assert scored == [False, True]
+    for seconds in (1, 2, 3):
+        put_up(truth, root, alice, sent(alice, {bob.node_id: 1}, seconds))
+
+    shunning.build()
+    put_up(truth, root, alice, sent(alice, {bob.node_id: 1}, 4))
+    builder.build()
+
+    assert scored == [False, False, True]
 
 
 def test_with_nothing_to_take_a_block_of_the_payout_alone_is_built_once(
