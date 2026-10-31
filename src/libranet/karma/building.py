@@ -1,12 +1,14 @@
 """Combining transaction blocks (KarmaLedger §3.4, §5.3, §5.4, §5.6, Phase 6 Step 134).
 
-Builders combine the blocks put up at a generation's targets into larger
-ones, until one is full. Every ``karma.build_interval_seconds``, the Karma
+Builders combine the blocks put up at a generation's targets into one that
+is full. Every ``karma.build_interval_seconds``, the Karma
 module reads every transaction block at its head's transaction target, and
 at the transaction targets of the head's rivals, the other validation blocks
 at the target the head was chosen from, whose blocks are false starts
 (§3.4), and builds one block of what they hold, and of what it carries
-(:mod:`libranet.karma.carried`).
+(:mod:`libranet.karma.carried`), once that would be full. One that would not
+be is not mined, since only a full block is validated (§5.4): the blocks put
+up stay until there are enough of them.
 
 Each transaction is taken on its own, whoever built the block it is read
 from, a distrusted identity among them (§3.8, §4.4): one whose signature
@@ -25,9 +27,10 @@ The block states its payout, the balances of everyone it names, its
 others holding Kismet too, those stated longest ago first, as many as
 shorten its reach within the cap of twice those it names (§5.3). It is
 signed by the node, its drop's nonce searched for for
-``karma.block_seconds``, and after that until it shares
-``storage.search_min_bits`` with its target (§2), and it is stored and
-announced, as a block put up for a transaction alone is.
+``karma.block_seconds``, since its bits score it, or, holding only the payout,
+not, and after that until it shares ``storage.search_min_bits`` with its
+target (§2), and it is stored and announced, as a block put up for a
+transaction alone is.
 
 Nothing is built while one block held at the head's transaction target,
 correct but perhaps for not being full, holds every transaction that would
@@ -350,11 +353,11 @@ class BlockBuilder:
 
         It is built of the transactions in the blocks held at that target,
         and at the targets of the head's false starts (§3.4), and those
-        carried, or of the payout alone, if there are none, and no correct
-        block is held there. None is built while a block found at that target
-        is not held, and is waited for: it is built once that comes, or is
-        given up on. A block of the chain it lacks is asked for, and
-        it is built as this is next called; one that cannot be built for an
+        carried, once it would be full, or of the payout alone, if there are
+        none, and no correct block is held there. None is built while a block
+        found at that target is not held, and is waited for: it is built once
+        that comes, or is given up on. A block of the chain it lacks is asked
+        for, and it is built as this is next called; one that cannot be built for an
         error of the system, or because what it is built of cannot be read,
         is logged.
         """
@@ -396,8 +399,15 @@ class BlockBuilder:
                 )
                 return
 
+            holders = combined.before.holders()
+
+            # Not logged: it is looked at again each build, and is built once
+            # more transactions make it full.
+            if combined.taken and not self._bounds.is_full(filled.measured_bytes, holders):
+                return
+
             if not self._held(filled.drop.block.signed, at_target):
-                self._place(filled, head.validation, combined.before.holders())
+                self._place(filled, head.validation, holders)
 
         except MissingContentError:
             # Not logged: what it lacks is asked for, and it is built once
@@ -686,7 +696,11 @@ class BlockBuilder:
             OSError: a searching process could not be started, or exited
                 during the search, or the drop could not be written.
         """
-        drop = self._placing.placed(filled.drop, GenerationTargets.after(head).transaction)
+        drop = self._placing.placed(
+            filled.drop,
+            GenerationTargets.after(head).transaction,
+            scored=bool(filled.drop.block.signed),
+        )
 
         if drop is None:
             return

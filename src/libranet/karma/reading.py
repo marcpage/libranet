@@ -98,6 +98,15 @@ class _Answers:
 
 
 @dataclass(frozen=True)
+class _Limits:
+    """How long a reader waits for what it asks for, keeps what is named, and how much it reads."""
+
+    wait_seconds: float
+    answer_seconds: float
+    max_bytes: int
+
+
+@dataclass(frozen=True)
 class HeldBlock:
     """Block ``block_id``, as the node holds it, for a check to read (Phase 6 Steps 121, 122).
 
@@ -150,13 +159,14 @@ class TargetReader:
         self._search = search
         self._shunned = shunned
         self._publish = publish
-        self._wait_seconds = wait_seconds
-        self._answer_seconds = answer_seconds
-        self._max_bytes = max_bytes
+        self._limits = _Limits(wait_seconds, answer_seconds, max_bytes)
         self._clock = clock
         # When each piece of content asked for and not yet stored is given
         # up on.
         self._waiting: dict[ContentId, float] = {}
+        # When each piece of content asked for was, kept for answer_seconds,
+        # since word of it coming may follow its being stored.
+        self._asked: dict[ContentId, float] = {}
         # What peers have named at each target being read, by its hash.
         self._answers: dict[str, _Answers] = {}
 
@@ -237,7 +247,7 @@ class TargetReader:
         read asks for what it lacks, is not waited for.
         """
         answers = self._answers.get(target.hex)
-        since = self._clock() - self._wait_seconds
+        since = self._clock() - self._limits.wait_seconds
         return answers is not None and any(first > since for first in answers.lacking.values())
 
     def answered(self, prefix: str, named: Iterable[ContentId]) -> bool:
@@ -253,7 +263,7 @@ class TargetReader:
         """
         answers = self._answers.get(prefix)
 
-        if answers is None or self._clock() - answers.read_at >= self._answer_seconds:
+        if answers is None or self._clock() - answers.read_at >= self._limits.answer_seconds:
             return False
 
         matching = self._shunned.unshunned(self._search.matching(prefix, named))
@@ -322,7 +332,8 @@ class TargetReader:
         One already waited for is not asked for again until it is given up
         on, and one the node shuns is never asked for.
         """
-        until = self._clock() + self._wait_seconds
+        now = self._clock()
+        until = now + self._limits.wait_seconds
 
         for content_id in content_ids:
             if content_id in self._waiting or self._content.exists(content_id):
@@ -333,6 +344,7 @@ class TargetReader:
                 continue
 
             self._waiting[content_id] = until
+            self._asked[content_id] = now
             self._publish(EventType.DATA_NOT_FOUND, content_id.fields())
 
     def stored(self, content_id: ContentId) -> bool:
@@ -356,10 +368,26 @@ class TargetReader:
             _LOGGER.debug(
                 "Gave up waiting for %s, not stored within %.0f seconds",
                 content_id,
-                self._wait_seconds,
+                self._limits.wait_seconds,
             )
 
+        self._asked = {
+            content_id: asked_at
+            for content_id, asked_at in self._asked.items()
+            if now - asked_at < self._limits.answer_seconds
+        }
         return late
+
+    def asked_for(self, content_id: ContentId) -> bool:
+        """Whether ``content_id`` is the ledger's own: asked for here, or at a target being read.
+
+        It is if it was asked for in the last ``answer_seconds``, as a block
+        or a signer's key the chain needs is, or if a search of a target being
+        read would find it, as it would a block placed there.
+        """
+        return content_id in self._asked or any(
+            self._search.matching(prefix, (content_id,)) for prefix in self._answers
+        )
 
     def _reading(self, prefix: str) -> _Answers:
         """What peers have named at the target whose hash is ``prefix``, which is read now.
@@ -370,7 +398,9 @@ class TargetReader:
         now = self._clock()
 
         for stale in [
-            key for key, kept in self._answers.items() if now - kept.read_at >= self._answer_seconds
+            key
+            for key, kept in self._answers.items()
+            if now - kept.read_at >= self._limits.answer_seconds
         ]:
             del self._answers[stale]
 
@@ -431,7 +461,7 @@ class TargetReader:
             return stored, None
 
         try:
-            data = decompressed(stored, self._max_bytes)
+            data = decompressed(stored, self._limits.max_bytes)
 
         except (NotZlibStreamError, StreamTooLargeError) as error:
             raise BundleVerificationError(f"What is held is not {content_id}: {error}") from None

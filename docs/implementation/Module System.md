@@ -482,20 +482,22 @@ invalid it logs and passes over, and any other
 it carries in `carried.json`, marked as one it puts up itself. As it looks,
 it puts each it carries so up as a block of its own at the head's
 transaction target, where it is valid, and not put up there already: the
-transaction and the payout, signed by the node, its nonce searched for for
-`karma.block_seconds`, stored and announced as a root is. The node's own
+transaction and the payout, signed by the node, its nonce searched for until
+a search will find it, stored and announced as a root is. The node's own
 payments it queues in `payments.json` (`NodePayments`, `karma/payments.py`,
 Phase 6 Step 132), each `karma.payment_percent` of the node's balance at the
 head, and, as it looks, once `karma.payment_batch` are queued, or
 `karma.payment_interval_seconds` have passed since the node's last
-transaction, makes them one transaction, mines it for
-`karma.transaction_seconds`, signs it as the node, and puts it up as one it
-is given. A payment the operator makes out of the node's Karma on `/config`
+transaction, makes them one transaction, mines it for the work a transaction
+needs, and at least `karma.transaction_seconds`, signs it as the node, and
+puts it up as one it is given. A payment the operator makes out of the node's
+Karma on `/config`
 (`karma.node_payment`) it makes a transaction of its own at once, created
 after the node's last, and puts up the same way (`NodePayments.pay_out`).
 It queues a payment too each time a peer sends content the node asked for
-(`fetch.succeeded`). Every `karma.rating_interval_seconds` it asks the stats
-module to rate the servers the node is a client of
+(`fetch.succeeded`), but for the ledger's own blocks and keys
+(`TargetReader.asked_for`). Every `karma.rating_interval_seconds` it asks the
+stats module to rate the servers the node is a client of
 (`karma.ratings_requested`), and
 queues a payment to the server rated highest by bytes received, and to the
 one rated highest by requests fulfilled, once if they are one
@@ -503,8 +505,9 @@ one rated highest by requests fulfilled, once if they are one
 `karma.build_interval_seconds` it combines the transaction blocks at its
 head's transaction target, and at the transaction targets of the head's
 rivals, and the transactions it carries, into one block, as full as it can
-be, and places it as it places one of its own, unless a block it holds there
-already holds every transaction it would take; with none to take, and no
+be, and, once that would be full, places it, searching for its nonce for
+`karma.block_seconds`, unless a block it holds there already holds every
+transaction it would take; with none to take, and no
 correct block held there, it places a block of the payout alone, and it
 builds nothing while a block found there is being fetched, for up to
 `karma.fetch_wait_seconds` (`BlockBuilder`,

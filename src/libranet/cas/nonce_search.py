@@ -51,6 +51,9 @@ SEARCHER_COMMAND: Final = (executable, "-I", __file__)
 # A target is a SHA-256 hash (HttpApi §9.3), and leads a search as sent.
 _TARGET_BYTES: Final = sha256().digest_size
 
+# A distance under this has a first byte of 0: the two hashes share theirs.
+_SAME_FIRST_BYTE: Final = 1 << (8 * (_TARGET_BYTES - 1))
+
 # How many bytes of suffix follow the target, in a search as sent.
 _SUFFIX_LENGTH: Final = Struct(">I")
 
@@ -110,6 +113,7 @@ class NonceSearch:
             raise ValueError(f"stop must be after start {start}, got {stop}")
 
         target = self._target_number
+        first_byte = self._target[0]
         pattern = self._pattern
         best_count = start
         best_distance = self.distance(self.nonce(start))
@@ -119,7 +123,15 @@ class NonceSearch:
         for count in range(start + 1, stop):
             attempt = self._hashed.copy()
             attempt.update(pattern % count)
-            distance = int.from_bytes(attempt.digest()) ^ target
+            digest = attempt.digest()
+
+            # Once the best shares the first byte, a hash that does not is
+            # further off, whatever follows, and most hashes do not. Reading
+            # it as a number would cost each try half as much again.
+            if digest[0] != first_byte and best_distance < _SAME_FIRST_BYTE:
+                continue
+
+            distance = int.from_bytes(digest) ^ target
 
             if distance < best_distance:
                 best_count, best_distance = count, distance

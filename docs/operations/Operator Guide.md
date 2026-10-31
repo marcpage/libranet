@@ -145,11 +145,11 @@ The settings an operator is most likely to change:
 | `karma.fetch_wait_seconds` | `30.0` | How long Karma waits for a block or a key it asks the network for before going on without it |
 | `karma.look_seconds` | `60.0` | How often Karma looks for the next generation of the chain it follows, or for a root while it follows none (§4.8) |
 | `karma.carry_generations` | `10` | How many generations after it was witnessed a transaction of a chain the node leaves is carried over into the heavier one, or one the node puts up waits for its sender to cover it (§4.8) |
-| `karma.block_seconds` | `10.0` | How long Karma searches for the nonce of a block it places, as one it puts up for a transaction alone, before taking the best found (§4.8) |
+| `karma.block_seconds` | `10.0` | How long Karma searches for the nonce of a full transaction block or a validation block, whose bits rank it, before taking the best found. Any other block is searched for only until a search will find it (§4.8) |
 | `karma.payment_percent` | `0.01` | What share of the Karma the node holds each of its payments is, in percent, rounded down to whole Kismet (§4.8) |
 | `karma.payment_batch` | `100` | How many of the node's payments Karma queues before it puts them up together, as one transaction (§4.8) |
 | `karma.payment_interval_seconds` | `3600.0` | How long after the node's last transaction Karma puts up the payments it has queued, however few (§4.8) |
-| `karma.transaction_seconds` | `10.0` | How long Karma mines a transaction of the node's payments before taking the best nonce found (§4.8) |
+| `karma.transaction_seconds` | `0.0` | How long Karma mines a transaction of the node's payments before taking the best nonce found, once it has the work a transaction needs. More only helps a free transaction when blocks are crowded (§4.8) |
 | `karma.rating_interval_seconds` | `3600.0` | How often Karma rates the servers the node is a client of, and pays the best (§4.8) |
 | `karma.build_interval_seconds` | `60.0` | How often Karma combines the transactions put up for the next generation into one block, as full as it can be, and stakes on a full one (§4.8) |
 | `karma.stake_percent` | `10.0` | What share of the Karma that covers its stakes the node stakes on each generation's best full block, in percent, until a share is saved on `/config`; `0` stakes nothing (§4.8) |
@@ -508,7 +508,7 @@ person makes through it will be, it checks against the chain it follows.
 One that is invalid `libranet-karma.log` warns of, and the node passes it
 over. Any other it keeps in `karma/carried.json`, and puts up at each head it
 is valid at, until the chain holds it: a block of its own, signed by the
-node, whose nonce it searches for `karma.block_seconds` first, which holds
+node, whose nonce it searches for until a search will find it, which holds
 up its other Karma work. One its sender cannot pay for yet waits there until
 the sender can, or until `karma.carry_generations` after it was witnessed.
 
@@ -518,14 +518,15 @@ down, and so nothing while that rounds to 0: under 10,000 Kismet at the
 default, 0.01%. It queues a payment each time a peer sends it content it
 asked for, such as a piece of a movie it is playing, so a movie of about 2
 GB, in pieces of about 1 MiB, costs a node holding 20 Karma about 4 Karma.
-Content a peer pushes unasked earns it nothing. It queues its payments in
+Content a peer pushes unasked earns it nothing, and nor do the ledger's own
+blocks and the keys of those who signed them. It queues its payments in
 `karma/payments.json`,
 and puts them up together, as one transaction, once `karma.payment_batch`
 are queued, or `karma.payment_interval_seconds` have passed since its last
-transaction, mining it for `karma.transaction_seconds` first, which holds up
-its other Karma work. A transaction it has made, and not yet put up, it
-keeps there, so that a node stopped and started again puts it up as the
-same payment, never paying twice.
+transaction, mining it until it has the work a transaction needs, and for
+at least `karma.transaction_seconds`, which holds up its other Karma work. A
+transaction it has made, and not yet put up, it keeps there, so that a node
+stopped and started again puts it up as the same payment, never paying twice.
 
 Every `karma.rating_interval_seconds`, hourly by default, the node also rates
 the servers it is connected to as a client, those it dialed, by what each has
@@ -541,9 +542,10 @@ up for the next generation, at its head's target and at the targets of the
 head's rivals, with those it carries in `karma/carried.json`, into one
 block, as full as it can be: the free ones with the most work first, and the
 paid ones with the largest fees, at least half of them free, and each only
-while its sender can pay for it. It places the block, searching for its
-nonce for `karma.block_seconds`, which holds up its other Karma work, unless
-a block there already holds every transaction it would take. With none to
+while its sender can pay for it. Only a full block can be validated, so it
+places that block only once it would be full, searching for its nonce for
+`karma.block_seconds`, which holds up its other Karma work, and not if a
+block there already holds every transaction it would take. With none to
 take, and no correct block there, it places a block of the payout alone,
 which pays the last generation's reward, so that the balances it leaves are
 stated there. It builds nothing while a block found there is not held, and

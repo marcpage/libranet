@@ -6,9 +6,10 @@ with the head's reward paid (§2), rounded down to whole Kismet: nothing
 while that rounds to 0, as it does under 10,000 Kismet at 0.01%. The balance
 is read from ``balances.json``, as the Karma module last wrote it
 (:class:`~libranet.protocol.karma_balances.KarmaBalances`), since a payment
-is queued for each piece of content a peer sends, and the blocks of the chain
-may have been let go under eviction. It queues
-each in ``payments.json`` in ``storage.karma_dir``, and puts them up
+is queued for each piece of content a peer sends that it asked for, but for
+the ledger's own, and the blocks of the chain may have been let go under
+eviction. It queues each in ``payments.json`` in ``storage.karma_dir``, and
+puts them up
 together, as one transaction paying each recipient all it is queued to be
 paid, so that they cost the work of one transaction (§4.3), and do not
 flood the network::

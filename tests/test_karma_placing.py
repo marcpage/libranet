@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from logging import INFO
+from typing import Any
 
 from pytest import LogCaptureFixture, fixture
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
-from libranet.cas.drops import DROP_SEPARATOR
+from libranet.cas.drops import DROP_SEPARATOR, NonceSearchers
+from libranet.cas.nonce_search import NonceSearch
 from libranet.cas.prefix import matching_bits
 from libranet.cas.shunned import ShunnedContent
 from libranet.config.models import StorageConfig
@@ -73,6 +75,38 @@ def test_a_block_is_placed_at_its_target_and_stored_as_its_builders(
     assert placed.matching_bits >= MINIMUM_BITS
     assert matching_bits(ROOT.validation.hex, id_of(placed.data).hash) == placed.matching_bits
     assert stored.drops == [(placed.data, alice.node_id)]
+
+
+class TimedSearchers(NonceSearchers):
+    """Search as any do, at once, noting how long each was asked to take."""
+
+    def __init__(self) -> None:
+        super().__init__(processes=1)
+        self.seconds: list[float] = []
+
+    def found(self, search: NonceSearch, seconds: float, **asked: Any) -> bytes:
+        self.seconds.append(seconds)
+        return super().found(search, 0.0, **asked)
+
+
+def test_a_block_is_searched_for_longer_only_if_its_bits_score_it(
+    carol: NodeIdentity, storage: StorageConfig, drop: BlockDrop[ValidationBlock]
+) -> None:
+    searchers = TimedSearchers()
+    placing = BlockPlacing(
+        lambda: carol,
+        Stored(),
+        shunned=ShunnedContent.of(storage),
+        block_seconds=60.0,
+        drop_bits=MINIMUM_BITS,
+        searchers=searchers,
+    )
+
+    placing.placed(drop, ROOT.validation)
+    placing.placed(drop, ROOT.validation, scored=False)
+    searchers.close()
+
+    assert searchers.seconds == [60.0, 0.0]
 
 
 def test_a_block_placed_again_as_the_drop_the_node_shuns_is_not_stored(

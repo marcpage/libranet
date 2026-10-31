@@ -4,9 +4,10 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import timedelta
 from logging import DEBUG, INFO
+from typing import Any
 from zlib import compress
 
-from pytest import LogCaptureFixture, fixture
+from pytest import LogCaptureFixture, MonkeyPatch, fixture
 
 from libranet.bundle.signing import SignedBundle
 from libranet.cas.content_id import ContentId
@@ -732,8 +733,7 @@ def test_nothing_is_built_while_a_block_found_at_the_target_is_waited_for(
         clock=lambda: now[0],
     )
     builder = building(history, reader, carried, carol, placed)
-    # Dave's block of the payout, as a peer names it, which this node lacks:
-    # one it let go of, say.
+    # Dave's block of the payout, as a peer names it, which this node lacks.
     lacked = id_of(signed_at(root.targets.transaction, dave, root.block_after()))
     reader.read(root.targets.transaction, TransactionBlock)
     reader.answered(root.targets.transaction.hex, [lacked])
@@ -745,12 +745,67 @@ def test_nothing_is_built_while_a_block_found_at_the_target_is_waited_for(
     assert placed.drops == []
     assert lacked in recorder.asked_for()
 
-    # Waited for as long as anything asked for is, though asked for again.
     now[0] = 30.0
     reader.given_up()
     builder.build()
 
     assert [block.signed for block in placed.blocks()] == [()]
+
+
+def test_no_combined_block_is_mined_until_it_would_be_full(
+    shunning: BlockBuilder,
+    builder: BlockBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    signed = [sent(alice, {bob.node_id: 1}, seconds) for seconds in (1, 2)]
+
+    for each in signed:
+        put_up(truth, first, dave, each)
+
+    # Where a block of the two is short of full, as it is by far in LARGE.
+    shunning.build()
+
+    assert placed.drops == []
+
+    # Where it is full.
+    builder.build()
+
+    assert [len(block.signed) for block in placed.blocks()] == [2]
+
+
+def test_only_a_block_whose_bits_score_it_is_searched_for_longer_than_it_takes_to_find(
+    builder: BlockBuilder,
+    follower: ChainFollower,
+    truth: CasStore,
+    root: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    scored: list[bool] = []
+    place = BlockPlacing.placed
+
+    def placing(self: BlockPlacing, *given: Any, **asked: Any) -> Any:
+        scored.append(asked["scored"])
+        return place(self, *given, **asked)
+
+    monkeypatch.setattr(BlockPlacing, "placed", placing)
+    following(follower, truth, root)
+
+    # A block of the payout alone is only to be found, and a full one competes.
+    builder.build()
+    put_up(truth, root, alice, sent(alice, {bob.node_id: 1}, 1))
+    put_up(truth, root, alice, sent(alice, {bob.node_id: 1}, 2))
+    builder.build()
+
+    assert scored == [False, True]
 
 
 def test_with_nothing_to_take_a_block_of_the_payout_alone_is_built_once(
@@ -812,7 +867,6 @@ def test_what_is_no_transaction_block_at_a_target_is_passed_over_and_logged_once
 
 def test_blocks_whose_transactions_a_block_held_holds_more_of_are_superseded_by_it(
     shunning: BlockBuilder,
-    placed: Placed,
     follower: ChainFollower,
     truth: CasStore,
     first: Chain,
@@ -821,14 +875,12 @@ def test_blocks_whose_transactions_a_block_held_holds_more_of_are_superseded_by_
     dave: NodeIdentity,
 ) -> None:
     following(follower, truth, first)
-    small = [
-        put_up(truth, first, dave, sent(alice, {bob.node_id: 1}, seconds)) for seconds in (1, 2)
-    ]
+    both = [sent(alice, {bob.node_id: 1}, seconds) for seconds in (1, 2)]
+    small = [put_up(truth, first, dave, signed) for signed in both]
 
     assert shunning.superseded() == {}
 
-    shunning.build()
-    (built,) = placed.drops
+    built = put_up(truth, first, dave, *both)
 
     assert shunning.superseded() == {id_of(data): id_of(built) for data in small}
     # Each is named once at a head.

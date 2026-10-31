@@ -83,7 +83,8 @@ it is valid, until the chain holds it::
 
 The node's own payments it queues in ``payments.json``, in
 ``storage.karma_dir``, one for each piece of content a peer sends that this
-node asked for, as the connection manager says (Karma §11)::
+node asked for, but for the ledger's own, as the connection manager says
+(Karma §11)::
 
     fetch.succeeded  {"algorithm", "hash", "node_id"}
 
@@ -91,8 +92,9 @@ each ``karma.payment_percent`` of the node's balance
 at the head, with its reward paid, and, as it looks, once
 ``karma.payment_batch`` are queued, or
 ``karma.payment_interval_seconds`` have passed since the node's last
-transaction, makes them one transaction, mines it for
-``karma.transaction_seconds``, signs it as the node, and puts it up as it
+transaction, makes them one transaction, mines it for the work a transaction
+needs, and at least ``karma.transaction_seconds``, signs it as the node, and
+puts it up as it
 does one it is given (:class:`~libranet.karma.payments.NodePayments`, Phase
 6 Step 132). What the operator pays out of the node's Karma, on
 ``/config``, it makes a transaction of its own at once, created after the
@@ -511,18 +513,22 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         The connection manager checked it is that content before saying so,
         so a peer is paid neither for what it pushes, nor for sending junk.
+        The ledger's own content earns nothing: every node reads each block
+        put up, so paying for that would have each transaction pay for the
+        next, with nothing else asked for.
 
         Raises:
             RuntimeError: the module has not started.
-            KeyError: the message lacks the peer.
-            ValueError: its id is none.
+            KeyError: the message lacks the content or the peer.
+            ValueError: either id is none.
             FileNotFoundError: the node has no key yet.
             KeyFileError: the node's private key cannot be loaded.
         """
         if self._payments is None:
             raise RuntimeError("The Karma module is not running")
 
-        self._payments.pay(ContentId.parse(message["node_id"]))
+        if not self._reader.asked_for(ContentId.from_fields(message)):
+            self._payments.pay(ContentId.parse(message["node_id"]))
 
     def _on_node_payment(self, message: Message) -> None:
         """Pay as the operator asked on ``/config``, out of the node's Karma, put up now.
