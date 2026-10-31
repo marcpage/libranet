@@ -20,9 +20,9 @@ from libranet.stats.schema import OWN_NODE, SCHEMA_STATEMENTS, SeekKind, apply_s
 
 __all__ = [
     "FACTOR_FLOOR",
-    "SIZE_FACTOR_FLOOR",
     "OWN_NODE",
     "SCHEMA_STATEMENTS",
+    "SIZE_FACTOR_FLOOR",
     "DataStats",
     "DerivedLists",
     "EvictionScorer",
