@@ -144,7 +144,7 @@
   video { display: block; width: 100%; max-height: 70vh; background: #000; border-radius: 6px; }
   .details p { margin: 0.4rem 0; }
 
-  /* The movie's title, with what changes the movie, and what leaves it, in the upper right corner. */
+  /* A movie's or a collection's title, with what is done with it, and what leaves a movie, in the upper right corner. */
   .title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
   .title-row h2 { overflow-wrap: anywhere; }
   .icons { display: flex; flex: none; gap: 0.25rem; margin: -0.3rem -0.3rem 0 0; }
@@ -350,15 +350,25 @@
   </section>
 
   <section id="library" aria-labelledby="playlist-name" hidden>
-    <div class="heading">
-      <h2 id="playlist-name"></h2>
-      <span class="note" id="playlist-count"></span>
-    </div>
-    <div class="toolbar signed-in-only" hidden>
-      <button type="button" id="add-file">Add from a file</button>
-      <button type="button" class="secondary" id="add-id">Add by id</button>
-      <button type="button" class="secondary" id="share-playlist">Share</button>
-      <button type="button" class="secondary" id="keep-offline">Keep offline</button>
+    <div class="title-row">
+      <div class="heading">
+        <h2 id="playlist-name"></h2>
+        <span class="note" id="playlist-count"></span>
+      </div>
+      <div class="icons signed-in-only" hidden>
+        <button type="button" class="icon" id="add-file" title="Add from a file" aria-label="Add from a file">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 4H5v17h12v-8 M18 3v6 M15 6h6 M8 13h6 M8 17h6"/></svg>
+        </button>
+        <button type="button" class="icon" id="add-id" title="Add by id" aria-label="Add by id">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 8v8 M8 12h8"/></svg>
+        </button>
+        <button type="button" class="icon" id="share-playlist" title="Share" aria-label="Share">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V3 M8 7l4-4 4 4 M9 10H5v11h14V10h-4"/></svg>
+        </button>
+        <button type="button" class="icon" id="keep-offline" title="Keep offline" aria-label="Keep offline">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12 M8 11l4 4 4-4 M4 17v4h16v-4"/></svg>
+        </button>
+      </div>
     </div>
     <ul class="activity" id="activity"></ul>
     <p class="result" id="library-result" role="status" hidden></p>
@@ -1650,7 +1660,7 @@ function movieItem(playlist, folder) {
 function focusMovie(folder) {
   const picks = [...byId("movies").querySelectorAll("button.pick")];
   const pick = picks.find((each) => each.dataset.folder === folder) || picks[0]
-    || byId("library").querySelector(".toolbar:not([hidden]) button");
+    || byId("library").querySelector(".icons:not([hidden]) button");
 
   if (pick) {
     pick.focus();
