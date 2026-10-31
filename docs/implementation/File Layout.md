@@ -594,8 +594,9 @@ held. The web server reads it (`CarriedTransaction` in
 
 `payments.json` is the node's own payments, queued to be put up together as
 one transaction (KarmaLedger §4.6, Phase 6 Step 132): each a recipient, as
-the servers the node rates highest every `karma.rating_interval_seconds`
-are (Phase 6 Step 133), and an amount, `karma.payment_percent` of the
+each peer that sends content the node asked for is, and the servers the
+node rates highest every `karma.rating_interval_seconds` are (Phase 6 Step
+133), and an amount, `karma.payment_percent` of the
 node's balance at the head, with the head's reward paid, when it was
 queued; the
 `created` of the node's last transaction, or `null` before it has made one;

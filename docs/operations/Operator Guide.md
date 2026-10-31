@@ -512,10 +512,14 @@ node, whose nonce it searches for `karma.block_seconds` first, which holds
 up its other Karma work. One its sender cannot pay for yet waits there until
 the sender can, or until `karma.carry_generations` after it was witnessed.
 
-The node will pay other nodes for what they do for it, each payment
+The node pays other nodes for what they do for it, each payment
 `karma.payment_percent` of the Karma the chain states it holds, rounded
 down, and so nothing while that rounds to 0: under 10,000 Kismet at the
-default, 0.01%. It queues its payments in `karma/payments.json`,
+default, 0.01%. It queues a payment each time a peer sends it content it
+asked for, such as a piece of a movie it is playing, so a movie of about 2
+GB, in pieces of about 1 MiB, costs a node holding 20 Karma about 4 Karma.
+Content a peer pushes unasked earns it nothing. It queues its payments in
+`karma/payments.json`,
 and puts them up together, as one transaction, once `karma.payment_batch`
 are queued, or `karma.payment_interval_seconds` have passed since its last
 transaction, mining it for `karma.transaction_seconds` first, which holds up
@@ -523,8 +527,8 @@ its other Karma work. A transaction it has made, and not yet put up, it
 keeps there, so that a node stopped and started again puts it up as the
 same payment, never paying twice.
 
-Every `karma.rating_interval_seconds`, hourly by default, the node rates the
-servers it is connected to as a client, those it dialed, by what each has
+Every `karma.rating_interval_seconds`, hourly by default, the node also rates
+the servers it is connected to as a client, those it dialed, by what each has
 done for it since it last rated them: the bytes of content it received from
 each, and the requests for content each fulfilled. It pays the server rated
 highest by each, and the one server once if it is highest by both, and no
@@ -542,7 +546,10 @@ nonce for `karma.block_seconds`, which holds up its other Karma work, unless
 a block there already holds every transaction it would take. With none to
 take, and no correct block there, it places a block of the payout alone,
 which pays the last generation's reward, so that the balances it leaves are
-stated there. `libranet-karma.log` says each block it builds, how many
+stated there. It builds nothing while a block found there is not held, and
+is being fetched, until it comes or `karma.fetch_wait_seconds` pass, so that
+a block it let go of to eviction does not have it build again one it shuns;
+and it never stores a block it builds that comes out as one it shuns. `libranet-karma.log` says each block it builds, how many
 transactions it holds, and whether it is full.
 
 Each time it looks and each time it builds, the node shuns each smaller block

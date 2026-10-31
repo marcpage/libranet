@@ -86,10 +86,15 @@ _Block = TypeVar("_Block", TransactionBlock, ValidationBlock)
 
 @dataclass
 class _Answers:
-    """What peers have named at a target being read, and when it was last read."""
+    """What peers have named at a target being read, and when it was last read.
+
+    ``lacking`` are the blocks found there that the last read lacked, each
+    with when a read first lacked it.
+    """
 
     read_at: float
     named: set[ContentId] = field(default_factory=set)
+    lacking: dict[ContentId, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -191,8 +196,8 @@ class TargetReader:
         and the target is read from now until ``answer_seconds`` pass without
         a read of it. What is found but not held is asked for, as is the key
         of each signer a block held names that is not held, and each is
-        waited for. Anything held that is not what it is held as is passed
-        over, and logged.
+        waited for (:meth:`awaits`). Anything held that is not what it is
+        held as is passed over, and logged.
         """
         prefix: str = target.hex
         answers: _Answers = self._reading(prefix)
@@ -219,7 +224,21 @@ class TargetReader:
             blocks.append(self._block(block_id, data, held_bytes, kind))
 
         self.fetch(lacking)
+        answers.lacking = {
+            block_id: answers.lacking.get(block_id, answers.read_at) for block_id in lacking
+        }
         return blocks
+
+    def awaits(self, target: DropTarget) -> bool:
+        """Whether a block the last read of ``target`` found there, but lacked, is waited for.
+
+        Each is waited for ``wait_seconds`` from when a read first lacked it,
+        until a read finds it held: one asked for again after that, as each
+        read asks for what it lacks, is not waited for.
+        """
+        answers = self._answers.get(target.hex)
+        since = self._clock() - self._wait_seconds
+        return answers is not None and any(first > since for first in answers.lacking.values())
 
     def answered(self, prefix: str, named: Iterable[ContentId]) -> bool:
         """Keep what a peer ``named`` in answer to a search of ``prefix``, a target's hash.

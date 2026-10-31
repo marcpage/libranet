@@ -54,10 +54,14 @@ PAID = tuple(ContentId("sha256", f"{byte:02x}" * 32) for byte in range(0xD1, 0xD
 
 
 class Placed:
-    """Stands in for the Karma module's storing, keeping each drop in the node's store."""
+    """Stands in for the Karma module's storing, keeping each drop in the node's store.
 
-    def __init__(self, truth: CasStore) -> None:
+    ``shunned`` is the node's shun list, which placing reads.
+    """
+
+    def __init__(self, truth: CasStore, shunned: ShunnedContent) -> None:
         self.truth = truth
+        self.shunned = shunned
         self.drops: list[bytes] = []
 
     def __call__(self, data: bytes, node_id: ContentId) -> None:
@@ -158,8 +162,8 @@ def carried(storage: StorageConfig) -> CarriedTransactions:
 
 
 @fixture
-def placed(truth: CasStore) -> Placed:
-    return Placed(truth)
+def placed(truth: CasStore, storage: StorageConfig) -> Placed:
+    return Placed(truth, ShunnedContent.of(storage))
 
 
 def building(
@@ -175,7 +179,9 @@ def building(
         history,
         reader,
         carried,
-        BlockPlacing(lambda: carol, placed, block_seconds=0.0, drop_bits=MINIMUM_BITS),
+        BlockPlacing(
+            lambda: carol, placed, shunned=placed.shunned, block_seconds=0.0, drop_bits=MINIMUM_BITS
+        ),
         bounds=bounds,
     )
 
@@ -699,6 +705,52 @@ def test_a_transaction_whose_senders_key_is_not_held_is_taken_once_it_is(
     assert [{signed.hash for signed in block.signed} for block in placed.blocks()] == [
         {unheld.hash, other.hash}
     ]
+
+
+def test_nothing_is_built_while_a_block_found_at_the_target_is_waited_for(
+    storage: StorageConfig,
+    truth: CasStore,
+    recorder: Recorder,
+    follower: ChainFollower,
+    history: ChainHistory,
+    carried: CarriedTransactions,
+    placed: Placed,
+    root: Chain,
+    carol: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, root)
+    now = [0.0]
+    reader = TargetReader(
+        truth,
+        LocalSearch(truth, min_bits=MINIMUM_BITS),
+        ShunnedContent.of(storage),
+        recorder,
+        wait_seconds=30.0,
+        answer_seconds=300.0,
+        max_bytes=MIB,
+        clock=lambda: now[0],
+    )
+    builder = building(history, reader, carried, carol, placed)
+    # Dave's block of the payout, as a peer names it, which this node lacks:
+    # one it let go of, say.
+    lacked = id_of(signed_at(root.targets.transaction, dave, root.block_after()))
+    reader.read(root.targets.transaction, TransactionBlock)
+    reader.answered(root.targets.transaction.hex, [lacked])
+
+    builder.build()
+    now[0] = 29.0
+    builder.build()
+
+    assert placed.drops == []
+    assert lacked in recorder.asked_for()
+
+    # Waited for as long as anything asked for is, though asked for again.
+    now[0] = 30.0
+    reader.given_up()
+    builder.build()
+
+    assert [block.signed for block in placed.blocks()] == [()]
 
 
 def test_with_nothing_to_take_a_block_of_the_payout_alone_is_built_once(

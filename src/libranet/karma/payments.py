@@ -3,7 +3,11 @@
 For most common payments, a node pays ``karma.payment_percent`` of its
 balance, 0.01% by default, as the chain it follows states it at the head,
 with the head's reward paid (§2), rounded down to whole Kismet: nothing
-while that rounds to 0, as it does under 10,000 Kismet at 0.01%. It queues
+while that rounds to 0, as it does under 10,000 Kismet at 0.01%. The balance
+is read from ``balances.json``, as the Karma module last wrote it
+(:class:`~libranet.protocol.karma_balances.KarmaBalances`), since a payment
+is queued for each piece of content a peer sends, and the blocks of the chain
+may have been let go under eviction. It queues
 each in ``payments.json`` in ``storage.karma_dir``, and puts them up
 together, as one transaction paying each recipient all it is queued to be
 paid, so that they cost the work of one transaction (§4.3), and do not
@@ -31,16 +35,14 @@ from logging import getLogger
 from pathlib import Path
 from typing import Callable
 
-from libranet.bundle.errors import BundleError, MissingContentError
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import NONCE_SEARCHERS, NonceSearchers
 from libranet.identity.node_identity import NodeIdentity
 from libranet.json_format import MOMENT_FORMAT, moment_at
 from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds
-from libranet.karma.checking import ChainBefore
 from libranet.karma.history import ChainHistory
 from libranet.karma.putting import TransactionsPutUp
-from libranet.karma.reading import HeldChain, TargetReader
+from libranet.protocol.karma_balances import KarmaBalances
 from libranet.protocol.karma_payments import PAYMENTS_FILE, Payment, PaymentQueue
 from libranet.protocol.karma_requests import NodePaymentRequest
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
@@ -64,11 +66,10 @@ class _Settings:
 class NodePayments:
     """Queues the node's payments in ``directory``, and has ``putting`` put them up together (§4.6).
 
-    The node's balance is read at the head of the chain ``history`` keeps,
-    with the head's reward paid, its blocks read from what ``reader`` holds,
-    and the time from
-    ``clock``, in seconds since the epoch, and each payment is ``percent``
-    of it. The queue is made a transaction
+    The node's balance is read from ``balances.json`` in ``directory``, at
+    the head of the chain ``history`` keeps, with the head's reward paid, and
+    the time from ``clock``, in seconds since the epoch, and each payment is
+    ``percent`` of it. The queue is made a transaction
     once ``batch`` payments are queued, or ``interval_seconds`` have passed
     since the node's last, created in the head's generation, its nonce
     searched for by ``searchers`` for ``transaction_seconds``, and after that
@@ -80,7 +81,6 @@ class NodePayments:
         self,
         directory: Path,
         history: ChainHistory,
-        reader: TargetReader,
         identity: Callable[[], NodeIdentity],
         putting: TransactionsPutUp,
         *,
@@ -94,7 +94,6 @@ class NodePayments:
     ) -> None:
         self._directory = directory
         self._history = history
-        self._chain = HeldChain(history, reader)
         self._identity = identity
         self._putting = putting
         self._clock = clock
@@ -106,10 +105,10 @@ class NodePayments:
         """Queue a payment to ``recipient`` of the node's percent of its balance at the head.
 
         The balance is the one the block after the head checks the node's
-        transactions against, with the head's reward paid. None is queued
-        while that rounds to 0, or while no chain is followed. One whose
-        balance is read from blocks not held, which are asked for, or that
-        cannot be read or queued, is logged, and not made.
+        transactions against, with the head's reward paid, as the Karma
+        module last wrote it. None is queued while that rounds to 0, or while
+        no chain is followed. One whose balance cannot be read, or that cannot
+        be queued, is logged, and not made.
 
         Returns:
             The payment queued, or ``None`` if none was.
@@ -118,32 +117,20 @@ class NodePayments:
             FileNotFoundError: the node has no key yet.
             KeyFileError: the node's private key cannot be loaded.
         """
-        head = self._history.head
-
-        if head is None:
-            _LOGGER.debug("Not paying %s: no Karma chain is followed", recipient)
-            return None
-
-        node_id = self._identity().node_id
-
         try:
-            paid = ChainBefore.read(self._chain, head.validation).paid((node_id,))
-            balance = paid.balance(node_id).kismet
+            balances = KarmaBalances.read(self._directory)
 
-        except MissingContentError:
-            _LOGGER.info(
-                "Not paying %s: the node's Karma balance is read from blocks not held, which are "
-                "asked for",
-                recipient,
-            )
-            return None
-
-        except (BundleError, ValueError) as error:
+        except (OSError, ValueError) as error:
             _LOGGER.warning(
                 "Not paying %s: the node's Karma balance cannot be read: %s", recipient, error
             )
             return None
 
+        if not balances.head.follows:
+            _LOGGER.debug("Not paying %s: no Karma chain is followed", recipient)
+            return None
+
+        balance = balances.balance(self._identity().node_id).kismet
         payment = Payment.of(recipient, balance, self._settings.percent)
 
         if payment is None:

@@ -11,6 +11,7 @@ from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
+from libranet.karma.balances import HeadBalances
 from libranet.karma.blocks import BlockDrop, TransactionBlock
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.following import ChainFollower
@@ -18,8 +19,9 @@ from libranet.karma.history import ChainHistory
 from libranet.karma.payments import NodePayments
 from libranet.karma.placing import BlockPlacing
 from libranet.karma.putting import TransactionsPutUp
-from libranet.karma.reading import TargetReader
+from libranet.karma.reading import HeldChain, TargetReader
 from libranet.protocol.karma_amounts import MAX_KISMET, Kismet
+from libranet.protocol.karma_balances import KARMA_BALANCES_FILE
 from libranet.protocol.karma_payments import PAYMENTS_FILE, Payment, PaymentQueue
 from libranet.protocol.karma_requests import NodePaymentRequest
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
@@ -49,10 +51,14 @@ class Clock:
 
 
 class Placed:
-    """Stands in for the Karma module's storing, keeping each drop in the node's store."""
+    """Stands in for the Karma module's storing, keeping each drop in the node's store.
 
-    def __init__(self, truth: CasStore) -> None:
+    ``shunned`` is the node's shun list, which placing reads.
+    """
+
+    def __init__(self, truth: CasStore, shunned: ShunnedContent) -> None:
         self.truth = truth
+        self.shunned = shunned
         self.drops: list[bytes] = []
 
     def __call__(self, data: bytes, _node_id: ContentId) -> None:
@@ -151,8 +157,8 @@ def history(storage: StorageConfig) -> ChainHistory:
 
 
 @fixture
-def placed(truth: CasStore) -> Placed:
-    return Placed(truth)
+def placed(truth: CasStore, storage: StorageConfig) -> Placed:
+    return Placed(truth, ShunnedContent.of(storage))
 
 
 @fixture
@@ -192,18 +198,23 @@ def paying_as(
     percent: float = 0.01,
     batch: int = 100,
 ) -> NodePayments:
-    """The payments of ``node``, which puts up each transaction, and its block, in moments."""
+    """The payments of ``node``, which puts up each transaction, and its block, in moments.
+
+    The balances at the head are written, as the Karma module writes them.
+    """
+    HeadBalances(history, HeldChain(history, reader), storage.karma_dir).write()
     putting = TransactionsPutUp(
         history,
         reader,
         CarriedTransactions(storage.karma_dir, 3),
-        BlockPlacing(lambda: node, placed, block_seconds=0.0, drop_bits=MINIMUM_BITS),
+        BlockPlacing(
+            lambda: node, placed, shunned=placed.shunned, block_seconds=0.0, drop_bits=MINIMUM_BITS
+        ),
         bounds=BOUNDS,
     )
     return NodePayments(
         storage.karma_dir,
         history,
-        reader,
         lambda: node,
         putting,
         clock=clock,
@@ -548,31 +559,47 @@ def test_a_transaction_made_and_taken_before_a_restart_is_given_again_under_its_
     assert PaymentQueue.read(storage.karma_dir) == PaymentQueue((), transaction.created)
 
 
-def test_a_payment_whose_balance_is_read_from_a_block_not_held_is_logged_and_not_made(
+def test_a_payment_is_queued_though_eviction_has_let_the_blocks_of_the_chain_go(
     storage: StorageConfig,
     history: ChainHistory,
     reader: TargetReader,
     truth: CasStore,
     placed: Placed,
     clock: Clock,
-    recorder: Recorder,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+) -> None:
+    following(history, reader, truth, first)
+    payments = paying_as(alice, storage, history, reader, placed, clock)
+
+    for number in range(2):
+        truth.delete(history.generation(number).transaction)
+        truth.delete(history.generation(number).validation)
+
+    assert payments.pay(bob.node_id) is not None
+
+
+def test_a_payment_whose_balance_cannot_be_read_is_logged_and_not_made(
+    storage: StorageConfig,
+    history: ChainHistory,
+    reader: TargetReader,
+    truth: CasStore,
+    placed: Placed,
+    clock: Clock,
     first: Chain,
     alice: NodeIdentity,
     bob: NodeIdentity,
     caplog: LogCaptureFixture,
 ) -> None:
     following(history, reader, truth, first)
-    validated = history.generation(1).transaction
-    truth.delete(validated)
+    payments = paying_as(alice, storage, history, reader, placed, clock)
+    (storage.karma_dir / KARMA_BALANCES_FILE).write_text("not JSON", encoding="utf-8")
 
-    with caplog.at_level(INFO):
-        paid = paying_as(alice, storage, history, reader, placed, clock).pay(bob.node_id)
+    with caplog.at_level(WARNING):
+        assert payments.pay(bob.node_id) is None
 
-    assert paid is None
-    assert validated in recorder.asked_for()
-    assert (
-        f"Not paying {bob.node_id}: the node's Karma balance is read from blocks not held"
-    ) in caplog.text
+    assert f"Not paying {bob.node_id}: the node's Karma balance cannot be read" in caplog.text
 
 
 def test_a_queue_that_cannot_be_read_is_logged_and_written_again_empty(

@@ -304,6 +304,10 @@ class TransactionsPutUp:
             BlockDrop(self._placing.identity().signed(own.block.text()), own.block),
             GenerationTargets.after(head).transaction,
         )
+
+        if drop is None:
+            return
+
         _LOGGER.info(
             "Put up Karma transaction %s as block %s, sharing %d bits with the transaction "
             "target of %s",

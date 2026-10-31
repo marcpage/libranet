@@ -357,6 +357,50 @@ def test_a_block_a_peer_names_is_asked_for_at_once_and_read_once_stored(
     ]
 
 
+def test_a_block_found_at_a_target_but_lacked_is_awaited_until_a_read_holds_it(
+    reader: TargetReader,
+    truth: CasStore,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    staking: bytes,
+) -> None:
+    block_id = id_of(staking)
+    hold_keys(truth, alice, bob)
+    reader.read(FIRST.validation, ValidationBlock)
+
+    assert not reader.awaits(FIRST.validation)
+
+    reader.answered(FIRST.validation.hex, [block_id])
+    reader.read(FIRST.validation, ValidationBlock)
+
+    assert reader.awaits(FIRST.validation)
+    assert not reader.awaits(ROOT.validation)
+
+    truth.write(block_id, staking)
+    reader.read(FIRST.validation, ValidationBlock)
+
+    assert not reader.awaits(FIRST.validation)
+
+
+def test_a_block_found_at_a_target_but_lacked_is_awaited_as_long_as_one_is_waited_for(
+    reader: TargetReader, clock: Clock, staking: bytes
+) -> None:
+    reader.read(FIRST.validation, ValidationBlock)
+    reader.answered(FIRST.validation.hex, [id_of(staking)])
+    reader.read(FIRST.validation, ValidationBlock)
+    clock.now += WAIT_SECONDS - 1
+    reader.read(FIRST.validation, ValidationBlock)
+
+    assert reader.awaits(FIRST.validation)
+
+    clock.now += 1
+    reader.given_up()
+    # Asked for again, but awaited no longer.
+    reader.read(FIRST.validation, ValidationBlock)
+
+    assert not reader.awaits(FIRST.validation)
+
+
 def test_what_is_waited_for_is_asked_for_once(
     reader: TargetReader, recorder: Recorder, staking: bytes
 ) -> None:

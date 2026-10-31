@@ -4,17 +4,25 @@ A block the node puts up or builds, a transaction's block of its own, a
 combined transaction block, or a validation block, is signed as the node,
 its drop's nonce searched for for ``karma.block_seconds``, and after that
 until it shares ``storage.search_min_bits`` with its target (§2), and it is
-stored and announced, as the root the module makes is.
+stored and announced, as the root the module makes is. One whose drop is
+content the node shuns is not stored: signing and the search for a nonce
+are alike each time, so a block built again of what it was built of before
+is the same drop, though the node has let it go.
 """
 
 from __future__ import annotations
 from dataclasses import KW_ONLY, dataclass
+from logging import getLogger
 from typing import Any, Callable
 
+from libranet.bundle.storing import HASH_ALGORITHM
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import NONCE_SEARCHERS, Drop, DropTarget, NonceSearchers
+from libranet.cas.shunned import ShunnedContent
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import BlockDrop
+
+_LOGGER = getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -24,18 +32,24 @@ class BlockPlacing:
     A block is signed as ``identity`` gives the node, its drop's nonce
     searched for by ``searchers`` for ``block_seconds``, and after that until
     it shares ``drop_bits`` with its target, and handed to ``store``, with
-    its builder's id, to be stored and announced.
+    its builder's id, to be stored and announced, unless ``shunned`` names
+    it.
     """
 
     identity: Callable[[], NodeIdentity]
     store: Callable[[bytes, ContentId], None]
     _: KW_ONLY
+    shunned: ShunnedContent
     block_seconds: float
     drop_bits: int
     searchers: NonceSearchers = NONCE_SEARCHERS
 
-    def placed(self, drop: BlockDrop[Any], target: DropTarget) -> Drop:
-        """``drop`` placed at ``target``, and stored.
+    def placed(self, drop: BlockDrop[Any], target: DropTarget) -> Drop | None:
+        """``drop`` placed at ``target``, and stored, or ``None`` if the node shuns it.
+
+        Returns:
+            The drop placed, or ``None`` if it is content the node shuns,
+            which is not stored.
 
         Raises:
             BundleError: it is larger than an object may be, even compressed.
@@ -49,5 +63,12 @@ class BlockPlacing:
             minimum_bits=self.drop_bits,
             searchers=self.searchers,
         )
+
+        placed_id = ContentId.for_data(placed.data, HASH_ALGORITHM)
+
+        if self.shunned.shuns(placed_id):
+            _LOGGER.info("Not storing Karma block %s, built again, which the node shuns", placed_id)
+            return None
+
         self.store(placed.data, drop.builder)
         return placed

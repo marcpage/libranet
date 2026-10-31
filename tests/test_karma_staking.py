@@ -46,10 +46,14 @@ NOW = datetime(2026, 10, 26, 12, 0, 0, tzinfo=UTC)
 
 
 class Placed:
-    """Stands in for the Karma module's storing, keeping each drop in the node's store."""
+    """Stands in for the Karma module's storing, keeping each drop in the node's store.
 
-    def __init__(self, truth: CasStore) -> None:
+    ``shunned`` is the node's shun list, which placing reads.
+    """
+
+    def __init__(self, truth: CasStore, shunned: ShunnedContent) -> None:
         self.truth = truth
+        self.shunned = shunned
         self.drops: list[bytes] = []
 
     def __call__(self, data: bytes, node_id: ContentId) -> None:
@@ -557,8 +561,8 @@ def carried(storage: StorageConfig) -> CarriedTransactions:
 
 
 @fixture
-def placed(truth: CasStore) -> Placed:
-    return Placed(truth)
+def placed(truth: CasStore, storage: StorageConfig) -> Placed:
+    return Placed(truth, ShunnedContent.of(storage))
 
 
 def building(
@@ -576,7 +580,9 @@ def building(
         follower,
         reader,
         carried,
-        BlockPlacing(lambda: node, placed, block_seconds=0.0, drop_bits=MINIMUM_BITS),
+        BlockPlacing(
+            lambda: node, placed, shunned=placed.shunned, block_seconds=0.0, drop_bits=MINIMUM_BITS
+        ),
         distrusts=lambda identity: False,
         stake_percent=lambda: 10.0,
         clock=NOW.timestamp,
