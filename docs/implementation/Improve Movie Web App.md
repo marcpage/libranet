@@ -351,6 +351,7 @@ where it went.
 | #561 | G (for go), not K, to play or pause | None: a change to the page alone |
 | #563 | No movie list shown while in a movie | None: a change to the page alone |
 | #564 | X leaves a movie, back to the movie list | None: a change to the page alone |
+| #566 | A filter of the movie list by whole words, opened by the back tick key or a magnifying glass in the upper right corner | None: a change to the page alone |
 | #567 | A collection's Add from a file as a file with a plus in its upper right corner, in the upper right corner | None: a change to the page alone |
 | #568 | A collection's Add by id as a plus in a circle in the upper right corner | None: a change to the page alone |
 | #569 | A collection's Share as an icon in the upper right corner | None: a change to the page alone |
