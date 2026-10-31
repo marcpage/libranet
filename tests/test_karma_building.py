@@ -1,5 +1,7 @@
 """Tests for combining transaction blocks into one, as full as it can be (KarmaLedger §5.6)."""
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from dataclasses import replace
 from datetime import timedelta
@@ -995,3 +997,161 @@ def test_a_block_is_never_superseded_by_one_that_is_not_correct(
 
 def test_nothing_is_superseded_while_no_chain_is_followed(shunning: BlockBuilder) -> None:
     assert shunning.superseded() == {}
+
+
+def test_what_a_block_held_is_taken_after_eviction_lets_it_go_and_it_is_not_asked_for(
+    shunning: BlockBuilder,
+    reader: TargetReader,
+    recorder: Recorder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    three = [sent(alice, {bob.node_id: 1}, seconds) for seconds in (1, 2, 3)]
+    small = [id_of(put_up(truth, first, dave, signed)) for signed in three[:2]]
+    shunning.build()
+
+    assert placed.drops == []
+
+    for block_id in small:
+        truth.delete(block_id)
+        reader.answered(first.targets.transaction.hex, [block_id])
+        # No longer waited for, so that a read would ask for it again.
+        reader.stored(block_id)
+
+    asked_for = recorder.asked_for()
+    put_up(truth, first, dave, three[2])
+    shunning.build()
+
+    assert {signed.hash for signed in placed.blocks()[0].signed} == {
+        signed.hash for signed in three
+    }
+    assert recorder.asked_for() == asked_for
+
+
+def test_a_block_eviction_let_go_is_superseded_all_the_same_and_named_once(
+    shunning: BlockBuilder,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    both = [sent(alice, {bob.node_id: 1}, seconds) for seconds in (1, 2)]
+    small = [id_of(put_up(truth, first, dave, signed)) for signed in both]
+
+    assert shunning.superseded() == {}
+
+    for block_id in small:
+        truth.delete(block_id)
+
+    built = put_up(truth, first, dave, *both)
+
+    assert shunning.superseded() == {block_id: id_of(built) for block_id in small}
+    assert shunning.superseded() == {}
+
+
+def test_a_block_found_correct_or_not_counts_though_let_go_unless_it_is_full(
+    builder: BlockBuilder,
+    shunning: BlockBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    data = put_up(truth, first, dave, sent(alice, {bob.node_id: 1}, 1))
+    shunning.build()
+    builder.build()
+    truth.delete(id_of(data))
+
+    shunning.build()
+
+    assert placed.drops == []
+
+    builder.build()
+
+    # Full, it counts only while it is held, and what it held builds another.
+    assert [len(block.signed) for block in placed.blocks()] == [1]
+
+
+def test_each_signature_is_checked_once_at_a_head_however_often_a_block_is_built(
+    builder: BlockBuilder,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    following(follower, truth, first)
+    put_up(truth, first, dave, sent(alice, {bob.node_id: 1}, 1))
+    builder.build()
+    checked_since: list[str] = []
+    verified = SignedTransaction.verified
+
+    def counted(self: SignedTransaction, public_key: bytes) -> None:
+        checked_since.append(self.hash)
+        verified(self, public_key)
+
+    monkeypatch.setattr(SignedTransaction, "verified", counted)
+    builder.build()
+
+    assert not checked_since
+
+
+def test_what_was_read_at_a_head_is_forgotten_at_the_next(
+    shunning: BlockBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    put_up(truth, first, dave, sent(alice, {bob.node_id: 1}, 1))
+    shunning.build()
+    following(follower, truth, first.then(bob, alice, bits=9))
+
+    shunning.build()
+
+    assert [len(block.signed) for block in placed.blocks()] == [0]
+
+
+def test_what_was_read_is_forgotten_and_read_again_once_too_much_is_kept(
+    shunning: BlockBuilder,
+    reader: TargetReader,
+    recorder: Recorder,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("libranet.karma.building._MOST_KEPT", 2)
+    following(follower, truth, first)
+    block_id = id_of(put_up(truth, first, dave, sent(alice, {bob.node_id: 1}, 1)))
+    shunning.build()
+    truth.delete(block_id)
+    reader.answered(first.targets.transaction.hex, [block_id])
+    # No longer waited for, so that a read would ask for it again.
+    reader.stored(block_id)
+
+    shunning.build()
+
+    assert recorder.asked_for().count(block_id) == 2

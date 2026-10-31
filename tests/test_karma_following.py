@@ -367,6 +367,65 @@ def test_the_blocks_at_the_heads_targets_are_checked_without_any_being_followed(
     assert len(history) == 1
 
 
+def test_a_block_checked_and_not_full_keeps_its_check_and_is_not_asked_for_once_let_go(
+    history: ChainHistory,
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    root: Root,
+    first: bytes,
+    first_validation: bytes,
+) -> None:
+    follower = ChainFollower(history, reader, recorder, bounds=replace(BOUNDS, room_bytes=1_000))
+    hold(truth, root.transaction, root.validation)
+    hold_keys(truth, alice, bob)
+    follower.look()
+    hold(truth, first)
+    follower.checked()
+    truth.delete(id_of(first))
+    reader.answered(root.next.transaction.hex, [id_of(first)])
+    # No longer waited for, so that a read would ask for it again.
+    reader.stored(id_of(first))
+    asked_for = recorder.asked_for()
+    hold(truth, first_validation)
+
+    transactions, validations = follower.checked()
+
+    assert not transactions[id_of(first)].full
+    assert [(check.block_id, check.is_correct) for check in validations] == [
+        (id_of(first_validation), False)
+    ]
+    assert recorder.asked_for() == asked_for
+
+
+def test_a_full_block_is_asked_for_again_once_let_go(
+    follower: ChainFollower,
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    root: Root,
+    first: bytes,
+) -> None:
+    hold(truth, root.transaction, root.validation)
+    hold_keys(truth, alice, bob)
+    follower.look()
+    hold(truth, first)
+    follower.checked()
+    truth.delete(id_of(first))
+    reader.answered(root.next.transaction.hex, [id_of(first)])
+    # No longer waited for, so that a read would ask for it again.
+    reader.stored(id_of(first))
+    asked_for = recorder.asked_for()
+
+    follower.checked()
+
+    assert recorder.asked_for() == [*asked_for, id_of(first)]
+
+
 def test_every_generation_held_is_followed_in_one_look(
     follower: ChainFollower,
     truth: CasStore,

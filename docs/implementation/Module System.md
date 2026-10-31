@@ -512,7 +512,12 @@ transaction it would take; with none to take, and no
 correct block held there, it places a block of the payout alone, and it
 builds nothing while a block found there is being fetched, for up to
 `karma.fetch_wait_seconds` (`BlockBuilder`,
-`karma/building.py`, Phase 6 Step 134). After each look and each build, it
+`karma/building.py`, Phase 6 Step 134). It reads each block at that target
+once at a head, keeping each transaction, its signature checked, and the hashes
+each block holds, in memory, so that one not full is not read or fetched again
+once eviction lets it go; a full one is read each time, as what is lost is
+built again, and following the chain keeps its checks the same way
+(`known`, `TargetReader.read`). After each look and each build, it
 shuns (`data.shunned`) each transaction block at its head's transaction
 target whose transactions are all in another it holds there, correct, holding
 more of them, or as many and sharing more bits with the target: never one a
@@ -1565,7 +1570,7 @@ side recovers:
 | Unbundler | Directories held in memory; paths waiting on content; a reclaim in progress | Directories are read back from each bundle's saved `directory.jzon`; a request waiting on a path forgotten is answered `503`, and its retry asks again; eviction times out the reclaim |
 | Eviction | Hand-offs under way; its list of candidates; which peers are connected | It counts storage again at start, says whether storage is full, asks which peers are connected, and asks stats again |
 | Backup | Restores, builds, exports, and imports; messages set aside while it stored content | They must be asked for again; jobs are read back from `backup_jobs.json`; it asks whether storage is full |
-| Karma | Content it waited for; what peers named at the targets it read; what it found of the blocks at its head's targets; a root it was making; whom the node trusts; the stakes people made through the node | The history is read back from `karma/`, and its head written again; what it lacks is asked for again as it next reads; the blocks at its head's targets are checked again as it first looks, and what was said of them is said again; a root is asked for again on `/config`, as the node follows none; whom the node trusts is known again only once the web server next says it, which it does when that changes; a stake a person made must be made again |
+| Karma | Content it waited for; what peers named at the targets it read; what it found of the blocks at its head's targets; a root it was making; whom the node trusts; the stakes people made through the node | The history is read back from `karma/`, and its head written again; what it lacks is asked for again as it next reads; the blocks at its head's targets are read and checked again as it first looks, those eviction let go of fetched again if a peer names them, and what was said of them is said again; a root is asked for again on `/config`, as the node follows none; whom the node trusts is known again only once the web server next says it, which it does when that changes; a stake a person made must be made again |
 | Dispatcher | Messages it had read but not yet delivered, and those it held for a full inbox | Nothing recovers them; no module is started until it is back |
 
 ## 11. Testing Modules

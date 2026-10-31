@@ -197,7 +197,9 @@ class TargetReader:
         """What has been asked for, and is still waited for."""
         return frozenset(self._waiting)
 
-    def read(self, target: DropTarget, kind: type[_Block]) -> list[HeldBlock]:
+    def read(
+        self, target: DropTarget, kind: type[_Block], *, known: Collection[ContentId] = ()
+    ) -> list[HeldBlock]:
         """The blocks of ``kind`` the node holds at ``target``, those placed nearest first.
 
         They are what it holds nearest the target's hash, and what peers
@@ -207,7 +209,9 @@ class TargetReader:
         a read of it. What is found but not held is asked for, as is the key
         of each signer a block held names that is not held, and each is
         waited for (:meth:`awaits`). Anything held that is not what it is
-        held as is passed over, and logged.
+        held as is passed over, and logged. What is ``known``, that the caller
+        has done with, is neither read nor asked for, whether or not it is
+        held still.
         """
         prefix: str = target.hex
         answers: _Answers = self._reading(prefix)
@@ -219,6 +223,9 @@ class TargetReader:
         lacking: list[ContentId] = []
 
         for block_id in self._shunned.unshunned(found):
+            if block_id in known:
+                continue
+
             try:
                 data, held_bytes = self._read(block_id)
 
@@ -234,21 +241,27 @@ class TargetReader:
             blocks.append(self._block(block_id, data, held_bytes, kind))
 
         self.fetch(lacking)
+        # One known is kept as it was: another caller may be waiting for it, and
+        # its wait is not to start over.
         answers.lacking = {
-            block_id: answers.lacking.get(block_id, answers.read_at) for block_id in lacking
+            block_id: answers.lacking.get(block_id, answers.read_at)
+            for block_id in [*lacking, *(each for each in answers.lacking if each in known)]
         }
         return blocks
 
-    def awaits(self, target: DropTarget) -> bool:
+    def awaits(self, target: DropTarget, *, known: Collection[ContentId] = ()) -> bool:
         """Whether a block the last read of ``target`` found there, but lacked, is waited for.
 
         Each is waited for ``wait_seconds`` from when a read first lacked it,
         until a read finds it held: one asked for again after that, as each
-        read asks for what it lacks, is not waited for.
+        read asks for what it lacks, is not waited for. One ``known``, that the
+        caller has done with, is not waited for either.
         """
         answers = self._answers.get(target.hex)
         since = self._clock() - self._limits.wait_seconds
-        return answers is not None and any(first > since for first in answers.lacking.values())
+        return answers is not None and any(
+            first > since for block_id, first in answers.lacking.items() if block_id not in known
+        )
 
     def answered(self, prefix: str, named: Iterable[ContentId]) -> bool:
         """Keep what a peer ``named`` in answer to a search of ``prefix``, a target's hash.

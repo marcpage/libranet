@@ -8,9 +8,9 @@ at the target the head was chosen from, whose blocks are false starts
 (§3.4), and builds one block of what they hold, and of what it carries
 (:mod:`libranet.karma.carried`), once that would be full. One that would not
 be is mined only once ``karma.combine_transactions`` of what it would take are
-in no one block held there: only a full block is validated (§5.4), but every
-node reads each block there each time, so that one of many, which supersedes
-them (§3.7), leaves fewer to read.
+in no one block held there: only a full block is validated (§5.4), but a node
+new to the target reads every block there, so that one of many, which
+supersedes them (§3.7), leaves fewer to read, and fewer to find.
 
 Each transaction is taken on its own, whoever built the block it is read
 from, a distrusted identity among them (§3.8, §4.4): one whose signature
@@ -32,6 +32,13 @@ signed by the node, its drop's nonce searched for for
 ``karma.block_seconds``, if it is full, since its bits then score it, and
 after that until it shares ``storage.search_min_bits`` with its target (§2),
 and it is stored and announced, as a block put up for a transaction alone is.
+
+Each block is read once: each transaction is kept by its hash, with its
+signature checked, and the hashes the block holds by its id, and a block found
+correct or not, and not full, is not read or fetched again, even if eviction
+lets it go. So the blocks put up cost a node as they arrive, not as it builds.
+One full is read each time, as it counts only while it is held: it may be
+validated, and if it is lost, it is to be built again.
 
 Nothing is built while one block held at the head's transaction target,
 correct but perhaps for not being full, holds every transaction that would
@@ -56,9 +63,9 @@ target names is never superseded, nor one full, as the copy held measures it
 
 from __future__ import annotations
 from collections import deque
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from logging import getLogger
-from typing import Iterable, Mapping, Sequence
+from typing import Final, Iterable, Mapping, Sequence
 from zlib import compress
 
 from libranet.bundle.errors import BundleError, BundleSignatureError, MissingContentError
@@ -87,6 +94,12 @@ from libranet.protocol.karma_balances import Balance
 from libranet.protocol.karma_transactions import Payout, SignedTransaction, TransactionKey
 
 _LOGGER = getLogger(__name__)
+
+# How many blocks, and hashes of the transactions in them, a builder keeps of
+# what it read at a head, before it forgets it and reads it again, so that blocks
+# placed only to fill its memory cannot. What is superseded is not kept, so a
+# hundred builders' blocks, each near the most a block may hold, fit in this.
+_MOST_KEPT: Final = 1_000_000
 
 
 @dataclass(frozen=True)
@@ -314,6 +327,48 @@ class FilledBlock:
         return BlockDrop(identity.signed(block.text()), block)
 
 
+@dataclass
+class _SeenBlock:
+    """What a builder keeps of transaction block ``block_id``, read at its head's target.
+
+    ``hashes`` are the hashes of its transactions, ``previous`` what it says it
+    is built on, and ``compressed_bytes`` what the copy read measures. ``held``
+    is the block as read, until it is known to be correct or not, and not to be
+    full, when it is let go.
+    """
+
+    block_id: ContentId
+    previous: ContentId | None
+    hashes: frozenset[str]
+    compressed_bytes: int
+    held: HeldBlock | None
+
+
+@dataclass
+class _Found:
+    """What a builder has found at ``head``, forgotten when the head changes.
+
+    ``seen`` is what is kept of each block read at the head's transaction
+    target, ``correct`` whether each is correct, but perhaps for being full,
+    and ``settled`` the blocks not to read again. ``transactions`` is each
+    transaction read whose signature has checked, by its hash, ``unchecked``
+    each whose has not been yet, and ``forged`` the hash of each whose failed,
+    logged once.
+    """
+
+    head: ContentId | None = None
+    seen: dict[ContentId, _SeenBlock] = field(default_factory=dict)
+    correct: dict[ContentId, bool] = field(default_factory=dict)
+    settled: set[ContentId] = field(default_factory=set)
+    transactions: dict[str, SignedTransaction] = field(default_factory=dict)
+    unchecked: dict[str, SignedTransaction] = field(default_factory=dict)
+    forged: set[str] = field(default_factory=set)
+
+    def kept(self) -> int:
+        """How many blocks are kept, and hashes of the transactions in them."""
+        return len(self.seen) + sum(len(seen.hashes) for seen in self.seen.values())
+
+
 @dataclass(frozen=True)
 class _Filling:
     """What a builder fills a block within, and how many it combines though not full."""
@@ -350,14 +405,7 @@ class BlockBuilder:
         self._placing = placing
         self._filling = _Filling(bounds, combine_transactions)
         self._chain = HeldChain(history, reader)
-        # The head these were found at: the blocks and transactions passed
-        # over, each logged once, whether each block held at the head's
-        # transaction target is correct, but perhaps for being full, and the
-        # blocks found superseded there, each named once.
-        self._head: ContentId | None = None
-        self._passed_over: set[ContentId | str] = set()
-        self._correct: dict[ContentId, bool] = {}
-        self._superseded: set[ContentId] = set()
+        self._found = _Found()
 
     def build(self) -> None:
         """Build a block at the head's transaction target, unless one held there holds it all.
@@ -380,21 +428,26 @@ class BlockBuilder:
 
         at_target = self._at_target(head)
 
-        if self._reader.awaits(GenerationTargets.after(head.validation).transaction):
+        if self._reader.awaits(
+            GenerationTargets.after(head.validation).transaction, known=self._found.settled
+        ):
             # Not logged: what it lacks is asked for, and it is built once that
             # comes, or is given up on.
             return
 
-        offered = [
-            signed
-            for _, drop in [*at_target, *self._parsed(self._false_starts(head))]
-            for signed in drop.block.signed
-        ]
-        offered.extend(each.signed for each in self._carried.readable_at(self._history))
+        for held, drop in self._parsed(self._false_starts(head)):
+            # Nothing but what it holds is asked of a false start's block.
+            self._found.settled.add(held.block_id)
+            self._offer(drop)
+
+        self._check(each.signed for each in self._carried.readable_at(self._history))
 
         try:
             combined = CombinedBlock.of(
-                self._verified(offered), head.validation, self._chain, bounds=self._filling.bounds
+                list(self._found.transactions.values()),
+                head.validation,
+                self._chain,
+                bounds=self._filling.bounds,
             )
 
             if self._held(combined.taken, at_target):
@@ -444,10 +497,10 @@ class BlockBuilder:
         holding more of them, or as many and sharing more bits with the
         target (§3.7). One that a validation block held at the head's
         validation target names is not, nor one full, as the copy held
-        measures it. Each is named once at a head. None is while how many
-        hold Kismet, which sets how large a full one is, cannot be read: a
-        block of the chain lacked is asked for, and one that cannot be read
-        is logged.
+        measures it. Each is named once at a head, and only what it holds is
+        kept, in the block superseding it. None is while how many hold Kismet,
+        which sets how large a full one is, cannot be read: a block of the chain
+        lacked is asked for, and one that cannot be read is logged.
 
         Returns:
             Each block superseded, and the block of most transactions, and of
@@ -458,16 +511,9 @@ class BlockBuilder:
         if head is None:
             return {}
 
-        try:
-            holders = ChainBefore.read(self._chain, head.validation).holders()
+        holders = self._holders(head)
 
-        except MissingContentError:
-            # Not logged: what it lacks is asked for, and it is read once
-            # that comes.
-            return {}
-
-        except (BundleError, ValueError) as error:
-            _LOGGER.warning("Cannot read how many hold Karma at the head: %s", error)
+        if holders is None:
             return {}
 
         targets = GenerationTargets.after(head.validation)
@@ -476,15 +522,11 @@ class BlockBuilder:
         ranked = sorted(
             (
                 (
-                    (
-                        len(drop.block.signed),
-                        matching_bits(targets.transaction.hex, held.block_id.hash),
-                    ),
-                    held,
-                    frozenset(signed.hash for signed in drop.block.signed),
+                    (len(seen.hashes), matching_bits(targets.transaction.hex, seen.block_id.hash)),
+                    seen,
                 )
-                for held, drop in self._at_target(head)
-                if drop.block.previous == head.validation
+                for seen in self._at_target(head)
+                if seen.previous == head.validation
             ),
             key=lambda each: each[0],
             reverse=True,
@@ -492,44 +534,100 @@ class BlockBuilder:
         named = self._named(targets.validation)
         superseded: dict[ContentId, ContentId] = {}
 
-        for rank, held, hashes in ranked:
-            if (
-                held.block_id in self._superseded
-                or held.block_id in named
-                or self._filling.bounds.is_full(held.compressed_bytes, holders)
+        for rank, seen in ranked:
+            if seen.block_id in named or self._filling.bounds.is_full(
+                seen.compressed_bytes, holders
             ):
                 continue
 
             keeper = next(
                 (
                     other.block_id
-                    for other_rank, other, kept in ranked
-                    if other_rank > rank and hashes <= kept and self._is_correct(other)
+                    for other_rank, other in ranked
+                    if other_rank > rank and seen.hashes <= other.hashes and self._is_correct(other)
                 ),
                 None,
             )
 
             if keeper is not None:
-                self._superseded.add(held.block_id)
-                superseded[held.block_id] = keeper
+                del self._found.seen[seen.block_id]
+                self._found.settled.add(seen.block_id)
+                superseded[seen.block_id] = keeper
 
         return superseded
 
-    def _at_target(
-        self, head: ChainGeneration
-    ) -> list[tuple[HeldBlock, BlockDrop[TransactionBlock]]]:
-        """The transaction blocks held at ``head``'s transaction target, read (:meth:`_parsed`).
+    def _at_target(self, head: ChainGeneration) -> list[_SeenBlock]:
+        """What is kept of each transaction block read at ``head``'s transaction target.
 
-        What was found at another head is forgotten.
+        What is new there is read, what it holds is kept, and it is checked,
+        each once, unless it is full, which counts only while it is held. What
+        was found at another head is forgotten, and so is all of this, to read
+        again, should more than :data:`_MOST_KEPT` be kept.
         """
-        if head.validation != self._head:
-            self._head = head.validation
-            self._passed_over.clear()
-            self._correct.clear()
-            self._superseded.clear()
+        if head.validation != self._found.head or self._found.kept() >= _MOST_KEPT:
+            self._found = _Found(head.validation)
 
-        target = GenerationTargets.after(head.validation).transaction
-        return self._parsed(self._reader.read(target, TransactionBlock))
+        found = self._found
+        found.seen = {
+            block_id: seen for block_id, seen in found.seen.items() if block_id in found.settled
+        }
+        read = self._reader.read(
+            GenerationTargets.after(head.validation).transaction,
+            TransactionBlock,
+            known=found.settled,
+        )
+
+        for held, drop in self._parsed(read):
+            found.seen[held.block_id] = _SeenBlock(
+                held.block_id,
+                drop.block.previous,
+                frozenset(signed.hash for signed in drop.block.signed),
+                held.compressed_bytes,
+                held,
+            )
+            self._offer(drop)
+
+        self._settle(head)
+        return list(found.seen.values())
+
+    def _settle(self, head: ChainGeneration) -> None:
+        """Let go of each block read that is known to be correct or not, and not to be full."""
+        unsettled = [seen for seen in self._found.seen.values() if seen.held is not None]
+        holders = self._holders(head) if unsettled else None
+
+        if holders is None:
+            return
+
+        for seen in unsettled:
+            self._is_correct(seen)
+
+            if seen.block_id in self._found.correct and not self._filling.bounds.is_full(
+                seen.compressed_bytes, holders
+            ):
+                seen.held = None
+                self._found.settled.add(seen.block_id)
+
+    def _holders(self, head: ChainGeneration) -> int | None:
+        """How many hold Kismet, as a block built on ``head`` is measured, or ``None``.
+
+        It is ``None`` while that cannot be read: a block of the chain lacked
+        is asked for, and one that cannot be read is logged.
+        """
+        try:
+            return ChainBefore.read(self._chain, head.validation).holders()
+
+        except MissingContentError:
+            # Not logged: what it lacks is asked for, and it is read once
+            # that comes.
+            return None
+
+        except (BundleError, ValueError) as error:
+            _LOGGER.warning("Cannot read how many hold Karma at the head: %s", error)
+            return None
+
+    def _offer(self, drop: BlockDrop[TransactionBlock]) -> None:
+        """Keep each transaction ``drop`` holds, for its signature to be checked."""
+        self._found.unchecked.update((signed.hash, signed) for signed in drop.block.signed)
 
     def _named(self, target: DropTarget) -> set[ContentId]:
         """The transaction blocks the validation blocks held at ``target`` stake on, unchecked.
@@ -570,7 +668,9 @@ class BlockBuilder:
             for rival in rivals
             if rival.block_id != head.validation
             for held in self._reader.read(
-                GenerationTargets.after(rival.block_id).transaction, TransactionBlock
+                GenerationTargets.after(rival.block_id).transaction,
+                TransactionBlock,
+                known=self._found.settled,
             )
         ]
 
@@ -580,7 +680,7 @@ class BlockBuilder:
         """Each of ``held`` that is a transaction block, read, its signatures not checked.
 
         Its transactions are each checked on their own. Each other is
-        logged, once at a head, and passed over.
+        logged, and passed over, and not read again at the head.
         """
         parsed: list[tuple[HeldBlock, BlockDrop[TransactionBlock]]] = []
 
@@ -589,31 +689,31 @@ class BlockBuilder:
                 parsed.append((each, BlockDrop.parsed(each.data, TransactionBlock)))
 
             except (BundleError, ValueError) as error:
-                if each.block_id not in self._passed_over:
-                    self._passed_over.add(each.block_id)
-                    _LOGGER.log(
-                        unchecked_level(error),
-                        "Taking no Karma transactions from %s, which is no transaction block: %s",
-                        each.block_id,
-                        error,
-                    )
+                self._found.settled.add(each.block_id)
+                _LOGGER.log(
+                    unchecked_level(error),
+                    "Taking no Karma transactions from %s, which is no transaction block: %s",
+                    each.block_id,
+                    error,
+                )
 
         return parsed
 
-    def _verified(self, offered: Iterable[SignedTransaction]) -> list[SignedTransaction]:
-        """Each of ``offered`` whose signature checks with its sender's key, once each (§4.4).
+    def _check(self, offered: Iterable[SignedTransaction]) -> None:
+        """Keep each of ``offered``, and each read, whose signature checks (§4.4).
 
-        One whose sender's key is not held is passed over, and the key asked
-        for. One whose signature fails is passed over, and logged once at a
-        head.
+        One whose sender's key is not held stays unchecked, and the key is asked
+        for. One whose signature fails is passed over, and logged once at a head.
         """
+        found = self._found
+        found.unchecked.update((signed.hash, signed) for signed in offered)
         keys: dict[ContentId, bytes | None] = {}
-        verified: dict[str, SignedTransaction] = {}
 
-        for signed in offered:
+        for signed in list(found.unchecked.values()):
             sender = signed.transaction.sender
 
-            if signed.hash in verified or signed.hash in self._passed_over:
+            if signed.hash in found.transactions or signed.hash in found.forged:
+                del found.unchecked[signed.hash]
                 continue
 
             if sender not in keys:
@@ -624,11 +724,13 @@ class BlockBuilder:
             if key is None:
                 continue
 
+            del found.unchecked[signed.hash]
+
             try:
                 signed.verified(key)
 
             except BundleSignatureError as error:
-                self._passed_over.add(signed.hash)
+                found.forged.add(signed.hash)
                 _LOGGER.debug(
                     "Passing over Karma transaction %s, whose signature must check: %s",
                     signed.hash,
@@ -636,9 +738,7 @@ class BlockBuilder:
                 )
                 continue
 
-            verified[signed.hash] = signed
-
-        return list(verified.values())
+            found.transactions[signed.hash] = signed
 
     def _key(self, sender: ContentId) -> bytes | None:
         """The key of ``sender``, if it is held; it is asked for if it is not."""
@@ -661,19 +761,16 @@ class BlockBuilder:
     def _held(
         self,
         taken: Sequence[SignedTransaction],
-        at_target: Sequence[tuple[HeldBlock, BlockDrop[TransactionBlock]]],
+        at_target: Sequence[_SeenBlock],
     ) -> bool:
         """Whether a block ``at_target``, correct but perhaps for being full, holds ``taken``."""
         hashes = {signed.hash for signed in taken}
-        return any(
-            hashes <= {signed.hash for signed in drop.block.signed} and self._is_correct(held)
-            for held, drop in at_target
-        )
+        return any(hashes <= seen.hashes and self._is_correct(seen) for seen in at_target)
 
     def _uncombined(
         self,
         taken: Sequence[SignedTransaction],
-        at_target: Sequence[tuple[HeldBlock, BlockDrop[TransactionBlock]]],
+        at_target: Sequence[_SeenBlock],
     ) -> int:
         """How many of ``taken`` the correct block ``at_target`` holding the most of them lacks.
 
@@ -681,27 +778,29 @@ class BlockBuilder:
         """
         hashes = {signed.hash for signed in taken}
         holding = sorted(
-            (
-                (len(hashes & {signed.hash for signed in drop.block.signed}), held)
-                for held, drop in at_target
-            ),
+            ((len(hashes & seen.hashes), seen) for seen in at_target),
             key=lambda each: each[0],
             reverse=True,
         )
-        return len(hashes) - next((count for count, held in holding if self._is_correct(held)), 0)
+        return len(hashes) - next((count for count, seen in holding if self._is_correct(seen)), 0)
 
-    def _is_correct(self, held: HeldBlock) -> bool:
-        """Whether ``held``, at the head's transaction target, is correct, but perhaps for fullness.
+    def _is_correct(self, seen: _SeenBlock) -> bool:
+        """Whether ``seen``, at the head's transaction target, is correct, but perhaps for fullness.
 
         One whose check lacks what is not held is not, until it comes.
         """
-        if held.block_id in self._correct:
-            return self._correct[held.block_id]
+        correct = self._found.correct
+
+        if seen.block_id in correct:
+            return correct[seen.block_id]
+
+        if seen.held is None:
+            return False
 
         try:
             check = TransactionBlockCheck.of_held(
-                held,
-                self._head,
+                seen.held,
+                self._found.head,
                 self._chain,
                 bounds=replace(self._filling.bounds, room_bytes=self._filling.bounds.most_bytes),
             )
@@ -714,11 +813,11 @@ class BlockBuilder:
         except (BundleError, ValueError) as error:
             # Not logged as a warning: the chain followed checks each block at
             # the target.
-            _LOGGER.debug("Karma block %s cannot be checked: %s", held.block_id, error)
+            _LOGGER.debug("Karma block %s cannot be checked: %s", seen.block_id, error)
             check = None
 
-        self._correct[held.block_id] = isinstance(check, TransactionBlockCheck) and check.is_correct
-        return self._correct[held.block_id]
+        correct[seen.block_id] = isinstance(check, TransactionBlockCheck) and check.is_correct
+        return correct[seen.block_id]
 
     def _place(self, filled: FilledBlock, head: ContentId, holders: int) -> None:
         """Place ``filled`` at the transaction target named for ``head``, and store it.
