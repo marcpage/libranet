@@ -2,9 +2,11 @@
 
 A block the node puts up or builds, a transaction's block of its own, a
 combined transaction block, or a validation block, is signed as the node,
-its drop's nonce searched for for ``karma.block_seconds``, and after that
-until it shares ``storage.search_min_bits`` with its target (§2), and it is
-stored and announced, as the root the module makes is. One whose drop is
+its drop's nonce searched for until it shares ``storage.search_min_bits``
+with its target (§2), and it is stored and announced, as the root the module
+makes is. One whose bits score it (§5.5, §6.5), a full transaction block or a
+validation block, is searched for ``karma.block_seconds`` first, for more of
+them, and one that is only to be found is not. One whose drop is
 content the node shuns is not stored: signing and the search for a nonce
 are alike each time, so a block built again of what it was built of before
 is the same drop, though the node has let it go.
@@ -30,8 +32,9 @@ class BlockPlacing:
     """How the node signs, places, and stores each block it builds.
 
     A block is signed as ``identity`` gives the node, its drop's nonce
-    searched for by ``searchers`` for ``block_seconds``, and after that until
-    it shares ``drop_bits`` with its target, and handed to ``store``, with
+    searched for by ``searchers``, for ``block_seconds`` if its bits score it,
+    and after that until it shares ``drop_bits`` with its target, and handed
+    to ``store``, with
     its builder's id, to be stored and announced, unless ``shunned`` names
     it.
     """
@@ -44,8 +47,13 @@ class BlockPlacing:
     drop_bits: int
     searchers: NonceSearchers = NONCE_SEARCHERS
 
-    def placed(self, drop: BlockDrop[Any], target: DropTarget) -> Drop | None:
+    def placed(
+        self, drop: BlockDrop[Any], target: DropTarget, *, scored: bool = True
+    ) -> Drop | None:
         """``drop`` placed at ``target``, and stored, or ``None`` if the node shuns it.
+
+        It is searched for ``block_seconds`` if ``scored``: more bits rank it
+        above its rivals. Otherwise, only until a search will find it.
 
         Returns:
             The drop placed, or ``None`` if it is content the node shuns,
@@ -59,7 +67,7 @@ class BlockPlacing:
         """
         placed = target.placed(
             drop.content(),
-            self.block_seconds,
+            self.block_seconds if scored else 0.0,
             minimum_bits=self.drop_bits,
             searchers=self.searchers,
         )

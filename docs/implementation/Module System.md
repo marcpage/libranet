@@ -482,20 +482,22 @@ invalid it logs and passes over, and any other
 it carries in `carried.json`, marked as one it puts up itself. As it looks,
 it puts each it carries so up as a block of its own at the head's
 transaction target, where it is valid, and not put up there already: the
-transaction and the payout, signed by the node, its nonce searched for for
-`karma.block_seconds`, stored and announced as a root is. The node's own
+transaction and the payout, signed by the node, its nonce searched for until
+a search will find it, stored and announced as a root is. The node's own
 payments it queues in `payments.json` (`NodePayments`, `karma/payments.py`,
 Phase 6 Step 132), each `karma.payment_percent` of the node's balance at the
 head, and, as it looks, once `karma.payment_batch` are queued, or
 `karma.payment_interval_seconds` have passed since the node's last
-transaction, makes them one transaction, mines it for
-`karma.transaction_seconds`, signs it as the node, and puts it up as one it
-is given. A payment the operator makes out of the node's Karma on `/config`
+transaction, makes them one transaction, mines it for the work a transaction
+needs, and at least `karma.transaction_seconds`, signs it as the node, and
+puts it up as one it is given. A payment the operator makes out of the node's
+Karma on `/config`
 (`karma.node_payment`) it makes a transaction of its own at once, created
 after the node's last, and puts up the same way (`NodePayments.pay_out`).
 It queues a payment too each time a peer sends content the node asked for
-(`fetch.succeeded`). Every `karma.rating_interval_seconds` it asks the stats
-module to rate the servers the node is a client of
+(`fetch.succeeded`), but for the ledger's own blocks and keys
+(`TargetReader.asked_for`). Every `karma.rating_interval_seconds` it asks the
+stats module to rate the servers the node is a client of
 (`karma.ratings_requested`), and
 queues a payment to the server rated highest by bytes received, and to the
 one rated highest by requests fulfilled, once if they are one
@@ -503,12 +505,19 @@ one rated highest by requests fulfilled, once if they are one
 `karma.build_interval_seconds` it combines the transaction blocks at its
 head's transaction target, and at the transaction targets of the head's
 rivals, and the transactions it carries, into one block, as full as it can
-be, and places it as it places one of its own, unless a block it holds there
-already holds every transaction it would take; with none to take, and no
+be, and, once that would be full, places it, searching for its nonce for
+`karma.block_seconds`, or once `karma.combine_transactions` of them are in no
+one block it holds there, unless a block it holds there already holds every
+transaction it would take; with none to take, and no
 correct block held there, it places a block of the payout alone, and it
 builds nothing while a block found there is being fetched, for up to
 `karma.fetch_wait_seconds` (`BlockBuilder`,
-`karma/building.py`, Phase 6 Step 134). After each look and each build, it
+`karma/building.py`, Phase 6 Step 134). It reads each block at that target
+once at a head, keeping each transaction, its signature checked, and the hashes
+each block holds, in memory, so that one not full is not read or fetched again
+once eviction lets it go; a full one is read each time, as what is lost is
+built again, and following the chain keeps its checks the same way
+(`known`, `TargetReader.read`). After each look and each build, it
 shuns (`data.shunned`) each transaction block at its head's transaction
 target whose transactions are all in another it holds there, correct, holding
 more of them, or as many and sharing more bits with the target: never one a
@@ -1561,7 +1570,7 @@ side recovers:
 | Unbundler | Directories held in memory; paths waiting on content; a reclaim in progress | Directories are read back from each bundle's saved `directory.jzon`; a request waiting on a path forgotten is answered `503`, and its retry asks again; eviction times out the reclaim |
 | Eviction | Hand-offs under way; its list of candidates; which peers are connected | It counts storage again at start, says whether storage is full, asks which peers are connected, and asks stats again |
 | Backup | Restores, builds, exports, and imports; messages set aside while it stored content | They must be asked for again; jobs are read back from `backup_jobs.json`; it asks whether storage is full |
-| Karma | Content it waited for; what peers named at the targets it read; what it found of the blocks at its head's targets; a root it was making; whom the node trusts; the stakes people made through the node | The history is read back from `karma/`, and its head written again; what it lacks is asked for again as it next reads; the blocks at its head's targets are checked again as it first looks, and what was said of them is said again; a root is asked for again on `/config`, as the node follows none; whom the node trusts is known again only once the web server next says it, which it does when that changes; a stake a person made must be made again |
+| Karma | Content it waited for; what peers named at the targets it read; what it found of the blocks at its head's targets; a root it was making; whom the node trusts; the stakes people made through the node | The history is read back from `karma/`, and its head written again; what it lacks is asked for again as it next reads; the blocks at its head's targets are read and checked again as it first looks, those eviction let go of fetched again if a peer names them, and what was said of them is said again; a root is asked for again on `/config`, as the node follows none; whom the node trusts is known again only once the web server next says it, which it does when that changes; a stake a person made must be made again |
 | Dispatcher | Messages it had read but not yet delivered, and those it held for a full inbox | Nothing recovers them; no module is started until it is back |
 
 ## 11. Testing Modules

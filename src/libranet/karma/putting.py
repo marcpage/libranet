@@ -6,8 +6,8 @@ as a transaction block of its own, at the head's transaction target: holding
 the transaction and the payout, stating its ``weight``, its balances, and its
 ``reach`` truly (§3.8), and signed by the node. It may be short of full, and
 break the half-free rule (§5.6), for builders to combine (Phase 6 Step 134).
-Its drop's nonce is searched for for ``karma.block_seconds``, and after that
-until it shares ``storage.search_min_bits`` with the target (§2), and it is
+Its drop's nonce is searched for until it shares
+``storage.search_min_bits`` with the target (§2), and it is
 stored and announced, as the root the module makes is.
 
 A transaction given to put up is checked first. One that is invalid by
@@ -303,6 +303,7 @@ class TransactionsPutUp:
         drop = self._placing.placed(
             BlockDrop(self._placing.identity().signed(own.block.text()), own.block),
             GenerationTargets.after(head).transaction,
+            scored=False,
         )
 
         if drop is None:

@@ -1,12 +1,15 @@
 """Tests for combining transaction blocks into one, as full as it can be (KarmaLedger §5.6)."""
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from dataclasses import replace
 from datetime import timedelta
 from logging import DEBUG, INFO
+from typing import Any
 from zlib import compress
 
-from pytest import LogCaptureFixture, fixture
+from pytest import LogCaptureFixture, MonkeyPatch, fixture
 
 from libranet.bundle.signing import SignedBundle
 from libranet.cas.content_id import ContentId
@@ -173,6 +176,7 @@ def building(
     carol: NodeIdentity,
     placed: Placed,
     bounds: BlockBounds = ROOMY,
+    combine_transactions: int = 100,
 ) -> BlockBuilder:
     """What builds blocks as Carol, placing each drop in moments."""
     return BlockBuilder(
@@ -182,6 +186,7 @@ def building(
         BlockPlacing(
             lambda: carol, placed, shunned=placed.shunned, block_seconds=0.0, drop_bits=MINIMUM_BITS
         ),
+        combine_transactions=combine_transactions,
         bounds=bounds,
     )
 
@@ -205,8 +210,8 @@ def shunning(
     carol: NodeIdentity,
     placed: Placed,
 ) -> BlockBuilder:
-    """What builds blocks as Carol, in which a block of a few transactions is not full."""
-    return building(history, reader, carried, carol, placed, LARGE)
+    """What builds blocks as Carol, in which few are not full, and combining takes 2 more."""
+    return building(history, reader, carried, carol, placed, LARGE, 2)
 
 
 def following(follower: ChainFollower, truth: CasStore, chain: Chain) -> None:
@@ -732,8 +737,7 @@ def test_nothing_is_built_while_a_block_found_at_the_target_is_waited_for(
         clock=lambda: now[0],
     )
     builder = building(history, reader, carried, carol, placed)
-    # Dave's block of the payout, as a peer names it, which this node lacks:
-    # one it let go of, say.
+    # Dave's block of the payout, as a peer names it, which this node lacks.
     lacked = id_of(signed_at(root.targets.transaction, dave, root.block_after()))
     reader.read(root.targets.transaction, TransactionBlock)
     reader.answered(root.targets.transaction.hex, [lacked])
@@ -745,12 +749,65 @@ def test_nothing_is_built_while_a_block_found_at_the_target_is_waited_for(
     assert placed.drops == []
     assert lacked in recorder.asked_for()
 
-    # Waited for as long as anything asked for is, though asked for again.
     now[0] = 30.0
     reader.given_up()
     builder.build()
 
     assert [block.signed for block in placed.blocks()] == [()]
+
+
+def test_no_combined_block_is_mined_until_it_would_be_full_or_enough_would_combine(
+    shunning: BlockBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    counts = []
+
+    # Each is put up alone, so 2 are in no one block at the third, and again at the fifth.
+    for seconds in (1, 2, 3, 4, 5):
+        put_up(truth, first, alice, sent(alice, {bob.node_id: 1}, seconds))
+        shunning.build()
+        counts.append([len(block.signed) for block in placed.blocks()])
+
+    assert counts == [[], [], [3], [3], [3, 5]]
+
+
+def test_only_a_block_whose_bits_score_it_is_searched_for_longer_than_it_takes_to_find(
+    builder: BlockBuilder,
+    shunning: BlockBuilder,
+    follower: ChainFollower,
+    truth: CasStore,
+    root: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    scored: list[bool] = []
+    place = BlockPlacing.placed
+
+    def placing(self: BlockPlacing, *given: Any, **asked: Any) -> Any:
+        scored.append(asked["scored"])
+        return place(self, *given, **asked)
+
+    monkeypatch.setattr(BlockPlacing, "placed", placing)
+    following(follower, truth, root)
+
+    # A block of the payout alone, or not full, is only to be found. A full one competes.
+    builder.build()
+
+    for seconds in (1, 2, 3):
+        put_up(truth, root, alice, sent(alice, {bob.node_id: 1}, seconds))
+
+    shunning.build()
+    put_up(truth, root, alice, sent(alice, {bob.node_id: 1}, 4))
+    builder.build()
+
+    assert scored == [False, False, True]
 
 
 def test_with_nothing_to_take_a_block_of_the_payout_alone_is_built_once(
@@ -812,7 +869,6 @@ def test_what_is_no_transaction_block_at_a_target_is_passed_over_and_logged_once
 
 def test_blocks_whose_transactions_a_block_held_holds_more_of_are_superseded_by_it(
     shunning: BlockBuilder,
-    placed: Placed,
     follower: ChainFollower,
     truth: CasStore,
     first: Chain,
@@ -821,14 +877,12 @@ def test_blocks_whose_transactions_a_block_held_holds_more_of_are_superseded_by_
     dave: NodeIdentity,
 ) -> None:
     following(follower, truth, first)
-    small = [
-        put_up(truth, first, dave, sent(alice, {bob.node_id: 1}, seconds)) for seconds in (1, 2)
-    ]
+    both = [sent(alice, {bob.node_id: 1}, seconds) for seconds in (1, 2)]
+    small = [put_up(truth, first, dave, signed) for signed in both]
 
     assert shunning.superseded() == {}
 
-    shunning.build()
-    (built,) = placed.drops
+    built = put_up(truth, first, dave, *both)
 
     assert shunning.superseded() == {id_of(data): id_of(built) for data in small}
     # Each is named once at a head.
@@ -943,3 +997,161 @@ def test_a_block_is_never_superseded_by_one_that_is_not_correct(
 
 def test_nothing_is_superseded_while_no_chain_is_followed(shunning: BlockBuilder) -> None:
     assert shunning.superseded() == {}
+
+
+def test_what_a_block_held_is_taken_after_eviction_lets_it_go_and_it_is_not_asked_for(
+    shunning: BlockBuilder,
+    reader: TargetReader,
+    recorder: Recorder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    three = [sent(alice, {bob.node_id: 1}, seconds) for seconds in (1, 2, 3)]
+    small = [id_of(put_up(truth, first, dave, signed)) for signed in three[:2]]
+    shunning.build()
+
+    assert placed.drops == []
+
+    for block_id in small:
+        truth.delete(block_id)
+        reader.answered(first.targets.transaction.hex, [block_id])
+        # No longer waited for, so that a read would ask for it again.
+        reader.stored(block_id)
+
+    asked_for = recorder.asked_for()
+    put_up(truth, first, dave, three[2])
+    shunning.build()
+
+    assert {signed.hash for signed in placed.blocks()[0].signed} == {
+        signed.hash for signed in three
+    }
+    assert recorder.asked_for() == asked_for
+
+
+def test_a_block_eviction_let_go_is_superseded_all_the_same_and_named_once(
+    shunning: BlockBuilder,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    both = [sent(alice, {bob.node_id: 1}, seconds) for seconds in (1, 2)]
+    small = [id_of(put_up(truth, first, dave, signed)) for signed in both]
+
+    assert shunning.superseded() == {}
+
+    for block_id in small:
+        truth.delete(block_id)
+
+    built = put_up(truth, first, dave, *both)
+
+    assert shunning.superseded() == {block_id: id_of(built) for block_id in small}
+    assert shunning.superseded() == {}
+
+
+def test_a_block_found_correct_or_not_counts_though_let_go_unless_it_is_full(
+    builder: BlockBuilder,
+    shunning: BlockBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    data = put_up(truth, first, dave, sent(alice, {bob.node_id: 1}, 1))
+    shunning.build()
+    builder.build()
+    truth.delete(id_of(data))
+
+    shunning.build()
+
+    assert placed.drops == []
+
+    builder.build()
+
+    # Full, it counts only while it is held, and what it held builds another.
+    assert [len(block.signed) for block in placed.blocks()] == [1]
+
+
+def test_each_signature_is_checked_once_at_a_head_however_often_a_block_is_built(
+    builder: BlockBuilder,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    following(follower, truth, first)
+    put_up(truth, first, dave, sent(alice, {bob.node_id: 1}, 1))
+    builder.build()
+    checked_since: list[str] = []
+    verified = SignedTransaction.verified
+
+    def counted(self: SignedTransaction, public_key: bytes) -> None:
+        checked_since.append(self.hash)
+        verified(self, public_key)
+
+    monkeypatch.setattr(SignedTransaction, "verified", counted)
+    builder.build()
+
+    assert not checked_since
+
+
+def test_what_was_read_at_a_head_is_forgotten_at_the_next(
+    shunning: BlockBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    put_up(truth, first, dave, sent(alice, {bob.node_id: 1}, 1))
+    shunning.build()
+    following(follower, truth, first.then(bob, alice, bits=9))
+
+    shunning.build()
+
+    assert [len(block.signed) for block in placed.blocks()] == [0]
+
+
+def test_what_was_read_is_forgotten_and_read_again_once_too_much_is_kept(
+    shunning: BlockBuilder,
+    reader: TargetReader,
+    recorder: Recorder,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("libranet.karma.building._MOST_KEPT", 2)
+    following(follower, truth, first)
+    block_id = id_of(put_up(truth, first, dave, sent(alice, {bob.node_id: 1}, 1)))
+    shunning.build()
+    truth.delete(block_id)
+    reader.answered(first.targets.transaction.hex, [block_id])
+    # No longer waited for, so that a read would ask for it again.
+    reader.stored(block_id)
+
+    shunning.build()
+
+    assert recorder.asked_for().count(block_id) == 2

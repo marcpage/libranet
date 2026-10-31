@@ -548,7 +548,10 @@ to its contents.
 A node pays other nodes for what they do for it (Karma §11). Each time a
 peer sends it content it asked for, found to be that content, the node pays
 that peer. Content a peer pushes unasked earns nothing, since anyone can
-make content, and so could push it for pay. For most common payments, it
+make content, and so could push it for pay. Nor do the ledger's own blocks,
+and the keys of those who signed them, earn anything: every node reads each
+block put up, so paying for that would have each transaction pay for the
+next, with nothing else asked for. For most common payments, it
 pays a share of its balance, 0.01% unless its configuration says otherwise,
 rounded down to whole Kismet, so that what it gives keeps in step with what
 it holds. At 0.01%, a node holding under 10,000 Kismet pays nothing, since
@@ -770,8 +773,15 @@ at the generation's transaction target, signed by whoever puts it up. It
 holds that transaction and the payout, and states its `weight`, its
 balances, and its `reach` truly (§3.8). Builders combine the blocks at a
 generation's targets, false starts among them (§3.4), into larger ones, for
-a better score. A builder that has no transaction to take, and holds no
-correct block at the generation's transaction target, builds one holding
+a better score. A builder need not place a combined block until it would be
+full: only a full block is validated (§5.4), and a search finds the blocks
+put up until then, however many there are. It may place one sooner, so that
+one block takes the place of many that every node would otherwise read: the
+reference node does once enough of the transactions it would take, 100 unless
+its configuration says otherwise, are in no one block it holds there. A
+builder that has no transaction
+to take, and holds no correct block at the generation's transaction target,
+builds one holding
 the payout alone, so that the balances the reward of the head's validation
 block leaves are stated there as soon as the head is placed (§7.4).
 

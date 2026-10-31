@@ -68,6 +68,11 @@ ROOT = GenerationTargets.root()
 # those of a transaction's work.
 SEARCH_MIN_BITS = 6
 BOUNDS = BlockBounds(transaction_bits=5)
+# Those in which a block of anything is full.
+FILLED = BlockBounds(transaction_bits=5, holder_bytes=1)
+# Those in which a block of two transactions is full, at about 935 bytes
+# compressed, and one of one, at about 760, is not, so long as one holds Kismet.
+FULL_AT_TWO = BlockBounds(transaction_bits=5, holder_bytes=850)
 CREATED = datetime(2026, 10, 23, 9, 0, 0, tzinfo=UTC)
 
 
@@ -95,7 +100,13 @@ def module_over(
 
 
 def rooting_module(
-    storage: StorageConfig, queues: ModuleQueues, clock: Callable[[], float] = time
+    storage: StorageConfig,
+    queues: ModuleQueues,
+    clock: Callable[[], float] = time,
+    *,
+    bounds: BlockBounds = BOUNDS,
+    stake_percent: float = 10.0,
+    combine_transactions: int = 100,
 ) -> KarmaModule:
     """The Karma module of a node over ``storage``, started, which makes a root in moments.
 
@@ -104,11 +115,16 @@ def rooting_module(
     config = with_node_key(
         LibranetConfig(
             storage=storage.model_copy(update={"search_min_bits": SEARCH_MIN_BITS}),
-            karma=KarmaConfig(block_seconds=0.0, transaction_seconds=0.0),
+            karma=KarmaConfig(
+                block_seconds=0.0,
+                transaction_seconds=0.0,
+                stake_percent=stake_percent,
+                combine_transactions=combine_transactions,
+            ),
         )
     )
     module = KarmaModule(
-        ModuleName.KARMA, queues, config, clock=clock, poll_interval_seconds=0.01, bounds=BOUNDS
+        ModuleName.KARMA, queues, config, clock=clock, poll_interval_seconds=0.01, bounds=bounds
     )
     module.on_start()
     return module
@@ -968,12 +984,57 @@ def test_the_nodes_payments_queued_are_made_one_transaction_and_put_up_as_the_mo
     assert "Making 2 Karma payments of the node's into one transaction" in caplog.text
 
 
+def test_the_module_mines_no_combined_block_until_it_would_be_full(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    clock = Clock()
+    module = rooting_module(storage, queues, clock)
+    module.handle(root_requested())
+    # The block of the payout alone, a build interval on, is another matter.
+    clock.now += LibranetConfig().karma.build_interval_seconds
+    module.on_idle()
+    published(queues)
+
+    for seconds in (1, 2):
+        module.handle(given(paid_by_node(storage, seconds)))
+
+    assert len(stored_ids(queues)) == 2
+
+    clock.now += LibranetConfig().karma.build_interval_seconds
+    module.on_idle()
+
+    assert stored_ids(queues) == []
+
+
+def test_the_module_combines_as_many_as_it_is_configured_to_though_not_full(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    clock = Clock()
+    module = rooting_module(storage, queues, clock, combine_transactions=2)
+    module.handle(root_requested())
+    clock.now += LibranetConfig().karma.build_interval_seconds
+    module.on_idle()
+    published(queues)
+
+    for seconds in (1, 2, 3):
+        module.handle(given(paid_by_node(storage, seconds)))
+
+    assert len(stored_ids(queues)) == 3
+
+    clock.now += LibranetConfig().karma.build_interval_seconds
+    module.on_idle()
+
+    (combined,) = stored_ids(queues)
+    block = BlockDrop.parsed(module.reader.held(combined), TransactionBlock).block
+    assert len(block.signed) == 3
+
+
 def test_the_module_combines_the_blocks_at_the_heads_target_every_build_interval(
     storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
 ) -> None:
     clock = Clock()
     interval = LibranetConfig().karma.build_interval_seconds
-    module = rooting_module(storage, queues, clock)
+    module = rooting_module(storage, queues, clock, bounds=FILLED, stake_percent=0.0)
     module.handle(root_requested())
     published(queues)
     signed = [paid_by_node(storage, seconds) for seconds in (1, 2)]
@@ -1009,7 +1070,7 @@ def test_the_module_shuns_the_blocks_at_the_heads_target_that_the_one_it_builds_
     storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
 ) -> None:
     clock = Clock()
-    module = rooting_module(storage, queues, clock)
+    module = rooting_module(storage, queues, clock, bounds=FULL_AT_TWO, stake_percent=0.0)
     module.handle(root_requested())
     published(queues)
 
@@ -1222,12 +1283,21 @@ def test_a_server_rated_highest_by_both_measures_is_paid_once(
     )
 
 
-def fetched_from(node_id: ContentId) -> Message:
-    """What the connection manager says of a piece ``node_id`` sent that this node asked for."""
+def fetched_from(node_id: ContentId, content_id: ContentId) -> Message:
+    """What the connection manager says of ``content_id``, which ``node_id`` sent when asked."""
     return make_message(
         EventType.FETCH_SUCCEEDED,
         ModuleName.CONNECTIONS,
-        {**ContentId("sha256", "ab" * 32).fields(), "node_id": str(node_id)},
+        {**content_id.fields(), "node_id": str(node_id)},
+    )
+
+
+def not_the_ledgers(module: KarmaModule) -> ContentId:
+    """An id the module neither asked for nor would find at a target it reads, by chance."""
+    return next(
+        content_id
+        for content_id in (ContentId("sha256", f"{byte:02x}" * 32) for byte in range(0x100))
+        if not module.reader.asked_for(content_id)
     )
 
 
@@ -1235,10 +1305,11 @@ def test_each_piece_a_peer_sends_that_the_node_asked_for_queues_a_payment_to_it(
     storage: StorageConfig, queues: ModuleQueues
 ) -> None:
     module = paying_module(storage, queues, Clock())
+    piece = not_the_ledgers(module)
 
-    module.handle(fetched_from(PEER))
-    module.handle(fetched_from(OTHER_PEER))
-    module.handle(fetched_from(PEER))
+    module.handle(fetched_from(PEER, piece))
+    module.handle(fetched_from(OTHER_PEER, piece))
+    module.handle(fetched_from(PEER, piece))
 
     payment = Kismet(399_999_999_999)
     assert PaymentQueue.read(storage.karma_dir).payments == (
@@ -1246,6 +1317,27 @@ def test_each_piece_a_peer_sends_that_the_node_asked_for_queues_a_payment_to_it(
         Payment(OTHER_PEER, payment),
         Payment(PEER, payment),
     )
+
+
+def test_the_ledgers_own_blocks_and_keys_a_peer_sends_queue_no_payment(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    module = paying_module(storage, queues, Clock())
+    head = module.history.head
+    assert head is not None
+    asked = not_the_ledgers(module)
+    module.reader.fetch([asked])
+    module.reader.stored(asked)
+
+    # One at the target of the block the chain builds next, and one asked for.
+    module.handle(
+        fetched_from(
+            PEER, ContentId("sha256", GenerationTargets.after(head.validation).transaction.hex)
+        )
+    )
+    module.handle(fetched_from(PEER, asked))
+
+    assert PaymentQueue.read(storage.karma_dir).payments == ()
 
 
 def test_content_a_peer_pushes_that_the_node_did_not_ask_for_queues_no_payment(

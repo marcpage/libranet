@@ -845,10 +845,12 @@ class KarmaConfig(_Section):
     # the blocks the node builds (KarmaLedger §4.4, Phase 6 Step 129).
     carry_generations: int = Field(default=10, ge=0)
 
-    # How long the Karma module searches for the nonce of a block it places,
-    # as one put up for a transaction alone, before taking the best found,
-    # once that shares storage.search_min_bits with its target (KarmaLedger
-    # §2, Phase 6 Step 131). The search holds up the module's other work.
+    # How long the Karma module searches for the nonce of a block whose bits
+    # score it, a full transaction block or a validation block, before taking
+    # the best found, once that shares storage.search_min_bits with its target
+    # (KarmaLedger §2, §5.5, §6.5, Phase 6 Step 131). A block that is only to
+    # be found is searched for no longer than that takes. The search holds up
+    # the module's other work.
     block_seconds: float = Field(default=10.0, ge=0)
 
     # What share of the Karma the chain states the node holds each of its
@@ -871,8 +873,9 @@ class KarmaConfig(_Section):
     # How long the Karma module searches for the nonce of a transaction it
     # makes of the node's payments, before taking the best found, once that
     # gives it the work of a valid transaction (KarmaLedger §4.3, Phase 6 Step
-    # 132). The search holds up the module's other work.
-    transaction_seconds: float = Field(default=10.0, ge=0)
+    # 132). None by default: more bits only help a free transaction when
+    # blocks are crowded. The search holds up the module's other work.
+    transaction_seconds: float = Field(default=0.0, ge=0)
 
     # How often the Karma module rates the servers the node is connected to
     # as a client, by the data each sent it, and by the requests each
@@ -886,6 +889,13 @@ class KarmaConfig(_Section):
     # Step 134). Placing the block holds up the module's other work for
     # karma.block_seconds.
     build_interval_seconds: float = Field(default=60.0, gt=0)
+
+    # How many of the transactions it would take must be in no one block it
+    # holds at its head's transaction target before the Karma module places a
+    # combined block that would not be full. Only a full block is validated,
+    # but every node reads each block there as often as it looks and builds,
+    # so that a block of many takes the place of many blocks (KarmaLedger §5.6).
+    combine_transactions: int = Field(default=100, ge=1)
 
     # What share of what covers the node's stakes the Karma module stakes on
     # the best transaction block of each generation, in percent, rounded down

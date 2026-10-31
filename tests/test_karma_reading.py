@@ -401,6 +401,90 @@ def test_a_block_found_at_a_target_but_lacked_is_awaited_as_long_as_one_is_waite
     assert not reader.awaits(FIRST.validation)
 
 
+def test_a_block_known_is_neither_read_nor_asked_for_again(
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    staking: bytes,
+) -> None:
+    block_id = id_of(staking)
+    hold_keys(truth, alice, bob)
+    reader.read(FIRST.validation, ValidationBlock)
+    reader.answered(FIRST.validation.hex, [block_id])
+    # No longer waited for, so that a read would ask for it again.
+    reader.stored(block_id)
+
+    assert reader.read(FIRST.validation, ValidationBlock, known={block_id}) == []
+    assert recorder.asked_for() == [block_id]
+    assert not reader.awaits(FIRST.validation)
+
+    reader.read(FIRST.validation, ValidationBlock)
+
+    assert recorder.asked_for() == [block_id, block_id]
+
+    truth.write(block_id, staking)
+
+    assert reader.read(FIRST.validation, ValidationBlock, known={block_id}) == []
+
+
+def test_a_read_knowing_a_block_another_lacks_leaves_its_wait_as_it_was(
+    reader: TargetReader, clock: Clock, staking: bytes
+) -> None:
+    block_id = id_of(staking)
+    reader.read(FIRST.validation, ValidationBlock)
+    reader.answered(FIRST.validation.hex, [block_id])
+    reader.read(FIRST.validation, ValidationBlock)
+    clock.now += WAIT_SECONDS - 1
+    reader.read(FIRST.validation, ValidationBlock, known={block_id})
+
+    assert reader.awaits(FIRST.validation)
+    assert not reader.awaits(FIRST.validation, known={block_id})
+
+    clock.now += 1
+    reader.given_up()
+    reader.read(FIRST.validation, ValidationBlock)
+
+    assert not reader.awaits(FIRST.validation)
+
+
+def test_what_was_asked_for_is_the_ledgers_own_for_a_while_though_stored_since(
+    reader: TargetReader, clock: Clock
+) -> None:
+    content_id = ContentId("sha256", "ab" * 32)
+
+    assert not reader.asked_for(content_id)
+
+    reader.fetch([content_id])
+    reader.stored(content_id)
+
+    assert reader.asked_for(content_id)
+
+    clock.now += ANSWER_SECONDS - 1
+    reader.given_up()
+
+    assert reader.asked_for(content_id)
+
+    clock.now += 1
+    reader.given_up()
+
+    assert not reader.asked_for(content_id)
+
+
+def test_what_a_search_of_a_target_being_read_would_find_is_the_ledgers_own(
+    reader: TargetReader,
+) -> None:
+    at_target = ContentId("sha256", FIRST.validation.hex)
+
+    assert not reader.asked_for(at_target)
+
+    reader.read(FIRST.validation, ValidationBlock)
+
+    assert reader.asked_for(at_target)
+    assert not reader.asked_for(ContentId("sha256", ROOT.validation.hex))
+
+
 def test_what_is_waited_for_is_asked_for_once(
     reader: TargetReader, recorder: Recorder, staking: bytes
 ) -> None:

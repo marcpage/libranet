@@ -62,6 +62,19 @@ def test_the_nearest_of_the_counts_tried_is_found(start: int, stop: int) -> None
     assert NonceSearch(PREFIX, TARGET).nearest(start, stop) == nearest(PREFIX, start, stop)
 
 
+@mark.parametrize("target", [TARGET, bytes(32), b"\xff" * 32, sha256(b"other").digest()])
+def test_the_nearest_is_found_whether_or_not_a_hash_shares_the_targets_first_byte(
+    target: bytes,
+) -> None:
+    def far(count: int) -> int:
+        hashed = sha256(PREFIX + b"%d" % count).digest()
+        return int.from_bytes(hashed) ^ int.from_bytes(target)
+
+    # So few that none need share it, so many that most rounds have some that do.
+    for start, stop in ((0, 8), (500, 600), (0, 5000)):
+        assert NonceSearch(PREFIX, target).nearest(start, stop) == min(range(start, stop), key=far)
+
+
 @mark.parametrize("suffix", [SUFFIX, b"100%d%%", b"\x00"])
 def test_the_nearest_with_a_suffix_is_found(suffix: bytes) -> None:
     search = NonceSearch(PREFIX, TARGET, suffix=suffix)
