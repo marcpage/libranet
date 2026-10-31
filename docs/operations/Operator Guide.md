@@ -496,7 +496,11 @@ A node always follows the heaviest chain it has checked. When another validation
 block is placed beside its head that makes a heavier chain, or a peer tells it
 of a head that may be heavier, it checks that chain back to where it leaves its
 own, and follows it if every block is correct; `libranet-karma.log` says so,
-naming the generation the two chains share. Nodes tell the peers they connect to
+naming the generation the two chains share. Of two chains exactly as heavy, it
+follows the better one: at the first generation where they differ, the one
+whose validation block shares more bits with its target, then holds more stake,
+then has the id that sorts first. So nodes that saw the same blocks in another
+order still come to follow one chain. Nodes tell the peers they connect to
 of each new head they follow, and ask each for its own as they connect, so a
 node that has been apart from the rest finds the heavier chain soon after it
 reconnects. The transactions of the chain it leaves that the new one does not

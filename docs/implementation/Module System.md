@@ -451,10 +451,11 @@ keeps whom the node trusts and distrusts, as the web server says it
 (`node.trust`), so that what it builds leaves out whom the node distrusts
 (Phase 6 Step 127). As it looks, it also weighs each other validation block
 at the target its head was chosen from (`HeadChanges`, `karma/changing.py`,
-Phase 6 Step 129): one claiming a heavier chain it walks back to where that
-chain leaves its own, checking each weight and generation, then checks
-forward, and follows the chain if every block is correct, replacing its
-history after that point. The transactions of the chain it leaves that the
+Phase 6 Step 129): one claiming a heavier chain, or as heavy, it walks back
+to where that chain leaves its own, checking each weight and generation, then
+checks forward, and follows the chain if every block is correct, and it is
+heavier, or as heavy and better at the first generation they differ, replacing
+its history after that point. The transactions of the chain it leaves that the
 new one lacks it carries over, for `karma.carry_generations`, in
 `carried.json`. A block it finds unsigned, or false in its weight or
 generation, it shuns, and one false it says, as it does those it follows. It
