@@ -325,8 +325,11 @@ is answered first, with `Connection: close`, and each other connection of
 the client's is closed as it is next answered. A client of the median's
 Karma or more is kept however little it pushes, so none is closed while
 every client holds as much as the others, as while the node follows no
-chain. A client that connects again once its last connection has closed
-starts afresh.
+chain. None is closed unless more than `network.client_keep_count` clients
+are connected, 16 unless its configuration says otherwise, a client being
+closed not counted, since a server with few clients has no need of the room.
+A client that connects again once its last connection has closed starts
+afresh.
 
 HTTP API §7.5 independently lists a low ratio of desired data (what the
 host's `/data/seek` asks for) to undesired data as an example of abusive

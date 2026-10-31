@@ -57,6 +57,7 @@ def keeping(storage: StorageConfig, clock: Clock) -> ClientKeeping:
         VALUE_SECONDS,
         SoughtContent.of(storage),
         HeldKarma(storage.karma_dir),
+        keep_count=0,
         clock=clock,
     )
     keeping.connected(POOR)
@@ -72,6 +73,23 @@ def seek_list(storage: StorageConfig, *, data: list[str], search: list[str] | No
 
 def served(keeping: ClientKeeping, client: ContentId, requests: int) -> list[bool]:
     return [keeping.served(client) for _ in range(requests)]
+
+
+def keeping_of(
+    storage: StorageConfig, clock: Clock, held: dict[ContentId, int], *, keep_count: int
+) -> ClientKeeping:
+    """Keeping past every client's grace, each of ``held`` holding that much, keeping that many."""
+    KarmaBalances(
+        HEAD, {client: Balance(Kismet(kismet), 3) for client, kismet in held.items()}
+    ).write(storage.karma_dir)
+    return ClientKeeping(
+        0,
+        VALUE_SECONDS,
+        SoughtContent.of(storage),
+        HeldKarma(storage.karma_dir),
+        keep_count=keep_count,
+        clock=clock,
+    )
 
 
 def test_a_client_is_kept_for_its_first_requests_whatever_its_karma(
@@ -155,6 +173,61 @@ def test_a_client_alone_holds_the_median_and_is_kept(keeping: ClientKeeping, clo
     assert served(keeping, POOR, GRACE_REQUESTS + 1) == [True] * (GRACE_REQUESTS + 1)
 
 
+def test_no_client_is_closed_unless_more_than_the_keep_count_are_connected(
+    storage: StorageConfig, clock: Clock
+) -> None:
+    other = ContentId("sha256", "f0" * 32)
+    keeping = keeping_of(storage, clock, {RICH: 250, other: 250}, keep_count=2)
+    keeping.connected(POOR)
+    keeping.connected(RICH)
+    clock.now += VALUE_SECONDS
+
+    assert keeping.served(POOR)
+
+    keeping.connected(other)
+
+    assert not keeping.served(POOR)
+
+
+def test_those_being_closed_do_not_count_toward_those_kept(
+    storage: StorageConfig, clock: Clock
+) -> None:
+    clients = [ContentId("sha256", f"{byte:02x}" * 32) for byte in range(5)]
+    held = {client: 10 * (index + 1) for index, client in enumerate(clients)}
+    keeping = keeping_of(storage, clock, held, keep_count=3)
+
+    for client in clients:
+        keeping.connected(client)
+
+    clock.now += VALUE_SECONDS
+
+    # None of them has yet gone, as each still has a request being answered.
+    assert [keeping.served(client) for client in clients[:3]] == [False, False, True]
+
+
+def test_each_connection_of_a_client_being_closed_is_closed_as_it_is_next_answered(
+    keeping: ClientKeeping, clock: Clock, caplog: LogCaptureFixture
+) -> None:
+    served(keeping, POOR, GRACE_REQUESTS)
+    clock.now += VALUE_SECONDS
+
+    with caplog.at_level("INFO"):
+        assert served(keeping, POOR, 2) == [False, False]
+
+    assert caplog.text.count("Closing the connection") == 1
+
+
+def test_a_client_closed_that_connects_again_starts_afresh(
+    keeping: ClientKeeping, clock: Clock
+) -> None:
+    clock.now += VALUE_SECONDS
+    served(keeping, POOR, GRACE_REQUESTS + 1)
+    keeping.disconnected(POOR)
+    keeping.connected(POOR)
+
+    assert served(keeping, POOR, GRACE_REQUESTS) == [True] * GRACE_REQUESTS
+
+
 def test_a_client_that_connects_again_starts_afresh(keeping: ClientKeeping, clock: Clock) -> None:
     clock.now += VALUE_SECONDS
     served(keeping, POOR, GRACE_REQUESTS)
@@ -191,7 +264,12 @@ def test_karma_that_cannot_be_read_is_warned_of_once_and_closes_no_client(
     (storage.karma_dir / "balances.json").write_text("not JSON")
     seek_list(storage, data=[])
     keeping = ClientKeeping(
-        0, VALUE_SECONDS, SoughtContent.of(storage), HeldKarma(storage.karma_dir), clock=clock
+        0,
+        VALUE_SECONDS,
+        SoughtContent.of(storage),
+        HeldKarma(storage.karma_dir),
+        keep_count=0,
+        clock=clock,
     )
     keeping.connected(POOR)
     keeping.connected(RICH)
@@ -246,7 +324,10 @@ def test_no_identity_holds_karma_before_the_balances_are_written(storage: Storag
 
 def test_keeping_follows_the_configuration(storage: StorageConfig, clock: Clock) -> None:
     config = LibranetConfig(
-        network=NetworkConfig(client_grace_requests=1, client_value_seconds=5.0), storage=storage
+        network=NetworkConfig(
+            client_grace_requests=1, client_value_seconds=5.0, client_keep_count=1
+        ),
+        storage=storage,
     )
     KarmaBalances(HEAD, {RICH: Balance(Kismet(250), 3)}).write(storage.karma_dir)
     keeping = ClientKeeping.of(config, clock=clock)

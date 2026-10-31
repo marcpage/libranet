@@ -71,8 +71,10 @@ network:
   # node lists, such a peer is closed once it has pushed nothing this node
   # seeks for client_value_seconds. A peer holding the median's Karma or
   # more is kept, so none is closed while the node follows no Karma chain.
+  # None is closed unless more than client_keep_count peers are connected.
   client_grace_requests: 12
   client_value_seconds: 600.0
+  client_keep_count: 16
 
   # The hosts /config is served as, beside the name this machine gives
   # itself (such as macbook.local), which it is always served as. A /config

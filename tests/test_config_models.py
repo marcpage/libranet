@@ -95,6 +95,11 @@ def test_a_client_is_kept_for_its_first_12_requests_and_ten_minutes_by_default()
     assert NetworkConfig().client_grace_requests == 12
     assert NetworkConfig().client_value_seconds == 600.0
     assert NetworkConfig(client_grace_requests=0).client_grace_requests == 0
+    assert NetworkConfig().client_keep_count == 16
+    assert NetworkConfig(client_keep_count=0).client_keep_count == 0
+
+    with raises(ValidationError):
+        NetworkConfig(client_keep_count=-1)
 
     with raises(ValidationError):
         NetworkConfig(client_grace_requests=-1)
@@ -870,7 +875,7 @@ def test_the_example_config_states_the_default_session_idle_time() -> None:
 def test_the_example_config_states_the_default_keeping_of_clients() -> None:
     example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
     stated = safe_load(example.read_text(encoding="utf-8"))["network"]
-    settings = ("client_grace_requests", "client_value_seconds")
+    settings = ("client_grace_requests", "client_value_seconds", "client_keep_count")
 
     assert {name: stated[name] for name in settings} == {
         name: getattr(NetworkConfig(), name) for name in settings

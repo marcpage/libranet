@@ -141,7 +141,12 @@ def kept_peers(tmp_path: Path, published: Recorder, clock: Clock) -> InboundPeer
     storage.seek_list_path.parent.mkdir(parents=True)
     storage.seek_list_path.write_text(dumps({"data": [str(SOUGHT)]}))
     keeping = ClientKeeping(
-        1, VALUE_SECONDS, SoughtContent.of(storage), HeldKarma(storage.karma_dir), clock=clock
+        1,
+        VALUE_SECONDS,
+        SoughtContent.of(storage),
+        HeldKarma(storage.karma_dir),
+        keep_count=0,
+        clock=clock,
     )
     return InboundPeers(published, keeping=keeping)
 

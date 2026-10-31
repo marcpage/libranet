@@ -94,8 +94,8 @@ Work this implies:
 - HandshakeProtocol §5.2 already lets a host close a guest that is not
   adding value; this step is a host doing so by number. §5.2 has Karma
   choose whom to keep, as [Phase 6](Phase%206.md) Step 142 now does for
-  a peer that adds nothing, and this step's rule is by a connection's
-  age.
+  a peer that adds nothing, once more than `network.client_keep_count`
+  are connected, and this step's rule is by a connection's age.
 
 My calls, not yet reviewed:
 

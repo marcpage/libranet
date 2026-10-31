@@ -753,6 +753,7 @@ def keeping_server(
         600.0,
         SoughtContent.of(storage),
         HeldKarma(storage.karma_dir),
+        keep_count=0,
         clock=keeping_clock,
     )
     publish = StubModule(ModuleName.WEBSERVER, queues).publish

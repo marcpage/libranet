@@ -1518,7 +1518,9 @@ alone use, counts each peer's requests and notes when it last pushed what
 `seek.json` asks for. Past its first `network.client_grace_requests`, a
 peer holding less Karma than the median of those connected, as
 `karma/balances.json` states it, is closed once it has pushed nothing sought
-for `network.client_value_seconds` (Phase 6 Step 142).
+for `network.client_value_seconds`, unless no more than
+`network.client_keep_count` are connected, those being closed not counted
+(Phase 6 Step 142).
 
 Two more hold who is signed in, and are kept in the web server's memory
 alone (Phase 4 Step 79, Phase 5 Step 99). `Sessions` is shared among

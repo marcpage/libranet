@@ -7,7 +7,9 @@ exchange (§3), one whose Karma is below the median of the clients connected,
 and that has pushed nothing this node seeks for
 ``network.client_value_seconds``, is closed. One of the median's Karma or
 more is kept, so that none is closed while every client holds as much as
-the others, as while the node follows no chain.
+the others, as while the node follows no chain. None is closed unless more
+than ``network.client_keep_count`` are connected, those being closed not
+counted, so that requests answered at once leave that many.
 
 A client is a peer whose key verified a request on a connection
 (:mod:`libranet.webserver.inbound_peers`). What it did is forgotten when its
@@ -111,10 +113,15 @@ class HeldKarma:
 
 @dataclass(frozen=True)
 class _ClientUse:
-    """The requests a client has made, and when it last pushed what is sought, or else connected."""
+    """The requests a client has made, and when it last pushed what is sought, or else connected.
+
+    ``closing`` says it is to be closed, each of its connections as each is
+    next answered, unless it pushes what is sought first.
+    """
 
     valued_at: float
     requests: int = 0
+    closing: bool = False
 
 
 class ClientKeeping:
@@ -123,8 +130,8 @@ class ClientKeeping:
     Each is kept for its first ``grace_requests`` requests, and while it has
     pushed something ``sought`` within ``value_seconds``, and after, unless
     it holds less Karma, as ``karma`` says, than the median of the clients
-    connected. Safe to use from several threads at once, as the web
-    server's are.
+    connected, and more than ``keep_count`` are. Safe to use from several
+    threads at once, as the web server's are.
     """
 
     def __init__(
@@ -134,10 +141,12 @@ class ClientKeeping:
         sought: SoughtContent,
         karma: HeldKarma,
         *,
+        keep_count: int,
         clock: Callable[[], float] = time,
     ) -> None:
         self._grace_requests = grace_requests
         self._value_seconds = value_seconds
+        self._keep_count = keep_count
         self._sought = sought
         self._karma = karma
         self._clock = clock
@@ -153,6 +162,7 @@ class ClientKeeping:
             network.client_value_seconds,
             SoughtContent.of(storage),
             HeldKarma(storage.karma_dir),
+            keep_count=network.client_keep_count,
             clock=clock,
         )
 
@@ -175,7 +185,7 @@ class ClientKeeping:
             use = self._uses.get(client)
 
             if use is not None:
-                self._uses[client] = replace(use, valued_at=self._clock())
+                self._uses[client] = replace(use, valued_at=self._clock(), closing=False)
 
     def served(self, client: ContentId) -> bool:
         """Count a request of ``client``'s answered; whether it is kept connected."""
@@ -184,6 +194,9 @@ class ClientKeeping:
 
             if use is None:
                 return True
+
+            if use.closing:
+                return False
 
             use = replace(use, requests=use.requests + 1)
             self._uses[client] = use
@@ -194,13 +207,26 @@ class ClientKeeping:
             if self._clock() - use.valued_at < self._value_seconds:
                 return True
 
-            connected = list(self._uses)
+            closing = self._closes(client)
+            self._uses[client] = replace(use, closing=closing)
+            return not closing
+
+    def _closes(self, client: ContentId) -> bool:
+        """Whether ``client``, past its grace and adding nothing, is closed; the lock is held.
+
+        It is decided under the lock, so that requests answered at once close
+        no more than leave ``keep_count``. That it is, is logged.
+        """
+        connected = [each for each, use in self._uses.items() if not use.closing]
+
+        if len(connected) <= self._keep_count:
+            return False
 
         kismet = self._karma.kismet(connected)
         middle = median(kismet.values())
 
         if kismet[client] >= middle:
-            return True
+            return False
 
         _LOGGER.info(
             "Closing the connection of %s, which holds %s Kismet, below the median of %s of the "
@@ -211,4 +237,4 @@ class ClientKeeping:
             len(connected),
             self._value_seconds,
         )
-        return False
+        return True
