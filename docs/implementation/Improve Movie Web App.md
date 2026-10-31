@@ -355,6 +355,7 @@ where it went.
 | #568 | A collection's Add by id as a plus in a circle in the upper right corner | None: a change to the page alone |
 | #569 | A collection's Share as an icon in the upper right corner | None: a change to the page alone |
 | #570 | A collection's Keep offline as a download icon in the upper right corner | None: a change to the page alone |
+| #572 | No “Signed in as” note under the title | None: a change to the page alone |
 
 ## 5. Suggested Build Order
 
