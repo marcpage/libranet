@@ -152,6 +152,9 @@
   .poster-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 0 0 0.75rem; }
   .poster-row img { width: 8rem; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; }
 
+  /* The filter of the movies listed, below the collection's name. */
+  .filter { display: block; width: 100%; margin: 0.75rem 0 0; }
+
   /* The playlist's movies. */
   .movies {
     list-style: none;
@@ -357,21 +360,26 @@
         <h2 id="playlist-name"></h2>
         <span class="note" id="playlist-count"></span>
       </div>
-      <div class="icons signed-in-only" hidden>
-        <button type="button" class="icon" id="add-file" title="Add from a file" aria-label="Add from a file">
+      <div class="icons">
+        <button type="button" class="icon signed-in-only" id="add-file" title="Add from a file" aria-label="Add from a file" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 4H5v17h12v-8 M18 3v6 M15 6h6 M8 13h6 M8 17h6"/></svg>
         </button>
-        <button type="button" class="icon" id="add-id" title="Add by id" aria-label="Add by id">
+        <button type="button" class="icon signed-in-only" id="add-id" title="Add by id" aria-label="Add by id" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 8v8 M8 12h8"/></svg>
         </button>
-        <button type="button" class="icon" id="share-playlist" title="Share" aria-label="Share">
+        <button type="button" class="icon signed-in-only" id="share-playlist" title="Share" aria-label="Share" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V3 M8 7l4-4 4 4 M9 10H5v11h14V10h-4"/></svg>
         </button>
-        <button type="button" class="icon" id="keep-offline" title="Keep offline" aria-label="Keep offline">
+        <button type="button" class="icon signed-in-only" id="keep-offline" title="Keep offline" aria-label="Keep offline" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12 M8 11l4 4 4-4 M4 17v4h16v-4"/></svg>
+        </button>
+        <button type="button" class="icon" id="filter-movies" title="Filter" aria-label="Filter">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M16 16l5 5"/></svg>
         </button>
       </div>
     </div>
+    <input type="search" class="filter" id="movie-filter" aria-label="Words to look for"
+      placeholder="Whole words to look for" autocomplete="off" spellcheck="false" hidden>
     <ul class="activity" id="activity"></ul>
     <p class="result" id="library-result" role="status" hidden></p>
     <p class="state" id="library-state" hidden></p>
@@ -539,6 +547,10 @@
     <dd>The next movie, or the one before, playing on if one was playing.</dd>
     <dt><kbd>C</kbd></dt>
     <dd>Choose another collection.</dd>
+    <dt><kbd>`</kbd></dt>
+    <dd>Filter the movies listed, as the magnifying glass does, to those with every whole word typed.
+    Enter keeps the filter, and Escape empties it. It starts empty each time, so ` then Enter shows
+    every movie again.</dd>
     <dt><kbd>?</kbd> <kbd>/</kbd></dt>
     <dd>These keys.</dd>
   </dl>
@@ -688,6 +700,11 @@ function isShown(value) {
 
 function plural(count, one, many) {
   return count === 1 ? `1 ${one}` : `${count} ${many}`;
+}
+
+// The whole words of `text`, in lower case: its runs of letters and digits.
+function wordsOf(text) {
+  return text.toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter(isText);
 }
 
 function formatDuration(seconds) {
@@ -910,6 +927,15 @@ class Playlist {
 
   holds(folder) {
     return this.order.includes(folder);
+  }
+
+  // The folders of the movies, in order, whose title and facts, as the list
+  // shows them, hold every one of `words` as a whole word.
+  matching(words) {
+    return this.order.filter((folder) => {
+      const own = new Set(wordsOf(`${this.title(folder)} ${facts(this.movies.get(folder))}`));
+      return words.every((word) => own.has(word));
+    });
   }
 
   entry() {
@@ -1463,6 +1489,9 @@ function showPlaylist(playlist, offline = false) {
     element.hidden = !state.owner || offline;
   }
 
+  // Each collection opens with every movie shown.
+  byId("movie-filter").value = "";
+  byId("movie-filter").hidden = true;
   byId("chooser").hidden = true;
   show(byId("library-result"), "");
   renderLibrary();
@@ -1617,24 +1646,15 @@ function playlistChoice(entry) {
 
 function renderLibrary() {
   const playlist = state.playlist;
-  const count = playlist.order.length;
   const focused = byId("movies").contains(document.activeElement) ? document.activeElement.dataset.folder : null;
   byId("library").hidden = state.selected !== null;
   byId("playlist-name").textContent = playlist.name;
-  byId("playlist-count").textContent = plural(count, "movie", "movies");
   byId("movies").replaceChildren(...playlist.order.map((folder) => movieItem(playlist, folder)));
+  showMatching();
 
   // The movie that had focus keeps it in the newer version.
   if (focused !== null) {
     focusMovie(focused);
-  }
-
-  if (count > 0) {
-    show(byId("library-state"), "");
-  } else if (state.owner) {
-    show(byId("library-state"), "This collection holds no movies yet. Add one from a file, or by its id.");
-  } else {
-    show(byId("library-state"), "This collection holds no movies yet.");
   }
 
   if (state.selected !== null && !playlist.holds(state.selected)) {
@@ -1642,6 +1662,54 @@ function renderLibrary() {
   } else if (state.selected !== null) {
     showDetails();
   }
+}
+
+// Shows only the movies of the collection open that the filter matches, and
+// says how many it holds, how many of them are shown, or why none are.
+function showMatching() {
+  const playlist = state.playlist;
+  const count = playlist.order.length;
+  const filter = byId("movie-filter").value.trim();
+  const shown = new Set(playlist.matching(wordsOf(filter)));
+  const movies = plural(count, "movie", "movies");
+
+  for (const pick of byId("movies").querySelectorAll("button.pick")) {
+    pick.parentElement.hidden = !shown.has(pick.dataset.folder);
+  }
+
+  byId("playlist-count").textContent = shown.size < count ? `${shown.size} of ${movies}` : movies;
+
+  if (count > 0 && shown.size === 0) {
+    show(byId("library-state"), `No movie here has every word of “${filter}”.`);
+  } else if (count > 0) {
+    show(byId("library-state"), "");
+  } else if (state.owner) {
+    show(byId("library-state"), "This collection holds no movies yet. Add one from a file, or by its id.");
+  } else {
+    show(byId("library-state"), "This collection holds no movies yet.");
+  }
+}
+
+// Opens the filter of the movies listed, emptied of any kept before, so that
+// every movie is shown until words are typed, and Enter alone keeps none.
+function openFilter() {
+  const field = byId("movie-filter");
+
+  if (byId("library").hidden) {
+    return;
+  }
+
+  field.value = "";
+  field.hidden = false;
+  showMatching();
+  field.focus();
+}
+
+// Keeps the filter as typed, out of the way, with focus on the first movie
+// it shows, or, if it shows none, on opening it again.
+function keepFilter() {
+  byId("movie-filter").hidden = true;
+  (byId("movies").querySelector("li:not([hidden]) > button.pick") || byId("filter-movies")).focus();
 }
 
 function movieItem(playlist, folder) {
@@ -1657,12 +1725,12 @@ function movieItem(playlist, folder) {
   return item;
 }
 
-// Gives focus to the movie in `folder` of the collection open, or to its
-// first, if it holds no such movie, or to adding one, if it holds none.
+// Gives focus to the movie in `folder` of the collection open, or to the
+// first shown, if it shows no such movie, or to adding one, if it shows none.
 function focusMovie(folder) {
-  const picks = [...byId("movies").querySelectorAll("button.pick")];
+  const picks = [...byId("movies").querySelectorAll("li:not([hidden]) > button.pick")];
   const pick = picks.find((each) => each.dataset.folder === folder) || picks[0]
-    || byId("library").querySelector(".icons:not([hidden]) button");
+    || byId("library").querySelector(".icons button.signed-in-only:not([hidden])");
 
   if (pick) {
     pick.focus();
@@ -1684,12 +1752,12 @@ function across(buttons, from, below) {
   return nearest ? nearest.button : null;
 }
 
-// Moves focus through the buttons of `list` from the keyboard: the arrow
-// keys to the one beside, above, or below, as they are laid out, and Home
-// and End to the first and the last.
+// Moves focus through the buttons shown of `list` from the keyboard: the
+// arrow keys to the one beside, above, or below, as they are laid out, and
+// Home and End to the first and the last.
 function arrowKeys(list) {
   list.addEventListener("keydown", (event) => {
-    const buttons = [...list.querySelectorAll("button")];
+    const buttons = [...list.querySelectorAll("button")].filter((button) => button.getClientRects().length > 0);
     const at = buttons.indexOf(event.target);
     const moves = {
       ArrowLeft: () => buttons[at - 1],
@@ -1899,9 +1967,9 @@ function leaveMovie() {
   document.exitFullscreen().catch(warnStillFullscreen);
 }
 
-// Chooses the movie `delta` from the one chosen in the collection, or, if
-// none is, from the one with focus there, or its first or last, and plays it
-// if the one chosen was playing.
+// Chooses the movie `delta` from the one chosen in the collection, of those
+// the filter shows, or, if none is, from the one with focus there, or the
+// first or last shown, and plays it if the one chosen was playing.
 function stepMovie(delta) {
   const playlist = state.playlist;
   const video = byId("video");
@@ -1910,10 +1978,11 @@ function stepMovie(delta) {
     return;
   }
 
+  const order = playlist.matching(wordsOf(byId("movie-filter").value));
   const listed = byId("movies").contains(document.activeElement);
   const from = state.selected === null && listed ? document.activeElement.dataset.folder : state.selected;
-  const at = playlist.order.indexOf(from);
-  const folder = playlist.order[at < 0 ? (delta > 0 ? 0 : playlist.order.length - 1) : at + delta];
+  const at = order.indexOf(from);
+  const folder = order[at < 0 ? (delta > 0 ? 0 : order.length - 1) : at + delta];
   const playing = !video.paused;
 
   if (folder === undefined) {
@@ -2833,6 +2902,7 @@ const SHORTCUTS = {
   n: () => stepMovie(1),
   p: () => stepMovie(-1),
   c: showChooser,
+  "`": openFilter,
   "?": () => byId("keys-dialog").showModal(),
   "/": () => byId("keys-dialog").showModal(),
 };
@@ -2915,6 +2985,24 @@ byId("add-id").addEventListener("click", () => {
 });
 byId("share-playlist").addEventListener("click", openShare);
 byId("keep-offline").addEventListener("click", openKeep);
+byId("filter-movies").addEventListener("click", openFilter);
+byId("movie-filter").addEventListener("input", showMatching);
+
+// Enter keeps the filter as typed, and Escape empties it, showing every movie.
+byId("movie-filter").addEventListener("keydown", (event) => {
+  if (event.isComposing || (event.key !== "Enter" && event.key !== "Escape")) {
+    return;
+  }
+
+  event.preventDefault();
+
+  if (event.key === "Escape") {
+    event.target.value = "";
+    showMatching();
+  }
+
+  keepFilter();
+});
 byId("edit-movie").addEventListener("click", startEditing);
 byId("close-movie").addEventListener("click", leaveMovie);
 byId("cancel-edit").addEventListener("click", () => {
