@@ -30,7 +30,7 @@ class EventType(StrEnum):
     SHUTDOWN = "shutdown"
 
     # Web server read path (Step 5).
-    DATA_REQUESTED = "data.requested"  # webserver → stats
+    DATA_REQUESTED = "data.requested"  # webserver, karma → stats
     DATA_NOT_FOUND = "data.not_found"  # webserver, unbundler, backup, karma → fetcher, stats
     SEARCH_REQUESTED = "data.search_requested"  # webserver, karma → stats, connections
     SEARCH_ANSWERED = "data.search_answered"  # connections, webserver → stats, karma

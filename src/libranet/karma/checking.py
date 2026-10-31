@@ -389,6 +389,19 @@ class BlockScore:
 
 
 @dataclass(frozen=True)
+class NotFullBlock:
+    """What is kept of a transaction block checked, and found not full as held (§5.4).
+
+    ``hashes`` are those of the transactions it holds, for a validation block to
+    witness. No correct validation block stakes on it, so the rest is let go of,
+    and read again from what is held, or asked for, should a validation block
+    name it.
+    """
+
+    hashes: frozenset[str]
+
+
+@dataclass(frozen=True)
 class TransactionBlockCheck:
     """Transaction block ``drop``, checked and found to state nothing false: correct, or not.
 
@@ -412,6 +425,15 @@ class TransactionBlockCheck:
             raise ValueError(
                 "A checked block is scored when it is correct, and says why when it is not"
             )
+
+    @property
+    def hashes(self) -> frozenset[str]:
+        """The hash of each transaction it holds."""
+        return frozenset(signed.hash for signed in self.drop.block.signed)
+
+    def kept(self) -> TransactionBlockCheck | NotFullBlock:
+        """What to keep of it while the head is the same: all of it, unless it is not full."""
+        return self if self.full else NotFullBlock(self.hashes)
 
     @classmethod
     def of(

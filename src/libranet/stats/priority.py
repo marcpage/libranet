@@ -19,7 +19,10 @@ A factor whose extreme is zero, as when nothing held was ever requested, is
 one for every object. The four are multiplied, each first raised to at least
 :data:`FACTOR_FLOOR`, so that no single factor keeps content however the
 other three rank it: an object stored at exactly 1 MiB would otherwise score
-zero, whether it is used hourly or never.
+zero, whether it is used hourly or never. Size is raised further, to
+:data:`SIZE_FACTOR_FLOOR`: most of what a node holds is about 1 MiB, and were
+that worth as much as being in use, a small object read every minute would go
+before large ones nothing has asked for in hours, and be fetched again.
 
 The stats module holds what the factors are measured from, so it is what
 ranks the content, and the score is kept with it (:class:`EvictionScorer`).
@@ -36,6 +39,10 @@ from libranet.config.models import MIB
 
 #: Provisional: the least any one factor of a score counts for.
 FACTOR_FLOOR: Final = 0.01
+
+#: Provisional: the least the size of an object counts for, so that being large
+#: keeps it no more than ten times as long as being small.
+SIZE_FACTOR_FLOOR: Final = 0.1
 
 
 @dataclass(frozen=True)
@@ -65,16 +72,23 @@ class EvictionScorer:
         factors = (
             self._unused(last_used),
             1.0 - _share(requests, self.most_requests),
-            1.0 - _share(size_bytes, MIB),
             1.0 - _share(matching_bits(self.node_hash, content_hash), self.most_matching_bits),
         )
-        return prod(FACTOR_FLOOR + (1.0 - FACTOR_FLOOR) * factor for factor in factors)
+        small = 1.0 - _share(size_bytes, MIB)
+        return _raised(small, SIZE_FACTOR_FLOOR) * prod(
+            _raised(factor, FACTOR_FLOOR) for factor in factors
+        )
 
     def _unused(self, last_used: float | None) -> float:
         if last_used is None or self.longest_unused_seconds <= 0:
             return 1.0
 
         return _share(self.now - last_used, self.longest_unused_seconds)
+
+
+def _raised(factor: float, floor: float) -> float:
+    """``factor``, a fraction of one, raised to at least ``floor``, and one left at one."""
+    return floor + (1.0 - floor) * factor
 
 
 def _share(part: float, whole: float) -> float:

@@ -69,7 +69,7 @@ a root it makes, and a block it puts up for a transaction.
 | Message | Sent by | Received by | Purpose in brief |
 | --- | --- | --- | --- |
 | `shutdown` | (none in a running node) | every module, dispatcher | Leave the receive loop |
-| `data.requested` | Web server | Stats | Count a request for content |
+| `data.requested` | Web server, Karma | Stats | Count a request for content |
 | `data.not_found` | Web server, Unbundler, Backup, Karma | Fetcher, Stats | Content is needed that is not held |
 | `data.search_requested` | Web server, Karma | Stats, Connections | A prefix search was asked of this node |
 | `data.search_answered` | Connections, Web server | Stats, Karma | What a peer answered a prefix search with, or named as matching one |
@@ -154,7 +154,9 @@ it and what each does with it.
 - **Sent by:** Web server, for each `GET /data/{algorithm}/{hash}` and each
   signed read, held or not (`data_handler.py`, `signed_handlers.py`), and for
   each part a file served from its parts asks for (`file_stream.py`).
-  `external` is false for a request from this machine, and for a part.
+  Karma, for what it reads, at most once a minute for any one piece of content
+  (`karma/reading.py`). `external` is false for a request from this machine,
+  for a part, and for a read by Karma.
 - **Received by:** Stats, which counts the request, and whether it was
   external, toward the content's statistics and so its eviction score.
 - **Purpose:** record demand for content.
@@ -784,6 +786,6 @@ or reported, nor is the key a kept archive's bundle may carry.
 | Unbundler | `data.not_found`, `app.path_resolved`, `resolved.reclaimed` | `app.path_not_found`, `data.stored`, `resolved.reclaim` |
 | Eviction | `eviction.notice`, `data.deleted`, `eviction.candidates_requested`, `resolved.reclaim_requested`, `peers.connected_requested`, `storage.full` | `data.stored`, `eviction.acknowledged`, `eviction.candidates`, `resolved.reclaimed`, `peers.connected`, `storage.full_requested`, `data.shunned` |
 | Backup | `data.not_found`, `data.stored`, `backup.state`, `storage.full_requested` | `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.stored`, `storage.full` |
-| Karma | `data.search_requested`, `data.not_found`, `data.stored`, `data.shunned`, `karma.false_block`, `karma.head`, `karma.ratings_requested` | `data.search_answered`, `data.stored`, `karma.root_requested`, `node.trust`, `karma.head_told`, `karma.transaction`, `karma.stake`, `karma.ratings`, `karma.node_payment`, `fetch.succeeded` |
+| Karma | `data.requested`, `data.search_requested`, `data.not_found`, `data.stored`, `data.shunned`, `karma.false_block`, `karma.head`, `karma.ratings_requested` | `data.search_answered`, `data.stored`, `karma.root_requested`, `node.trust`, `karma.head_told`, `karma.transaction`, `karma.stake`, `karma.ratings`, `karma.node_payment`, `fetch.succeeded` |
 
 Every module also receives `shutdown`.

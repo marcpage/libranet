@@ -518,9 +518,10 @@ builds nothing while a block found there is being fetched, for up to
 once at a head, keeping each transaction, its signature checked, and the hashes
 each block holds, in memory, so that one not full is not read or fetched again
 once eviction lets it go; a full one is read each time, as what is lost is
-built again, and following the chain keeps its checks the same way
-(`known`, `TargetReader.read`). After each look and each build, it
-shuns (`data.shunned`) each transaction block at its head's transaction
+built again. Following the chain does the same, keeping only the hashes of a
+block not full, and reading it again only if a validation block names it
+(`known`, `TargetReader.read`, `NotFullBlock`). After each look and each build,
+it shuns (`data.shunned`) each transaction block at its head's transaction
 target whose transactions are all in another it holds there, correct, holding
 more of them, or as many and sharing more bits with the target: never one a
 validation block there names, nor one full (Phase 6 Step 135). After each
@@ -1020,7 +1021,7 @@ to end its loop.
 | Event | Web server | Connections | Validator | Stats | Fetcher | Unbundler | Eviction | Backup | Karma |
 | --- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
 | *Reading* | | | | | | | | | |
-| `data.requested` | P | | | S | | | | | |
+| `data.requested` | P | | | S | | | | | P |
 | `data.not_found` | P | | | S | S | P | | P | P |
 | `data.search_requested` | P | S | | S | | | | | P |
 | `data.search_answered` | P | P | | S | | | | | S |
@@ -1098,10 +1099,11 @@ to end its loop.
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
 leave it out. The Karma module publishes searches and misses as it reads a
-target (Phase 6 Step 124), `data.stored` only for a root it makes (Phase 6
-Step 125), a block it puts up for a transaction (Phase 6 Step 131), a block
-it builds of others (Phase 6 Step 134), and a validation block it builds of
-stakes (Phase 6 Step 136), and
+target (Phase 6 Step 124), `data.requested` for what it reads, at most once a
+minute for any one piece of content, `data.stored` only for a root it makes
+(Phase 6 Step 125), a block it puts up for a transaction (Phase 6 Step 131), a
+block it builds of others (Phase 6 Step 134), and a validation block it builds
+of stakes (Phase 6 Step 136), and
 `data.shunned` and `karma.false_block` for blocks it finds unsigned or false
 as it follows the chain (Phase 6 Step 126), or weighs a heavier one (Phase 6
 Step 129), and `data.shunned` for transaction blocks another it holds
@@ -1124,7 +1126,7 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 
 | Event | Payload | Meaning |
 | --- | --- | --- |
-| `data.requested` | `algorithm`, `hash`, `external` | `GET /data` asked for this content, held or not, or a file served from its parts asked for this part; `external` is false for a request from this machine, and for a part |
+| `data.requested` | `algorithm`, `hash`, `external` | `GET /data` asked for this content, held or not, or a file served from its parts asked for this part, or Karma read this content; `external` is false for a request from this machine, for a part, and for a read by Karma |
 | `data.not_found` | `algorithm`, `hash` | Content was needed that this node does not hold |
 | `data.search_requested` | `prefix`, and `node_id` and `relays` if a peer asked | A search was answered, and its result cached in `search/`, or the Karma module reads a target; search the connected peers for it too |
 | `data.search_answered` | `prefix`, `node_id`, `results` | What the peer `node_id` answered a search of the prefix with, or named as matching it (`POST /data/search/{prefix}`) |

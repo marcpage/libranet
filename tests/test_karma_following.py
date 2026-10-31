@@ -7,9 +7,12 @@ from hashlib import sha256
 from itertools import count
 from logging import DEBUG, INFO, WARNING
 from typing import Iterable
+from zlib import compress
 
 from pytest import LogCaptureFixture, fixture
 
+from libranet.atomic_file import write_atomically
+from libranet.bundle.storing import STORAGE_COMPRESSION_LEVEL
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.cas.prefix import matching_bits
@@ -375,7 +378,89 @@ def test_the_blocks_at_the_heads_targets_are_checked_without_any_being_followed(
     assert len(history) == 1
 
 
-def test_a_block_checked_and_not_full_keeps_its_check_and_is_not_asked_for_once_let_go(
+def holding_first_not_full(
+    follower: ChainFollower,
+    truth: CasStore,
+    identities: tuple[NodeIdentity, ...],
+    root: Root,
+    first: bytes,
+) -> None:
+    """Have ``follower``, whose bounds find ``first`` not full, follow ``root`` and check it."""
+    hold(truth, root.transaction, root.validation)
+    hold_keys(truth, *identities)
+    follower.look()
+    hold(truth, first)
+    follower.checked()
+
+
+def test_a_block_checked_and_not_full_is_not_staked_on_and_only_its_hashes_are_kept(
+    history: ChainHistory,
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    root: Root,
+    first: bytes,
+) -> None:
+    follower = ChainFollower(history, reader, recorder, bounds=replace(BOUNDS, room_bytes=1_000))
+    holding_first_not_full(follower, truth, (alice, bob), root, first)
+    block = BlockDrop.parsed(first, TransactionBlock).block
+
+    assert follower.checked() == ({}, [])
+    assert follower.transaction_hashes() == {signed.hash for signed in block.signed}
+
+
+def test_a_block_checked_and_not_full_is_not_asked_for_once_let_go(
+    history: ChainHistory,
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    root: Root,
+    first: bytes,
+) -> None:
+    follower = ChainFollower(history, reader, recorder, bounds=replace(BOUNDS, room_bytes=1_000))
+    holding_first_not_full(follower, truth, (alice, bob), root, first)
+    truth.delete(id_of(first))
+    reader.answered(root.next.transaction.hex, [id_of(first)])
+    # No longer waited for, so that a read would ask for it again.
+    reader.stored(id_of(first))
+    asked_for = recorder.asked_for()
+
+    follower.checked()
+
+    assert recorder.asked_for() == asked_for
+
+
+def test_a_validation_block_naming_a_block_not_full_is_judged_from_it_read_again(
+    history: ChainHistory,
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    keys: set[ContentId],
+    root: Root,
+    first: bytes,
+    first_validation: bytes,
+) -> None:
+    follower = ChainFollower(history, reader, recorder, bounds=replace(BOUNDS, room_bytes=1_000))
+    holding_first_not_full(follower, truth, (alice, bob), root, first)
+    hold(truth, first_validation)
+
+    transactions, validations = follower.checked()
+
+    assert transactions == {}
+    assert [(check.block_id, check.is_correct) for check in validations] == [
+        (id_of(first_validation), False)
+    ]
+    assert recorder.said(EventType.KARMA_FALSE_BLOCK) == []
+    assert recorder.shunned(keys) == []
+
+
+def test_a_validation_block_naming_a_block_let_go_waits_for_it_to_be_fetched_again(
     history: ChainHistory,
     reader: TargetReader,
     truth: CasStore,
@@ -387,25 +472,71 @@ def test_a_block_checked_and_not_full_keeps_its_check_and_is_not_asked_for_once_
     first_validation: bytes,
 ) -> None:
     follower = ChainFollower(history, reader, recorder, bounds=replace(BOUNDS, room_bytes=1_000))
-    hold(truth, root.transaction, root.validation)
-    hold_keys(truth, alice, bob)
-    follower.look()
-    hold(truth, first)
-    follower.checked()
+    holding_first_not_full(follower, truth, (alice, bob), root, first)
     truth.delete(id_of(first))
-    reader.answered(root.next.transaction.hex, [id_of(first)])
-    # No longer waited for, so that a read would ask for it again.
-    reader.stored(id_of(first))
-    asked_for = recorder.asked_for()
     hold(truth, first_validation)
 
-    transactions, validations = follower.checked()
+    assert follower.checked() == ({}, [])
+    assert id_of(first) in recorder.asked_for()
 
-    assert not transactions[id_of(first)].full
+    hold(truth, first)
+    reader.stored(id_of(first))
+    _, validations = follower.checked()
+
     assert [(check.block_id, check.is_correct) for check in validations] == [
         (id_of(first_validation), False)
     ]
-    assert recorder.asked_for() == asked_for
+
+
+def test_a_validation_block_naming_a_block_not_full_since_shunned_is_passed_over(
+    storage: StorageConfig,
+    history: ChainHistory,
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    root: Root,
+    first: bytes,
+    first_validation: bytes,
+    caplog: LogCaptureFixture,
+) -> None:
+    follower = ChainFollower(history, reader, recorder, bounds=replace(BOUNDS, room_bytes=1_000))
+    holding_first_not_full(follower, truth, (alice, bob), root, first)
+    write_atomically(storage.shunned_list_path, ShunnedContent.body([id_of(first)]))
+    hold(truth, first_validation)
+
+    with caplog.at_level(DEBUG):
+        assert follower.checked() == ({}, [])
+
+    assert f"Passing over Karma block {id_of(first_validation)}" in caplog.text
+
+
+def test_a_validation_block_is_followed_when_the_copy_it_names_held_since_measures_full(
+    history: ChainHistory,
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    root: Root,
+    first: bytes,
+    first_validation: bytes,
+) -> None:
+    # Full above halfway from what the node's own compression measures to what none does.
+    full_above = (len(compress(first, STORAGE_COMPRESSION_LEVEL)) + len(compress(first, 0))) // 2
+    bounds = replace(BOUNDS, room_bytes=BOUNDS.most_bytes - full_above)
+    follower = ChainFollower(history, reader, recorder, bounds=bounds)
+    holding_first_not_full(follower, truth, (alice, bob), root, first)
+
+    assert follower.checked() == ({}, [])
+
+    truth.write(id_of(first), compress(first, 0))
+    hold(truth, first_validation)
+    [followed] = follower.look()
+
+    assert history.head == followed
+    assert followed.transaction == id_of(first)
 
 
 def test_a_full_block_is_asked_for_again_once_let_go(

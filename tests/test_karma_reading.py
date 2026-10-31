@@ -88,6 +88,12 @@ class Recorder:
             if event is EventType.DATA_NOT_FOUND
         ]
 
+    def requested(self) -> list[ContentId]:
+        """The content said to be requested, in the order it was, each said not to be external."""
+        said = [payload for event, payload in self.messages if event is EventType.DATA_REQUESTED]
+        assert not any(payload["external"] for payload in said)
+        return [ContentId.from_fields(payload) for payload in said]
+
 
 class Clock:
     """A clock a test moves on."""
@@ -248,12 +254,13 @@ def test_the_blocks_at_a_target_are_read_with_the_keys_of_all_who_signed_them(
     compressed_bytes = len(compress(staking, STORAGE_COMPRESSION_LEVEL))
     assert blocks == [HeldBlock(block_id, staking, compressed_bytes, keys)]
     assert isinstance(BlockDrop.decoded(staking, ValidationBlock, blocks[0].keys), BlockDrop)
-    assert recorder.messages == [(EventType.SEARCH_REQUESTED, {"prefix": FIRST.validation.hex})]
+    assert recorder.messages[0] == (EventType.SEARCH_REQUESTED, {"prefix": FIRST.validation.hex})
+    assert recorder.asked_for() == []
     assert reader.waiting == frozenset()
 
 
 def test_a_block_held_compressed_is_read_decompressed_and_measured_as_held(
-    reader: TargetReader, truth: CasStore, staking: bytes
+    reader: TargetReader, truth: CasStore, recorder: Recorder, staking: bytes
 ) -> None:
     stored = compress(staking, 1)
     truth.write(id_of(staking), stored)
@@ -262,11 +269,57 @@ def test_a_block_held_compressed_is_read_decompressed_and_measured_as_held(
 
     assert block.data == staking
     assert block.compressed_bytes == len(stored)
+    assert id_of(staking) in recorder.requested()
+
+
+def test_what_is_read_is_said_to_be_requested_at_most_once_a_minute(
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    clock: Clock,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    staking: bytes,
+) -> None:
+    read = sorted([hold(truth, staking), alice.node_id, bob.node_id])
+    hold_keys(truth, alice, bob)
+
+    reader.read(FIRST.validation, ValidationBlock)
+    reader.read(FIRST.validation, ValidationBlock)
+
+    assert sorted(recorder.requested()) == read
+
+    clock.now += 59.0
+    reader.read(FIRST.validation, ValidationBlock)
+
+    assert sorted(recorder.requested()) == read
+
+    clock.now += 1.0
+    reader.read(FIRST.validation, ValidationBlock)
+
+    assert sorted(recorder.requested()) == sorted(read * 2)
+
+
+def test_what_is_known_or_not_held_is_not_said_to_be_requested(
+    reader: TargetReader, truth: CasStore, recorder: Recorder, staking: bytes
+) -> None:
+    block_id = hold(truth, staking)
+
+    assert reader.read(FIRST.validation, ValidationBlock, known={block_id}) == []
+
+    with raises(MissingContentError):
+        reader.block(matching(FIRST.validation, 20), ValidationBlock)
+
+    assert recorder.requested() == []
 
 
 @mark.parametrize("stored", [b"not it", compress(b"other content")])
 def test_what_is_held_that_is_not_what_it_is_held_as_is_passed_over_and_logged(
-    reader: TargetReader, truth: CasStore, caplog: LogCaptureFixture, stored: bytes
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    caplog: LogCaptureFixture,
+    stored: bytes,
 ) -> None:
     forged = matching(FIRST.validation, 12)
     truth.write(forged, stored)
@@ -275,6 +328,7 @@ def test_what_is_held_that_is_not_what_it_is_held_as_is_passed_over_and_logged(
         assert reader.read(FIRST.validation, ValidationBlock) == []
 
     assert f"Passing over {forged} at Karma target {FIRST.validation.hex}" in caplog.text
+    assert recorder.requested() == []
 
 
 def test_shunned_content_is_neither_read_nor_asked_for(
