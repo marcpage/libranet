@@ -2762,8 +2762,7 @@ async function start() {
   }
 
   if (state.owner) {
-    byId("client-note").textContent =
-      `Signed in as ${state.owner.username}: add movies, edit them, and keep and share collections of your own.`;
+    byId("client-note").hidden = true;
   } else {
     byId("client-note").textContent = state.local
       ? "This browser is on the node's own machine, but no one is signed in, so it can only play. Sign in on the home page to add movies, edit them, and keep and share collections of your own."
