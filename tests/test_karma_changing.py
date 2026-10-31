@@ -8,6 +8,7 @@ from zlib import compress
 from pytest import LogCaptureFixture, fixture
 
 from libranet.cas.content_id import ContentId
+from libranet.cas.prefix import matching_bits
 from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB, StorageConfig
@@ -16,6 +17,7 @@ from libranet.karma.blocks import ValidationBlock
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.changing import HeadChanges
 from libranet.karma.following import ChainFollower
+from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainHistory
 from libranet.karma.reading import TargetReader
 from libranet.karma.weight import ChainWeight
@@ -143,6 +145,26 @@ def following(follower: ChainFollower, truth: CasStore, chain: Chain) -> None:
     hold(truth, *chain.drops(*range(len(chain.generations))))
 
     assert len(follower.look()) == len(chain.generations)
+
+
+def test_a_chains_targets_are_all_apart_so_that_none_finds_what_is_placed_at_another(
+    alice: NodeIdentity, bob: NodeIdentity
+) -> None:
+    chain = Chain.root(alice, 9)
+
+    for _ in range(3):
+        chain = chain.then(bob, alice, bits=9)
+
+    named = [GenerationTargets.root()] + [
+        GenerationTargets.after(id_of(generation.validation)) for generation in chain.generations
+    ]
+    hashes = [target.hex for each in named for target in (each.transaction, each.validation)]
+
+    assert all(
+        matching_bits(one, other) < MINIMUM_BITS
+        for index, one in enumerate(hashes)
+        for other in hashes[index + 1 :]
+    )
 
 
 def test_a_lighter_head_is_read_and_nothing_more(
