@@ -75,7 +75,9 @@ seek list, this node posts the ids of the content it holds that a search of
 its own for the prefix finds, sharing at least ``storage.search_min_bits``
 leading bits with it, or the whole prefix if it is shorter. It names each once
 while the list names the entry, and later what it has come to hold since, and
-pushes only what the peer then lists by id (HttpApi §10.7.2).
+pushes only what the peer then lists by id (HttpApi §10.7.2). What a search
+finds is kept for ``peers.seek_refresh_seconds``, for every connection to share,
+since each reads its peer's list that often, and peers search for much the same.
 """
 
 from __future__ import annotations
@@ -83,6 +85,7 @@ from dataclasses import dataclass
 from http import HTTPStatus
 from json import loads
 from logging import Logger
+from threading import Lock
 from time import time
 from typing import Callable, Final, Iterator, Mapping, Sequence, TypeVar
 
@@ -246,6 +249,34 @@ class _NodeList:
         }
 
 
+class _RecentMatches:
+    """What ``search`` found for each prefix, searched for again once ``seconds`` have passed.
+
+    Safe to use from the threads of several connections at once: one waits
+    for a search another is making, rather than making it again.
+    """
+
+    def __init__(self, search: LocalSearch, seconds: float, clock: Callable[[], float]) -> None:
+        self._search = search
+        self._seconds = seconds
+        self._clock = clock
+        self._found: dict[str, tuple[float, list[ContentId]]] = {}
+        self._lock = Lock()
+
+    def of(self, prefix: str) -> list[ContentId]:
+        """What a search of ``prefix`` found, less than ``seconds`` ago."""
+        with self._lock:
+            now = self._clock()
+            self._found = {
+                kept: found for kept, found in self._found.items() if now - found[0] < self._seconds
+            }
+
+            if prefix not in self._found:
+                self._found[prefix] = (now, self._search.search(prefix))
+
+            return self._found[prefix][1]
+
+
 class PeerExchange:
     """Holds this node's side of every conversation with a peer.
 
@@ -270,6 +301,7 @@ class PeerExchange:
         self._publish = publish
         self._logger = logger
         self._local = _LocalContent.of(config.storage)
+        self._matches = _RecentMatches(self._local.search, config.peers.seek_refresh_seconds, clock)
 
     @property
     def node_id(self) -> ContentId:
@@ -598,9 +630,7 @@ class PeerExchange:
             {
                 prefix: [
                     content_id
-                    for content_id in self._local.shunned.unshunned(
-                        self._local.search.search(prefix)
-                    )
+                    for content_id in self._local.shunned.unshunned(self._matches.of(prefix))
                     if content_id not in pushed
                 ]
                 for prefix in searches
