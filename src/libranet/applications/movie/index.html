@@ -97,6 +97,21 @@
   button.small { padding: 0.2rem 0.55rem; font-size: 0.85rem; }
   button:disabled { opacity: 0.6; cursor: default; }
 
+  /* A button shown as an icon alone, which it is named for. */
+  button.icon { padding: 0.3rem; line-height: 0; background: transparent; color: var(--text); border-color: transparent; }
+  button.icon:hover:not(:disabled) { border-color: var(--border); }
+  button.icon.danger { color: var(--bad); }
+
+  .icon svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
   label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--muted); }
   label.wide { flex: 1 1 16rem; }
   label.check { flex-direction: row; align-items: center; gap: 0.5rem; font-size: 1rem; color: var(--text); }
@@ -128,6 +143,11 @@
 
   video { display: block; width: 100%; max-height: 70vh; background: #000; border-radius: 6px; }
   .details p { margin: 0.4rem 0; }
+
+  /* The movie's title, with what changes the movie in the upper right corner. */
+  .title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+  .title-row h2 { overflow-wrap: anywhere; }
+  .icons { display: flex; flex: none; gap: 0.25rem; margin: -0.3rem -0.3rem 0 0; }
   .description { white-space: pre-wrap; }
   .poster-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 0 0 0.75rem; }
   .poster-row img { width: 8rem; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; }
@@ -274,16 +294,26 @@
       </div>
       <div>
         <div class="details" id="details">
-          <h2 id="movie-title"></h2>
+          <div class="title-row">
+            <h2 id="movie-title"></h2>
+            <div class="icons signed-in-only" hidden>
+              <button type="button" class="icon" id="edit-movie" title="Edit" aria-label="Edit">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
+              </button>
+              <button type="button" class="icon" id="share-movie" title="Share" aria-label="Share">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V3 M8 7l4-4 4 4 M9 10H5v11h14V10h-4"/></svg>
+              </button>
+              <button type="button" class="icon danger" id="remove-movie" title="Remove" aria-label="Remove">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16 M9 7V4h6v3 M6 7l1 14h10l1-14 M10 11v6 M14 11v6"/></svg>
+              </button>
+            </div>
+          </div>
           <p class="note" id="movie-facts"></p>
           <p id="movie-cast"></p>
           <p class="description" id="movie-description"></p>
           <div class="toolbar signed-in-only" hidden>
-            <button type="button" id="edit-movie">Edit</button>
-            <button type="button" class="secondary" id="share-movie">Share</button>
             <button type="button" class="secondary" id="move-up">Earlier</button>
             <button type="button" class="secondary" id="move-down">Later</button>
-            <button type="button" class="danger" id="remove-movie">Remove</button>
           </div>
           <p class="result" id="movie-result" role="status" hidden></p>
         </div>
