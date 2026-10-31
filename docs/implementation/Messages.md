@@ -72,7 +72,7 @@ a root it makes, and a block it puts up for a transaction.
 | `data.requested` | Web server | Stats | Count a request for content |
 | `data.not_found` | Web server, Unbundler, Backup, Karma | Fetcher, Stats | Content is needed that is not held |
 | `data.search_requested` | Web server, Karma | Stats, Connections | A prefix search was asked of this node |
-| `data.search_answered` | Connections | Stats, Karma | What a peer answered a prefix search with |
+| `data.search_answered` | Connections, Web server | Stats, Karma | What a peer answered a prefix search with, or named as matching one |
 | `data.put_completed` | Web server, Connections | Validator | Unchecked bytes wait to be validated |
 | `data.stored` | Validator, Backup, Karma, Web server, Connections | Stats, Eviction, Connections, Unbundler, Backup, Karma | New content is in the source of truth |
 | `data.rejected` | Validator | Stats | An upload did not match its content id |
@@ -198,7 +198,9 @@ it and what each does with it.
 
 - **Payload:** `prefix`, `node_id`, `results` (content ids).
 - **Sent by:** Connections, for each peer it asked during a search
-  (`peer_exchange.py`).
+  (`peer_exchange.py`); Web server, for what a peer names as matching a search
+  this node's seek list names (`POST /data/search/{prefix}`,
+  `list_handlers.py`).
 - **Received by:**
   - Stats, which records the hashes as known and adds them to the cached
     answer for the prefix, if one is cached.
@@ -773,7 +775,7 @@ or reported, nor is the key a kept archive's bundle may carry.
 
 | Module | Sends | Receives |
 | --- | --- | --- |
-| Web server | `data.requested`, `data.not_found`, `data.search_requested`, `data.put_completed`, `data.stored`, `nodes.received`, `seek.received`, `address.dial_requested`, `app.path_not_found`, `app.accessed`, `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested`, `karma.root_requested`, `karma.head_told`, `karma.transaction`, `karma.stake`, `karma.node_payment` | `app.path_resolved`, `backup.state`, `peers.connected_requested`, `address.dialed`, `node.trust_stored`, `karma.false_block` |
+| Web server | `data.requested`, `data.not_found`, `data.search_requested`, `data.search_answered`, `data.put_completed`, `data.stored`, `nodes.received`, `seek.received`, `address.dial_requested`, `app.path_not_found`, `app.accessed`, `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested`, `karma.root_requested`, `karma.head_told`, `karma.transaction`, `karma.stake`, `karma.node_payment` | `app.path_resolved`, `backup.state`, `peers.connected_requested`, `address.dialed`, `node.trust_stored`, `karma.false_block` |
 | Connections | `data.search_answered`, `data.put_completed`, `data.stored`, `nodes.received`, `address.verified`, `address.dialed`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `data.sent`, `fetch.attempted`, `fetch.succeeded`, `fetch.failed`, `eviction.acknowledged`, `peers.connected`, `karma.head_told` | `nodes.updated`, `nodes.received`, `fetch.requested`, `data.search_requested`, `eviction.notice`, `data.stored`, `peers.connected_requested`, `address.dial_requested`, `node.trust`, `karma.head` |
 | Validator | `data.stored`, `data.rejected` | `data.put_completed` |
 | Stats | `nodes.updated`, `eviction.candidates`, `resolved.reclaim`, `peers.connected_requested`, `node.trust_stored`, `karma.ratings` | `data.requested`, `data.not_found`, `data.search_requested`, `data.search_answered`, `data.stored`, `data.rejected`, `nodes.received`, `seek.received`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `address.verified`, `data.sent`, `fetch.attempted`, `data.deleted`, `eviction.candidates_requested`, `app.accessed`, `resolved.reclaim_requested`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested`, `karma.ratings_requested` |

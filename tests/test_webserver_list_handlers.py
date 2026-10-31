@@ -13,6 +13,8 @@ from zlib import compress
 from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.cas.content_id import ContentId
+from libranet.cas.store import CasStore
+from libranet.config.models import StorageConfig
 from libranet.identity.authentication import AuthenticationResult, AuthenticationStatus
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
@@ -20,12 +22,21 @@ from libranet.modules import ModuleName
 from libranet.problems import (
     CONTENT_TOO_LARGE,
     INVALID_LIST,
+    INVALID_SEARCH_PREFIX,
     SIGNATURE_REQUIRED,
 )
 from libranet.protocol.lists import NODES_PATH, SEEK_PATH
+from libranet.protocol.search import SEARCH_PATH, LocalSearch
+from libranet.webserver.client_keeping import SoughtContent
 from libranet.webserver.http_types import Request, RequestBody
-from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
+from libranet.webserver.list_handlers import (
+    ListFileHandler,
+    NodeListHandler,
+    SearchMatchesHandler,
+    SeekListHandler,
+)
 from libranet.webserver.router import Router
+from libranet.webserver.search_handler import SEARCH_PATTERN
 
 from tests.stubs import StubModule
 
@@ -39,6 +50,10 @@ SENDER_ID = ContentId.for_data(b"the sender's public key", "sha256")
 OTHER_ID = ContentId.for_data(b"another node's public key", "sha256")
 SOUGHT_ID = ContentId.for_data(b"sought content", "sha256")
 VERIFIED = AuthenticationResult(AuthenticationStatus.VERIFIED, SENDER_ID)
+PREFIX = "abcd"
+# Sharing all of the prefix, and only its first bits.
+MATCHING_ID = ContentId("sha256", PREFIX + "0" * 60)
+UNMATCHING_ID = ContentId("sha256", "ab" + "f" * 62)
 
 
 @fixture
@@ -320,3 +335,105 @@ def test_a_refused_list_is_logged_at_debug(
 def test_a_list_file_handler_refuses_a_negative_retry_after(node_list_path: Path) -> None:
     with raises(ValueError, match="retry_after_seconds"):
         ListFileHandler(node_list_path, -1)
+
+
+@fixture
+def named_router(tmp_path: Path, seek_list_path: Path, queues: ModuleQueues) -> Router:
+    """Taking what a peer names as matching a search this node lists, of :data:`PREFIX` alone."""
+    seek_list_path.parent.mkdir(parents=True, exist_ok=True)
+    seek_list_path.write_text(dumps({"data": [], "search": [PREFIX]}))
+    store = CasStore.source_of_truth(
+        StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache")
+    )
+    search = LocalSearch(store, min_bits=16)
+    router = Router()
+    router.add(
+        "POST",
+        SEARCH_PATTERN,
+        SearchMatchesHandler(
+            MAX_BYTES,
+            MAX_DECOMPRESSED_BYTES,
+            search,
+            SoughtContent(seek_list_path, search),
+            StubModule(ModuleName.WEBSERVER, queues).publish,
+        ),
+    )
+    return router
+
+
+def test_what_a_peer_names_for_a_search_this_node_lists_is_published_as_its_answer(
+    named_router: Router, queues: ModuleQueues
+) -> None:
+    response = named_router.dispatch(
+        post(
+            f"{SEARCH_PATH}/{PREFIX.upper()}",
+            {"results": [str(MATCHING_ID), str(UNMATCHING_ID), "sha256/nope"]},
+        )
+    )
+
+    assert response.status == 202
+    assert response.body == b""
+    (message,) = published(queues)
+    assert message["event"] == EventType.SEARCH_ANSWERED
+    assert message["source"] == ModuleName.WEBSERVER
+    assert message["prefix"] == PREFIX
+    assert message["node_id"] == str(SENDER_ID)
+    assert message["results"] == [str(MATCHING_ID)]
+
+
+def test_a_compressed_naming_is_accepted(named_router: Router, queues: ModuleQueues) -> None:
+    request = post(f"{SEARCH_PATH}/{PREFIX}", {"results": [str(MATCHING_ID)]}, compressed=True)
+
+    assert named_router.dispatch(request).status == 202
+    (message,) = published(queues)
+    assert message["results"] == [str(MATCHING_ID)]
+
+
+def test_what_is_named_for_a_search_this_node_does_not_list_is_ignored(
+    named_router: Router, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    unlisted = ContentId("sha256", "cd" * 32)
+
+    with caplog.at_level(DEBUG):
+        response = named_router.dispatch(post(f"{SEARCH_PATH}/cdcd", {"results": [str(unlisted)]}))
+
+    assert response.status == 202
+    assert published(queues) == []
+    assert "not searched for" in caplog.text
+
+
+def test_nothing_is_published_when_nothing_named_matches(
+    named_router: Router, queues: ModuleQueues
+) -> None:
+    request = post(f"{SEARCH_PATH}/{PREFIX}", {"results": [str(UNMATCHING_ID)]})
+
+    assert named_router.dispatch(request).status == 202
+    assert published(queues) == []
+
+
+def test_naming_unsigned_is_refused(named_router: Router, queues: ModuleQueues) -> None:
+    request = post(f"{SEARCH_PATH}/{PREFIX}", {"results": [str(MATCHING_ID)]}, None)
+
+    response = named_router.dispatch(request)
+
+    assert response.status == 401
+    assert problem_type(response) == SIGNATURE_REQUIRED
+    assert published(queues) == []
+
+
+def test_naming_for_a_prefix_that_is_no_search_is_400(
+    named_router: Router, queues: ModuleQueues
+) -> None:
+    response = named_router.dispatch(post(f"{SEARCH_PATH}/nothex", {"results": []}))
+
+    assert response.status == 400
+    assert problem_type(response) == INVALID_SEARCH_PREFIX
+    assert published(queues) == []
+
+
+def test_a_misshapen_naming_is_400(named_router: Router, queues: ModuleQueues) -> None:
+    response = named_router.dispatch(post(f"{SEARCH_PATH}/{PREFIX}", {"results": "not an array"}))
+
+    assert response.status == 400
+    assert problem_type(response) == INVALID_LIST
+    assert published(queues) == []

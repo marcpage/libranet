@@ -127,9 +127,11 @@ is the convention:
 5. **`GET` node list** — the client fetches the server's known node
    addresses from `/data/nodes`.
 6. **`PUT` fulfillable items** — for any hashes from step 4 that the
-   client already holds, and for any content it holds that matches a
-   hash prefix from step 4 closely (HTTP API §10.7.2), the client pushes
-   the corresponding content to the server via `PUT /data/{algo}/{hash}`.
+   client already holds, the client pushes the corresponding content to
+   the server via `PUT /data/{algo}/{hash}`. For any hash prefix from step
+   4, it posts the ids of the content it holds that matches the prefix
+   closely (HTTP API §10.7.2), and the server lists by hash what it lacks
+   and wants, for a later read of its list to fulfill.
 7. **`GET` requested items** — the client requests the content it is
    itself seeking, checking whether the server can fulfill any of it.
 
@@ -316,17 +318,22 @@ The reference node keeps a client connected for its first
 `network.client_grace_requests` requests, 12 unless its configuration says
 otherwise, counted on all the client's connections from the first request
 the client's key verifies. Past them, it closes a client whose Karma is below
-the median of the clients connected to it, and that has pushed nothing it
-seeks for `network.client_value_seconds`, ten minutes unless its
-configuration says otherwise. What it seeks is what its seek list names, or
+both the median of the clients connected to it and its own, and that has
+pushed nothing it seeks for `network.client_value_seconds`, ten minutes unless
+its configuration says otherwise. What it seeks is what its seek list names, or
 what a search the list names would find (HTTP API §10.7.2), and a push counts
 once it is accepted, before the content is checked. The request being served
 is answered first, with `Connection: close`, and each other connection of
 the client's is closed as it is next answered. A client of the median's
 Karma or more is kept however little it pushes, so none is closed while
 every client holds as much as the others, as while the node follows no
-chain. A client that connects again once its last connection has closed
-starts afresh.
+chain, and so is one of its own Karma or more, so that it turns away no
+client richer than itself. None is closed unless more than
+`network.client_keep_count` clients are connected, 16 unless its
+configuration says otherwise, a client being
+closed not counted, since a server with few clients has no need of the room.
+A client that connects again once its last connection has closed starts
+afresh.
 
 HTTP API §7.5 independently lists a low ratio of desired data (what the
 host's `/data/seek` asks for) to undesired data as an example of abusive

@@ -71,9 +71,9 @@ class PeerSession:
         # still names it (it is not re-derived at once) does not get it again.
         # Pushes, hand-offs, and refreshes note it from threads of their own.
         self._pushed = _Pushed()
-        # The search prefixes the peer's seek list named when last read, each
-        # answered once while it is named (HttpApi §10.7.2, Phase 4 Step 93).
-        self._answered: frozenset[str] = frozenset()
+        # What has been named to the peer, for each search prefix its seek list
+        # named when last read, each once while it is named (HttpApi §10.7.2).
+        self._named: dict[str, set[ContentId]] = {}
 
     @property
     def endpoint(self) -> str:
@@ -135,16 +135,23 @@ class PeerSession:
         """Note that ``content_id`` was pushed to the peer on this connection."""
         self._pushed.add(content_id)
 
-    def answering(self, prefixes: Sequence[str]) -> list[str]:
-        """Those of ``prefixes``, the searches the peer's seek list names, not yet answered.
+    def naming(self, matches: Mapping[str, Sequence[ContentId]]) -> dict[str, list[ContentId]]:
+        """Of what matches each search the peer's seek list names, what is not yet named to it.
 
-        They are the ones answered from now on, so one the list stops naming
-        and names again is answered again. Only one conversation with the
-        peer at a time reads its seek list, so this needs no lock.
+        ``matches`` is what matches each search it names now. What is returned
+        counts as named from now on, so what a search the list stops naming
+        and names again matches is named again. Only one conversation with
+        the peer at a time reads its seek list, so this needs no lock.
         """
-        unanswered = [prefix for prefix in prefixes if prefix not in self._answered]
-        self._answered = frozenset(prefixes)
-        return unanswered
+        unnamed = {
+            prefix: [each for each in matching if each not in self._named.get(prefix, ())]
+            for prefix, matching in matches.items()
+        }
+        self._named = {
+            prefix: {*self._named.get(prefix, ()), *matching}
+            for prefix, matching in matches.items()
+        }
+        return unnamed
 
     def close(self) -> None:
         """Close the connection because this node chose to."""

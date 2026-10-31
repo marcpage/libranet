@@ -134,7 +134,8 @@ The settings an operator is most likely to change:
 | `network.external_address`, `network.external_port` | `null` | The address and port it tells peers to reach it at, when they differ from what peers see |
 | `network.config_port` | `null` | `/config`'s port (§4.1) |
 | `network.client_grace_requests` | `12` | How many requests a peer connected to the node is kept for, whatever its Karma (§4.8) |
-| `network.client_value_seconds` | `600.0` | How long a peer holding less Karma than the median of those connected is kept, after those requests, once it pushes nothing the node seeks (§4.8) |
+| `network.client_value_seconds` | `600.0` | How long a peer holding less Karma than both the median of those connected and the node is kept, after those requests, once it pushes nothing the node seeks (§4.8) |
+| `network.client_keep_count` | `16` | How many peers connected to the node it keeps, closing none for its Karma unless more are connected (§4.8) |
 | `peers.turned_away_rest_seconds` | `3600.0` | How long the node waits before dialing again a peer that turned it away, closing the connection once it had answered (§4.8) |
 | `peers.seed_file` | `null` | The node's first peers (§3.1) |
 | `storage.max_storage_bytes` | `null` | The most bytes of content the node keeps; `null` is no limit |
@@ -656,14 +657,17 @@ each time it works out its lists, about every minute
 The node keeps the peers holding more Karma connected to it, too. A peer
 that connects to the node is kept for its first `network.client_grace_requests`
 requests, 12 by default (§3), enough to exchange node lists and push what
-the node seeks. After that, one holding less Karma than the median of the
-peers connected is closed once it has pushed nothing the node seeks for
-`network.client_value_seconds`, ten minutes by default; the node answers
-the request it is serving first. `libranet-webserver.log` says each peer it
-closes, with the Kismet the peer holds and the median. A peer holding the
-median or more is kept however little it pushes, so while the node follows
-no chain, and none holds any, none is closed. A peer that is closed may
-connect again, and is kept for its first requests again. A
+the node seeks. After that, one holding less Karma than both the median of
+the peers connected and the node itself is closed once it has pushed nothing
+the node seeks for `network.client_value_seconds`, ten minutes by default; the
+node answers the request it is serving first. `libranet-webserver.log` says
+each peer it closes, with the Kismet the peer holds, the median, and the
+node's own. A peer holding the median or more is kept however little it pushes,
+so while the node follows no chain, and none holds any, none is closed. A peer
+holding as much as the node or more is kept too, so a node holding no Karma
+closes none. None is closed unless more than
+`network.client_keep_count` peers are connected, 16 by default. A peer that
+is closed may connect again, and is kept for its first requests again. A
 `karma/balances.json`, or a seek list, the web server cannot read
 `libranet-webserver.log` warns of, and it goes on by what it read before.
 

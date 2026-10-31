@@ -2403,8 +2403,9 @@ outlasts the longest search the node's peers make.
 The list of what a node is seeking,
 `{"data": [content identifiers], "search": [hash prefixes]}`, read and
 published at `/data/seek`. Connecting peers fulfill it by pushing the content,
-and, for a prefix, the content they hold that matches it closely. Also called
-the outstanding requests list.
+and, for a prefix, by naming the content they hold that matches it closely, for
+the node to list by identifier what it lacks. Also called the outstanding
+requests list.
 
 - **Sources:** [High-Level Design §4.8](HighLevelDesign.md#48-data-interest),
   [HTTP API §10.7](HttpApi.md#107-outstanding-requests-list-dataseek).

@@ -386,9 +386,10 @@ be kept, and to no fewer for it: holding no Karma leaves no node out. A node
 that turned it away is passed over for a while, so it tries others.
 
 As a server, a node keeps the clients of more Karma connected, and past each
-client's first requests, closes one holding less than the median of those
-connected once it has pushed nothing the node seeks for a while (Handshake
-Protocol §5.2).
+client's first requests, closes one holding less than both the median of
+those connected and the node itself once it has pushed nothing the node seeks
+for a while, if it has more clients than it means to keep (Handshake Protocol
+§5.2).
 
 ### 4.7 Request Routing Algorithm
 
@@ -459,7 +460,7 @@ answered at once. Peers still searching would otherwise start it again, and be
 started again by it in turn, and a search would never end. The pause outlasts
 the time it takes a search to reach every node and their passes to end. The
 node lists the prefix in its seek list too (§4.8), so that the peers connected
-to it push what they hold that matches.
+to it name what they hold that matches, and it can seek by hash what it lacks.
 
 If a node cannot yet serve a requested object, it replies with a temporary "not
 available" status and immediately begins the routing algorithm above so that a
@@ -479,8 +480,10 @@ During the connection handshake, a node requests the remote node’s list of dat
 hashes that it is currently seeking.
 
 If the local node holds any of those hashes, it pushes the corresponding data to
-the remote node. For a hash prefix the remote node is searching for, it pushes
-the content it holds that matches the prefix closely (HTTP API §10.7.2).
+the remote node. For a hash prefix the remote node is searching for, it sends
+the hashes of the content it holds that matches the prefix closely, not the
+content, and the remote node seeks by hash what it lacks and wants (HTTP API
+§10.7.2).
 
 A node periodically fetches the remote node request list and pushes data the
 remote node has requested.

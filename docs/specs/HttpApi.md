@@ -1608,15 +1608,33 @@ on the size of the seek list once decompressed.
 A `data` entry in the seek list names an exact content identifier, so it can be
 fulfilled directly via `PUT /data/{algorithm}/{hash}` (§7).
 
-A `search` entry names a hash prefix, and is fulfilled the same way, with
-content. A node that reads one pushes, via `PUT /data/{algorithm}/{hash}`, the
-content it holds that it returns for a search of the prefix (§6), best match
-first: whose hash shares at least the leading bits a search must match with the
-prefix, or the whole prefix when it has fewer bits. A drop that a node's own
-pages make matches its target by at least 24 bits (§9.6), as many as a search
-returns by default, and other content seldom matches as many by chance, so what
-is pushed is mostly the drops at that target. A node answers each `search`
-entry once while the entry stays listed.
+A `search` entry names a hash prefix, and is fulfilled in two steps, since a
+prefix does not say what the node searching already holds. A node that reads one
+does not push what matches. It names it, by a signed request:
+
+```http
+POST /data/search/{prefix}
+Content-Type: application/json
+
+{"results": ["sha256/…", "sha256/…"]}
+```
+
+The body has the form of a search answer (§6.1), and names the content the node
+holds that it returns for a search of the prefix (§6), best match first: whose
+hash shares at least the leading bits a search must match with the prefix, or
+the whole prefix when it has fewer bits. A drop that a node's own pages make
+matches its target by at least 24 bits (§9.6), as many as a search returns by
+default, and other content seldom matches as many by chance, so what is named
+is mostly the drops at that target. A node names each once while the entry stays
+listed, and on later reads of the list what it has come to hold since. It names
+nothing it has pushed on that connection, and nothing it shuns.
+
+The node searching answers `202`, and treats what is named as what a search of
+its peers answered: it knows of it from then on, and seeks what it lacks and
+wants by listing it as a `data` entry, which a later read of the list fulfills.
+So content moves only where it is lacked. Only what matches a `search` entry
+listed now is taken, and the rest is ignored. An unsigned request is answered
+`401`, and a prefix or body it cannot read `400`.
 
 ### 10.8 What a Node Knows of Its Peers
 
@@ -3911,6 +3929,7 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/{algorithm}/{hash}`           | `HEAD`       | Retrieve CAS metadata                                      | TBD     |
 | `/data/{algorithm}/{hash}`           | `DELETE`     | Delete and shun content, locally (§5.5)                    | Defined |
 | `/data/search/{hash}`                | `GET`        | Search for matching hashes                                 | Defined |
+| `/data/search/{hash}`                | `POST`       | Name what a peer holds that matches a search               | Defined |
 | `/data/nodes`                        | `GET`/`POST` | Retrieve/publish peer information                          | Defined |
 | `/data/seek`                         | `GET`/`POST` | Retrieve/publish outstanding requests                      | Defined |
 | `/data/peers`                        | `GET`        | What the node knows of its peers, locally (§10.8)          | Defined |

@@ -213,11 +213,14 @@ class NetworkConfig(_Section):
 
     # Past a client's first client_grace_requests requests, through which
     # its first-contact exchange is answered, it is closed if its Karma is
-    # below the median of the clients connected and it has pushed nothing
-    # this node seeks for client_value_seconds. One of more Karma is kept
-    # (HandshakeProtocol §5.2, Phase 6 Step 142).
+    # below both the median of the clients connected and this node's own, and
+    # it has pushed nothing this node seeks for client_value_seconds. One of
+    # as much Karma as either, or more, is kept, and none is closed unless
+    # more than client_keep_count are connected (HandshakeProtocol §5.2, Phase
+    # 6 Step 142).
     client_grace_requests: int = Field(default=12, ge=0)
     client_value_seconds: float = Field(default=600.0, gt=0)
+    client_keep_count: int = Field(default=16, ge=0)
 
     # The hosts ``/config`` is served as, beside the name this machine gives
     # itself (served_as). A request there whose ``Host`` header names any other

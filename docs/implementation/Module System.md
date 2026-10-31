@@ -1021,7 +1021,7 @@ to end its loop.
 | `data.requested` | P | | | S | | | | | |
 | `data.not_found` | P | | | S | S | P | | P | P |
 | `data.search_requested` | P | S | | S | | | | | P |
-| `data.search_answered` | | P | | S | | | | | S |
+| `data.search_answered` | P | P | | S | | | | | S |
 | *Writing and validation* | | | | | | | | | |
 | `data.put_completed` | P | P | S | | | | | | |
 | `data.stored` | P | P S | P | S | | S | S | P S | P S |
@@ -1125,7 +1125,7 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `data.requested` | `algorithm`, `hash`, `external` | `GET /data` asked for this content, held or not, or a file served from its parts asked for this part; `external` is false for a request from this machine, and for a part |
 | `data.not_found` | `algorithm`, `hash` | Content was needed that this node does not hold |
 | `data.search_requested` | `prefix`, and `node_id` if a peer asked | A search was answered, and its result cached in `search/`, or the Karma module reads a target; search the connected peers for it too |
-| `data.search_answered` | `prefix`, `node_id`, `results` | What the peer `node_id` answered a search of the prefix with |
+| `data.search_answered` | `prefix`, `node_id`, `results` | What the peer `node_id` answered a search of the prefix with, or named as matching it (`POST /data/search/{prefix}`) |
 | `data.put_completed` | `algorithm`, `hash`, `node_id` | Unchecked bytes wait in `node_id`'s store in `incoming/` |
 | `data.stored` | `algorithm`, `hash`, `node_id`, `size` | New content is in `cas/data`; `node_id` is where it came from, this node for its own |
 | `data.rejected` | `algorithm`, `hash`, `node_id` | An upload did not match its content id |
@@ -1516,9 +1516,11 @@ or goes. The main thread reads it only to answer
 `peers.connected_requested`. Its `ClientKeeping`, which request threads
 alone use, counts each peer's requests and notes when it last pushed what
 `seek.json` asks for. Past its first `network.client_grace_requests`, a
-peer holding less Karma than the median of those connected, as
-`karma/balances.json` states it, is closed once it has pushed nothing sought
-for `network.client_value_seconds` (Phase 6 Step 142).
+peer holding less Karma than both the median of those connected and the
+node, as `karma/balances.json` states it, is closed once it has pushed nothing
+sought for `network.client_value_seconds`, unless no more than
+`network.client_keep_count` are connected, those being closed not counted
+(Phase 6 Step 142).
 
 Two more hold who is signed in, and are kept in the web server's memory
 alone (Phase 4 Step 79, Phase 5 Step 99). `Sessions` is shared among

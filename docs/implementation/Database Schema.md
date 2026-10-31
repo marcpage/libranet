@@ -539,7 +539,8 @@ The lists are derived when stats starts, then once
 at once when a node is given up on. `shunned.json` is also written at once
 when content is first shunned, and `seek.json` when a search names a prefix
 this node's seek list does not, so that the peers connected to it read the
-prefix on their next refresh and push what matches (Phase 4 Step 93).
+prefix on their next refresh and name what matches (Phase 4 Step 93), and when
+content it lists is stored, so that they do not push it again.
 `peers.json` says when it was derived, so it is written at every derivation,
 whether or not anything else in it changed (Phase 5 Step 107). It names
 every node with a row in either table, and every node connected now, but
