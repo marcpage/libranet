@@ -233,7 +233,7 @@ through the dispatcher.
 | 7 | Unbundler | `unbundler` | `UnbundlerModule` | Resolves application files' entries from their bundles on demand, and deletes unused ones |
 | 8 | Eviction | `eviction` | `EvictionModule` | Keeps storage within its limits |
 | 9 | Backup | `backup` | `BackupModule` | Backs directories up as bundles; restores, builds, and exports bundles |
-| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger: follows the chain, keeping its history, makes a root when asked, puts up the transactions it is given, pays the servers it rates highest, puts up the node's payments together, combines the blocks at its head's targets, shuns those superseded, and stakes and builds validation blocks |
+| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger: follows the chain, keeping its history, makes a root when asked, puts up the transactions it is given, pays the peers that send what it asks for and the servers it rates highest, puts up the node's payments together, combines the blocks at its head's targets, shuns those superseded, and stakes and builds validation blocks |
 
 The supervisor launches them in this order, taken from `SPAWNED_MODULES`,
 but waits only for the dispatcher to be ready. No module waits for another
@@ -493,8 +493,10 @@ transaction, makes them one transaction, mines it for
 is given. A payment the operator makes out of the node's Karma on `/config`
 (`karma.node_payment`) it makes a transaction of its own at once, created
 after the node's last, and puts up the same way (`NodePayments.pay_out`).
-Every `karma.rating_interval_seconds` it asks the stats module to
-rate the servers the node is a client of (`karma.ratings_requested`), and
+It queues a payment too each time a peer sends content the node asked for
+(`fetch.succeeded`). Every `karma.rating_interval_seconds` it asks the stats
+module to rate the servers the node is a client of
+(`karma.ratings_requested`), and
 queues a payment to the server rated highest by bytes received, and to the
 one rated highest by requests fulfilled, once if they are one
 (`karma.ratings`, `ServerRatings`, Phase 6 Step 133). Every
@@ -1033,7 +1035,7 @@ to end its loop.
 | `data.sent` | | P | | S | | | | | |
 | `fetch.requested` | | S | | | P | | | | |
 | `fetch.attempted` | | P | | S | | | | | |
-| `fetch.succeeded` | | P | | | S | | | | |
+| `fetch.succeeded` | | P | | | S | | | | S |
 | `fetch.failed` | | P | | | S | | | | |
 | *Applications* | | | | | | | | | |
 | `app.path_not_found` | P | | | | | S | | | |
@@ -1134,7 +1136,7 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `data.sent` | `algorithm`, `hash`, `node_id`, `size` | Content was pushed to a peer |
 | `fetch.requested` | `algorithm`, `hash` | Search the connected peers for this content |
 | `fetch.attempted` | `algorithm`, `hash`, `node_id`, `found` | One peer was asked for it |
-| `fetch.succeeded` | `algorithm`, `hash`, `node_id` | `node_id` sent it, and it is on its way to the validator |
+| `fetch.succeeded` | `algorithm`, `hash`, `node_id` | `node_id` sent it, found to be that content, and it is on its way to the validator; pay `node_id` for it |
 | `fetch.failed` | `algorithm`, `hash` | The search ended without it |
 | `app.path_not_found` | `bundle`, `path` | No entry is saved for the file at `path` in `bundle` |
 | `app.path_resolved` | `bundle`, `path`, `outcome`, and `location` or `detail` | `outcome` is `stored`, `not_found`, `redirect`, `unusable`, or `protected` |
@@ -1203,7 +1205,7 @@ flowchart TB
     web <-->|"data.search_requested, address.dial_requested, node.trust<br/>address.dialed"| conn
     web <-->|"node.trust_requested<br/>node.trust_stored"| stats
     web <-->|"karma.root_requested, node.trust, karma.head_told, karma.transaction, karma.stake, karma.node_payment<br/>karma.false_block"| karma
-    karma <-->|"data.search_requested, karma.head<br/>data.search_answered, karma.head_told"| conn
+    karma <-->|"data.search_requested, karma.head<br/>data.search_answered, karma.head_told, fetch.succeeded"| conn
     karma -->|"data.shunned"| evict
     conn -->|"data.put_completed"| val
     val --> stored

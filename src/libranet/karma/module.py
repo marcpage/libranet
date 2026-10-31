@@ -82,7 +82,12 @@ it is valid, until the chain holds it::
     karma.transaction  {"transaction": {"contents": "…", …}}
 
 The node's own payments it queues in ``payments.json``, in
-``storage.karma_dir``, each ``karma.payment_percent`` of the node's balance
+``storage.karma_dir``, one for each piece of content a peer sends that this
+node asked for, as the connection manager says (Karma §11)::
+
+    fetch.succeeded  {"algorithm", "hash", "node_id"}
+
+each ``karma.payment_percent`` of the node's balance
 at the head, with its reward paid, and, as it looks, once
 ``karma.payment_batch`` are queued, or
 ``karma.payment_interval_seconds`` have passed since the node's last
@@ -201,6 +206,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             EventType.KARMA_STAKE,
             EventType.KARMA_RATINGS,
             EventType.KARMA_NODE_PAYMENT,
+            EventType.FETCH_SUCCEEDED,
         }
     )
 
@@ -255,6 +261,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 EventType.KARMA_STAKE: self._on_stake,
                 EventType.KARMA_RATINGS: self._on_ratings,
                 EventType.KARMA_NODE_PAYMENT: self._on_node_payment,
+                EventType.FETCH_SUCCEEDED: self._on_fetch_succeeded,
             }
         )
 
@@ -319,7 +326,6 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._payments = NodePayments(
             karma_dir,
             self._history,
-            self._reader,
             placing.identity,
             self._putting,
             clock=self._clock,
@@ -499,6 +505,24 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         for node_id in best:
             self.logger.info("Rated %s highest of the servers the node is a client of", node_id)
             self._payments.pay(node_id)
+
+    def _on_fetch_succeeded(self, message: Message) -> None:
+        """Queue a payment to the peer that sent what this node asked for (§4.6).
+
+        The connection manager checked it is that content before saying so,
+        so a peer is paid neither for what it pushes, nor for sending junk.
+
+        Raises:
+            RuntimeError: the module has not started.
+            KeyError: the message lacks the peer.
+            ValueError: its id is none.
+            FileNotFoundError: the node has no key yet.
+            KeyFileError: the node's private key cannot be loaded.
+        """
+        if self._payments is None:
+            raise RuntimeError("The Karma module is not running")
+
+        self._payments.pay(ContentId.parse(message["node_id"]))
 
     def _on_node_payment(self, message: Message) -> None:
         """Pay as the operator asked on ``/config``, out of the node's Karma, put up now.

@@ -92,7 +92,7 @@ a root it makes, and a block it puts up for a transaction.
 | `data.sent` | Connections | Stats | Content was pushed to a peer |
 | `fetch.requested` | Fetcher | Connections | Find this content among the peers |
 | `fetch.attempted` | Connections | Stats | One peer was asked for content |
-| `fetch.succeeded` | Connections | Fetcher | A peer sent the content |
+| `fetch.succeeded` | Connections | Fetcher, Karma | A peer sent the content |
 | `fetch.failed` | Connections | Fetcher | No peer sent the content |
 | `app.path_not_found` | Web server | Unbundler | Resolve a path in a bundle |
 | `app.path_resolved` | Unbundler | Web server | What was found at that path |
@@ -427,8 +427,10 @@ it and what each does with it.
 - **Payload:** `algorithm`, `hash`, `node_id`.
 - **Sent by:** Connections, once a peer sent the content, which has gone to
   the validator as a `data.put_completed`.
-- **Received by:** Fetcher, which logs it.
-- **Purpose:** close out a fetch.
+- **Received by:** Fetcher, which logs it; and Karma, which queues a payment
+  to the peer, as the node's payments are queued (`karma/payments.py`). The
+  connection manager found it to be the content asked for before saying so.
+- **Purpose:** close out a fetch, and pay for it (KarmaLedger §4.6).
 
 #### `fetch.failed`
 
@@ -779,6 +781,6 @@ or reported, nor is the key a kept archive's bundle may carry.
 | Unbundler | `data.not_found`, `app.path_resolved`, `resolved.reclaimed` | `app.path_not_found`, `data.stored`, `resolved.reclaim` |
 | Eviction | `eviction.notice`, `data.deleted`, `eviction.candidates_requested`, `resolved.reclaim_requested`, `peers.connected_requested`, `storage.full` | `data.stored`, `eviction.acknowledged`, `eviction.candidates`, `resolved.reclaimed`, `peers.connected`, `storage.full_requested`, `data.shunned` |
 | Backup | `data.not_found`, `data.stored`, `backup.state`, `storage.full_requested` | `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.stored`, `storage.full` |
-| Karma | `data.search_requested`, `data.not_found`, `data.stored`, `data.shunned`, `karma.false_block`, `karma.head`, `karma.ratings_requested` | `data.search_answered`, `data.stored`, `karma.root_requested`, `node.trust`, `karma.head_told`, `karma.transaction`, `karma.stake`, `karma.ratings`, `karma.node_payment` |
+| Karma | `data.search_requested`, `data.not_found`, `data.stored`, `data.shunned`, `karma.false_block`, `karma.head`, `karma.ratings_requested` | `data.search_answered`, `data.stored`, `karma.root_requested`, `node.trust`, `karma.head_told`, `karma.transaction`, `karma.stake`, `karma.ratings`, `karma.node_payment`, `fetch.succeeded` |
 
 Every module also receives `shutdown`.

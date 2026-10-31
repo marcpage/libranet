@@ -545,11 +545,14 @@ to its contents.
 
 ### 4.6 A Node's Payments
 
-A node pays other nodes for what they do for it (Karma §11). For most
-common payments, it pays a share of its balance, 0.01% unless its
-configuration says otherwise, rounded down to whole Kismet, so that what it
-gives keeps in step with what it holds. At 0.01%, a node holding under
-10,000 Kismet pays nothing, since its payment rounds to 0.
+A node pays other nodes for what they do for it (Karma §11). Each time a
+peer sends it content it asked for, found to be that content, the node pays
+that peer. Content a peer pushes unasked earns nothing, since anyone can
+make content, and so could push it for pay. For most common payments, it
+pays a share of its balance, 0.01% unless its configuration says otherwise,
+rounded down to whole Kismet, so that what it gives keeps in step with what
+it holds. At 0.01%, a node holding under 10,000 Kismet pays nothing, since
+its payment rounds to 0.
 
 A node does not put each payment up as it makes it. It queues them, and
 puts them up together as one free transaction, whose `to` pays every
@@ -559,8 +562,8 @@ configuration. A node that has made no transaction yet puts its first
 payments up at once. So a node's many small payments cost the work of one
 transaction (§4.3), and do not flood the network.
 
-At times in its configuration, hourly by default, a node rates the servers
-it is connected to as a client
+At times in its configuration, hourly by default, a node also rates the
+servers it is connected to as a client
 ([Handshake Protocol §3](HandshakeProtocol.md#3-first-contact-exchange)),
 over the time since it last rated them: by the data it received from each,
 and by the number of its requests each fulfilled. It pays the server rated

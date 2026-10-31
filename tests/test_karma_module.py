@@ -357,6 +357,7 @@ def test_the_supervisor_runs_the_karma_module_last(
                 EventType.KARMA_STAKE,
                 EventType.KARMA_RATINGS,
                 EventType.KARMA_NODE_PAYMENT,
+                EventType.FETCH_SUCCEEDED,
             }
         ),
     )
@@ -1219,6 +1220,48 @@ def test_a_server_rated_highest_by_both_measures_is_paid_once(
     assert PaymentQueue.read(storage.karma_dir).payments == (
         Payment(BLOCK, Kismet(399_999_999_999)),
     )
+
+
+def fetched_from(node_id: ContentId) -> Message:
+    """What the connection manager says of a piece ``node_id`` sent that this node asked for."""
+    return make_message(
+        EventType.FETCH_SUCCEEDED,
+        ModuleName.CONNECTIONS,
+        {**ContentId("sha256", "ab" * 32).fields(), "node_id": str(node_id)},
+    )
+
+
+def test_each_piece_a_peer_sends_that_the_node_asked_for_queues_a_payment_to_it(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    module = paying_module(storage, queues, Clock())
+
+    module.handle(fetched_from(PEER))
+    module.handle(fetched_from(OTHER_PEER))
+    module.handle(fetched_from(PEER))
+
+    payment = Kismet(399_999_999_999)
+    assert PaymentQueue.read(storage.karma_dir).payments == (
+        Payment(PEER, payment),
+        Payment(OTHER_PEER, payment),
+        Payment(PEER, payment),
+    )
+
+
+def test_content_a_peer_pushes_that_the_node_did_not_ask_for_queues_no_payment(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    module = paying_module(storage, queues, Clock())
+
+    module.handle(
+        make_message(
+            EventType.DATA_STORED,
+            ModuleName.VALIDATOR,
+            {**ContentId("sha256", "ab" * 32).fields(), "node_id": str(PEER), "size": 1_024},
+        )
+    )
+
+    assert PaymentQueue.read(storage.karma_dir).payments == ()
 
 
 def test_a_payment_the_operator_makes_out_of_the_nodes_karma_is_put_up_at_once(
