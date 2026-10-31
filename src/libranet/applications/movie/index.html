@@ -129,16 +129,12 @@
 
   textarea { width: 100%; resize: vertical; }
 
-  /* The movie playing, and what is known of it. */
+  /* The movie playing, the full width, and below it what is known of it. */
   .player {
     display: grid;
-    grid-template-columns: minmax(0, 3fr) minmax(16rem, 2fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 1.25rem;
     align-items: start;
-  }
-
-  @media (max-width: 52rem) {
-    .player { grid-template-columns: minmax(0, 1fr); }
   }
 
   video { display: block; width: 100%; max-height: 70vh; background: #000; border-radius: 6px; }
