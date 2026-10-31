@@ -42,10 +42,10 @@ are both requests this node could not answer, so each becomes an entry in
 its own seek list until the content arrives or the entry ages out. Storing
 content clears its entry, and has the list written again at once. A miss for
 content the source of truth holds by the time it is handled, as when its
-``data.stored`` was broadcast first, makes none. A search the seek list does not name yet has it written again at
-once, rather than at the next derivation, so that the peers connected read it
-on their next refresh and name what they hold that matches (HttpApi §10.7.2,
-Phase 4 Step 93).
+``data.stored`` was broadcast first, makes none. A search the seek list does
+not name yet has it written again at once, rather than at the next derivation,
+so that the peers connected read it on their next refresh and name what they
+hold that matches (HttpApi §10.7.2, Phase 4 Step 93).
 
 The hashes a peer answered a search with, as the connection manager asked
 it (``data.search_answered``), are known from then on, held or not, and

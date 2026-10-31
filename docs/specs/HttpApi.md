@@ -3929,6 +3929,7 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/{algorithm}/{hash}`           | `HEAD`       | Retrieve CAS metadata                                      | TBD     |
 | `/data/{algorithm}/{hash}`           | `DELETE`     | Delete and shun content, locally (§5.5)                    | Defined |
 | `/data/search/{hash}`                | `GET`        | Search for matching hashes                                 | Defined |
+| `/data/search/{hash}`                | `POST`       | Name what a peer holds that matches a search               | Defined |
 | `/data/nodes`                        | `GET`/`POST` | Retrieve/publish peer information                          | Defined |
 | `/data/seek`                         | `GET`/`POST` | Retrieve/publish outstanding requests                      | Defined |
 | `/data/peers`                        | `GET`        | What the node knows of its peers, locally (§10.8)          | Defined |
