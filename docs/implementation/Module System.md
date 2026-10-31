@@ -356,7 +356,8 @@ faster than it can be sent, and offers content the eviction module wants to
 delete to peers until enough accept it (`eviction.notice`). Each search the
 web server answers (`data.search_requested`) starts a search of the
 connected peers for the same prefix, in passes, unless one is under way or
-just ended, and what each peer answers goes to stats
+just ended, or a peer asked and may not pass it on (`peers.search_relays`), and
+what each peer answers goes to stats
 (`data.search_answered`).
 Content it fetches goes into the peer's store in `incoming/` and is
 announced with `data.put_completed`, so it passes through the validator
@@ -451,10 +452,11 @@ keeps whom the node trusts and distrusts, as the web server says it
 (`node.trust`), so that what it builds leaves out whom the node distrusts
 (Phase 6 Step 127). As it looks, it also weighs each other validation block
 at the target its head was chosen from (`HeadChanges`, `karma/changing.py`,
-Phase 6 Step 129): one claiming a heavier chain it walks back to where that
-chain leaves its own, checking each weight and generation, then checks
-forward, and follows the chain if every block is correct, replacing its
-history after that point. The transactions of the chain it leaves that the
+Phase 6 Step 129): one claiming a heavier chain, or as heavy, it walks back
+to where that chain leaves its own, checking each weight and generation, then
+checks forward, and follows the chain if every block is correct, and it is
+heavier, or as heavy and better at the first generation they differ, replacing
+its history after that point. The transactions of the chain it leaves that the
 new one lacks it carries over, for `karma.carry_generations`, in
 `carried.json`. A block it finds unsigned, or false in its weight or
 generation, it shuns, and one false it says, as it does those it follows. It
@@ -1124,7 +1126,7 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | --- | --- | --- |
 | `data.requested` | `algorithm`, `hash`, `external` | `GET /data` asked for this content, held or not, or a file served from its parts asked for this part; `external` is false for a request from this machine, and for a part |
 | `data.not_found` | `algorithm`, `hash` | Content was needed that this node does not hold |
-| `data.search_requested` | `prefix`, and `node_id` if a peer asked | A search was answered, and its result cached in `search/`, or the Karma module reads a target; search the connected peers for it too |
+| `data.search_requested` | `prefix`, and `node_id` and `relays` if a peer asked | A search was answered, and its result cached in `search/`, or the Karma module reads a target; search the connected peers for it too |
 | `data.search_answered` | `prefix`, `node_id`, `results` | What the peer `node_id` answered a search of the prefix with, or named as matching it (`POST /data/search/{prefix}`) |
 | `data.put_completed` | `algorithm`, `hash`, `node_id` | Unchecked bytes wait in `node_id`'s store in `incoming/` |
 | `data.stored` | `algorithm`, `hash`, `node_id`, `size` | New content is in `cas/data`; `node_id` is where it came from, this node for its own |

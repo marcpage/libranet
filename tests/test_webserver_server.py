@@ -19,7 +19,7 @@ from queue import Empty, Queue
 from socket import AF_INET6, SHUT_WR, create_connection, gethostname, socket
 from threading import Thread
 from time import monotonic, sleep
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterator, Mapping
 from urllib.parse import quote
 from zlib import compress
 
@@ -61,6 +61,7 @@ from libranet.protocol.http_syntax import JSON_CONTENT_TYPE, REQUEST_PATH_HEADER
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import Balance, KarmaBalances
 from libranet.protocol.karma_head import KarmaGeneration, KarmaHead
+from libranet.protocol.search import SEARCH_RELAYS_HEADER
 from libranet.stats.module import StatsModule
 from libranet.validator.module import ValidatorModule
 from libranet.webserver.app_handler import CONFIG_APP_POLICY
@@ -315,11 +316,19 @@ def _exchange(server: LibranetHTTPServer, request: bytes, *, end_input: bool = F
 
 
 def _signed_get(
-    connection: HTTPConnection, path: str, identity: NodeIdentity, signed_path: str | None = None
+    connection: HTTPConnection,
+    path: str,
+    identity: NodeIdentity,
+    signed_path: str | None = None,
+    *,
+    sent: Mapping[str, str] | None = None,
 ) -> tuple[HTTPResponse, bytes]:
-    """GET ``path`` with ``identity``'s signature over ``signed_path`` (default ``path``)."""
+    """GET ``path`` with ``identity``'s signature over ``signed_path`` (default ``path``).
+
+    The headers ``sent`` go with it, unsigned.
+    """
     headers = MessageSigner(identity).sign_request("GET", signed_path or path, {})
-    connection.request("GET", path, headers=headers)
+    connection.request("GET", path, headers={**headers, **(sent or {})})
     response = connection.getresponse()
     return response, response.read()
 
@@ -456,6 +465,44 @@ def test_a_search_a_peer_signs_is_published_as_that_peers(
         (CONTENT_ID.hash[:6], str(peer.node_id)),
         (target.hex, str(peer.node_id)),
     ]
+
+
+@mark.parametrize(
+    "sent, expected",
+    [
+        ({}, 0),
+        ({SEARCH_RELAYS_HEADER: "2"}, 2),
+        ({SEARCH_RELAYS_HEADER: "0"}, 0),
+        ({SEARCH_RELAYS_HEADER: "-3"}, 0),
+        ({SEARCH_RELAYS_HEADER: "many"}, 0),
+    ],
+)
+def test_a_search_a_peer_signs_says_how_many_times_more_it_may_be_passed_on(
+    connection: HTTPConnection,
+    queues: ModuleQueues,
+    store: CasStore,
+    sent: dict[str, str],
+    expected: int,
+) -> None:
+    peer = _new_identity()
+    peer.publish_public_key(store)
+
+    searched, _ = _signed_get(connection, f"/data/search/{CONTENT_ID.hash[:6]}", peer, sent=sent)
+
+    assert searched.status == 200
+    assert [message["relays"] for message in _published(queues)] == [expected]
+
+
+def test_a_search_no_peer_signs_is_published_as_this_nodes_own(
+    connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    connection.request(
+        "GET", f"/data/search/{CONTENT_ID.hash[:6]}", headers={SEARCH_RELAYS_HEADER: "9"}
+    )
+    connection.getresponse().read()
+
+    (message,) = _published(queues)
+    assert "node_id" not in message and "relays" not in message
 
 
 def test_data_and_search_read_content_archives(

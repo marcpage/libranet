@@ -198,14 +198,20 @@ class TargetReader:
         return frozenset(self._waiting)
 
     def read(
-        self, target: DropTarget, kind: type[_Block], *, known: Collection[ContentId] = ()
+        self,
+        target: DropTarget,
+        kind: type[_Block],
+        *,
+        known: Collection[ContentId] = (),
+        searching: bool = True,
     ) -> list[HeldBlock]:
         """The blocks of ``kind`` the node holds at ``target``, those placed nearest first.
 
         They are what it holds nearest the target's hash, and what peers
         have named there (:meth:`answered`), of those a search returns, less
         those it shuns. The search is announced, so that the peers are asked,
-        and the target is read from now until ``answer_seconds`` pass without
+        unless not ``searching``, and the target is read from now until
+        ``answer_seconds`` pass without
         a read of it. What is found but not held is asked for, as is the key
         of each signer a block held names that is not held, and each is
         waited for (:meth:`awaits`). Anything held that is not what it is
@@ -215,7 +221,10 @@ class TargetReader:
         """
         prefix: str = target.hex
         answers: _Answers = self._reading(prefix)
-        self._publish(EventType.SEARCH_REQUESTED, {"prefix": prefix})
+
+        if searching:
+            self._publish(EventType.SEARCH_REQUESTED, {"prefix": prefix})
+
         found = self._search.matching(
             prefix, nearest(prefix, {*self._search.search(prefix), *answers.named})
         )

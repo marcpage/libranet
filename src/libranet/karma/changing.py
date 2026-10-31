@@ -1,19 +1,20 @@
 """Changing to a heavier chain (KarmaLedger §3.5.3, Phase 6 Step 129).
 
 A head the node does not follow, a validation block, is weighed, and the
-chain through it followed if it is heavier than the chain followed. Such a
-head is found at a target: another validation block at the target the head
-was chosen from, as one placed after the head's generation was followed is
-(Phase 6 Step 126), or another root while the root is the head. Or a peer
-tells of it (:meth:`HeadChanges.told`, Phase 6 Step 130), the latest each
-peer told kept until it is come to. The heads are weighed one at a time, in
-the six steps of §3.5.3 (:class:`~libranet.karma.claims.HeadClaim`):
+chain through it followed if it is heavier than the chain followed, or as
+heavy and better (§3.3), so that nodes that saw the same blocks in another
+order come to follow one chain. Such a head is found at a target: another
+validation block at the target the head was chosen from, as one placed after
+the head's generation was followed is (Phase 6 Step 126), or another root
+while the root is the head. Or a peer tells of it
+(:meth:`HeadChanges.told`, Phase 6 Step 130), the latest each peer told kept
+until it is come to. The heads are weighed one at a time, in the six steps of
+§3.5.3 (:class:`~libranet.karma.claims.HeadClaim`):
 
 1. **The claim is read**: the head, and the transaction block it validates,
    whose ``weight``, with 2^b for each of the two drops, is what the chain
-   through them claims to weigh. Unless that is more than the chain
-   followed weighs, nothing more is read. One only as heavy is not
-   followed, so that the node keeps the head it chose as the best (§6.5).
+   through them claims to weigh. If that is less than the chain followed
+   weighs, nothing more is read.
 2. **It walks back** to the common ancestor, checking each ``weight`` and
    ``generation`` as it goes.
 3. **The chain followed after the ancestor is collected**: each transaction
@@ -21,8 +22,12 @@ the six steps of §3.5.3 (:class:`~libranet.karma.claims.HeadClaim`):
    witnessed in (§4.5).
 4. **The new chain is checked forward** from the ancestor.
 5. **It is followed** if every block in it is correct, and it is heavier
-   still than the chain followed: the history after the ancestor is
-   replaced by it.
+   still than the chain followed, or as heavy and better: the history after
+   the ancestor is replaced by it. The better of two as heavy is the one
+   whose validation block is the best (§6.5) at the first generation they
+   differ, both being built on the same block, so that their stakes are
+   weighed alike, and of two roots, the one whose id sorts first (§7.5). So
+   that order is the same for any two chains, whatever else each has after.
 6. **What is left over is carried**: each transaction collected whose key
    the new chain does not hold (:mod:`libranet.karma.carried`).
 
@@ -58,7 +63,7 @@ from libranet.karma.blocks import (
 )
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.checking import TransactionBlockCheck
-from libranet.karma.claims import ClaimedChain, FalseStatement, HeadClaim
+from libranet.karma.claims import ClaimedChain, ClaimedGeneration, FalseStatement, HeadClaim
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainHistory
 from libranet.karma.reading import HeldChain, TargetReader
@@ -72,7 +77,7 @@ _LOGGER = getLogger(__name__)
 
 
 class HeadChanges:  # pylint: disable=too-many-instance-attributes
-    """Weighs the heads ``history`` does not follow, and follows a heavier one (§3.5.3).
+    """Weighs the heads ``history`` does not follow, and follows a heavier or better one (§3.5.3).
 
     What it finds of a block is said with ``publish``, the blocks are read
     from what ``reader`` holds, each checked against ``bounds``, the
@@ -124,14 +129,14 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
             self._done(claim)
 
     def look(self) -> bool:
-        """Weigh the heads not followed, one at a time, and follow the first that is heavier.
+        """Weigh the heads not followed, one at a time, and follow the first heavier or better.
 
         Those at the target the head was chosen from are weighed first, then
         those peers told of, and the one being weighed waits for what it
         lacks.
 
         Returns:
-            Whether a heavier chain is followed now.
+            Whether another chain is followed now.
 
         Raises:
             OSError: the history could not be written, as
@@ -226,8 +231,48 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
         head = self._history.head
         return head is None or weight > head.weight
 
+    def _lighter(self, weight: ChainWeight) -> bool:
+        """Whether a chain weighing ``weight`` is lighter than the one followed."""
+        head = self._history.head
+        return head is not None and weight < head.weight
+
+    def _better(self, chain: ClaimedChain) -> bool:
+        """Whether ``chain``, checked, and as heavy as the chain followed, is the better (§3.3).
+
+        It is if the block followed at the first generation they differ no
+        longer checks, which is logged.
+
+        Raises:
+            MissingContentError: names what the block followed there lacks,
+                which is asked for.
+            BundleError: it is shunned, or cannot be checked here.
+            ValueError: it names an id under a hash algorithm this node lacks.
+        """
+        first = chain.generations[0]
+        followed_id = self._history.generation(first.generation).validation
+
+        if chain.ancestor < 0:
+            return first.validation < followed_id
+
+        followed = ClaimedChain(self._history, chain.ancestor)
+        claimed = ClaimedGeneration.read(self._chain, followed_id)
+        failed = (
+            claimed
+            if isinstance(claimed, FalseStatement)
+            else followed.check(claimed, self._reader, bounds=self._bounds)
+        )
+
+        if failed is not None:
+            _LOGGER.warning(
+                "Karma block %s of the chain followed no longer checks: %s", followed_id, failed
+            )
+            return True
+
+        ours, theirs = followed.validated[0], chain.validated[0]
+        return ValidationBlockCheck.best([ours, theirs]) is theirs
+
     def _weigh(self, claim: HeadClaim) -> bool:
-        """Weigh ``claim`` on, as far as what is held lets it, and follow it if it is heavier.
+        """Weigh ``claim`` on, as far as what is held lets it, and follow it if heavier or better.
 
         Returns:
             Whether it is followed now.
@@ -244,10 +289,10 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
         if isinstance(claimed, FalseStatement):
             return self._not_following(claim, self._said(claimed))
 
-        if not self._heavier(claimed.through):
+        if self._lighter(claimed.through):
             _LOGGER.debug(
-                "Not following the Karma chain through %s, claiming to weigh %s, no more than "
-                "the chain followed",
+                "Not following the Karma chain through %s, claiming to weigh %s, less than the "
+                "chain followed",
                 claim.head,
                 claimed.through.value(),
             )
@@ -263,7 +308,17 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
         if failed is not None:
             return self._not_following(claim, self._why(*failed))
 
-        self._follow(chain)
+        heavier = self._heavier(claimed.through)
+
+        if not heavier and not self._better(chain):
+            _LOGGER.debug(
+                "Not following the Karma chain through %s, as heavy as the chain followed and "
+                "no better",
+                claim.head,
+            )
+            return False
+
+        self._follow(chain, "heavier" if heavier else "better")
         return True
 
     def _why(
@@ -333,8 +388,8 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
         _LOGGER.info("Not following the Karma chain through %s: %s", claim.head, why)
         return False
 
-    def _follow(self, chain: ClaimedChain) -> None:
-        """Follow ``chain``, checked, after its ancestor, and carry what is left over.
+    def _follow(self, chain: ClaimedChain, why: str) -> None:
+        """Follow ``chain``, checked, ``why`` being what it is, and carry what is left over.
 
         Raises:
             OSError: the history could not be written.
@@ -344,8 +399,9 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
         self._history.replace(chain.generations)
         head = chain.generations[-1]
         _LOGGER.info(
-            "Following the heavier Karma chain through generation %d, head %s, weighing %s, "
+            "Following the %s Karma chain through generation %d, head %s, weighing %s, "
             "in place of the chain after generation %d through %s",
+            why,
             head.generation,
             head.validation,
             head.weight.value(),

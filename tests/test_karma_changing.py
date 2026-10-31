@@ -1,12 +1,14 @@
-"""Tests for changing to a heavier chain (KarmaLedger §3.5.3)."""
+"""Tests for changing to a heavier, or as heavy and better, chain (KarmaLedger §3.3, §3.5.3)."""
 
 from __future__ import annotations
 from dataclasses import replace
 from logging import DEBUG, ERROR, INFO, WARNING
+from zlib import compress
 
 from pytest import LogCaptureFixture, fixture
 
 from libranet.cas.content_id import ContentId
+from libranet.cas.prefix import matching_bits
 from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB, StorageConfig
@@ -15,6 +17,7 @@ from libranet.karma.blocks import ValidationBlock
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.changing import HeadChanges
 from libranet.karma.following import ChainFollower
+from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainHistory
 from libranet.karma.reading import TargetReader
 from libranet.karma.weight import ChainWeight
@@ -27,6 +30,7 @@ from tests.karma_chains import (
     BOUNDS,
     MINIMUM_BITS,
     Chain,
+    Generation,
     Recorder,
     hold,
     id_of,
@@ -141,6 +145,26 @@ def following(follower: ChainFollower, truth: CasStore, chain: Chain) -> None:
     hold(truth, *chain.drops(*range(len(chain.generations))))
 
     assert len(follower.look()) == len(chain.generations)
+
+
+def test_a_chains_targets_are_all_apart_so_that_none_finds_what_is_placed_at_another(
+    alice: NodeIdentity, bob: NodeIdentity
+) -> None:
+    chain = Chain.root(alice, 9)
+
+    for _ in range(3):
+        chain = chain.then(bob, alice, bits=9)
+
+    named = [GenerationTargets.root()] + [
+        GenerationTargets.after(id_of(generation.validation)) for generation in chain.generations
+    ]
+    hashes = [target.hex for each in named for target in (each.transaction, each.validation)]
+
+    assert all(
+        matching_bits(one, other) < MINIMUM_BITS
+        for index, one in enumerate(hashes)
+        for other in hashes[index + 1 :]
+    )
 
 
 def test_a_lighter_head_is_read_and_nothing_more(
@@ -380,7 +404,49 @@ def test_a_better_validation_block_of_the_latest_generation_is_followed_as_heavi
     assert not changes.look()
 
 
-def test_one_only_as_heavy_is_not_followed(
+def sibling(
+    root: Chain, on: Chain, staker: NodeIdentity, builder: NodeIdentity, kismet: int
+) -> bytes:
+    """A validation block ``builder`` places beside ``on``'s first, ``staker`` staking ``kismet``.
+
+    It stakes on the same transaction block, and shares as many bits with its target.
+    """
+    block = ValidationBlock(
+        1, None, (staked(staker, id_of(on.generations[1].transaction), kismet),), ()
+    )
+    return signed_at(root.targets.validation, builder, block, 9)
+
+
+def test_of_two_as_heavy_the_one_of_more_stake_is_followed_and_kept(
+    follower: ChainFollower,
+    changes: HeadChanges,
+    history: ChainHistory,
+    truth: CasStore,
+    root: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    caplog: LogCaptureFixture,
+) -> None:
+    first = root.then(bob, alice, bits=9)
+    following(follower, truth, first)
+    better = sibling(root, first, alice, alice, 6)
+    hold(truth, better)
+
+    with caplog.at_level(INFO):
+        assert changes.look()
+
+    assert history.generation(1).validation == id_of(better)
+    assert history.generation(1).transaction == id_of(first.generations[1].transaction)
+    assert "Following the better Karma chain through generation 1" in caplog.text
+
+    # What it left, at the target and as a peer tells of it, does not bring it back.
+    changes.told(PEER, first.head)
+
+    assert not changes.look()
+    assert history.generation(1).validation == id_of(better)
+
+
+def test_of_two_as_heavy_the_one_of_less_stake_is_not_followed(
     follower: ChainFollower,
     changes: HeadChanges,
     history: ChainHistory,
@@ -391,13 +457,167 @@ def test_one_only_as_heavy_is_not_followed(
 ) -> None:
     first = root.then(bob, alice, bits=9)
     following(follower, truth, first)
-    other = ValidationBlock(
-        1, None, (staked(alice, id_of(first.generations[1].transaction), 6),), ()
-    )
-    hold(truth, signed_at(root.targets.validation, alice, other, 9))
+    hold(truth, sibling(root, first, alice, alice, 4))
 
     assert not changes.look()
     assert history.generation(1).validation == first.head
+
+
+def test_of_two_as_heavy_of_as_much_stake_the_one_whose_id_sorts_first_is_kept(
+    follower: ChainFollower,
+    changes: HeadChanges,
+    history: ChainHistory,
+    truth: CasStore,
+    root: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    carol: NodeIdentity,
+) -> None:
+    first = root.then(bob, alice, bits=9)
+    following(follower, truth, first)
+    other = sibling(root, first, alice, carol, 5)
+    hold(truth, other)
+
+    assert changes.look() == (id_of(other) < first.head)
+    assert history.generation(1).validation == min(id_of(other), first.head)
+
+    # Whichever it follows, it stays, whichever it is told of.
+    changes.told(PEER, first.head)
+    changes.told(ContentId("sha256", "9f" * 32), id_of(other))
+
+    assert not changes.look()
+
+
+def test_of_two_as_heavy_the_one_of_more_bits_in_its_validation_block_is_followed(
+    follower: ChainFollower,
+    changes: HeadChanges,
+    history: ChainHistory,
+    truth: CasStore,
+    root: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    carol: NodeIdentity,
+) -> None:
+    targets = root.targets
+    fewer_on = signed_at(targets.transaction, bob, root.block_after(), 10)
+    fewer = validating(targets.validation, alice, fewer_on, bits=9)
+    following(follower, truth, Chain((*root.generations, Generation(fewer_on, fewer))))
+    weight = history.generation(1).weight
+    more_on = signed_at(targets.transaction, carol, root.block_after(), 9)
+    more = validating(targets.validation, alice, more_on, bits=10)
+    hold(truth, more_on, more)
+
+    assert changes.look()
+    assert history.generation(1).validation == id_of(more)
+    assert history.generation(1).weight == weight
+
+
+def test_of_two_as_heavy_that_split_earlier_the_better_where_they_differ_is_kept(
+    follower: ChainFollower,
+    changes: HeadChanges,
+    history: ChainHistory,
+    truth: CasStore,
+    root: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    carol: NodeIdentity,
+) -> None:
+    ours = root.then(bob, alice, bits=9)
+    ours = ours.then(bob, alice, bits=9)
+    following(follower, truth, ours)
+    theirs = root.then(carol, alice, bits=9)
+    theirs = theirs.then(carol, alice, bits=9)
+    hold(truth, *theirs.drops(1, 2))
+    best = min((ours, theirs), key=lambda chain: id_of(chain.generations[1].validation))
+
+    changes.told(PEER, theirs.head)
+    changes.look()
+
+    assert history.head is not None and history.head.validation == best.head
+    changes.told(PEER, ours.head if best is theirs else theirs.head)
+    assert not changes.look()
+
+
+def test_of_two_roots_as_heavy_the_one_whose_id_sorts_first_is_kept(
+    follower: ChainFollower,
+    changes: HeadChanges,
+    history: ChainHistory,
+    truth: CasStore,
+    root: Chain,
+    bob: NodeIdentity,
+) -> None:
+    following(follower, truth, root)
+    other = Chain.root(bob, 9)
+    hold(truth, *other.drops(0))
+
+    assert changes.look() == (other.head < root.head)
+    assert history.generation(0).validation == min(other.head, root.head)
+
+
+def test_a_block_followed_that_a_tie_needs_is_asked_for_and_the_tie_goes_on_once_it_comes(
+    follower: ChainFollower,
+    changes: HeadChanges,
+    history: ChainHistory,
+    truth: CasStore,
+    recorder: Recorder,
+    root: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+) -> None:
+    first = root.then(bob, alice, bits=9)
+    following(follower, truth, first)
+    better = sibling(root, first, alice, alice, 6)
+    hold(truth, better)
+    truth.delete(first.head)
+    changes.told(PEER, id_of(better))
+
+    assert not changes.look()
+    assert first.head in recorder.asked_for()
+
+    hold(truth, first.generations[1].validation)
+
+    assert changes.look()
+    assert history.generation(1).validation == id_of(better)
+
+
+def test_of_two_as_heavy_the_other_is_followed_if_the_block_followed_no_longer_checks(
+    history: ChainHistory,
+    follower: ChainFollower,
+    reader: TargetReader,
+    recorder: Recorder,
+    carried: CarriedTransactions,
+    truth: CasStore,
+    root: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    carol: NodeIdentity,
+    caplog: LogCaptureFixture,
+) -> None:
+    ours = root.then(bob, alice, bits=9)
+    following(follower, truth, ours)
+    fuller = signed_at(
+        root.targets.transaction,
+        carol,
+        root.block_after(paying(alice, bob, 1), paying(alice, bob, 2)),
+        9,
+    )
+    theirs = validating(root.targets.validation, alice, fuller, bits=9)
+    hold(truth, fuller, theirs)
+    # Bounds in which the block followed validates a block no longer full, and the other not.
+    full_above = len(compress(ours.generations[1].transaction, 9)) + 1
+    assert len(compress(fuller, 9)) > full_above
+
+    with caplog.at_level(WARNING):
+        assert HeadChanges(
+            history,
+            reader,
+            recorder,
+            carried,
+            bounds=replace(BOUNDS, room_bytes=BOUNDS.most_bytes - full_above),
+        ).look()
+
+    assert history.generation(1).validation == id_of(theirs)
+    assert "of the chain followed no longer checks" in caplog.text
 
 
 def test_a_heavier_root_is_followed_in_place_of_the_root_followed(
@@ -557,12 +777,14 @@ def test_a_validation_block_naming_a_runner_up_at_its_target_states_nothing_fals
     carol: NodeIdentity,
 ) -> None:
     following(follower, truth, root.then(bob, alice, bits=9))
-    first = root.then(carol, alice, bits=9)
+    # Lighter than the block beside it, and the head heavier than its runner-up, so that no
+    # tie moves the chain followed, whichever block's id sorts first.
+    first = root.then(carol, alice, bits=8)
     targets = first.targets
     rival = signed_at(targets.transaction, bob, first.block_after(), 9)
     runner_up = validating(targets.validation, alice, rival, bits=9)
     transaction = signed_at(targets.transaction, carol, first.block_after(), 9)
-    validation = validating(targets.validation, alice, transaction, runner_up=runner_up, bits=9)
+    validation = validating(targets.validation, alice, transaction, runner_up=runner_up, bits=10)
     hold(truth, *first.drops(1), rival, runner_up, transaction, validation)
     changes.told(PEER, id_of(validation))
 

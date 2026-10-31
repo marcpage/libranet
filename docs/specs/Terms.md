@@ -1189,10 +1189,10 @@ every head.
 
 ### Heaviest Chain
 
-The Karma chain of greatest weight, and of two as heavy, the one whose latest
-winning validation block's id sorts first. Every node follows the heaviest
-chain it knows, and each generation's winning validation block is the one it
-goes through.
+The Karma chain of greatest weight, and of two as heavy, the one whose winning
+validation block is the best at the first generation where they differ. Every
+node follows the heaviest chain it knows, and each generation's winning
+validation block is the one it goes through.
 
 - **Sources:** [Karma Ledger §3.2](KarmaLedger.md#32-choosing-the-winner),
   [§3.3](KarmaLedger.md#33-the-heaviest-chain).

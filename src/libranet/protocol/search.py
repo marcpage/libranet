@@ -40,6 +40,9 @@ RESULTS_FIELD: Final = "results"
 #: Where a search is asked for, followed by ``/{prefix}`` (HttpApi §6).
 SEARCH_PATH: Final = API_PREFIX + "/search"
 
+#: How many times more a search a peer asks for may be passed on (HttpApi §6).
+SEARCH_RELAYS_HEADER: Final = "X-Search-Relays"
+
 _CACHE_SUFFIX: Final = ".json"
 
 # HttpApi §6.1: a search answer is less than 1 MiB as it is sent, which for

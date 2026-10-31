@@ -136,6 +136,7 @@ The settings an operator is most likely to change:
 | `network.client_grace_requests` | `12` | How many requests a peer connected to the node is kept for, whatever its Karma (§4.8) |
 | `network.client_value_seconds` | `600.0` | How long a peer holding less Karma than both the median of those connected and the node is kept, after those requests, once it pushes nothing the node seeks (§4.8) |
 | `network.client_keep_count` | `16` | How many peers connected to the node it keeps, closing none for its Karma unless more are connected (§4.8) |
+| `peers.search_relays` | `2` | How many times a search this node starts may be passed on, from peer to peer; each node passing it on asks every peer it has |
 | `peers.turned_away_rest_seconds` | `3600.0` | How long the node waits before dialing again a peer that turned it away, closing the connection once it had answered (§4.8) |
 | `peers.seed_file` | `null` | The node's first peers (§3.1) |
 | `storage.max_storage_bytes` | `null` | The most bytes of content the node keeps; `null` is no limit |
@@ -496,7 +497,11 @@ A node always follows the heaviest chain it has checked. When another validation
 block is placed beside its head that makes a heavier chain, or a peer tells it
 of a head that may be heavier, it checks that chain back to where it leaves its
 own, and follows it if every block is correct; `libranet-karma.log` says so,
-naming the generation the two chains share. Nodes tell the peers they connect to
+naming the generation the two chains share. Of two chains exactly as heavy, it
+follows the better one: at the first generation where they differ, the one
+whose validation block shares more bits with its target, then holds more stake,
+then has the id that sorts first. So nodes that saw the same blocks in another
+order still come to follow one chain. Nodes tell the peers they connect to
 of each new head they follow, and ask each for its own as they connect, so a
 node that has been apart from the rest finds the heavier chain soon after it
 reconnects. The transactions of the chain it leaves that the new one does not

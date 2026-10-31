@@ -51,10 +51,18 @@ def apart(hex_id: str, targets: Iterable[DropTarget]) -> bool:
 
 
 def names_apart(validation_id: ContentId) -> bool:
-    """Whether the targets of the generation after ``validation_id`` are apart from both roots'."""
+    """Whether the targets of the generation after ``validation_id`` are apart, as roots' are.
+
+    They are apart from both roots', and from each other's, or what is placed at one is found
+    at the other too, so that one run in 256 fails a test here.
+    """
     after = GenerationTargets.after(validation_id)
     roots = (ROOT.transaction, ROOT.validation)
-    return apart(after.transaction.hex, roots) and apart(after.validation.hex, roots)
+    return (
+        apart(after.transaction.hex, roots)
+        and apart(after.validation.hex, roots)
+        and apart(after.transaction.hex, [after.validation])
+    )
 
 
 def placed(
@@ -68,8 +76,8 @@ def placed(
     own, or as an unsigned block it shuns as it reads the root's targets,
     and again as it reads generation 1's. With ``naming_apart``, the
     targets of the generation after it, as a validation block, share fewer
-    than that with each root target too, so that a drop can be placed at
-    each of them.
+    than that with each root target too, and with each other, so that a drop
+    can be placed at each of them, and is found there alone.
 
     Raises:
         AssertionError: ``target`` shares :data:`MINIMUM_BITS` or more with

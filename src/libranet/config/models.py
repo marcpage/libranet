@@ -336,6 +336,13 @@ class PeerConfig(_Section):
     # first asks every peer again, once its Retry-After has passed.
     search_passes: int = Field(default=3, ge=2)
 
+    # How many times a search this node starts may be passed on, from peer to
+    # peer (HighLevelDesign §4.7). Each node passing it on asks every peer it
+    # has, so more reach further, at about 32 times the requests each. A search
+    # ends once it is passed on this many times, whatever the network is doing,
+    # and is started again only by this node still wanting what it finds.
+    search_relays: int = Field(default=2, ge=0)
+
     # Once a search of the connected peers for content has found nothing, how
     # long before a new request for it starts another (HighLevelDesign §4.7).
     # Longer than peers' searches last, a Retry-After for each pass after the

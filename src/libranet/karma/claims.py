@@ -150,12 +150,14 @@ class ClaimedChain:
 
     That is ``history``, the chain followed, through generation
     ``ancestor``, the common ancestor, or -1 for a claim on another root, and
-    the claim's generations after it, as each is checked (:meth:`check`).
+    the claim's generations after it, as each is checked (:meth:`check`), with
+    the check of each one's validation block in ``validated``.
     """
 
     def __init__(self, history: ChainHistory, ancestor: int) -> None:
         self.ancestor = ancestor
         self.generations: list[ChainGeneration] = []
+        self.validated: list[ValidationBlockCheck] = []
         self._history = history
         self._keys: dict[TransactionKey, int] = {}
         self._witnessed: dict[str, int] = {}
@@ -222,6 +224,7 @@ class ClaimedChain:
         if not isinstance(validation, ValidationBlockCheck) or not validation.is_correct:
             return claimed.validation, validation
 
+        self.validated.append(validation)
         self._add(
             ChainGeneration.of(
                 claimed.validation,

@@ -453,14 +453,16 @@ the background, so that a later search lists more:
 4. Know the hashes the peers answer from then on, as hashes the node may return
    without holding them (HTTP API §6).
 
-A search a peer asks for starts one too, so a search goes on from peer to peer.
-A search of a prefix, whoever asks it, starts none while the node's search of
-that prefix is under way, nor for a while after it ends, though it is still
-answered at once. Peers still searching would otherwise start it again, and be
-started again by it in turn, and a search would never end. The pause outlasts
-the time it takes a search to reach every node and their passes to end. The
-node lists the prefix in its seek list too (§4.8), so that the peers connected
-to it name what they hold that matches, and it can seek by hash what it lacks.
+A search a peer asks for starts one too, so a search goes on from peer to peer,
+but only as many times as the node that started it allows: each node tells its
+peers how many times more it may be passed on, so a search ends, however long it
+takes and however busy the network is, unless a node still wants what it finds
+and starts it again. The reference node allows two by default. A search of a
+prefix, whoever asks it, starts none while the node's search of that prefix is
+under way, nor for a while after it ends, though it is still answered at once,
+which saves asking peers again for what they were just asked. The node lists
+the prefix in its seek list too (§4.8), so that the peers connected to it name
+what they hold that matches, and it can seek by hash what it lacks.
 
 If a node cannot yet serve a requested object, it replies with a temporary "not
 available" status and immediately begins the routing algorithm above so that a

@@ -140,13 +140,15 @@ bits takes about 2^b hashes to find, so the weight is the work it took to
 build the chain. Summing bits instead would let two 15-bit drops weigh as
 much as one 30-bit drop, which took 32,768 times the work of either.
 
-The **heaviest chain** is the one of greatest weight, and of two as heavy,
-the one whose latest winning validation block's id sorts first. Every node
-follows the heaviest chain it knows. A node that follows a chain leaves it
-only for a heavier one (§3.5.3): of two as heavy, it keeps the one it
-follows, whose latest validation block it chose as the best of its
-generation (§6.5). The id decides only between chains it does not follow
-yet, such as two roots (§7.5).
+The **heaviest chain** is the one of greatest weight. Of two as heavy, it is
+the one whose winning validation block is the best (§6.5) at the first
+generation where they differ, and of two roots, the one whose validation
+block's id sorts first (§7.5). Both blocks there are built on the same block,
+so their stakes are weighed alike, and comparing there gives one order for any
+two chains, whatever else each holds after it. Every node follows the heaviest
+chain it knows. A node that follows a chain leaves it only for one heavier, or
+as heavy and better by this order (§3.5.3), so that nodes that saw the same
+blocks in another order come to follow one chain.
 
 ```mermaid
 flowchart RL
@@ -206,8 +208,8 @@ target, it goes through these steps in order:
 
 1. **Read the claim.** It reads that head and the transaction block it
    validates, whose `weight` says how heavy the chain behind it claims to
-   be. If that is not heavier than its own head, the node stops evaluating
-   the new head.
+   be. If that is lighter than its own head, the node stops evaluating the
+   new head.
 2. **Walk back.** It walks the new head's generations back, from each
    validation block to the transaction block its stakes name, and from that
    block's `previous` to the validation block before. It stops at the first
@@ -224,8 +226,9 @@ target, it goes through these steps in order:
    in the new chain is already accounted for, and it strikes that
    transaction from what it collected.
 5. **Follow.** If every block validates as correct, and the new head is
-   still heavier, the node follows it. Its genealogy after the common
-   ancestor becomes the new chain's, and it tells its peers its new head
+   still heavier, or as heavy and better (§3.3), the node follows it. Its
+   genealogy after the common ancestor becomes the new chain's, and it tells
+   its peers its new head
    (§3.5.2). Otherwise it keeps its own head. A block found to state
    something false distrusts its builder (§3.8), and one that is no block
    of the ledger, unsigned or false in its `weight` or `generation`, is
@@ -1042,6 +1045,11 @@ does not follow (§3.5.3).
 
 ## 8. Security Considerations
 
+- **A tie can move a head late.** A validation block as heavy as the head,
+  with more effective stake, or as much and an id that sorts first, replaces
+  it, as one with a bit more already does for about twice the work. The next
+  generation's target moves with the head, and blocks at the old target become
+  false starts (§3.4), whose transactions are still taken.
 - **The early chain is cheap to replace.** Weight grows only as generations
   are built (§3.3), so just after the root a rival root or fork needs only a
   few drops' work to win. The risk falls with each generation.
