@@ -206,7 +206,8 @@ Work this implies:
 
 Settled with #264: moving through the movies, switching collections,
 playing, pausing, full screen, and stopping each have a key, as video
-players have, and the page lists them under **Keys**, or `?`:
+players have, and the page lists them under **Keys**, or `?` (or `/`,
+without Shift, as settled with #560):
 
 - In a collection, the arrow keys move through the movies as they are
   laid out, and Home and End to the first and the last. The collections
