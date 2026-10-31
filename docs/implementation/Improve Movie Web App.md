@@ -347,6 +347,8 @@ where it went.
 | #380 | Offline viewing | 115 |
 | #404 | No changing collections while no one is signed in | None: a fix, #408 |
 | #557 | Edit, Share, and Remove as icons in the upper right corner | None: a change to the page alone |
+| #563 | No movie list shown while in a movie | None: a change to the page alone |
+| #564 | X leaves a movie, back to the movie list | None: a change to the page alone |
 
 ## 5. Suggested Build Order
 

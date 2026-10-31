@@ -144,7 +144,7 @@
   video { display: block; width: 100%; max-height: 70vh; background: #000; border-radius: 6px; }
   .details p { margin: 0.4rem 0; }
 
-  /* The movie's title, with what changes the movie in the upper right corner. */
+  /* The movie's title, with what changes the movie, and what leaves it, in the upper right corner. */
   .title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
   .title-row h2 { overflow-wrap: anywhere; }
   .icons { display: flex; flex: none; gap: 0.25rem; margin: -0.3rem -0.3rem 0 0; }
@@ -296,15 +296,18 @@
         <div class="details" id="details">
           <div class="title-row">
             <h2 id="movie-title"></h2>
-            <div class="icons signed-in-only" hidden>
-              <button type="button" class="icon" id="edit-movie" title="Edit" aria-label="Edit">
+            <div class="icons">
+              <button type="button" class="icon signed-in-only" id="edit-movie" title="Edit" aria-label="Edit" hidden>
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
               </button>
-              <button type="button" class="icon" id="share-movie" title="Share" aria-label="Share">
+              <button type="button" class="icon signed-in-only" id="share-movie" title="Share" aria-label="Share" hidden>
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V3 M8 7l4-4 4 4 M9 10H5v11h14V10h-4"/></svg>
               </button>
-              <button type="button" class="icon danger" id="remove-movie" title="Remove" aria-label="Remove">
+              <button type="button" class="icon danger signed-in-only" id="remove-movie" title="Remove" aria-label="Remove" hidden>
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16 M9 7V4h6v3 M6 7l1 14h10l1-14 M10 11v6 M14 11v6"/></svg>
+              </button>
+              <button type="button" class="icon" id="close-movie" title="Back to the collection" aria-label="Back to the collection">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12 M18 6L6 18"/></svg>
               </button>
             </div>
           </div>
@@ -513,13 +516,13 @@
     <dt><kbd>Home</kbd> <kbd>End</kbd></dt>
     <dd>To the first, or the last.</dd>
     <dt><kbd>Enter</kbd></dt>
-    <dd>Choose the movie, or open the collection. A movie chosen plays, or pauses.</dd>
+    <dd>Choose the movie, or open the collection.</dd>
     <dt><kbd>Space</kbd> <kbd>K</kbd></dt>
     <dd>Play or pause the movie chosen. Space presses a button that has focus instead.</dd>
     <dt><kbd>F</kbd></dt>
     <dd>Full screen, or back.</dd>
-    <dt><kbd>S</kbd></dt>
-    <dd>Stop: back to the start, out of full screen, and back to the movie in the collection.</dd>
+    <dt><kbd>S</kbd> <kbd>X</kbd></dt>
+    <dd>Stop, and leave the movie: out of full screen, and back to it in the collection.</dd>
     <dt><kbd>N</kbd> <kbd>P</kbd></dt>
     <dd>The next movie, or the one before, playing on if one was playing.</dd>
     <dt><kbd>C</kbd></dt>
@@ -1430,6 +1433,7 @@ function closePlayer() {
   state.selected = null;
   byId("video-trouble").hidden = true;
   byId("player-section").hidden = true;
+  byId("library").hidden = false;
 }
 
 // Shows `playlist`, one kept offline if `offline`, which is only played, and
@@ -1603,7 +1607,7 @@ function renderLibrary() {
   const playlist = state.playlist;
   const count = playlist.order.length;
   const focused = byId("movies").contains(document.activeElement) ? document.activeElement.dataset.folder : null;
-  byId("library").hidden = false;
+  byId("library").hidden = state.selected !== null;
   byId("playlist-name").textContent = playlist.name;
   byId("playlist-count").textContent = plural(count, "movie", "movies");
   byId("movies").replaceChildren(...playlist.order.map((folder) => movieItem(playlist, folder)));
@@ -1636,29 +1640,20 @@ function movieItem(playlist, folder) {
   pick.dataset.folder = folder;
   pick.setAttribute("aria-pressed", String(folder === state.selected));
   pick.append(posterImage(playlist, folder, info), caption(playlist, folder, info));
-
-  // Chosen again, the movie chosen plays, or pauses.
-  pick.addEventListener("click", () => {
-    if (folder === state.selected) {
-      playOrPause();
-    } else {
-      select(folder);
-    }
-  });
+  pick.addEventListener("click", () => select(folder));
   item.append(pick);
   return item;
 }
 
 // Gives focus to the movie in `folder` of the collection open, or to its
 // first, if it holds no such movie, or to adding one, if it holds none.
-// `options` are focus()'s.
-function focusMovie(folder, options = {}) {
+function focusMovie(folder) {
   const picks = [...byId("movies").querySelectorAll("button.pick")];
   const pick = picks.find((each) => each.dataset.folder === folder) || picks[0]
     || byId("library").querySelector(".toolbar:not([hidden]) button");
 
   if (pick) {
-    pick.focus(options);
+    pick.focus();
   }
 }
 
@@ -1776,8 +1771,16 @@ function select(folder) {
     }
   }
 
+  // In a movie, the collection's movies are not shown, and focus, if it was
+  // on one of them, goes to the video.
   byId("player-section").hidden = false;
+  byId("library").hidden = true;
   showDetails();
+
+  if (focusLost()) {
+    video.focus({ preventScroll: true });
+  }
+
   byId("player-section").scrollIntoView({ block: "start", behavior: "smooth" });
 }
 
@@ -1862,35 +1865,31 @@ function playOrPause() {
   }
 }
 
-// Stops the movie chosen: paused, back at its start, out of full screen,
-// and with focus back on it in the collection, to choose another.
-function stopMovie() {
-  const video = byId("video");
+// Leaves the movie chosen, stopped and out of full screen, for the
+// collection, with focus back on it there, to choose another. Chosen again,
+// it plays from its start.
+function leaveMovie() {
+  const folder = state.selected;
 
-  if (state.selected === null) {
+  if (folder === null) {
     return;
   }
 
-  video.pause();
-  video.currentTime = 0;
+  closePlayer();
 
   if (!document.fullscreenElement) {
-    focusMovie(state.selected);
+    focusMovie(folder);
     return;
   }
 
-  // Stopped is not left: played again, it plays full screen again. This
-  // listener hears the change after the video's own, leftFullscreen. Only
-  // out of full screen can focus go to the movie in the collection.
-  document.addEventListener("fullscreenchange", () => {
-    state.leftFullscreen = false;
-    focusMovie(state.selected);
-  }, { once: true });
+  // Only out of full screen can focus go to the movie in the collection.
+  document.addEventListener("fullscreenchange", () => focusMovie(folder), { once: true });
   document.exitFullscreen().catch(warnStillFullscreen);
 }
 
-// Chooses the movie `delta` from the one chosen in the collection, or its
-// first or last, if none is, and plays it if the one chosen was playing.
+// Chooses the movie `delta` from the one chosen in the collection, or, if
+// none is, from the one with focus there, or its first or last, and plays it
+// if the one chosen was playing.
 function stepMovie(delta) {
   const playlist = state.playlist;
   const video = byId("video");
@@ -1899,10 +1898,11 @@ function stepMovie(delta) {
     return;
   }
 
-  const at = playlist.order.indexOf(state.selected);
+  const listed = byId("movies").contains(document.activeElement);
+  const from = state.selected === null && listed ? document.activeElement.dataset.folder : state.selected;
+  const at = playlist.order.indexOf(from);
   const folder = playlist.order[at < 0 ? (delta > 0 ? 0 : playlist.order.length - 1) : at + delta];
   const playing = !video.paused;
-  const listed = byId("movies").contains(document.activeElement);
 
   if (folder === undefined) {
     return;
@@ -1912,11 +1912,6 @@ function stepMovie(delta) {
 
   if (playing) {
     playOrPause();
-  }
-
-  // Focus follows, leaving in view the player select shows.
-  if (listed) {
-    focusMovie(folder, { preventScroll: true });
   }
 }
 
@@ -2686,8 +2681,9 @@ function focusLost() {
 }
 
 // Gives focus back to `control`, which lost it as it was disabled, unless
-// something else has taken it: or, if `control` cannot take it, to the movie
-// chosen. If `control` opened a dialog, once the dialog closes.
+// something else has taken it: or, if `control` cannot take it, to the video
+// of the movie chosen, or, if none is, to the collection's first movie. If
+// `control` opened a dialog, once the dialog closes.
 function regainFocus(control) {
   const opened = [...document.querySelectorAll("dialog[open]")].find((dialog) => !dialog.contains(control));
 
@@ -2702,8 +2698,10 @@ function regainFocus(control) {
 
   control.focus();
 
-  if (document.activeElement !== control && state.playlist) {
-    focusMovie(state.selected);
+  if (document.activeElement !== control && state.selected !== null) {
+    byId("video").focus();
+  } else if (document.activeElement !== control && state.playlist) {
+    focusMovie(null);
   }
 }
 
@@ -2819,7 +2817,8 @@ video.addEventListener("fullscreenchange", () => {
 const SHORTCUTS = {
   k: playOrPause,
   f: toggleFullscreen,
-  s: stopMovie,
+  s: leaveMovie,
+  x: leaveMovie,
   n: () => stepMovie(1),
   p: () => stepMovie(-1),
   c: showChooser,
@@ -2850,7 +2849,7 @@ window.addEventListener("keydown", (event) => {
 
 // The keyboard's media keys, as the browser passes them on. Play and pause
 // it handles itself.
-const MEDIA_KEYS = { stop: stopMovie, previoustrack: () => stepMovie(-1), nexttrack: () => stepMovie(1) };
+const MEDIA_KEYS = { stop: leaveMovie, previoustrack: () => stepMovie(-1), nexttrack: () => stepMovie(1) };
 
 for (const [action, handler] of Object.entries(MEDIA_KEYS)) {
   try {
@@ -2905,6 +2904,7 @@ byId("add-id").addEventListener("click", () => {
 byId("share-playlist").addEventListener("click", openShare);
 byId("keep-offline").addEventListener("click", openKeep);
 byId("edit-movie").addEventListener("click", startEditing);
+byId("close-movie").addEventListener("click", leaveMovie);
 byId("cancel-edit").addEventListener("click", () => {
   stopEditing();
   byId("edit-movie").focus();
