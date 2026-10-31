@@ -75,7 +75,9 @@ seek list, this node posts the ids of the content it holds that a search of
 its own for the prefix finds, sharing at least ``storage.search_min_bits``
 leading bits with it, or the whole prefix if it is shorter. It names each once
 while the list names the entry, and later what it has come to hold since, and
-pushes only what the peer then lists by id (HttpApi §10.7.2).
+pushes only what the peer then lists by id (HttpApi §10.7.2). What a search
+finds is kept for ``peers.seek_refresh_seconds``, for every connection to share,
+since each reads its peer's list that often, and peers search for much the same.
 """
 
 from __future__ import annotations
@@ -83,6 +85,7 @@ from dataclasses import dataclass
 from http import HTTPStatus
 from json import loads
 from logging import Logger
+from threading import Lock
 from time import time
 from typing import Callable, Final, Iterator, Mapping, Sequence, TypeVar
 
@@ -117,7 +120,13 @@ from libranet.protocol.lists import (
     parse_seek_list,
 )
 from libranet.protocol.localhost_resolution import NodeListSender
-from libranet.protocol.search import SEARCH_PATH, LocalSearch, SearchAnswer, parse_search_results
+from libranet.protocol.search import (
+    SEARCH_PATH,
+    SEARCH_RELAYS_HEADER,
+    LocalSearch,
+    SearchAnswer,
+    parse_search_results,
+)
 
 _OCTET_STREAM_HEADERS: Final[Mapping[str, str]] = {"Content-Type": OCTET_STREAM}
 _JSON_HEADERS: Final[Mapping[str, str]] = {"Content-Type": JSON_CONTENT_TYPE}
@@ -246,6 +255,34 @@ class _NodeList:
         }
 
 
+class _RecentMatches:
+    """What ``search`` found for each prefix, searched for again once ``seconds`` have passed.
+
+    Safe to use from the threads of several connections at once: one waits
+    for a search another is making, rather than making it again.
+    """
+
+    def __init__(self, search: LocalSearch, seconds: float, clock: Callable[[], float]) -> None:
+        self._search = search
+        self._seconds = seconds
+        self._clock = clock
+        self._found: dict[str, tuple[float, list[ContentId]]] = {}
+        self._lock = Lock()
+
+    def of(self, prefix: str) -> list[ContentId]:
+        """What a search of ``prefix`` found, less than ``seconds`` ago."""
+        with self._lock:
+            now = self._clock()
+            self._found = {
+                kept: found for kept, found in self._found.items() if now - found[0] < self._seconds
+            }
+
+            if prefix not in self._found:
+                self._found[prefix] = (now, self._search.search(prefix))
+
+            return self._found[prefix][1]
+
+
 class PeerExchange:
     """Holds this node's side of every conversation with a peer.
 
@@ -270,6 +307,7 @@ class PeerExchange:
         self._publish = publish
         self._logger = logger
         self._local = _LocalContent.of(config.storage)
+        self._matches = _RecentMatches(self._local.search, config.peers.seek_refresh_seconds, clock)
 
     @property
     def node_id(self) -> ContentId:
@@ -427,8 +465,10 @@ class PeerExchange:
 
         return Retrieval(found=False, retry_after_seconds=response.retry_after_seconds)
 
-    def search(self, session: PeerSession, prefix: str) -> list[ContentId]:
+    def search(self, session: PeerSession, prefix: str, *, relays: int = 0) -> list[ContentId]:
         """Ask the peer what it knows nearest a normalized ``prefix``, and publish its answer.
+
+        The peer may pass the search on ``relays`` times more.
 
         Returns:
             What it answered, best first; nothing if it sent no usable answer.
@@ -436,7 +476,10 @@ class PeerExchange:
         Raises:
             OSError: as :meth:`first_contact`.
         """
-        (response,) = session.exchange([PeerRequest("GET", f"{SEARCH_PATH}/{prefix}")])
+        headers = {SEARCH_RELAYS_HEADER: str(relays)}
+        (response,) = session.exchange(
+            [PeerRequest("GET", f"{SEARCH_PATH}/{prefix}", headers=headers)]
+        )
         found = self._read_list(session, response, parse_search_results)
 
         if not found:
@@ -598,9 +641,7 @@ class PeerExchange:
             {
                 prefix: [
                     content_id
-                    for content_id in self._local.shunned.unshunned(
-                        self._local.search.search(prefix)
-                    )
+                    for content_id in self._local.shunned.unshunned(self._matches.of(prefix))
                     if content_id not in pushed
                 ]
                 for prefix in searches

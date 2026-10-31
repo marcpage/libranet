@@ -100,9 +100,13 @@ search. The outcome is published for the fetcher::
 ``fetch.failed`` means the search ended without it.
 
 A search made of this node (``data.search_requested`` ``{"prefix",
-"node_id"}``), whether a peer asked it, as ``node_id`` names, or one of this
-node's pages, starts a search of the connected peers for the prefix
-(HighLevelDesign §4.7, Phase 4 Step 93). The search was answered at once, and
+"node_id", "relays"}``), whether a peer asked it, as ``node_id`` names, or one
+of this node's pages, starts a search of the connected peers for the prefix
+(HighLevelDesign §4.7, Phase 4 Step 93): but one a peer asked only if it may be
+passed on, as ``relays`` says, no more than ``peers.search_relays`` allows. Each
+peer is told how many times more it may be passed on, one fewer, so that a
+search ends, whatever the network is doing, unless a node still wants what it
+finds. The search was answered at once, and
 never waits on this one, whose answers make later searches better. Each pass
 asks every connected peer but the one that asked, those whose node ids best
 match the prefix first, and there are ``peers.search_passes`` of them,
@@ -111,9 +115,8 @@ peers meanwhile. Up to ``peers.broadcast_workers`` passes are made at once.
 What each peer answers is published for the stats module, as
 :meth:`~libranet.connections.peer_exchange.PeerExchange.search` says. A search
 of a prefix starts none while one is under way, nor within
-``peers.broadcast_hold_seconds`` of one ending, whoever asks: a search a peer
-asks for starts one too, so peers still searching would otherwise start it
-again, and it them, for ever.
+``peers.broadcast_hold_seconds`` of one ending, whoever asks, which saves asking
+peers again for what they were just asked.
 
 A hand-off (``eviction.notice`` ``{"algorithm", "hash", "copies"}``) pushes
 content the eviction module means to delete to the connected peers, best
@@ -306,14 +309,16 @@ class _Broadcast:
     """A search of the connected peers for a prefix, and how far it has gone (Phase 4 Step 93).
 
     Each pass asks every connected peer but ``asker``, the peer whose search
-    started it, if one did, until ``passes`` have been made. ``pass_number``
-    is the pass under way, counted from one. One broadcast worker at a time
-    carries it on, so it needs no lock of its own.
+    started it, if one did, until ``passes`` have been made, telling each it
+    may pass it on ``relays`` times more. ``pass_number`` is the pass under way,
+    counted from one. One broadcast worker at a time carries it on, so it needs
+    no lock of its own.
     """
 
     prefix: str
     asker: ContentId | None
     passes: int
+    relays: int = 0
     pass_number: int = 1
 
 
@@ -898,10 +903,22 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             )
 
     def _on_search_requested(self, message: Message) -> None:
-        """Start a search of the peers for the prefix, unless one is under way or still held."""
+        """Start a search of the peers for the prefix, unless one is under way or still held.
+
+        A search a peer asked for starts none unless it may be passed on.
+        """
         prefix = normalize_prefix(message["prefix"])
         asked_by = message.get("node_id")
         asker = None if asked_by is None else ContentId.parse(asked_by)
+        relays = self._config.peers.search_relays
+
+        if asker is not None:
+            relays = min(int(message.get("relays", 0)), relays) - 1
+
+            if relays < 0:
+                self.logger.debug("Not passing on %s's search for %s", asker, prefix)
+                return
+
         now = self._clock()
         broadcast: _Broadcast | None = None
 
@@ -911,7 +928,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
             if not under_way and not held:
                 broadcast = self._searches.prefixes.under_way[prefix] = _Broadcast(
-                    prefix, asker, self._config.peers.search_passes
+                    prefix, asker, self._config.peers.search_passes, relays
                 )
 
         if broadcast is not None:
@@ -1361,7 +1378,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
                 continue
 
             try:
-                self.exchange.search(session, broadcast.prefix)
+                self.exchange.search(session, broadcast.prefix, relays=broadcast.relays)
 
             except OSError as error:
                 self.logger.debug(

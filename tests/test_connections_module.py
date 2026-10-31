@@ -1842,12 +1842,13 @@ def test_content_stored_during_a_search_ends_it(
 # -- Searching the peers for a prefix (Phase 4 Step 93) ---------------------
 
 
-def search_requested(prefix: str, asker: ContentId | None = None) -> Message:
-    """A search of ``prefix`` made of this node, by ``asker`` if a peer asked."""
-    payload = {"prefix": prefix}
+def search_requested(prefix: str, asker: ContentId | None = None, relays: int = 1) -> Message:
+    """A search of ``prefix`` made of this node, by ``asker`` if a peer asked, ``relays`` to go."""
+    payload: dict[str, str | int] = {"prefix": prefix}
 
     if asker is not None:
         payload["node_id"] = str(asker)
+        payload["relays"] = relays
 
     return make_message(EventType.SEARCH_REQUESTED, ModuleName.WEBSERVER, payload)
 
@@ -1986,6 +1987,76 @@ def test_a_search_a_peer_asked_for_does_not_ask_that_peer_back(
     assert answered_by(bus) == [str(peers[1].node_id)]
 
 
+def test_a_search_a_peer_may_not_have_passed_on_starts_none(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+    module.handle(search_requested(NOWHERE_ID.hash, peers[0].node_id, relays=0))
+
+    assert f"Not passing on {peers[0].node_id}'s search for {NOWHERE_ID.hash}" in caplog.text
+    assert f"Searching the peers for {NOWHERE_ID.hash}" not in caplog.text
+    assert answered_by(bus) == []
+
+
+def relays_told(module: ConnectionsModule, monkeypatch: MonkeyPatch) -> list[int]:
+    """What each peer ``module`` asks to search is told it may pass the search on, as it is."""
+    told: list[int] = []
+    search = module.exchange.search
+
+    def noting(session: PeerSession, prefix: str, *, relays: int = 0) -> list[ContentId]:
+        told.append(relays)
+        return search(session, prefix, relays=relays)
+
+    monkeypatch.setattr(module.exchange, "search", noting)
+    return told
+
+
+@mark.parametrize(
+    "allowed, asked_with, expected",
+    [
+        (1, None, 1),
+        (3, None, 3),
+        (0, None, 0),
+        (1, 1, 0),
+        (3, 2, 1),
+        # A peer may not have a search go further than this node would.
+        (2, 9, 1),
+    ],
+)
+def test_each_peer_is_told_how_many_times_more_a_search_may_be_passed_on(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    caplog: LogCaptureFixture,
+    monkeypatch: MonkeyPatch,
+    allowed: int,
+    asked_with: int | None,
+    expected: int,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(with_peers(config, search_relays=allowed))
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    told = relays_told(module, monkeypatch)
+    asker = None if asked_with is None else peers[0].node_id
+
+    module.handle(search_requested(NOWHERE_ID.hash, asker, relays=asked_with or 0))
+
+    wait_for_next_broadcast_pass(caplog, NOWHERE_ID.hash)
+    assert told and set(told) == {expected}
+
+
 def test_a_peer_that_cannot_be_asked_to_search_is_passed_over(
     modules: Modules,
     config: LibranetConfig,
@@ -2002,7 +2073,7 @@ def test_a_peer_that_cannot_be_asked_to_search_is_passed_over(
     best = by_match(NOWHERE_ID, peers)
     search = module.exchange.search
 
-    def failing_for_best(session: PeerSession, prefix: str) -> list[ContentId]:
+    def failing_for_best(session: PeerSession, prefix: str, **_: int) -> list[ContentId]:
         if str(session.node_id) == best[0]:
             raise ConnectionResetError("gone")
 
@@ -2032,7 +2103,7 @@ def test_a_search_of_the_peers_that_goes_wrong_ends_and_is_held(
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
 
-    def broken(session: PeerSession, prefix: str) -> list[ContentId]:
+    def broken(session: PeerSession, prefix: str, **_: int) -> list[ContentId]:
         raise RuntimeError("broken")
 
     monkeypatch.setattr(module.exchange, "search", broken)
@@ -2059,7 +2130,7 @@ def test_a_search_of_the_peers_stops_short_when_the_module_stops(
     search = module.exchange.search
     asked_peers: list[ContentId] = []
 
-    def stopping(session: PeerSession, prefix: str) -> list[ContentId]:
+    def stopping(session: PeerSession, prefix: str, **_: int) -> list[ContentId]:
         asked_peers.append(session.node_id)
         module.on_stop()
         return search(session, prefix)

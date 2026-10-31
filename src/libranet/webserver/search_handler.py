@@ -6,10 +6,11 @@ the result cached. Every request publishes
 (Step 8) can enrich the cached file with hashes known beyond this node's own
 store, and the connection manager asks this node's peers for it, which the
 answer never waits for (Phase 4 Step 93). ``node_id`` names the peer that
-asked, when one signed the request, and is absent for a search made on this
-node, as by a page::
+asked, when one signed the request, with ``relays``, how many times more its
+``X-Search-Relays`` header says the search may be passed on, none if it says
+nothing usable. Both are absent for a search made on this node, as by a page::
 
-    data.search_requested  {"prefix": "<hex>", "node_id": "sha256/<hex>"}
+    data.search_requested  {"prefix": "<hex>", "node_id": "sha256/<hex>", "relays": 1}
 
 Content this node has shunned is left out of every answer (HttpApi §5.5,
 Phase 4 Step 30), even one cached before it was shunned, and so is whatever
@@ -50,6 +51,7 @@ from libranet.problems import INVALID_SEARCH_PREFIX
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.search import (
     SEARCH_PATH,
+    SEARCH_RELAYS_HEADER,
     LocalSearch,
     SearchAnswer,
     SearchCache,
@@ -103,7 +105,7 @@ class SearchHandler:
             found = self.search.search(prefix)
             self.cache.save_results(prefix, found)
 
-        self._announce(prefix, _asker(request))
+        self._announce(prefix, _asker(request), _relays(request))
         answer = SearchAnswer.of(self._returned(prefix, found))
         return bytes_response(answer.body, JSON_CONTENT_TYPE, answer.headers)
 
@@ -124,33 +126,37 @@ class SearchHandler:
             )
 
         drop = DropTarget.of(target)
-        found = self.fresh_results(drop.hex, asker=_asker(request))
+        found = self.fresh_results(drop.hex, asker=_asker(request), relays=_relays(request))
         answer = SearchAnswer.of(found, target=drop.hex)
         return bytes_response(answer.body, JSON_CONTENT_TYPE, answer.headers)
 
-    def fresh_results(self, prefix: str, *, asker: ContentId | None = None) -> list[ContentId]:
+    def fresh_results(
+        self, prefix: str, *, asker: ContentId | None = None, relays: int = 0
+    ) -> list[ContentId]:
         """What is held nearest a normalized ``prefix``, with what was heard of, best first.
 
         The store is scanned whether or not an answer is cached, and what the
         cached answer lists is kept among the matches, since the stats module
         adds what this node has heard of but does not hold, as many as an
         answer names. The result is cached, and announced as any search is,
-        as ``asker``'s if a peer asked.
+        as ``asker``'s if a peer asked, saying it may be passed on ``relays``
+        times more.
         """
         cached = self.cache.load_results(prefix) or []
         found = SearchAnswer.of(
             nearest(prefix, self._returned(prefix, {*self.search.search(prefix), *cached}))
         ).results
         self.cache.save_results(prefix, found)
-        self._announce(prefix, asker)
+        self._announce(prefix, asker, relays)
         return found
 
-    def _announce(self, prefix: str, asker: ContentId | None) -> None:
-        """Say that ``prefix`` was searched for, by ``asker`` if a peer asked."""
-        payload = {"prefix": prefix}
+    def _announce(self, prefix: str, asker: ContentId | None, relays: int) -> None:
+        """Say that ``prefix`` was searched for; if a peer asked, who, and how far it may go."""
+        payload: dict[str, str | int] = {"prefix": prefix}
 
         if asker is not None:
             payload["node_id"] = str(asker)
+            payload["relays"] = relays
 
         self.publish(EventType.SEARCH_REQUESTED, payload)
 
@@ -167,3 +173,20 @@ class SearchHandler:
 def _asker(request: Request) -> ContentId | None:
     """The peer that signed ``request``, if one did."""
     return None if request.authentication is None else request.authentication.node_id
+
+
+def _relays(request: Request) -> int:
+    """How many times more ``request``'s search may be passed on; none if it does not say."""
+    said = request.header(SEARCH_RELAYS_HEADER)
+
+    if said is None:
+        return 0
+
+    try:
+        return max(0, int(said))
+
+    except ValueError:
+        _LOGGER.debug(
+            "Not passing on the search %s: %s says %r", request.path, SEARCH_RELAYS_HEADER, said
+        )
+        return 0

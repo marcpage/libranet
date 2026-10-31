@@ -206,19 +206,20 @@ Work this implies:
 
 Settled with #264: moving through the movies, switching collections,
 playing, pausing, full screen, and stopping each have a key, as video
-players have, and the page lists them under **Keys**, or `?`:
+players have, and the page lists them under **Keys**, or `?` (or `/`,
+without Shift, as settled with #560):
 
 - In a collection, the arrow keys move through the movies as they are
   laid out, and Home and End to the first and the last. The collections
   in the chooser, and the folders of **Add from a file**, move the same
   way. Enter, or a click, chooses a movie, and on the movie chosen plays
   or pauses it.
-- Space or `k` plays or pauses the movie chosen, `f` goes full screen or
-  back, and `s` stops it: back at its start, out of full screen, with
-  focus back on it in the collection. `n` and `p` choose the next movie
-  and the one before, playing on if one was playing, and `c` shows the
-  collections. A keyboard's stop, next, and previous keys do the same, as
-  the browser passes them on (Media Session).
+- Space or `g` (go) plays or pauses the movie chosen, `f` goes full
+  screen or back, and `s` stops it: back at its start, out of full screen,
+  with focus back on it in the collection. `n` and `p` choose the next
+  movie and the one before, playing on if one was playing, and `c` shows
+  the collections. A keyboard's stop, next, and previous keys do the
+  same, as the browser passes them on (Media Session).
 - The keys are heard anywhere but in a field, and while no dialog is
   open, before the video's own controls hear them. Space presses a button
   that has focus instead. Seeking is left to the video's own controls.
@@ -347,6 +348,7 @@ where it went.
 | #380 | Offline viewing | 115 |
 | #404 | No changing collections while no one is signed in | None: a fix, #408 |
 | #557 | Edit, Share, and Remove as icons in the upper right corner | None: a change to the page alone |
+| #561 | G (for go), not K, to play or pause | None: a change to the page alone |
 | #563 | No movie list shown while in a movie | None: a change to the page alone |
 | #564 | X leaves a movie, back to the movie list | None: a change to the page alone |
 

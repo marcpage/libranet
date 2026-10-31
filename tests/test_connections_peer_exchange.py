@@ -15,10 +15,11 @@ from pathlib import Path
 from queue import Empty, Queue
 from socket import create_server, socket
 from threading import Thread
+from time import time
 from typing import Iterator, Mapping, Sequence
 from zlib import compress
 
-from pytest import LogCaptureFixture, fixture, raises
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, raises
 
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
@@ -44,6 +45,7 @@ from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
+from libranet.protocol.search import LocalSearch
 from libranet.webserver.server import LibranetHTTPServer, build_router
 
 from tests.helpers import new_identity, shunned_list, with_node_key
@@ -1036,6 +1038,16 @@ def test_search_asks_the_peer_and_publishes_what_it_answers(
     }
     (asked,) = peer.published(EventType.SEARCH_REQUESTED)
     assert (asked["prefix"], asked["node_id"]) == (OFFERED_ID.hash, str(identity.node_id))
+    assert asked["relays"] == 0
+
+
+def test_search_tells_the_peer_how_many_times_more_it_may_pass_the_search_on(
+    exchange: PeerExchange, session: PeerSession, peer: FixturePeer
+) -> None:
+    exchange.search(session, OFFERED_ID.hash, relays=2)
+
+    (asked,) = peer.published(EventType.SEARCH_REQUESTED)
+    assert asked["relays"] == 2
 
 
 def test_a_peer_that_answers_a_search_unusably_teaches_nothing(
@@ -1194,28 +1206,90 @@ def test_what_this_node_shuns_is_not_named(
 
 
 def test_what_a_search_matches_is_named_once_while_the_peer_lists_it_and_what_comes_later(
-    exchange: PeerExchange,
-    session: PeerSession,
+    identity: NodeIdentity,
     peer: FixturePeer,
     config: LibranetConfig,
+    queues: ModuleQueues,
 ) -> None:
-    first = held_drop(config, b"held when first asked")
-    peer.write_lists({}, [], [TARGET.hex])
-    exchange.first_contact(session)
-    later = held_drop(config, b"held only later")
+    # What a search found is kept for no time to speak of, so each read searches anew.
+    peers = config.peers.model_copy(update={"seek_refresh_seconds": 0.000001})
+    exchange = PeerExchange(
+        identity,
+        config.model_copy(update={"peers": peers}),
+        StubModule(ModuleName.CONNECTIONS, queues).publish,
+        LOGGER,
+    )
+    session = exchange.open(peer.endpoint)
 
-    exchange.refresh(session)
-    exchange.refresh(session)
+    try:
+        first = held_drop(config, b"held when first asked")
+        peer.write_lists({}, [], [TARGET.hex])
+        exchange.first_contact(session)
+        later = held_drop(config, b"held only later")
 
-    assert named_to(peer) == [[str(first)], [str(later)]]
+        exchange.refresh(session)
+        exchange.refresh(session)
 
-    peer.write_lists({}, [], [])
-    exchange.refresh(session)
-    peer.write_lists({}, [], [TARGET.hex])
-    exchange.refresh(session)
+        assert named_to(peer) == [[str(first)], [str(later)]]
+
+        peer.write_lists({}, [], [])
+        exchange.refresh(session)
+        peer.write_lists({}, [], [TARGET.hex])
+        exchange.refresh(session)
+
+    finally:
+        session.close()
 
     # Listed anew, all of it is named anew.
     assert {*named_to(peer)[2]} == {str(first), str(later)}
+
+
+def test_a_search_every_connection_reads_is_made_once_each_time_the_lists_are_read(
+    identity: NodeIdentity,
+    peer: FixturePeer,
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    now = [time()]
+    exchange = PeerExchange(
+        identity,
+        config,
+        StubModule(ModuleName.CONNECTIONS, queues).publish,
+        LOGGER,
+        clock=lambda: now[0],
+    )
+    searched: list[str] = []
+    search = LocalSearch.search
+
+    def counted(self: LocalSearch, prefix: str) -> list[ContentId]:
+        searched.append(prefix)
+        return search(self, prefix)
+
+    monkeypatch.setattr(LocalSearch, "search", counted)
+    held_drop(config, b"what the peer is looking for")
+    peer.write_lists({}, [], [TARGET.hex])
+    sessions = [exchange.open(peer.endpoint) for _ in range(2)]
+
+    try:
+        for session in sessions:
+            exchange.refresh(session)
+
+        assert searched == [TARGET.hex]
+
+        now[0] += config.peers.seek_refresh_seconds - 1
+        exchange.refresh(sessions[0])
+
+        assert searched == [TARGET.hex]
+
+        now[0] += 1
+        exchange.refresh(sessions[0])
+
+        assert searched == [TARGET.hex, TARGET.hex]
+
+    finally:
+        for session in sessions:
+            session.close()
 
 
 def test_a_peer_refusing_what_is_named_to_it_is_logged_at_debug(

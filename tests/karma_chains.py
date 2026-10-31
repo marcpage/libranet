@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from itertools import count
-from typing import Any, Collection, Mapping
+from typing import Any, Collection, Iterable, Mapping
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
@@ -74,16 +74,45 @@ class Recorder:
         ]
 
 
-def placed(target: DropTarget, content: bytes, bits: int | None = None) -> bytes:
+def names_apart(validation_id: ContentId, earlier: Iterable[GenerationTargets]) -> bool:
+    """Whether the targets after validation block ``validation_id`` are apart from ``earlier``'s.
+
+    They are apart from each other's too. Targets sharing :data:`MINIMUM_BITS` would each find
+    what is placed at the other, as one chain in 256 otherwise has, so that a test reading one
+    finds a block of the other's generation there.
+    """
+    after = GenerationTargets.after(validation_id)
+    named = [after.transaction.hex, after.validation.hex]
+    others = [
+        target.hex for targets in earlier for target in (targets.transaction, targets.validation)
+    ]
+    return all(
+        matching_bits(mine, other) < MINIMUM_BITS
+        for index, mine in enumerate(named)
+        for other in [*named[index + 1 :], *others]
+    )
+
+
+def placed(
+    target: DropTarget,
+    content: bytes,
+    bits: int | None = None,
+    *,
+    apart_from: Collection[GenerationTargets] | None = None,
+) -> bytes:
     """``content`` as a drop at ``target``, sharing exactly ``bits`` with it.
 
-    Without ``bits``, it shares at least :data:`MINIMUM_BITS`.
+    Without ``bits``, it shares at least :data:`MINIMUM_BITS`. Given ``apart_from``, the targets
+    it names, as a validation block, are apart from those (:func:`names_apart`).
     """
     for nonce in count():
         data = content + b"\x00" + str(nonce).encode("ascii")
-        shared = matching_bits(target.hex, sha256(data).hexdigest())
+        digest = sha256(data).hexdigest()
+        shared = matching_bits(target.hex, digest)
 
-        if shared == bits or (bits is None and shared >= MINIMUM_BITS):
+        if (shared == bits or (bits is None and shared >= MINIMUM_BITS)) and (
+            apart_from is None or names_apart(ContentId("sha256", digest), apart_from)
+        ):
             return data
 
     raise AssertionError("Every nonce was tried")
@@ -94,9 +123,14 @@ def signed_at(
     builder: NodeIdentity,
     block: TransactionBlock | ValidationBlock,
     bits: int | None = None,
+    *,
+    apart_from: Collection[GenerationTargets] | None = None,
 ) -> bytes:
-    """``block``, as ``builder`` signs it, as a drop at ``target`` sharing ``bits`` with it."""
-    return placed(target, builder.signed(block.text()).encoded(), bits)
+    """``block``, as ``builder`` signs it, as a drop at ``target`` sharing ``bits`` with it.
+
+    Given ``apart_from``, the targets it names are apart from those (:func:`placed`).
+    """
+    return placed(target, builder.signed(block.text()).encoded(), bits, apart_from=apart_from)
 
 
 def id_of(data: bytes) -> ContentId:
@@ -141,7 +175,9 @@ class Chain:
         block = TransactionBlock(0, None, ChainWeight(0), 0, (signed,), {own: NO_BALANCE})
         transaction = signed_at(ROOT.transaction, creator, block, bits)
         validation = ValidationBlock(0, None, (staked(creator, id_of(transaction), 0),), ())
-        drops = Generation(transaction, signed_at(ROOT.validation, creator, validation, bits))
+        drops = Generation(
+            transaction, signed_at(ROOT.validation, creator, validation, bits, apart_from=[ROOT])
+        )
         return cls((drops,))
 
     @property
@@ -233,8 +269,13 @@ class Chain:
             (staked(staker, id_of(transaction), 5),),
             witnessed,
         )
+        earlier = [
+            ROOT,
+            *(GenerationTargets.after(id_of(each.validation)) for each in self.generations),
+        ]
         drops = Generation(
-            transaction, signed_at(self.targets.validation, staker, validation, bits)
+            transaction,
+            signed_at(self.targets.validation, staker, validation, bits, apart_from=earlier),
         )
         return Chain((*self.generations, drops))
 

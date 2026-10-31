@@ -181,7 +181,8 @@ it and what each does with it.
 
 #### `data.search_requested`
 
-- **Payload:** `prefix`, and `node_id` when a peer asked.
+- **Payload:** `prefix`, and when a peer asked, `node_id` and `relays`, how many
+  times more it may be passed on.
 - **Sent by:**
   - Web server, after answering a `GET /data/search/{prefix}` from its cache
     (`search_handler.py`).
