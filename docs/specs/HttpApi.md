@@ -857,7 +857,14 @@ node's peers in the background (HighLevelDesign §4.7): the node asks the peers
 it has outgoing connections to for the same prefix, in passes, and knows the
 hashes they answer from then on, so that a later search lists them. The node
 lists the prefix in its seek list (§10.7) too, so that the peers connected to it
-push what they hold that matches (§10.7.2).
+name what they hold that matches (§10.7.2).
+
+A node asking a peer says how many times more the peer may pass the search on,
+with the header `X-Search-Relays`. A node passes a peer's search on only if it
+says at least 1, telling its own peers one fewer, and treats a missing or
+unusable value as 0, and a larger one than it would allow itself as what it
+would. So a search ends unless a node still wants what it finds and starts it
+again. The reference node allows two by default (`peers.search_relays`).
 
 ```mermaid
 sequenceDiagram

@@ -130,6 +130,7 @@ from libranet.protocol.node_metadata_requests import NodeMetadataRequest
 from libranet.protocol.search import (
     RESULTS_FIELD,
     SEARCH_PATH,
+    SEARCH_RELAYS_HEADER,
     LocalSearch,
     PrefixSource,
     SearchAnswer,
@@ -172,6 +173,7 @@ __all__ = [
     "REQUEST_PATH_HEADER",
     "RESULTS_FIELD",
     "SEARCH_PATH",
+    "SEARCH_RELAYS_HEADER",
     "SEEK_PATH",
     "STAKE_PERCENT_FIELD",
     "STAKING_FILE",

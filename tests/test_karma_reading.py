@@ -401,6 +401,29 @@ def test_a_block_found_at_a_target_but_lacked_is_awaited_as_long_as_one_is_waite
     assert not reader.awaits(FIRST.validation)
 
 
+def test_a_read_not_searching_reads_what_is_held_and_asks_no_peer(
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    staking: bytes,
+) -> None:
+    hold_keys(truth, alice, bob)
+    truth.write(id_of(staking), staking)
+
+    (held,) = reader.read(FIRST.validation, ValidationBlock, searching=False)
+
+    assert held.block_id == id_of(staking)
+    assert [event for event, _ in recorder.messages if event is EventType.SEARCH_REQUESTED] == []
+
+    reader.read(FIRST.validation, ValidationBlock)
+
+    assert [event for event, _ in recorder.messages if event is EventType.SEARCH_REQUESTED] == [
+        EventType.SEARCH_REQUESTED
+    ]
+
+
 def test_a_block_known_is_neither_read_nor_asked_for_again(
     reader: TargetReader,
     truth: CasStore,

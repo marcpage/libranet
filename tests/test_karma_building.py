@@ -22,9 +22,11 @@ from libranet.karma.building import BlockBuilder, CombinedBlock, FilledBlock
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.following import ChainFollower
+from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainHistory
 from libranet.karma.placing import BlockPlacing
 from libranet.karma.reading import HeldChain, TargetReader
+from libranet.messaging.events import EventType
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import Balance
 from libranet.protocol.karma_carried import CarriedTransaction
@@ -1155,3 +1157,26 @@ def test_what_was_read_is_forgotten_and_read_again_once_too_much_is_kept(
     shunning.build()
 
     assert recorder.asked_for().count(block_id) == 2
+
+
+def test_the_peers_are_asked_for_a_false_starts_target_once_at_a_head(
+    builder: BlockBuilder,
+    recorder: Recorder,
+    follower: ChainFollower,
+    truth: CasStore,
+    root: Chain,
+    first: Chain,
+    bob: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    rival = validating(root.targets.validation, bob, first.generations[1].transaction)
+    hold(truth, rival)
+    started = GenerationTargets.after(id_of(rival)).transaction.hex
+
+    builder.build()
+    builder.build()
+
+    asked = [said["prefix"] for said in recorder.said(EventType.SEARCH_REQUESTED)]
+    assert asked.count(started) == 1
+    # The head's own target goes on being asked for, as each read wants what it finds.
+    assert asked.count(first.targets.transaction.hex) > 1

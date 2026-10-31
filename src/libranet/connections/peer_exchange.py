@@ -120,7 +120,13 @@ from libranet.protocol.lists import (
     parse_seek_list,
 )
 from libranet.protocol.localhost_resolution import NodeListSender
-from libranet.protocol.search import SEARCH_PATH, LocalSearch, SearchAnswer, parse_search_results
+from libranet.protocol.search import (
+    SEARCH_PATH,
+    SEARCH_RELAYS_HEADER,
+    LocalSearch,
+    SearchAnswer,
+    parse_search_results,
+)
 
 _OCTET_STREAM_HEADERS: Final[Mapping[str, str]] = {"Content-Type": OCTET_STREAM}
 _JSON_HEADERS: Final[Mapping[str, str]] = {"Content-Type": JSON_CONTENT_TYPE}
@@ -459,8 +465,10 @@ class PeerExchange:
 
         return Retrieval(found=False, retry_after_seconds=response.retry_after_seconds)
 
-    def search(self, session: PeerSession, prefix: str) -> list[ContentId]:
+    def search(self, session: PeerSession, prefix: str, *, relays: int = 0) -> list[ContentId]:
         """Ask the peer what it knows nearest a normalized ``prefix``, and publish its answer.
+
+        The peer may pass the search on ``relays`` times more.
 
         Returns:
             What it answered, best first; nothing if it sent no usable answer.
@@ -468,7 +476,10 @@ class PeerExchange:
         Raises:
             OSError: as :meth:`first_contact`.
         """
-        (response,) = session.exchange([PeerRequest("GET", f"{SEARCH_PATH}/{prefix}")])
+        headers = {SEARCH_RELAYS_HEADER: str(relays)}
+        (response,) = session.exchange(
+            [PeerRequest("GET", f"{SEARCH_PATH}/{prefix}", headers=headers)]
+        )
         found = self._read_list(session, response, parse_search_results)
 
         if not found:

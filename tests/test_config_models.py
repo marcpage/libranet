@@ -538,6 +538,12 @@ class TestPeerPolicy:
             PeerConfig(min_neighborhood_connections=-1)
 
     def test_a_search_makes_three_passes_by_default_and_never_fewer_than_two(self) -> None:
+        assert PeerConfig().search_relays == 2
+        assert PeerConfig(search_relays=0).search_relays == 0
+
+        with raises(ValidationError, match="search_relays"):
+            PeerConfig(search_relays=-1)
+
         assert PeerConfig().search_passes == 3
         assert PeerConfig(search_passes=2).search_passes == 2
 

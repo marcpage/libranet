@@ -353,7 +353,8 @@ class _Found:
     and ``settled`` the blocks not to read again. ``transactions`` is each
     transaction read whose signature has checked, by its hash, ``unchecked``
     each whose has not been yet, and ``forged`` the hash of each whose failed,
-    logged once.
+    logged once. ``searched`` holds the hash of each false start's target the
+    peers have been asked for.
     """
 
     head: ContentId | None = None
@@ -363,6 +364,7 @@ class _Found:
     transactions: dict[str, SignedTransaction] = field(default_factory=dict)
     unchecked: dict[str, SignedTransaction] = field(default_factory=dict)
     forged: set[str] = field(default_factory=set)
+    searched: set[str] = field(default_factory=set)
 
     def kept(self) -> int:
         """How many blocks are kept, and hashes of the transactions in them."""
@@ -654,7 +656,10 @@ class BlockBuilder:
         """The transaction blocks held at the transaction targets of ``head``'s rivals (§3.4).
 
         Its rivals are the other validation blocks at the target it was
-        chosen from.
+        chosen from. The peers are asked for each target once at a head, as
+        each node searching for each rival's asks every peer, and few blocks
+        come to a target no chain is being built at. It is read as it is held
+        from then on.
         """
         named_for = (
             None
@@ -662,17 +667,20 @@ class BlockBuilder:
             else self._history.generation(head.generation - 1).validation
         )
         target = GenerationTargets.built_on(named_for).validation
-        rivals = self._reader.read(target, ValidationBlock)
-        return [
-            held
-            for rival in rivals
-            if rival.block_id != head.validation
-            for held in self._reader.read(
-                GenerationTargets.after(rival.block_id).transaction,
-                TransactionBlock,
-                known=self._found.settled,
-            )
-        ]
+        held: list[HeldBlock] = []
+
+        for rival in self._reader.read(target, ValidationBlock):
+            if rival.block_id != head.validation:
+                started = GenerationTargets.after(rival.block_id).transaction
+                held += self._reader.read(
+                    started,
+                    TransactionBlock,
+                    known=self._found.settled,
+                    searching=started.hex not in self._found.searched,
+                )
+                self._found.searched.add(started.hex)
+
+        return held
 
     def _parsed(
         self, held: Iterable[HeldBlock]

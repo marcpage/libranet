@@ -1038,6 +1038,16 @@ def test_search_asks_the_peer_and_publishes_what_it_answers(
     }
     (asked,) = peer.published(EventType.SEARCH_REQUESTED)
     assert (asked["prefix"], asked["node_id"]) == (OFFERED_ID.hash, str(identity.node_id))
+    assert asked["relays"] == 0
+
+
+def test_search_tells_the_peer_how_many_times_more_it_may_pass_the_search_on(
+    exchange: PeerExchange, session: PeerSession, peer: FixturePeer
+) -> None:
+    exchange.search(session, OFFERED_ID.hash, relays=2)
+
+    (asked,) = peer.published(EventType.SEARCH_REQUESTED)
+    assert asked["relays"] == 2
 
 
 def test_a_peer_that_answers_a_search_unusably_teaches_nothing(
