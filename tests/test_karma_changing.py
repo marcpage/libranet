@@ -755,18 +755,18 @@ def test_a_validation_block_naming_a_runner_up_at_its_target_states_nothing_fals
     carol: NodeIdentity,
 ) -> None:
     following(follower, truth, root.then(bob, alice, bits=9))
-    first = root.then(carol, alice, bits=9)
+    # Lighter than the block beside it, and the head heavier than its runner-up, so that no
+    # tie moves the chain followed, whichever block's id sorts first.
+    first = root.then(carol, alice, bits=8)
     targets = first.targets
     rival = signed_at(targets.transaction, bob, first.block_after(), 9)
     runner_up = validating(targets.validation, alice, rival, bits=9)
     transaction = signed_at(targets.transaction, carol, first.block_after(), 9)
-    validation = validating(targets.validation, alice, transaction, runner_up=runner_up, bits=9)
+    validation = validating(targets.validation, alice, transaction, runner_up=runner_up, bits=10)
     hold(truth, *first.drops(1), rival, runner_up, transaction, validation)
     changes.told(PEER, id_of(validation))
 
     assert changes.look()
-    # The block beside the head held may be followed first, should it be the better.
-    changes.look()
     assert history.generation(2).validation == id_of(validation)
     assert recorder.said(EventType.KARMA_FALSE_BLOCK) == []
 
