@@ -346,6 +346,7 @@ where it went.
 | #264 | Full keyboard navigation | 88 |
 | #380 | Offline viewing | 115 |
 | #404 | No changing collections while no one is signed in | None: a fix, #408 |
+| #557 | Edit, Share, and Remove as icons in the upper right corner | None: a change to the page alone |
 
 ## 5. Suggested Build Order
 
