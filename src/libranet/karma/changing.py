@@ -6,9 +6,10 @@ heavy and better (§3.3), so that nodes that saw the same blocks in another
 order come to follow one chain. Such a head is found at a target: another
 validation block at the target the head was chosen from, as one placed after
 the head's generation was followed is (Phase 6 Step 126), or another root
-while the root is the head. Or a peer tells of it (:meth:`HeadChanges.told`, Phase 6 Step 130), the latest each
-peer told kept until it is come to. The heads are weighed one at a time, in
-the six steps of §3.5.3 (:class:`~libranet.karma.claims.HeadClaim`):
+while the root is the head. Or a peer tells of it
+(:meth:`HeadChanges.told`, Phase 6 Step 130), the latest each peer told kept
+until it is come to. The heads are weighed one at a time, in the six steps of
+§3.5.3 (:class:`~libranet.karma.claims.HeadClaim`):
 
 1. **The claim is read**: the head, and the transaction block it validates,
    whose ``weight``, with 2^b for each of the two drops, is what the chain

@@ -385,7 +385,7 @@ def test_a_better_validation_block_of_the_latest_generation_is_followed_as_heavi
 def sibling(
     root: Chain, on: Chain, staker: NodeIdentity, builder: NodeIdentity, kismet: int
 ) -> bytes:
-    """A validation block ``builder`` places beside ``on``'s first, staking ``kismet`` as ``staker``.
+    """A validation block ``builder`` places beside ``on``'s first, ``staker`` staking ``kismet``.
 
     It stakes on the same transaction block, and shares as many bits with its target.
     """
@@ -573,7 +573,6 @@ def test_of_two_as_heavy_the_other_is_followed_if_the_block_followed_no_longer_c
 ) -> None:
     ours = root.then(bob, alice, bits=9)
     following(follower, truth, ours)
-    transaction = ours.generations[1].transaction
     fuller = signed_at(
         root.targets.transaction,
         carol,
@@ -583,18 +582,17 @@ def test_of_two_as_heavy_the_other_is_followed_if_the_block_followed_no_longer_c
     theirs = validating(root.targets.validation, alice, fuller, bits=9)
     hold(truth, fuller, theirs)
     # Bounds in which the block followed validates a block no longer full, and the other not.
-    full_above = len(compress(transaction, 9)) + 1
+    full_above = len(compress(ours.generations[1].transaction, 9)) + 1
     assert len(compress(fuller, 9)) > full_above
-    changes = HeadChanges(
-        history,
-        reader,
-        recorder,
-        carried,
-        bounds=replace(BOUNDS, room_bytes=BOUNDS.most_bytes - full_above),
-    )
 
     with caplog.at_level(WARNING):
-        assert changes.look()
+        assert HeadChanges(
+            history,
+            reader,
+            recorder,
+            carried,
+            bounds=replace(BOUNDS, room_bytes=BOUNDS.most_bytes - full_above),
+        ).look()
 
     assert history.generation(1).validation == id_of(theirs)
     assert "of the chain followed no longer checks" in caplog.text
