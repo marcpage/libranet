@@ -245,6 +245,7 @@ from libranet.webserver.list_handlers import (
     PEERS_PATH,
     ListFileHandler,
     NodeListHandler,
+    SearchMatchesHandler,
     SeekListHandler,
 )
 from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
@@ -524,6 +525,7 @@ __all__ = [
     "Route",
     "Router",
     "SearchHandler",
+    "SearchMatchesHandler",
     "SeekListHandler",
     "Session",
     "SessionListener",

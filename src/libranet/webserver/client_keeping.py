@@ -84,6 +84,10 @@ class SoughtContent:
             storage.seek_list_path, LocalSearch.of(CasStore.source_of_truth(storage), storage)
         )
 
+    def searches_for(self, prefix: str) -> bool:
+        """Whether the seek list names a search of ``prefix``, as it says now."""
+        return prefix in self._file.current().searches
+
     def seeks(self, content_id: ContentId) -> bool:
         """Whether the seek list asks for ``content_id``, as it says now."""
         sought = self._file.current()

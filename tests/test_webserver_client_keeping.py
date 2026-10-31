@@ -384,6 +384,15 @@ def test_a_seek_list_that_cannot_be_read_leaves_what_was_read_before(
 
 def test_nothing_is_sought_before_the_seek_list_is_derived(storage: StorageConfig) -> None:
     assert not SoughtContent.of(storage).seeks(SOUGHT)
+    assert not SoughtContent.of(storage).searches_for("e0e1")
+
+
+def test_a_search_the_seek_list_names_is_searched_for(storage: StorageConfig) -> None:
+    seek_list(storage, data=[], search=["e0e1"])
+    sought = SoughtContent.of(storage)
+
+    assert sought.searches_for("e0e1")
+    assert not sought.searches_for("e0e2")
 
 
 def test_no_identity_holds_karma_before_the_balances_are_written(storage: StorageConfig) -> None:

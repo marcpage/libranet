@@ -127,9 +127,11 @@ is the convention:
 5. **`GET` node list** — the client fetches the server's known node
    addresses from `/data/nodes`.
 6. **`PUT` fulfillable items** — for any hashes from step 4 that the
-   client already holds, and for any content it holds that matches a
-   hash prefix from step 4 closely (HTTP API §10.7.2), the client pushes
-   the corresponding content to the server via `PUT /data/{algo}/{hash}`.
+   client already holds, the client pushes the corresponding content to
+   the server via `PUT /data/{algo}/{hash}`. For any hash prefix from step
+   4, it posts the ids of the content it holds that matches the prefix
+   closely (HTTP API §10.7.2), and the server lists by hash what it lacks
+   and wants, for a later read of its list to fulfill.
 7. **`GET` requested items** — the client requests the content it is
    itself seeking, checking whether the server can fulfill any of it.
 

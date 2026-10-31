@@ -40,11 +40,11 @@ The payloads it consumes, by event:
 A miss on ``GET /data/{algorithm}/{hash}`` and a ``GET /data/search/{prefix}``
 are both requests this node could not answer, so each becomes an entry in
 its own seek list until the content arrives or the entry ages out. Storing
-content clears its entry. A miss for content the source of truth holds by
-the time it is handled, as when its ``data.stored`` was broadcast first,
-makes none. A search the seek list does not name yet has it written again at
+content clears its entry, and has the list written again at once. A miss for
+content the source of truth holds by the time it is handled, as when its
+``data.stored`` was broadcast first, makes none. A search the seek list does not name yet has it written again at
 once, rather than at the next derivation, so that the peers connected read it
-on their next refresh and push what they hold that matches (HttpApi §10.7.2,
+on their next refresh and name what they hold that matches (HttpApi §10.7.2,
 Phase 4 Step 93).
 
 The hashes a peer answered a search with, as the connection manager asked
@@ -389,10 +389,16 @@ class StatsModule(ModuleBase):
         size_bytes = int(message["size"])
         self.database.record_push(content_id)
         self.database.record_acquired(content_id, size_bytes)
+        sought = self.database.is_sought(SeekKind.DATA, str(content_id))
         self.database.clear_seek(SeekKind.DATA, str(content_id))
         self.database.record_transfer(
             ContentId.parse(message["node_id"]), received_bytes=size_bytes
         )
+
+        # At once, or each other client holding it reads that it is sought and
+        # pushes it too, as the next derivation may be a minute off.
+        if sought and self.deriver.write_seek_list():
+            self.logger.debug("Seek list rewritten now that %s is stored", content_id)
 
     def _on_data_rejected(self, message: Message) -> None:
         self.database.record_push(ContentId.from_fields(message))

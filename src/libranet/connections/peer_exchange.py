@@ -9,8 +9,9 @@ any:
 3. ``POST`` this node's node list.
 4. ``GET`` the peer's seek list.
 5. ``GET`` the peer's node list.
-6. ``PUT`` whatever the peer seeks that this node holds, and what it holds
-   that matches a prefix the peer searches for (HttpApi §10.7.2).
+6. ``PUT`` whatever the peer seeks that this node holds, and ``POST`` the ids
+   of what it holds that matches a prefix the peer searches for, for the peer
+   to seek what it lacks (HttpApi §10.7.2).
 7. ``GET`` whatever this node seeks, in case the peer holds it.
 
 :meth:`PeerExchange.open` connects and takes the first two steps, which
@@ -35,8 +36,8 @@ pipelined, and so are the requests of step 6 and of step 7.
 
 What this node holds, which step 6 pushes and step 7 does not ask for, is
 what it holds in the source of truth or its content archives (Step 34). Step
-6 pushes nothing this node has shunned, even from an archive (HttpApi §5.5,
-Phase 4 Step 30).
+6 pushes and names nothing this node has shunned, even from an archive
+(HttpApi §5.5, Phase 4 Step 30).
 
 The peer's public key goes straight into the source of truth, as sent, once
 it is known to be the peer's key, rather than through the validator, since
@@ -70,10 +71,11 @@ the peer's IP address, as this node's socket saw it (HttpApi §10.2), and
 dropped if that is not known. The peer's own entries
 are kept as addresses to try, and ``sources`` says which were observed and
 which advertised (Phase 2 Step 23). For each ``search`` entry of the peer's
-seek list, this node pushes the content it holds that a search of its own for
-the prefix finds, sharing at least ``storage.search_min_bits`` leading bits
-with it, or the whole prefix if it is shorter. It answers each entry once
-while the list names it (HttpApi §10.7.2, Phase 4 Step 93).
+seek list, this node posts the ids of the content it holds that a search of
+its own for the prefix finds, sharing at least ``storage.search_min_bits``
+leading bits with it, or the whole prefix if it is shorter. It names each once
+while the list names the entry, and later what it has come to hold since, and
+pushes only what the peer then lists by id (HttpApi §10.7.2).
 """
 
 from __future__ import annotations
@@ -115,7 +117,7 @@ from libranet.protocol.lists import (
     parse_seek_list,
 )
 from libranet.protocol.localhost_resolution import NodeListSender
-from libranet.protocol.search import SEARCH_PATH, LocalSearch, parse_search_results
+from libranet.protocol.search import SEARCH_PATH, LocalSearch, SearchAnswer, parse_search_results
 
 _OCTET_STREAM_HEADERS: Final[Mapping[str, str]] = {"Content-Type": OCTET_STREAM}
 _JSON_HEADERS: Final[Mapping[str, str]] = {"Content-Type": JSON_CONTENT_TYPE}
@@ -325,7 +327,7 @@ class PeerExchange:
             ]
         )
         self._receive_node_list(session, nodes)
-        self._push(session, self._sought_by(session, seek))
+        self._answer_seek_list(session, seek)
         self._ask_for_sought(session)
 
     def refresh(self, session: PeerSession) -> None:
@@ -335,7 +337,7 @@ class PeerExchange:
             OSError: as :meth:`first_contact`.
         """
         (seek,) = session.exchange([PeerRequest("GET", SEEK_PATH)])
-        self._push(session, self._sought_by(session, seek))
+        self._answer_seek_list(session, seek)
 
     def newly_listed(self) -> dict[str, ContentId]:
         """The nodes this node's node list names at endpoints it did not when last read.
@@ -573,24 +575,55 @@ class PeerExchange:
         if received["nodes"]:
             self._publish(EventType.NODES_RECEIVED, received)
 
-    def _sought_by(self, session: PeerSession, response: PeerResponse) -> list[ContentId]:
-        """The content ids the peer's seek list names, then what matches the searches it names.
-
-        Only the searches not answered yet on this connection are matched.
-        """
+    def _answer_seek_list(self, session: PeerSession, response: PeerResponse) -> None:
+        """Step 6: push what the peer's seek list names, and name what matches its searches."""
         sought = self._read_list(session, response, parse_seek_list)
 
         if sought is None:
-            return []
+            return
 
         data, searches = sought
-        matching = [
-            content_id
-            for prefix in session.answering(searches)
-            for content_id in self._local.search.search(prefix)
-        ]
-        # Each once, though a search may match what the list names too.
-        return list(dict.fromkeys([ContentId.parse(text) for text in data] + matching))
+        self._push(session, [ContentId.parse(text) for text in data])
+        self._name_matches(session, searches)
+
+    def _name_matches(self, session: PeerSession, searches: Sequence[str]) -> None:
+        """Post the ids of what matches each of ``searches``, not yet named on this connection.
+
+        What has been pushed to the peer, and what is shunned, is left out. The
+        peer lists by id what it lacks and wants, for a later read of its seek
+        list to push.
+        """
+        pushed = session.pushed
+        unnamed = session.naming(
+            {
+                prefix: [
+                    content_id
+                    for content_id in self._local.shunned.unshunned(
+                        self._local.search.search(prefix)
+                    )
+                    if content_id not in pushed
+                ]
+                for prefix in searches
+            }
+        )
+        requests = []
+
+        for prefix, content_ids in unnamed.items():
+            if content_ids:
+                answer = SearchAnswer.of(content_ids)
+                headers = {**_JSON_HEADERS, **answer.headers}
+                requests.append(
+                    PeerRequest("POST", f"{SEARCH_PATH}/{prefix}", answer.body, headers)
+                )
+
+        for response in session.exchange(requests):
+            if response.status != HTTPStatus.ACCEPTED:
+                self._logger.debug(
+                    "%s took no ids (%s, status %s)",
+                    session.endpoint,
+                    response.request,
+                    response.status,
+                )
 
     def _read_list(
         self,

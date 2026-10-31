@@ -1,5 +1,8 @@
 """``/data/nodes``, ``/data/seek``, and ``/data/peers``: the lists stats derives (HttpApi §10).
 
+And ``POST /data/search/{prefix}``, where a peer names what it holds that matches
+a search this node's seek list names (HttpApi §10.7.2).
+
 A ``GET`` serves the file the stats module derives (Step 8) exactly as it is
 on disk, so reading a list costs the stats module nothing. Until the first
 derivation has written the file, the answer is ``503`` with a
@@ -21,6 +24,12 @@ the answer is ``202`` without waiting for that::
                      "sources": {"http://203.0.113.42:4300": "observed"}}
     seek.received   {"node_id": "sha256/<hex>", "data": ["sha256/<hex>"], "search": ["<hex>"]}
 
+What a peer names is published as its answer to the search would be, for the
+Karma module and the stats module to seek what they lack. Only what matches a
+search the seek list names now is taken, and the answer is ``202`` whatever is::
+
+    data.search_answered  {"prefix": "<hex>", "node_id": "sha256/<hex>", "results": [...]}
+
 Every ``localhost`` endpoint in a received node list is resolved to the
 address the request came from before the list is published (HttpApi §10.2),
 and ``sources`` says which entries were the signer's own
@@ -35,13 +44,16 @@ from pathlib import Path
 from typing import Final
 
 from libranet.cas.content_id import ContentId
+from libranet.cas.errors import InvalidContentIdError
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.problems import INVALID_LIST
+from libranet.problems import INVALID_LIST, INVALID_SEARCH_PREFIX
 from libranet.protocol.errors import InvalidListError
 from libranet.protocol.http_syntax import API_PREFIX, JSON_CONTENT_TYPE
 from libranet.protocol.lists import decode_list, parse_node_list, parse_seek_list
 from libranet.protocol.localhost_resolution import NodeListSender
+from libranet.protocol.search import LocalSearch, normalize_prefix, parse_search_results
+from libranet.webserver.client_keeping import SoughtContent
 from libranet.webserver.http_types import (
     Request,
     Response,
@@ -152,6 +164,63 @@ class SeekListHandler:
         self.publish(
             EventType.SEEK_RECEIVED, {"node_id": str(signer), "data": data, "search": search}
         )
+        return Response(HTTPStatus.ACCEPTED)
+
+
+@dataclass(frozen=True)
+class SearchMatchesHandler:
+    """Publishes what a peer names as matching a search ``sought`` names now.
+
+    Whatever ``search`` would not match to the prefix is left out, and what is
+    named for a search not listed is ignored, as the list may have just changed.
+    """
+
+    max_bytes: int
+    max_decompressed_bytes: int
+    search: LocalSearch
+    sought: SoughtContent
+    publish: Publish
+
+    def __call__(self, request: Request) -> Response:
+        signer = _signer_or_refusal(request, self.max_bytes)
+
+        if isinstance(signer, Response):
+            return signer
+
+        try:
+            prefix = normalize_prefix(request.params["prefix"])
+
+        except InvalidContentIdError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+            return typed_response(
+                request, INVALID_SEARCH_PREFIX, HTTPStatus.BAD_REQUEST, str(error)
+            )
+
+        try:
+            named = parse_search_results(
+                decode_list(request.body.read(), self.max_decompressed_bytes)
+            )
+
+        except InvalidListError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+            return _invalid_list_response(request, error)
+
+        if not self.sought.searches_for(prefix):
+            _LOGGER.debug("Ignoring what %s names for %s, not searched for", signer, prefix)
+            return Response(HTTPStatus.ACCEPTED)
+
+        matching = self.search.matching(prefix, named)
+
+        if matching:
+            self.publish(
+                EventType.SEARCH_ANSWERED,
+                {
+                    "prefix": prefix,
+                    "node_id": str(signer),
+                    "results": [str(content_id) for content_id in matching],
+                },
+            )
+
         return Response(HTTPStatus.ACCEPTED)
 
 

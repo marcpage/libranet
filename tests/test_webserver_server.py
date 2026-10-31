@@ -3195,7 +3195,7 @@ def test_a_local_client_keeps_a_value_in_an_applications_store(
         ("DELETE", "/data/store/movie", "GET"),
         ("HEAD", "/data/store/movie", "GET"),
         ("PUT", "/data/directory/Movies", "GET"),
-        ("PUT", "/data/search/ab", "GET"),
+        ("PUT", "/data/search/ab", "GET, POST"),
         ("PUT", "/data/nodes/x", None),
         ("PUT", "/data/seek/x", None),
         ("PUT", "/data/client/x", None),

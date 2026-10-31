@@ -1063,7 +1063,12 @@ def test_a_peer_that_answers_a_search_unusably_teaches_nothing(
     assert published(queues, EventType.SEARCH_ANSWERED) == []
 
 
-def test_first_contact_pushes_what_closely_matches_a_search_the_peer_seeks(
+def named_to(peer: FixturePeer) -> list[list[str]]:
+    """What ``peer`` has been told matches a search it lists, each time it was told."""
+    return [message["results"] for message in peer.published(EventType.SEARCH_ANSWERED)]
+
+
+def test_first_contact_names_what_closely_matches_a_search_the_peer_seeks_pushing_none(
     exchange: PeerExchange,
     session: PeerSession,
     peer: FixturePeer,
@@ -1078,14 +1083,36 @@ def test_first_contact_pushes_what_closely_matches_a_search_the_peer_seeks(
 
     exchange.first_contact(session)
 
+    (named,) = peer.published(EventType.SEARCH_ANSWERED)
+    assert (named["prefix"], named["node_id"]) == (TARGET.hex, str(identity.node_id))
+    assert named["results"] == [str(drop_id)]
+    assert published(queues, EventType.DATA_SENT) == []
+    assert peer.published(EventType.PUT_COMPLETED) == []
+
+
+def test_what_the_peer_comes_to_list_by_id_is_pushed_as_its_seek_list_is_next_read(
+    exchange: PeerExchange,
+    session: PeerSession,
+    peer: FixturePeer,
+    config: LibranetConfig,
+    queues: ModuleQueues,
+) -> None:
+    drop_id = held_drop(config, b"what the peer is looking for")
+    other_id = held_drop(config, b"what the peer does not want")
+    peer.write_lists({}, [], [TARGET.hex])
+    exchange.first_contact(session)
+    assert {*named_to(peer)[0]} == {str(drop_id), str(other_id)}
+
+    peer.write_lists({}, [drop_id], [TARGET.hex])
+    exchange.refresh(session)
+
     (sent,) = published(queues, EventType.DATA_SENT)
     assert sent["hash"] == drop_id.hash
     (pushed,) = peer.published(EventType.PUT_COMPLETED)
-    assert (pushed["hash"], pushed["node_id"]) == (drop_id.hash, str(identity.node_id))
-    assert session.pushed == {drop_id}
+    assert pushed["hash"] == drop_id.hash
 
 
-def test_fewer_bits_set_push_content_matching_a_search_less_closely(
+def test_fewer_bits_set_name_content_matching_a_search_less_closely(
     identity: NodeIdentity,
     config: LibranetConfig,
     peer: FixturePeer,
@@ -1109,9 +1136,9 @@ def test_fewer_bits_set_push_content_matching_a_search_less_closely(
     finally:
         session.close()
 
-    sent = [message["hash"] for message in published(queues, EventType.DATA_SENT)]
-    assert sent[0] == drop_id.hash
-    assert HELD_ID.hash in sent
+    (named,) = named_to(peer)
+    assert named[0] == str(drop_id)
+    assert str(HELD_ID) in named
 
 
 def test_a_search_prefix_shorter_than_the_bits_needed_is_matched_whole(
@@ -1119,7 +1146,6 @@ def test_a_search_prefix_shorter_than_the_bits_needed_is_matched_whole(
     session: PeerSession,
     peer: FixturePeer,
     config: LibranetConfig,
-    queues: ModuleQueues,
 ) -> None:
     CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     # Eight bits, all of which it shares.
@@ -1128,14 +1154,14 @@ def test_a_search_prefix_shorter_than_the_bits_needed_is_matched_whole(
 
     exchange.first_contact(session)
 
-    sent = [message["hash"] for message in published(queues, EventType.DATA_SENT)]
-    assert sent.count(HELD_ID.hash) == 1
+    (named,) = named_to(peer)
+    assert named.count(str(HELD_ID)) == 1
     # Both nodes' keys, made afresh each run, are held too, and either is
-    # pushed as well when it shares the eight bits, about one run in 128.
-    assert all(pushed.startswith(prefix) for pushed in sent)
+    # named as well when it shares the eight bits, about one run in 128.
+    assert all(ContentId.parse(each).hash.startswith(prefix) for each in named)
 
 
-def test_content_both_sought_and_matching_a_search_is_pushed_once(
+def test_what_a_search_matches_is_not_named_once_pushed(
     exchange: PeerExchange,
     session: PeerSession,
     peer: FixturePeer,
@@ -1148,14 +1174,30 @@ def test_content_both_sought_and_matching_a_search_is_pushed_once(
     exchange.first_contact(session)
 
     assert [sent["hash"] for sent in published(queues, EventType.DATA_SENT)] == [drop_id.hash]
+    assert named_to(peer) == []
 
 
-def test_a_search_is_answered_once_while_the_peer_lists_it(
+def test_what_this_node_shuns_is_not_named(
     exchange: PeerExchange,
     session: PeerSession,
     peer: FixturePeer,
     config: LibranetConfig,
-    queues: ModuleQueues,
+) -> None:
+    kept_id = held_drop(config, b"kept")
+    shunned_id = held_drop(config, b"shunned")
+    shunned_list(config.storage.shunned_list_path, shunned_id)
+    peer.write_lists({}, [], [TARGET.hex])
+
+    exchange.first_contact(session)
+
+    assert named_to(peer) == [[str(kept_id)]]
+
+
+def test_what_a_search_matches_is_named_once_while_the_peer_lists_it_and_what_comes_later(
+    exchange: PeerExchange,
+    session: PeerSession,
+    peer: FixturePeer,
+    config: LibranetConfig,
 ) -> None:
     first = held_drop(config, b"held when first asked")
     peer.write_lists({}, [], [TARGET.hex])
@@ -1163,14 +1205,49 @@ def test_a_search_is_answered_once_while_the_peer_lists_it(
     later = held_drop(config, b"held only later")
 
     exchange.refresh(session)
-    sent_while_listed = [sent["hash"] for sent in published(queues, EventType.DATA_SENT)]
+    exchange.refresh(session)
+
+    assert named_to(peer) == [[str(first)], [str(later)]]
+
     peer.write_lists({}, [], [])
     exchange.refresh(session)
     peer.write_lists({}, [], [TARGET.hex])
     exchange.refresh(session)
 
-    assert sent_while_listed == [first.hash]
-    assert [sent["hash"] for sent in published(queues, EventType.DATA_SENT)] == [later.hash]
+    # Listed anew, all of it is named anew.
+    assert {*named_to(peer)[2]} == {str(first), str(later)}
+
+
+def test_a_peer_refusing_what_is_named_to_it_is_logged_at_debug(
+    exchange: PeerExchange,
+    config: LibranetConfig,
+    caplog: LogCaptureFixture,
+) -> None:
+    refusing = new_identity()
+    refusing.publish_public_key(CasStore.source_of_truth(config.storage))
+    held_drop(config, b"what it will not hear of")
+    seek = dumps({"data": [], "search": [TARGET.hex]}).encode()
+    peer = RawPeer(
+        [
+            # Answered in the order first contact asks.
+            signed(refusing, 201),  # this node's key
+            signed(refusing, 202),  # this node's node list
+            signed(refusing, 200, seek),  # its seek list: it searches for the drop
+            signed(refusing, 503),  # its node list: none yet
+            signed(refusing, 400),  # what is named: but it refuses it
+        ]
+    )
+    session = exchange.open(peer.endpoint)
+
+    try:
+        with caplog.at_level(DEBUG):
+            exchange.first_contact(session)
+
+    finally:
+        session.close()
+        peer.join()
+
+    assert "took no ids" in caplog.text
 
 
 def test_retrieve_hands_what_the_peer_sends_to_the_validator(

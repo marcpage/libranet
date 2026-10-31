@@ -97,6 +97,7 @@ from libranet.webserver.app_store import (
 )
 from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.backup_state import BackupState
+from libranet.webserver.client_keeping import SoughtContent
 from libranet.webserver.shun_handler import ShunHandler
 from libranet.webserver.bundle_edits import (
     BUNDLES_PATH,
@@ -161,6 +162,7 @@ from libranet.webserver.list_handlers import (
     PEERS_PATH,
     ListFileHandler,
     NodeListHandler,
+    SearchMatchesHandler,
     SeekListHandler,
 )
 from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
@@ -475,6 +477,17 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
         router.add("POST", KARMA_HEAD_PATH, KarmaHeadTold(publish))
 
     router.add("GET", SEARCH_PATTERN, search)
+    router.add(
+        "POST",
+        SEARCH_PATTERN,
+        SearchMatchesHandler(
+            storage.max_object_bytes,
+            storage.max_decompressed_list_bytes,
+            search.search,
+            SoughtContent.of(storage),
+            publish,
+        ),
+    )
     router.add("GET", DROP_SEARCH_PATTERN, search.at_drop)
     reads = BundleReadHandler(paths)
 
