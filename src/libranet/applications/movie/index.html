@@ -2293,7 +2293,6 @@ function startImport(path, name) {
 
   importMovie(path, name, target, progress).then((folder) => {
     item.remove();
-    show(byId("library-result"), `Added “${name}” to “${target}”.`);
 
     if (state.playlist && state.playlist.name === target && byId("editor").hidden) {
       select(folder);
