@@ -178,6 +178,10 @@
 
   button.pick[aria-pressed="true"] { border-color: var(--accent); }
 
+  /* Below each movie, the arrows moving it earlier and later, level across a row. */
+  .movies li { display: flex; flex-direction: column; }
+  .arrows { display: flex; justify-content: space-between; margin-top: auto; padding: 0.25rem 0 0; }
+
   .poster {
     display: block;
     width: 100%;
@@ -319,10 +323,6 @@
           <p class="note" id="movie-facts"></p>
           <p id="movie-cast"></p>
           <p class="description" id="movie-description"></p>
-          <div class="toolbar signed-in-only" hidden>
-            <button type="button" class="secondary" id="move-up">Earlier</button>
-            <button type="button" class="secondary" id="move-down">Later</button>
-          </div>
           <p class="result" id="movie-result" role="status" hidden></p>
         </div>
         <form id="editor" hidden>
@@ -384,6 +384,16 @@
     <p class="result" id="library-result" role="status" hidden></p>
     <p class="state" id="library-state" hidden></p>
     <ol class="movies" id="movies"></ol>
+    <template id="movie-arrows">
+      <div class="arrows">
+        <button type="button" class="icon" data-delta="-1" title="Earlier">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 12H5 M11 6l-6 6 6 6"/></svg>
+        </button>
+        <button type="button" class="icon" data-delta="1" title="Later">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14 M13 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+    </template>
   </section>
 </main>
 
@@ -532,7 +542,7 @@
   <p class="hint">Anywhere on the page but in a field, and while no other dialog is open.</p>
   <dl class="keys">
     <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt>
-    <dd>Move through the movies, or the collections, as they are laid out.</dd>
+    <dd>Move through the movies, or the collections, as they are laid out, from the one with focus.</dd>
     <dt><kbd>Home</kbd> <kbd>End</kbd></dt>
     <dd>To the first, or the last.</dd>
     <dt><kbd>Enter</kbd></dt>
@@ -1646,15 +1656,16 @@ function playlistChoice(entry) {
 
 function renderLibrary() {
   const playlist = state.playlist;
-  const focused = byId("movies").contains(document.activeElement) ? document.activeElement.dataset.folder : null;
+  const focused = byId("movies").contains(document.activeElement) ? document.activeElement.dataset : null;
   byId("library").hidden = state.selected !== null;
   byId("playlist-name").textContent = playlist.name;
   byId("movies").replaceChildren(...playlist.order.map((folder) => movieItem(playlist, folder)));
   showMatching();
 
-  // The movie that had focus keeps it in the newer version.
+  // The movie that had focus keeps it in the newer version, as does the
+  // arrow below it that had it.
   if (focused !== null) {
-    focusMovie(focused);
+    focusMovie(focused.folder, focused.delta);
   }
 
   if (state.selected !== null && !playlist.holds(state.selected)) {
@@ -1670,11 +1681,19 @@ function showMatching() {
   const playlist = state.playlist;
   const count = playlist.order.length;
   const filter = byId("movie-filter").value.trim();
-  const shown = new Set(playlist.matching(wordsOf(filter)));
+  const matching = playlist.matching(wordsOf(filter));
+  const shown = new Set(matching);
   const movies = plural(count, "movie", "movies");
 
   for (const pick of byId("movies").querySelectorAll("button.pick")) {
     pick.parentElement.hidden = !shown.has(pick.dataset.folder);
+  }
+
+  // A movie moves past the one shown beside it, so the first shown moves no
+  // earlier, and the last shown no later.
+  for (const arrow of byId("movies").querySelectorAll(".arrows button")) {
+    const to = matching.indexOf(arrow.dataset.folder) + Number(arrow.dataset.delta);
+    arrow.disabled = !shown.has(arrow.dataset.folder) || to < 0 || to >= matching.length;
   }
 
   byId("playlist-count").textContent = shown.size < count ? `${shown.size} of ${movies}` : movies;
@@ -1722,14 +1741,47 @@ function movieItem(playlist, folder) {
   pick.append(posterImage(playlist, folder, info), caption(playlist, folder, info));
   pick.addEventListener("click", () => select(folder));
   item.append(pick);
+
+  if (state.owner && !state.offline) {
+    item.append(movieArrows(playlist, folder));
+  }
+
   return item;
+}
+
+// The arrows below a movie of the collection, moving it earlier and later in
+// it, with focus kept on the arrow pressed as the movie moves.
+function movieArrows(playlist, folder) {
+  const arrows = byId("movie-arrows").content.firstElementChild.cloneNode(true);
+
+  for (const arrow of arrows.querySelectorAll("button")) {
+    arrow.dataset.folder = folder;
+    arrow.setAttribute("aria-label", `Move “${playlist.title(folder)}” ${arrow.title.toLowerCase()}`);
+    arrow.addEventListener("click", () => {
+      const focused = document.activeElement === arrow;
+      perform(arrow, byId("library-result"), async () => {
+        await move(folder, Number(arrow.dataset.delta));
+
+        // Some browsers take focus from the arrow as it is disabled.
+        if (focused && focusLost()) {
+          focusMovie(folder, arrow.dataset.delta);
+        }
+      });
+    });
+  }
+
+  return arrows;
 }
 
 // Gives focus to the movie in `folder` of the collection open, or to the
 // first shown, if it shows no such movie, or to adding one, if it shows none.
-function focusMovie(folder) {
+// Given `delta`, as an arrow below the movie names it, focus goes to that
+// arrow instead, unless the movie can move no further that way.
+function focusMovie(folder, delta) {
+  const arrows = [...byId("movies").querySelectorAll("li:not([hidden]) .arrows button:enabled")];
   const picks = [...byId("movies").querySelectorAll("li:not([hidden]) > button.pick")];
-  const pick = picks.find((each) => each.dataset.folder === folder) || picks[0]
+  const pick = arrows.find((each) => each.dataset.folder === folder && each.dataset.delta === delta)
+    || picks.find((each) => each.dataset.folder === folder) || picks[0]
     || byId("library").querySelector(".icons button.signed-in-only:not([hidden])");
 
   if (pick) {
@@ -1752,12 +1804,13 @@ function across(buttons, from, below) {
   return nearest ? nearest.button : null;
 }
 
-// Moves focus through the buttons shown of `list` from the keyboard: the
-// arrow keys to the one beside, above, or below, as they are laid out, and
-// Home and End to the first and the last.
-function arrowKeys(list) {
+// Moves focus through the buttons shown of `list` that `selector` matches,
+// from the keyboard, and only from one of them: the arrow keys to the one
+// beside, above, or below, as they are laid out, and Home and End to the
+// first and the last.
+function arrowKeys(list, selector = "button") {
   list.addEventListener("keydown", (event) => {
-    const buttons = [...list.querySelectorAll("button")].filter((button) => button.getClientRects().length > 0);
+    const buttons = [...list.querySelectorAll(selector)].filter((button) => button.getClientRects().length > 0);
     const at = buttons.indexOf(event.target);
     const moves = {
       ArrowLeft: () => buttons[at - 1],
@@ -1892,8 +1945,6 @@ function showDetails() {
 function refreshControls() {
   const playlist = state.playlist;
   const at = playlist && state.selected !== null ? playlist.order.indexOf(state.selected) : -1;
-  byId("move-up").disabled = at <= 0;
-  byId("move-down").disabled = at < 0 || at >= playlist.order.length - 1;
   byId("edit-movie").disabled = at < 0 || !playlist.movies.get(state.selected);
 }
 
@@ -2163,17 +2214,18 @@ async function saveEdit() {
 
 // Moving, removing, and sharing a movie.
 
-async function move(delta) {
-  const folder = state.selected;
-
+// Moves the movie in `folder` past the one beside it of those the filter
+// shows: earlier, if `delta` is -1, or later, if 1.
+async function move(folder, delta) {
   await serially(async () => {
     const playlist = state.playlist;
-    const order = [...playlist.order];
-    const at = order.indexOf(folder);
-    const to = at + delta;
+    const shown = playlist.matching(wordsOf(byId("movie-filter").value));
+    const at = shown.indexOf(folder);
+    const past = shown[at + delta];
 
-    if (at >= 0 && to >= 0 && to < order.length) {
-      [order[at], order[to]] = [order[to], order[at]];
+    if (at >= 0 && past !== undefined) {
+      const order = playlist.order.filter((each) => each !== folder);
+      order.splice(order.indexOf(past) + (delta > 0 ? 1 : 0), 0, folder);
       await changePlaylist(playlist, { order });
     }
   });
@@ -2940,7 +2992,9 @@ for (const [action, handler] of Object.entries(MEDIA_KEYS)) {
   }
 }
 
-arrowKeys(byId("movies"));
+// In a collection, the arrow keys move only from a movie, not from the
+// arrows below it, which move the movie.
+arrowKeys(byId("movies"), "button.pick");
 arrowKeys(byId("chooser-list"));
 arrowKeys(byId("offline-list"));
 arrowKeys(byId("folder-entries"));
@@ -3029,8 +3083,6 @@ onSubmit("editor", "editor-result", saveEdit);
 onSubmit("import-read", "import-read-result", readImport);
 onClick("take-poster", "poster-result", takePoster);
 onClick("share-movie", "movie-result", shareMovie);
-onClick("move-up", "movie-result", () => move(-1));
-onClick("move-down", "movie-result", () => move(1));
 onClick("remove-movie", "movie-result", removeMovie);
 onClick("share-part", "share-state", sharePart);
 onClick("import-go", "import-state", importChosen);

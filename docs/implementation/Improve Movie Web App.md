@@ -348,6 +348,7 @@ where it went.
 | #380 | Offline viewing | 115 |
 | #404 | No changing collections while no one is signed in | None: a fix, #408 |
 | #557 | Edit, Share, and Remove as icons in the upper right corner | None: a change to the page alone |
+| #558 | Earlier and Later as left and right arrows below each movie in the list, with the arrow keys moving only from a movie | None: a change to the page alone |
 | #561 | G (for go), not K, to play or pause | None: a change to the page alone |
 | #563 | No movie list shown while in a movie | None: a change to the page alone |
 | #564 | X leaves a movie, back to the movie list | None: a change to the page alone |
