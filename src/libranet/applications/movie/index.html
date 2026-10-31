@@ -1660,7 +1660,7 @@ function movieItem(playlist, folder) {
 function focusMovie(folder) {
   const picks = [...byId("movies").querySelectorAll("button.pick")];
   const pick = picks.find((each) => each.dataset.folder === folder) || picks[0]
-    || byId("library").querySelector(".toolbar:not([hidden]) button");
+    || byId("library").querySelector(".icons:not([hidden]) button");
 
   if (pick) {
     pick.focus();
