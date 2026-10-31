@@ -19,6 +19,7 @@ from libranet.webserver.inbound_peers import InboundPeers
 
 PEER = ContentId.for_data(b"a peer's key", "sha256")
 OTHER = ContentId.for_data(b"another peer's key", "sha256")
+NODE = ContentId.for_data(b"this node's key", "sha256")
 SOUGHT = ContentId.for_data(b"what this node seeks", "sha256")
 VALUE_SECONDS = 600.0
 
@@ -137,7 +138,9 @@ def kept_peers(tmp_path: Path, published: Recorder, clock: Clock) -> InboundPeer
     """
     storage = StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache")
     head = KarmaHead(ContentId("sha256", "c1" * 32), 4, 96)
-    KarmaBalances(head, {OTHER: Balance(Kismet(250), 3)}).write(storage.karma_dir)
+    KarmaBalances(head, {OTHER: Balance(Kismet(250), 3), NODE: Balance(Kismet(1_000), 3)}).write(
+        storage.karma_dir
+    )
     storage.seek_list_path.parent.mkdir(parents=True)
     storage.seek_list_path.write_text(dumps({"data": [str(SOUGHT)]}))
     keeping = ClientKeeping(
@@ -146,6 +149,7 @@ def kept_peers(tmp_path: Path, published: Recorder, clock: Clock) -> InboundPeer
         SoughtContent.of(storage),
         HeldKarma(storage.karma_dir),
         keep_count=0,
+        node_id=lambda: NODE,
         clock=clock,
     )
     return InboundPeers(published, keeping=keeping)

@@ -316,17 +316,19 @@ The reference node keeps a client connected for its first
 `network.client_grace_requests` requests, 12 unless its configuration says
 otherwise, counted on all the client's connections from the first request
 the client's key verifies. Past them, it closes a client whose Karma is below
-the median of the clients connected to it, and that has pushed nothing it
-seeks for `network.client_value_seconds`, ten minutes unless its
-configuration says otherwise. What it seeks is what its seek list names, or
+both the median of the clients connected to it and its own, and that has
+pushed nothing it seeks for `network.client_value_seconds`, ten minutes unless
+its configuration says otherwise. What it seeks is what its seek list names, or
 what a search the list names would find (HTTP API §10.7.2), and a push counts
 once it is accepted, before the content is checked. The request being served
 is answered first, with `Connection: close`, and each other connection of
 the client's is closed as it is next answered. A client of the median's
 Karma or more is kept however little it pushes, so none is closed while
 every client holds as much as the others, as while the node follows no
-chain. None is closed unless more than `network.client_keep_count` clients
-are connected, 16 unless its configuration says otherwise, a client being
+chain, and so is one of its own Karma or more, so that it turns away no
+client richer than itself. None is closed unless more than
+`network.client_keep_count` clients are connected, 16 unless its
+configuration says otherwise, a client being
 closed not counted, since a server with few clients has no need of the room.
 A client that connects again once its last connection has closed starts
 afresh.

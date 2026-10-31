@@ -754,6 +754,7 @@ def keeping_server(
         SoughtContent.of(storage),
         HeldKarma(storage.karma_dir),
         keep_count=0,
+        node_id=lambda: SERVER_IDENTITY.node_id,
         clock=keeping_clock,
     )
     publish = StubModule(ModuleName.WEBSERVER, queues).publish
@@ -787,7 +788,8 @@ def test_a_peer_of_low_karma_that_adds_nothing_is_answered_then_closed(
         identity.publish_public_key(store)
 
     KarmaBalances(
-        KarmaHead(ContentId("sha256", "c1" * 32), 1, 96), {rich.node_id: Balance(Kismet(250), 0)}
+        KarmaHead(ContentId("sha256", "c1" * 32), 1, 96),
+        {rich.node_id: Balance(Kismet(250), 0), SERVER_IDENTITY.node_id: Balance(Kismet(1_000), 0)},
     ).write(storage.karma_dir)
     path = f"/data/{CONTENT_ID}"
     host, port = keeping_server.server_address[:2]

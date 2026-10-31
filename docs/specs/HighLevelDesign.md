@@ -386,9 +386,10 @@ be kept, and to no fewer for it: holding no Karma leaves no node out. A node
 that turned it away is passed over for a while, so it tries others.
 
 As a server, a node keeps the clients of more Karma connected, and past each
-client's first requests, closes one holding less than the median of those
-connected once it has pushed nothing the node seeks for a while, if it has
-more clients than it means to keep (Handshake Protocol §5.2).
+client's first requests, closes one holding less than both the median of
+those connected and the node itself once it has pushed nothing the node seeks
+for a while, if it has more clients than it means to keep (Handshake Protocol
+§5.2).
 
 ### 4.7 Request Routing Algorithm
 

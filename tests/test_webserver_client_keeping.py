@@ -9,6 +9,7 @@ from pytest import LogCaptureFixture, fixture
 
 from libranet.cas.content_id import ContentId
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
+from libranet.identity.node_identity import NodeIdentity
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import Balance, KarmaBalances
 from libranet.protocol.karma_head import KarmaHead
@@ -19,6 +20,7 @@ VALUE_SECONDS = 600.0
 HEAD = KarmaHead(ContentId("sha256", "c1" * 32), 4, 96)
 POOR = ContentId("sha256", "a0" * 32)
 RICH = ContentId("sha256", "b0" * 32)
+NODE = ContentId("sha256", "90" * 32)
 SOUGHT = ContentId("sha256", "d0" * 32)
 UNSOUGHT = ContentId("sha256", "e0" * 32)
 # The fewest bits what a search finds shares with it.
@@ -49,8 +51,13 @@ def clock() -> Clock:
 
 @fixture
 def keeping(storage: StorageConfig, clock: Clock) -> ClientKeeping:
-    """Keeping that has :data:`RICH` hold more Karma than :data:`POOR`, both connected."""
-    KarmaBalances(HEAD, {RICH: Balance(Kismet(250), 3)}).write(storage.karma_dir)
+    """Keeping that has :data:`RICH` hold more Karma than :data:`POOR`, both connected.
+
+    :data:`NODE`, this node, holds more than either.
+    """
+    KarmaBalances(HEAD, {RICH: Balance(Kismet(250), 3), NODE: Balance(Kismet(1_000), 3)}).write(
+        storage.karma_dir
+    )
     seek_list(storage, data=[str(SOUGHT)])
     keeping = ClientKeeping(
         GRACE_REQUESTS,
@@ -58,6 +65,7 @@ def keeping(storage: StorageConfig, clock: Clock) -> ClientKeeping:
         SoughtContent.of(storage),
         HeldKarma(storage.karma_dir),
         keep_count=0,
+        node_id=lambda: NODE,
         clock=clock,
     )
     keeping.connected(POOR)
@@ -76,11 +84,15 @@ def served(keeping: ClientKeeping, client: ContentId, requests: int) -> list[boo
 
 
 def keeping_of(
-    storage: StorageConfig, clock: Clock, held: dict[ContentId, int], *, keep_count: int
+    storage: StorageConfig, clock: Clock, held: dict[ContentId, int], *, keep_count: int = 0
 ) -> ClientKeeping:
-    """Keeping past every client's grace, each of ``held`` holding that much, keeping that many."""
+    """Keeping past every client's grace, each of ``held`` holding that much, keeping that many.
+
+    :data:`NODE`, this node, holds as ``held`` says, or else more than any client.
+    """
     KarmaBalances(
-        HEAD, {client: Balance(Kismet(kismet), 3) for client, kismet in held.items()}
+        HEAD,
+        {client: Balance(Kismet(kismet), 3) for client, kismet in {NODE: 1_000, **held}.items()},
     ).write(storage.karma_dir)
     return ClientKeeping(
         0,
@@ -88,6 +100,7 @@ def keeping_of(
         SoughtContent.of(storage),
         HeldKarma(storage.karma_dir),
         keep_count=keep_count,
+        node_id=lambda: NODE,
         clock=clock,
     )
 
@@ -189,6 +202,60 @@ def test_no_client_is_closed_unless_more_than_the_keep_count_are_connected(
     assert not keeping.served(POOR)
 
 
+def test_a_client_below_the_median_holding_as_much_as_this_node_or_more_is_kept(
+    storage: StorageConfig, clock: Clock
+) -> None:
+    held = {POOR: 100, RICH: 300, SOUGHT: 400, NODE: 100}
+    keeping = keeping_of(storage, clock, held)
+
+    for client in (POOR, RICH, SOUGHT):
+        keeping.connected(client)
+
+    clock.now += VALUE_SECONDS
+
+    assert keeping.served(POOR)
+
+
+def test_a_client_below_both_the_median_and_this_node_is_closed_saying_both(
+    storage: StorageConfig, clock: Clock, caplog: LogCaptureFixture
+) -> None:
+    held = {POOR: 99, RICH: 300, SOUGHT: 400, NODE: 100}
+    keeping = keeping_of(storage, clock, held)
+
+    for client in (POOR, RICH, SOUGHT):
+        keeping.connected(client)
+
+    clock.now += VALUE_SECONDS
+
+    with caplog.at_level("INFO"):
+        assert not keeping.served(POOR)
+
+    assert "below both the median of 300 of the 3 clients connected and the 100" in caplog.text
+
+
+def test_a_client_below_this_node_but_not_the_median_is_kept(
+    storage: StorageConfig, clock: Clock
+) -> None:
+    keeping = keeping_of(storage, clock, {POOR: 100, RICH: 300, SOUGHT: 400, NODE: 500})
+
+    for client in (POOR, RICH, SOUGHT):
+        keeping.connected(client)
+
+    clock.now += VALUE_SECONDS
+
+    assert keeping.served(RICH)
+    assert keeping.served(SOUGHT)
+
+
+def test_a_node_holding_no_karma_closes_no_client(storage: StorageConfig, clock: Clock) -> None:
+    keeping = keeping_of(storage, clock, {RICH: 250, NODE: 0})
+    keeping.connected(POOR)
+    keeping.connected(RICH)
+    clock.now += VALUE_SECONDS
+
+    assert keeping.served(POOR)
+
+
 def test_those_being_closed_do_not_count_toward_those_kept(
     storage: StorageConfig, clock: Clock
 ) -> None:
@@ -269,6 +336,7 @@ def test_karma_that_cannot_be_read_is_warned_of_once_and_closes_no_client(
         SoughtContent.of(storage),
         HeldKarma(storage.karma_dir),
         keep_count=0,
+        node_id=lambda: NODE,
         clock=clock,
     )
     keeping.connected(POOR)
@@ -329,7 +397,10 @@ def test_keeping_follows_the_configuration(storage: StorageConfig, clock: Clock)
         ),
         storage=storage,
     )
-    KarmaBalances(HEAD, {RICH: Balance(Kismet(250), 3)}).write(storage.karma_dir)
+    identity = NodeIdentity.load_or_create(config)
+    KarmaBalances(
+        HEAD, {RICH: Balance(Kismet(250), 3), identity.node_id: Balance(Kismet(1_000), 3)}
+    ).write(storage.karma_dir)
     keeping = ClientKeeping.of(config, clock=clock)
     keeping.connected(POOR)
     keeping.connected(RICH)
