@@ -514,7 +514,7 @@
     <dd>To the first, or the last.</dd>
     <dt><kbd>Enter</kbd></dt>
     <dd>Choose the movie, or open the collection. A movie chosen plays, or pauses.</dd>
-    <dt><kbd>Space</kbd> <kbd>K</kbd></dt>
+    <dt><kbd>Space</kbd> <kbd>G</kbd></dt>
     <dd>Play or pause the movie chosen. Space presses a button that has focus instead.</dd>
     <dt><kbd>F</kbd></dt>
     <dd>Full screen, or back.</dd>
@@ -2817,7 +2817,7 @@ video.addEventListener("fullscreenchange", () => {
 // is open. Each is heard before the element with focus hears it, so that a
 // video's own controls do not act on it too.
 const SHORTCUTS = {
-  k: playOrPause,
+  g: playOrPause,
   f: toggleFullscreen,
   s: stopMovie,
   n: () => stepMovie(1),
@@ -2838,7 +2838,7 @@ window.addEventListener("keydown", (event) => {
 
   // Space presses a button or link that has focus, and scrolls when no movie is chosen.
   const pressed = target.closest("button, a[href], summary") || state.selected === null;
-  const key = event.key === " " ? (pressed ? "" : "k") : String(event.key).toLowerCase();
+  const key = event.key === " " ? (pressed ? "" : "g") : String(event.key).toLowerCase();
 
   if (!Object.hasOwn(SHORTCUTS, key)) {
     return;
