@@ -514,16 +514,15 @@ class TargetReader:
         as long as the node goes on reading it (HighLevelDesign §4.5).
         """
         now = self._clock()
-
         said = self._requested.get(content_id)
 
         if said is not None and now - said < _REQUEST_SAID_SECONDS:
             return
 
         self._requested = {
-            each: said
-            for each, said in self._requested.items()
-            if now - said < _REQUEST_SAID_SECONDS
+            each: when
+            for each, when in self._requested.items()
+            if now - when < _REQUEST_SAID_SECONDS
         }
         self._requested[content_id] = now
         self._publish(EventType.DATA_REQUESTED, {**content_id.fields(), "external": False})
