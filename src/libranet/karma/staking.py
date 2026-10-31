@@ -518,7 +518,7 @@ class ValidationBuilder:
         rivals = self._rivals(staked.validated_id, validations, target)
         drop = self._filled(
             replace(block, runner_up=staked.cover.runner_up(block, identity.node_id, rivals)),
-            self._witnesses(validated, transactions),
+            self._witnesses(validated),
             identity,
         )
 
@@ -570,21 +570,17 @@ class ValidationBuilder:
             key=rank,
         )
 
-    def _witnesses(
-        self, validated: TransactionBlock, transactions: Mapping[ContentId, TransactionBlockCheck]
-    ) -> list[str]:
+    def _witnesses(self, validated: TransactionBlock) -> list[str]:
         """The hashes a block validating ``validated`` lists, those of most worth first (§6.4).
 
         Those of the transactions carried come first, and then those of the
-        transactions in ``transactions``, the blocks held at the head's
-        transaction target, sorted, each but those ``validated`` holds, and
+        transactions in the blocks checked at the head's transaction target,
+        sorted, each but those ``validated`` holds, and
         those a winning validation block of the chain lists.
         """
         holds = {signed.hash for signed in validated.signed}
         carried = [each.signed.hash for each in self._carried.readable_at(self._history)]
-        seen = sorted(
-            {signed.hash for check in transactions.values() for signed in check.drop.block.signed}
-        )
+        seen = sorted(self._follower.transaction_hashes())
         return [
             witness
             for witness in dict.fromkeys([*carried, *seen])

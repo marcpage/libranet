@@ -22,6 +22,7 @@ from libranet.karma.blocks import (
 from libranet.karma.checking import (
     BlockScore,
     ChainBefore,
+    NotFullBlock,
     TransactionBlockCheck,
     TransactionVerdict,
 )
@@ -551,6 +552,20 @@ def test_a_block_not_full_is_incorrect(
     assert check.score is None
     assert not check.full
     assert "must be full" in check.incorrect
+    assert check.kept() == NotFullBlock(frozenset(signed.hash for signed in block.signed))
+
+
+def test_a_full_block_is_kept_whole(
+    alice: NodeIdentity,
+    chain: ChainInMemory,
+    keys: dict[ContentId, bytes],
+    block: TransactionBlock,
+) -> None:
+    check = checked(block, alice, chain, keys)
+
+    assert isinstance(check, TransactionBlockCheck)
+    assert check.full
+    assert check.kept() is check
 
 
 def test_those_holding_kismet_are_counted_with_the_payout_applied(chain: ChainInMemory) -> None:

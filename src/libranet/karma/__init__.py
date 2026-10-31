@@ -50,6 +50,7 @@ from libranet.karma.checking import (
     BlockScore,
     ChainBefore,
     ChainView,
+    NotFullBlock,
     TransactionBlockCheck,
     TransactionVerdict,
 )
@@ -115,6 +116,7 @@ __all__ = [
     "HeldChain",
     "KarmaModule",
     "NodePayments",
+    "NotFullBlock",
     "OwnBlock",
     "Reward",
     "StakeCover",

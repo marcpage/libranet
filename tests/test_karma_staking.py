@@ -1,12 +1,15 @@
 """Tests for staking, and building validation blocks of the stakes (KarmaLedger §6)."""
 
 from __future__ import annotations
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from logging import DEBUG, INFO
+from zlib import compress
 
 from pytest import LogCaptureFixture, fixture
 
 from libranet.bundle.signing import SignedBundle
+from libranet.bundle.storing import STORAGE_COMPRESSION_LEVEL
 from libranet.cas.content_id import ContentId
 from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
@@ -777,6 +780,38 @@ def test_the_block_lists_what_is_carried_and_seen_that_the_chain_has_not_witness
 
     (block,) = placed.blocks()
     assert block.witnessed == tuple(sorted([seen.hash, unseen.hash]))
+
+
+def test_the_block_lists_what_is_seen_in_a_block_not_full(
+    placed: Placed,
+    carried: CarriedTransactions,
+    history: ChainHistory,
+    follower: ChainFollower,
+    reader: TargetReader,
+    recorder: Recorder,
+    truth: CasStore,
+    root: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    # pylint: disable=too-many-locals
+    witnessing = root.then(bob, alice, bits=9)
+    following(follower, truth, witnessing)
+    taken = [sent(alice, {bob.node_id: 1}, seconds) for seconds in (2, 3, 4)]
+    seen = sent(alice, {bob.node_id: 1}, 5)
+    put_up(truth, witnessing, dave, *taken, bits=10)
+    small = put_up(truth, witnessing, dave, seen, bits=8)
+    # Full above what the smaller measures.
+    room_bytes = ROOMY.most_bytes - len(compress(small, STORAGE_COMPRESSION_LEVEL))
+    measuring = ChainFollower(
+        history, reader, recorder, bounds=replace(ROOMY, room_bytes=room_bytes)
+    )
+
+    building(history, measuring, reader, carried, alice, placed).build()
+
+    (block,) = placed.blocks()
+    assert block.witnessed == (seen.hash,)
 
 
 def test_witnesses_are_listed_as_room_allows_those_carried_first(

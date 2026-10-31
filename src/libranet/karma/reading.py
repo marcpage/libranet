@@ -9,6 +9,12 @@ peers, and the stats module seeks the target (Phase 4 Step 93)::
 
     data.search_requested  {"prefix": "<hex>"}
 
+What is read is said to be a request of this node's, at most once a minute for
+any one piece of content, so that eviction counts it as it does any content in
+use::
+
+    data.requested  {"algorithm", "hash", "external": false}
+
 Each peer's answer is taken as it arrives (:meth:`TargetReader.answered`)::
 
     data.search_answered  {"prefix": "<hex>", "node_id", "results": [...]}
@@ -50,7 +56,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from logging import getLogger
 from time import time
-from typing import Callable, Collection, Iterable, Mapping, Protocol, TypeVar
+from typing import Callable, Collection, Final, Iterable, Mapping, Protocol, TypeVar
 from zlib import compress
 
 from libranet.bundle.content import ContentSource
@@ -82,6 +88,10 @@ from libranet.protocol.search import LocalSearch
 _LOGGER = getLogger(__name__)
 
 _Block = TypeVar("_Block", TransactionBlock, ValidationBlock)
+
+#: How often a read of one piece of content is said to be a request, however
+#: often it is read: a look at a target may read a block many times a minute.
+_REQUEST_SAID_SECONDS: Final = 60.0
 
 
 @dataclass
@@ -169,6 +179,8 @@ class TargetReader:
         self._asked: dict[ContentId, float] = {}
         # What peers have named at each target being read, by its hash.
         self._answers: dict[str, _Answers] = {}
+        # When a read of each piece of content was last said.
+        self._requested: dict[ContentId, float] = {}
 
     @classmethod
     def of(
@@ -480,6 +492,7 @@ class TargetReader:
             raise MissingContentError((content_id,)) from None
 
         if content_id.matches(stored):
+            self._say_requested(content_id)
             return stored, None
 
         try:
@@ -491,7 +504,29 @@ class TargetReader:
         if not content_id.matches(data):
             raise BundleVerificationError(f"What is held decompresses to other than {content_id}")
 
+        self._say_requested(content_id)
         return data, len(stored)
+
+    def _say_requested(self, content_id: ContentId) -> None:
+        """Say that ``content_id`` was read, as a request of this node's, at most once a minute.
+
+        So eviction counts it as it does any content in use, and keeps it for
+        as long as the node goes on reading it (HighLevelDesign §4.5).
+        """
+        now = self._clock()
+
+        said = self._requested.get(content_id)
+
+        if said is not None and now - said < _REQUEST_SAID_SECONDS:
+            return
+
+        self._requested = {
+            each: said
+            for each, said in self._requested.items()
+            if now - said < _REQUEST_SAID_SECONDS
+        }
+        self._requested[content_id] = now
+        self._publish(EventType.DATA_REQUESTED, {**content_id.fields(), "external": False})
 
     @staticmethod
     def _signers(data: bytes, kind: type[_Block]) -> list[ContentId]:

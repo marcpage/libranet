@@ -16,8 +16,10 @@ A block whose check needs what the node lacks, a signer's key or a block of
 the chain, is checked again once that has come: the reader asks for it
 (Phase 6 Step 124). A block checked is not checked again while the head is
 the same, and what was found of it is said once. One not full is not read or
-asked for again either, even if eviction lets it go, as no validation block
-can stake on it: its check is kept, for any that names it. A block found
+asked for again either, even if eviction lets it go, as no correct validation
+block can stake on it, and little is kept of it
+(:class:`~libranet.karma.checking.NotFullBlock`): only a validation block naming
+it has it read again, to judge what that states of it. A block found
 unsigned, or whose signature fails, is shunned (§3.7, §3.8); one found false
 is said, for its builder, and the staker of a stake that alone exceeds what
 covers it, to be distrusted (Phase 6 Step 127). Each is logged at debug, as
@@ -57,7 +59,7 @@ from libranet.karma.blocks import (
     ValidationBlock,
     unchecked_level,
 )
-from libranet.karma.checking import TransactionBlockCheck
+from libranet.karma.checking import NotFullBlock, TransactionBlockCheck
 from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
@@ -78,8 +80,8 @@ class _Looking:
     """
 
     targets: GenerationTargets
-    transactions: dict[ContentId, TransactionBlockCheck | BlockFinding | None] = field(
-        default_factory=dict
+    transactions: dict[ContentId, TransactionBlockCheck | NotFullBlock | BlockFinding | None] = (
+        field(default_factory=dict)
     )
     validations: dict[ContentId, ValidationBlockCheck | BlockFinding | None] = field(
         default_factory=dict
@@ -96,16 +98,18 @@ class _AtTarget(Mapping[ContentId, TransactionBlockCheck | BlockFinding]):
     ``lacking`` says its check lacks, so that the validation block waits for
     it too; or :class:`ValueError` for one passed over, so that the
     validation block is passed over too, at debug, as what was wrong was
-    logged of the block it names.
+    logged of the block it names. One found not full is read and checked ``again``.
     """
 
     def __init__(
         self,
-        checks: Mapping[ContentId, TransactionBlockCheck | BlockFinding | None],
+        checks: Mapping[ContentId, TransactionBlockCheck | NotFullBlock | BlockFinding | None],
         lacking: Mapping[ContentId, tuple[ContentId, ...]],
+        again: Callable[[ContentId], TransactionBlockCheck | BlockFinding],
     ) -> None:
         self._checks = checks
         self._lacking = lacking
+        self._again = again
 
     def __getitem__(self, block_id: ContentId) -> TransactionBlockCheck | BlockFinding:
         if block_id in self._lacking:
@@ -116,7 +120,7 @@ class _AtTarget(Mapping[ContentId, TransactionBlockCheck | BlockFinding]):
         if check is None:
             raise ValueError(f"It names {block_id}, which is passed over")
 
-        return check
+        return self._again(block_id) if isinstance(check, NotFullBlock) else check
 
     def __contains__(self, block_id: object) -> bool:
         return block_id in self._checks or block_id in self._lacking
@@ -184,7 +188,8 @@ class ChainFollower:
 
         They are read and checked as :meth:`look` checks them, each not
         checked before at the head, and what is found of one said, but none
-        is followed. One whose check lacks what is not held is left out.
+        is followed. One whose check lacks what is not held is left out, and
+        so is a transaction block found not full, which is not staked on.
 
         Returns:
             The transaction blocks, by id, and the validation blocks, each
@@ -197,6 +202,15 @@ class ChainFollower:
             if isinstance(check, TransactionBlockCheck)
         }
         return transactions, checks
+
+    def transaction_hashes(self) -> set[str]:
+        """The hash of each transaction in the transaction blocks checked at the head's target."""
+        return {
+            transaction_hash
+            for found in self._looking.transactions.values()
+            if isinstance(found, (TransactionBlockCheck, NotFullBlock))
+            for transaction_hash in found.hashes
+        }
 
     def _named_for(self) -> ContentId | None:
         """The head, which the next generation's targets are named for, or ``None`` if none."""
@@ -238,10 +252,10 @@ class ChainFollower:
         """The checks of the transaction blocks held at ``target``, named for ``named_for``."""
         # One checked and not full is done with: no validation block can stake
         # on it, so eviction may have it, and it is not fetched again.
-        checks: dict[ContentId, TransactionBlockCheck | BlockFinding | None] = {
+        checks: dict[ContentId, TransactionBlockCheck | NotFullBlock | BlockFinding | None] = {
             block_id: found
             for block_id, found in self._looking.transactions.items()
-            if not isinstance(found, TransactionBlockCheck) or not found.full
+            if not isinstance(found, TransactionBlockCheck)
         }
         lacking: dict[ContentId, tuple[ContentId, ...]] = {}
         check = partial(self._transaction, named_for)
@@ -255,7 +269,7 @@ class ChainFollower:
                 # once that comes.
                 lacking[held.block_id] = error.content_ids
 
-        return _AtTarget(checks, lacking)
+        return _AtTarget(checks, lacking, partial(self._again, named_for))
 
     def _validations(
         self, named_for: ContentId | None, target: DropTarget, transactions: _AtTarget
@@ -284,8 +298,8 @@ class ChainFollower:
 
     def _transaction(
         self, named_for: ContentId | None, held: HeldBlock
-    ) -> TransactionBlockCheck | BlockFinding:
-        """Transaction block ``held`` checked, read at the target named for ``named_for``.
+    ) -> TransactionBlockCheck | NotFullBlock | BlockFinding:
+        """What to keep of transaction block ``held``, read at the target named for ``named_for``.
 
         Raises:
             MisplacedBlockError: it is of another target.
@@ -295,7 +309,33 @@ class ChainFollower:
             ValueError: it names an id under a hash algorithm this node
                 lacks.
         """
-        return TransactionBlockCheck.of_held(held, named_for, self._chain, bounds=self._bounds)
+        check = TransactionBlockCheck.of_held(held, named_for, self._chain, bounds=self._bounds)
+        return check.kept() if isinstance(check, TransactionBlockCheck) else check
+
+    def _again(
+        self, named_for: ContentId | None, block_id: ContentId
+    ) -> TransactionBlockCheck | BlockFinding:
+        """Transaction block ``block_id``, found not full, read and checked again in whole.
+
+        A validation block names it, and what that states of it is judged from
+        all of it. This copy may measure full, as another may (§3.8), and if so
+        it is kept whole from now on, for the validation block to be followed.
+
+        Raises:
+            MisplacedBlockError: it is of another target.
+            MissingContentError: names what it lacks, itself if it is not held,
+                which is asked for.
+            BundleError: it is shunned, or it cannot be checked here, or a block
+                of the chain cannot be read.
+            ValueError: it names an id under a hash algorithm this node lacks.
+        """
+        held = self._reader.block(block_id, TransactionBlock)
+        check = TransactionBlockCheck.of_held(held, named_for, self._chain, bounds=self._bounds)
+
+        if isinstance(check, TransactionBlockCheck) and check.full:
+            self._looking.transactions[block_id] = check
+
+        return check
 
     def _validation(
         self, named_for: ContentId | None, transactions: _AtTarget, held: HeldBlock

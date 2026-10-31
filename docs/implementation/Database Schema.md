@@ -448,7 +448,7 @@ event happened.
 
 | Event | From | Writes |
 | --- | --- | --- |
-| `data.requested` | Web server | `data_stats`: `external_requests` or `internal_requests` + 1; `last_requested` = now |
+| `data.requested` | Web server, Karma | `data_stats`: `external_requests` or `internal_requests` + 1; `last_requested` = now |
 | `data.not_found` | Web server, unbundler, backup | `seek_entries`: this node's `data` entry added or refreshed, unless the content is shunned |
 | `data.search_requested` | Web server | `seek_entries`: this node's `search` entry added or refreshed |
 | `data.search_answered` | Connection manager | `data_stats`: a row for each id in `results` that has none |
