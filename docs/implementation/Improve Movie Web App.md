@@ -349,6 +349,10 @@ where it went.
 | #404 | No changing collections while no one is signed in | None: a fix, #408 |
 | #557 | Edit, Share, and Remove as icons in the upper right corner | None: a change to the page alone |
 | #561 | G (for go), not K, to play or pause | None: a change to the page alone |
+| #567 | A collection's Add from a file as a file with a plus in its upper right corner, in the upper right corner | None: a change to the page alone |
+| #568 | A collection's Add by id as a plus in a circle in the upper right corner | None: a change to the page alone |
+| #569 | A collection's Share as an icon in the upper right corner | None: a change to the page alone |
+| #570 | A collection's Keep offline as a download icon in the upper right corner | None: a change to the page alone |
 
 ## 5. Suggested Build Order
 
