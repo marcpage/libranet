@@ -139,8 +139,10 @@ says where the secret is, and how to restore onto a new computer.
 
 Every node ships a movie library, at `/movie/` on the node. In a browser on
 the node's own computer, it imports a video from your Movies folder, or
-another the node offers, and keeps what you know of it: its title, year,
-rating, cast, a description, and a poster taken from a frame. Movies go into
+another the node offers, and looks it up at TMDB, by the title and year its
+file's name gives, once you give it a TMDB key: its title, year, rating,
+cast, a description, and a still as its poster, which you can edit, or take
+a poster from a frame instead. Movies go into
 collections. Everything can be done from the keyboard, with keys like a
 video player's, which the page lists under Keys.
 
