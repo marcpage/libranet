@@ -6,10 +6,10 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from itertools import count
 from logging import DEBUG, INFO, WARNING
-from typing import Iterable
+from typing import Any, Iterable
 from zlib import compress
 
-from pytest import LogCaptureFixture, fixture
+from pytest import LogCaptureFixture, MonkeyPatch, fixture
 
 from libranet.atomic_file import write_atomically
 from libranet.bundle.storing import STORAGE_COMPRESSION_LEVEL
@@ -25,7 +25,7 @@ from libranet.karma.following import ChainFollower
 from libranet.karma.generations import FIRST_NEW_KISMET, GenerationTargets
 from libranet.karma.history import ChainHistory
 from libranet.karma.ledger import BalanceSheet, Reward, reach_of
-from libranet.karma.reading import TargetReader
+from libranet.karma.reading import HeldBlock, TargetReader
 from libranet.karma.weight import ChainWeight
 from libranet.messaging.events import EventType
 from libranet.protocol.karma_amounts import Kismet
@@ -621,6 +621,85 @@ def test_a_better_block_found_after_its_generation_is_followed_is_passed_over(
 
     assert follower.look() == []
     assert history.generation(1).validation == id_of(first_validation)
+
+
+def test_a_block_stored_during_a_look_is_at_its_target_and_nothing_is_false(
+    follower: ChainFollower,
+    history: ChainHistory,
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    root: Root,
+    first: bytes,
+    first_validation: bytes,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    hold(truth, root.transaction, root.validation)
+    hold_keys(truth, alice, bob)
+    follower.look()
+    read = reader.read
+
+    def arriving(target: DropTarget, kind: type, **kwargs: Any) -> list[HeldBlock]:
+        # Both come after the transaction target is read, and before the validation target is.
+        if kind is ValidationBlock:
+            hold(truth, first, first_validation)
+
+        return read(target, kind, **kwargs)
+
+    monkeypatch.setattr(reader, "read", arriving)
+
+    follower.look()
+
+    assert recorder.said(EventType.KARMA_FALSE_BLOCK) == []
+    assert history.generation(1).validation == id_of(first_validation)
+
+
+def test_a_full_block_let_go_is_not_waited_for_to_judge_a_validation_block_naming_it(
+    follower: ChainFollower,
+    truth: CasStore,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    root: Root,
+    first: bytes,
+    first_validation: bytes,
+) -> None:
+    hold(truth, root.transaction, root.validation)
+    hold_keys(truth, alice, bob)
+    follower.look()
+    hold(truth, first)
+    follower.checked()
+    truth.delete(id_of(first))
+    hold(truth, first_validation)
+
+    _, validations = follower.checked()
+
+    assert [(check.block_id, check.is_correct) for check in validations] == [
+        (id_of(first_validation), True)
+    ]
+
+
+def test_a_validation_block_naming_a_block_sharing_too_few_bits_with_its_target_is_false(
+    follower: ChainFollower,
+    history: ChainHistory,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    root: Root,
+) -> None:
+    far = signed_at(root.next.transaction, bob, root.block_after(), MINIMUM_BITS - 1)
+    naming = validating(root, far, alice, 5, 9)
+    hold(truth, root.transaction, root.validation, far, naming)
+    hold_keys(truth, alice, bob)
+
+    follower.look()
+
+    [false] = recorder.said(EventType.KARMA_FALSE_BLOCK)
+    assert false["builder"] == str(alice.node_id)
+    assert "must name a transaction block at its target" in false["statement"]
+    assert len(history) == 1
 
 
 def test_copies_of_blocks_at_targets_not_their_own_are_passed_over_and_none_is_false(
