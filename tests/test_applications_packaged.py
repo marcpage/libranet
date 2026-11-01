@@ -527,12 +527,16 @@ def test_the_movie_application_is_built_from_its_directory(movie_page: str) -> N
 
 def test_the_movie_page_is_one_self_contained_document(movie_page: str) -> None:
     assert movie_page.startswith("<!doctype html>")
-    # Nothing is loaded from a file of its own, or from anywhere else.
+    # Nothing is loaded from a file of its own, or from anywhere else but
+    # TMDB, which is asked what is known of a movie added from a file.
     assert "<link" not in movie_page
     assert findall(r"<script[^>]*\bsrc", movie_page) == []
     assert "url(" not in movie_page.split("<style>", 1)[1].split("</style>", 1)[0]
     assert "http:" not in movie_page
-    assert "https:" not in movie_page
+    assert set(findall(r"https:[^\"`\s]*", movie_page)) == {
+        "https://api.themoviedb.org/3",
+        "https://image.tmdb.org/t/p",
+    }
 
 
 def test_the_movie_page_calls_only_endpoints_the_node_serves(movie_page: str) -> None:
@@ -563,6 +567,9 @@ def test_the_movie_page_calls_only_endpoints_the_node_serves(movie_page: str) ->
     # stopped by its id.
     offline = quote(f"movie offline:sha256/{hex_digits}", safe="")
     assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{offline}")
+    # The key a person looks movies up at TMDB with: searched at its own drop.
+    lookup = quote(f"movie tmdb:sha256/{hex_digits}", safe="")
+    assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{lookup}")
     assert fullmatch(ARCHIVE_PATTERN, f"{ARCHIVES_PATH}/{hex_digits[:16]}")
     assert fullmatch(ENCRYPTED_PATTERN, f"{ENCRYPTED_PATH}/sha256/{hex_digits}")
     assert fullmatch(DATA_PATTERN, f"/data/sha256/{hex_digits}")

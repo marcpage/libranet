@@ -415,12 +415,37 @@
   <h3 id="file-heading">Add a movie from a file</h3>
   <p class="hint">The folders this node offers. Choose a video, and it is imported into the
   network, and added to this collection.</p>
+  <p class="hint"><span id="lookup-note"></span>
+    <button type="button" class="secondary small" id="lookup-key" disabled>TMDB key</button></p>
   <nav class="crumbs" id="folder-path" aria-label="Where in the folders"></nav>
   <ul class="entries" id="folder-entries"></ul>
   <p class="result" id="folder-state" role="status" hidden></p>
   <div class="buttons">
     <button type="button" class="secondary" data-close>Close</button>
   </div>
+</dialog>
+
+<dialog id="lookup-dialog" aria-labelledby="lookup-heading">
+  <form id="lookup-form">
+    <h3 id="lookup-heading">Looking movies up at TMDB</h3>
+    <p class="hint">A movie added from a file is looked up at TMDB, The Movie Database, by the
+    title and year its file's name gives. Its title, year, rating, cast, description, duration,
+    and a still of it, as its poster, are taken from there, and can be edited after. Only that
+    title and year, and the key, are sent to TMDB. TMDB gives a key to anyone with an account at
+    themoviedb.org, in its settings, under API. The key is kept at a drop of yours, signed by you
+    and encrypted for you alone, as your collections are. Left empty, no movie is looked up.</p>
+    <div class="fields">
+      <label class="wide">API key, or API read access token
+        <input id="lookup-field" autocomplete="off" spellcheck="false">
+      </label>
+    </div>
+    <p class="note">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+    <p class="result" id="lookup-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Save</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="id-dialog" aria-labelledby="id-heading">
@@ -628,6 +653,33 @@ const FOLDER_DIGITS = 16;
 // A poster is a JPEG of the frame showing, no wider than this.
 const POSTER_MAX_WIDTH = 1280;
 const POSTER_QUALITY = 0.85;
+
+// Where what is known of a movie added from a file is looked up: TMDB, The
+// Movie Database (developer.themoviedb.org), and where it serves pictures.
+const TMDB_API = "https://api.themoviedb.org/3";
+const TMDB_IMAGES = "https://image.tmdb.org/t/p";
+
+// Where the key a person looks movies up at TMDB with is kept, "movie
+// tmdb:{id}": in versions at the drop, each signed by them and encrypted for
+// them, as their collections are, the newest of which holds the key.
+const TMDB_PREFIX = "movie tmdb:";
+
+// How a key TMDB gives starts if it is an API read access token, sent as a
+// bearer token, rather than an API key, sent in the query: as every JSON Web
+// Token does.
+const TOKEN_START = "eyJ";
+
+// Whose rating a movie looked up is given, how many of its cast are named,
+// and how wide a picture of it is taken: a still, which fits where a poster
+// is shown, or, for a movie with none, its poster.
+const RATING_COUNTRY = "US";
+const CAST_NAMED = 5;
+const STILL_SIZE = "w1280";
+const POSTER_SIZE = "w780";
+
+// What a release's name adds after a movie's title, from the first of which
+// on is not the title: its resolution, source, codecs, and edition.
+const NOT_TITLE = /^(?:\d{3,4}[pi]|4k|uhd|hdr(?:10)?|\d{1,2}bit|[xh]26[45]|hevc|xvid|divx|blu-?ray|b[dr]rip|remux|web-?(?:dl|rip)|hdtv|hdrip|dvd(?:rip|scr)?|aac|ac3|dts|ddp?\d?|atmos|truehd|repack|extended|unrated|remastered|imax)(?:-\w+)?$/i;
 
 // How often an import is asked after.
 const IMPORT_POLL_SECONDS = 1;
@@ -1026,26 +1078,7 @@ class Kept {
   // whoever is signed in (HttpApi 11.6); null if it is not held, or is not a
   // version they signed.
   static async version(id) {
-    const result = await patiently("GET", `${ENCRYPTED}${id}`);
-
-    if (result.status === 401) {
-      throw new SessionEnded();
-    }
-
-    const value = result.value;
-
-    if (!result.ok || !isObject(value) || value.signer !== state.owner.id || !isText(value.contents)) {
-      console.warn(`Passing over ${id}: it is no version of your collections held here.`);
-      return null;
-    }
-
-    let contents;
-
-    try {
-      contents = JSON.parse(value.contents);
-    } catch (error) {
-      contents = null;
-    }
+    const contents = await openVersion(id);
 
     if (!isObject(contents) || !Array.isArray(contents.collections)) {
       console.warn(`Passing over ${id}: it is no version of your collections.`);
@@ -1066,7 +1099,7 @@ class Kept {
       const held = before.get(entry.name);
       return held && held.bundle === entry.bundle ? held : { ...entry, changed: now };
     });
-    await placeVersion(Kept.target(), collections);
+    await placeVersion(Kept.target(), { collections });
 
     for (const id of this.versions) {
       const shunned = await call("DELETE", `${DATA}${id}`);
@@ -1123,14 +1156,14 @@ class Kept {
   }
 }
 
-// Places a version listing `collections` at the drop `target`, signed by
+// Places a version holding `contents` at the drop `target`, signed by
 // whoever is signed in and encrypted for them (HttpApi 11.5, 11.6), and
 // returns its id.
-async function placeVersion(target, collections) {
+async function placeVersion(target, contents) {
   const result = await patiently("POST", SIGNED, {
     body: {
       target,
-      text: JSON.stringify({ collections }),
+      text: JSON.stringify(contents),
       seconds: DROP_SECONDS,
       minimum_bits: DROP_MINIMUM_BITS,
       encrypt: { for: state.owner.id },
@@ -1142,7 +1175,7 @@ async function placeVersion(target, collections) {
   }
 
   if (result.status === 403) {
-    throw new Error("Signed in with your fallback password, your collections are not changed until your fallback takes over.");
+    throw new Error("Signed in with your fallback password, nothing you keep is changed until your fallback takes over.");
   }
 
   if (!result.ok || !isObject(result.value) || !isText(result.value.id)) {
@@ -1150,6 +1183,30 @@ async function placeVersion(target, collections) {
   }
 
   return result.value.id;
+}
+
+// What the version at the drop `id` holds, as JSON, opened with the key of
+// whoever is signed in (HttpApi 11.6); null if it is not held, or is not a
+// version they signed.
+async function openVersion(id) {
+  const result = await patiently("GET", `${ENCRYPTED}${id}`);
+
+  if (result.status === 401) {
+    throw new SessionEnded();
+  }
+
+  const value = result.value;
+
+  if (!result.ok || !isObject(value) || value.signer !== state.owner.id || !isText(value.contents)) {
+    console.warn(`Passing over ${id}: it is no version of yours held here.`);
+    return null;
+  }
+
+  try {
+    return JSON.parse(value.contents);
+  } catch (error) {
+    return null;
+  }
 }
 
 // A bundle's id without the key it may carry, as the node names what it keeps.
@@ -1235,7 +1292,7 @@ class Offline {
 
     const bundle = await makeBundle({ encrypted: true, add });
     const entry = { name, bundle, changed: new Date().toISOString(), block: session.block };
-    const version = await placeVersion(Offline.target(), [entry]);
+    const version = await placeVersion(Offline.target(), { collections: [entry] });
     return new Offline(entry, version, null).archiveUntil(expires);
   }
 
@@ -2275,6 +2332,281 @@ async function shareMovie() {
   return null;
 }
 
+// Looking up what is known of a movie added from a file.
+
+// The title and year a video file's name gives, cleaned of what a release's
+// name adds: "The.Matrix.1999.1080p.BluRay.x264.mkv" gives “The Matrix” of
+// 1999. The year is the last before what is not the title, and never the
+// first word, which is the title's, as in “2001: A Space Odyssey”.
+class FileName {
+  constructor(title, year) {
+    this.title = title;
+    // The year, or undefined if the name gives none.
+    this.year = year;
+  }
+
+  static parse(name) {
+    const bare = name.replace(/\.[^.]*$/, "") || name;
+    const words = bare
+      .replace(/[[{]([^\]}]*)[\]}]/g, (group, inside) => (FileName.isYear(inside.trim()) ? ` ${inside} ` : " "))
+      .replace(/[_()]|\.(?! )/g, " ")
+      .split(/\s+/)
+      .filter(isText);
+    const cut = words.findIndex((word, at) => at > 0 && NOT_TITLE.test(word));
+    const end = cut < 0 ? words.length : cut;
+    const yearAt = words.slice(0, end).findLastIndex((word, at) => at > 0 && FileName.isYear(word));
+    const title = words.slice(0, yearAt > 0 ? yearAt : end).join(" ").replace(/[\s,:;–—-]+$/u, "");
+    return new FileName(FileName.cased(title || bare), yearAt > 0 ? Number(words[yearAt]) : undefined);
+  }
+
+  // Whether `word` is a year a movie may be of, up to next year.
+  static isYear(word) {
+    return /^(?:19|20)\d\d$/.test(word) && Number(word) <= new Date().getFullYear() + 1;
+  }
+
+  // `title`, each word capitalized, if it is all of one case, as a file's
+  // name often is.
+  static cased(title) {
+    if (title !== title.toLowerCase() && title !== title.toUpperCase()) {
+      return title;
+    }
+
+    return title.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (word, before, letter) => before + letter.toUpperCase());
+  }
+
+  // What is known of the movie in the file `video` from its name alone.
+  info(video) {
+    return { title: this.title, year: this.year, video };
+  }
+}
+
+// Looking up at TMDB what is known of a movie, with the key whoever is signed
+// in keeps for it at their drop, or none, "".
+class Lookup {
+  constructor(key, versions = []) {
+    this.key = key;
+    // The ids of the versions at the drop read, which the next replaces.
+    this.versions = versions;
+  }
+
+  static target() {
+    return `${TMDB_PREFIX}${state.owner.id}`;
+  }
+
+  // The key the newest version at the drop holds, of those signed by whoever
+  // is signed in, and of two placed in the same moment, the one whose id
+  // comes first: none, if there are none.
+  static async read() {
+    const ids = await foundAt(Lookup.target());
+    const versions = await Promise.all(ids.map((id) => openVersion(id)));
+    const valid = ids.filter((id, index) => isObject(versions[index]) &&
+      typeof versions[index].key === "string" && isText(versions[index].changed));
+    let newest = null;
+
+    for (const id of valid) {
+      const held = versions[ids.indexOf(id)];
+
+      if (!newest || held.changed > newest.changed || (held.changed === newest.changed && id < newest.id)) {
+        newest = { ...held, id };
+      }
+    }
+
+    return new Lookup(newest ? newest.key : "", valid);
+  }
+
+  // Keeps `key`, or none, if it is "", as the newest version at the drop,
+  // and shuns the versions read, which it replaces.
+  async keep(key) {
+    const placed = await placeVersion(Lookup.target(), { key, changed: new Date().toISOString() });
+
+    for (const id of this.versions) {
+      const shunned = await call("DELETE", `${DATA}${id}`);
+
+      if (!shunned.ok) {
+        console.warn(`The replaced version ${id} was not shunned: ${new Refusal(shunned).message}`);
+      }
+    }
+
+    return new Lookup(key, [placed]);
+  }
+
+  // What the dialog adding a movie from a file says of looking it up.
+  note() {
+    return this.key
+      ? "What is known of each movie is looked up at TMDB, by the title and year its file's name gives."
+      : "Give a TMDB key, and what is known of each movie is looked up there, by the title and year its file's name gives. Without one, each is named for its file.";
+  }
+
+  // What is known of the movie in the video file `name`, as its info.json
+  // holds it, with a picture of it, as base64, or null, and why it was not
+  // looked up, or "": looked up at TMDB, if whoever is signed in keeps a key
+  // for it, or else as the file's name gives it. It never fails.
+  static async describe(name) {
+    const named = FileName.parse(name);
+
+    try {
+      const lookup = await Lookup.read();
+
+      if (lookup.key) {
+        return { ...(await lookup.movie(named, name)), problem: "" };
+      }
+    } catch (error) {
+      console.warn(`“${name}” was not looked up at TMDB: ${error.message}`);
+      return { info: named.info(name), poster: null, problem: `${error.message} It is named for its file.` };
+    }
+
+    return { info: named.info(name), poster: null, problem: "" };
+  }
+
+  // TMDB's answer to a GET of `path`, asked with `query`, as JSON.
+  async ask(path, query = {}) {
+    const url = new URL(`${TMDB_API}${path}`);
+    const headers = {};
+
+    for (const [name, value] of Object.entries(query)) {
+      url.searchParams.set(name, String(value));
+    }
+
+    if (this.key.startsWith(TOKEN_START)) {
+      headers.Authorization = `Bearer ${this.key}`;
+    } else {
+      url.searchParams.set("api_key", this.key);
+    }
+
+    let response;
+
+    try {
+      response = await fetch(url, { headers, referrerPolicy: "no-referrer" });
+    } catch (error) {
+      throw new Error(`TMDB could not be reached: ${error.message}.`);
+    }
+
+    const value = await response.json().catch(() => null);
+
+    if (!response.ok || !isObject(value)) {
+      const said = isObject(value) && isText(value.status_message) ? `: ${value.status_message}` : ".";
+      throw new Error(`TMDB answered ${response.status}${said}`);
+    }
+
+    return value;
+  }
+
+  // The TMDB id of the movie that best matches `named`: of its year, if it
+  // gives one that TMDB knows such a movie of, or else of any.
+  async find(named) {
+    const searches = named.year === undefined ? [{}] : [{ year: named.year }, {}];
+
+    for (const search of searches) {
+      const found = await this.ask("/search/movie", { query: named.title, ...search });
+      const results = Array.isArray(found.results) ? found.results : [];
+      const best = results.find((movie) => isObject(movie) && Number.isInteger(movie.id));
+
+      if (best) {
+        return best.id;
+      }
+    }
+
+    throw new Error(`TMDB knows no movie called “${named.title}”.`);
+  }
+
+  // What TMDB knows of the movie `named`, in the file `video`, as its
+  // info.json holds it, with a picture of it, as base64, or null.
+  async movie(named, video) {
+    const movie = await this.ask(`/movie/${await this.find(named)}`, { append_to_response: "credits,release_dates" });
+    const released = isText(movie.release_date) ? /^\d{4}/.exec(movie.release_date) : null;
+    const credits = isObject(movie.credits) && Array.isArray(movie.credits.cast) ? movie.credits.cast : [];
+    const cast = credits.map((person) => (isObject(person) ? person.name : null)).filter(isText).slice(0, CAST_NAMED);
+    const info = {
+      title: isText(movie.title) ? movie.title : named.title,
+      year: released ? Number(released[0]) : named.year,
+      rating: Lookup.rating(movie),
+      cast: cast.length ? cast : undefined,
+      description: isText(movie.overview) ? movie.overview : undefined,
+      duration_seconds: Number.isInteger(movie.runtime) && movie.runtime > 0 ? movie.runtime * 60 : undefined,
+      video,
+    };
+    const [size, path] = isText(movie.backdrop_path)
+      ? [STILL_SIZE, movie.backdrop_path] : [POSTER_SIZE, movie.poster_path];
+    const poster = isText(path) ? await Lookup.picture(size, path) : null;
+
+    if (poster) {
+      info.poster = POSTER_FILE;
+    }
+
+    return { info, poster };
+  }
+
+  // The rating `movie` was released with in RATING_COUNTRY, such as PG-13;
+  // undefined if TMDB knows none.
+  static rating(movie) {
+    const countries = isObject(movie.release_dates) && Array.isArray(movie.release_dates.results)
+      ? movie.release_dates.results : [];
+    const country = countries.find((each) => isObject(each) && each.iso_3166_1 === RATING_COUNTRY);
+    const releases = country && Array.isArray(country.release_dates) ? country.release_dates : [];
+    const rated = releases.find((release) => isObject(release) && isText(release.certification));
+    return rated ? rated.certification : undefined;
+  }
+
+  // The picture of a movie at TMDB's `path` for it, `size` wide, as base64;
+  // null if it cannot be had.
+  static async picture(size, path) {
+    try {
+      const response = await fetch(`${TMDB_IMAGES}/${size}${path}`, { referrerPolicy: "no-referrer" });
+      const blob = response.ok ? await response.blob() : null;
+      return blob && blob.type.startsWith("image/") ? await base64Of(blob) : null;
+    } catch (error) {
+      console.warn(`The picture of the movie at TMDB could not be had: ${error.message}`);
+      return null;
+    }
+  }
+}
+
+// What whoever is signed in keeps for looking movies up, as the dialog adding
+// a movie from a file last read it: null while it is read, or if it could not be.
+let keptLookup = null;
+
+// Says, in the dialog adding a movie from a file, whether a movie added is
+// looked up at TMDB, and, once that is read, lets the key be changed.
+async function showLookup() {
+  const note = byId("lookup-note");
+  keptLookup = null;
+  byId("lookup-key").disabled = true;
+  note.textContent = "";
+
+  try {
+    keptLookup = await Lookup.read();
+    note.textContent = keptLookup.note();
+    byId("lookup-key").disabled = false;
+  } catch (error) {
+    note.textContent = `Whether a movie added is looked up at TMDB could not be read: ${error.message}`;
+  }
+}
+
+function openLookup() {
+  byId("lookup-form").reset();
+  byId("lookup-field").value = keptLookup.key;
+  show(byId("lookup-result"), "");
+  byId("lookup-dialog").showModal();
+}
+
+// Keeps the key given for looking movies up, once TMDB takes it, or none, if
+// none is given.
+async function keepLookup() {
+  const key = byId("lookup-field").value.trim();
+
+  if (key !== keptLookup.key) {
+    if (key) {
+      await new Lookup(key).ask("/authentication");
+    }
+
+    keptLookup = await keptLookup.keep(key);
+  }
+
+  byId("lookup-dialog").close();
+  byId("lookup-note").textContent = keptLookup.note();
+  return null;
+}
+
 // Adding a movie from a file in the folders the node offers.
 
 function crumb(text, segments) {
@@ -2385,8 +2717,9 @@ async function followImport(importId, progress) {
   }
 }
 
-// Imports the file at `path`, makes a movie of it, and adds that to the
-// playlist named `target`. Returns the movie's folder.
+// Imports the file at `path`, makes a movie of it, with what is known of it
+// looked up while the file is imported, and adds that to the playlist named
+// `target`. Returns the movie's folder, and why it was not looked up, or "".
 async function importMovie(path, name, target, progress) {
   const started = await call("POST", IMPORTS, { body: { path } });
 
@@ -2394,10 +2727,18 @@ async function importMovie(path, name, target, progress) {
     throw new Refusal(started);
   }
 
+  const described = Lookup.describe(name);
   const file = await followImport(started.value.import_id, progress);
-  const info = { title: name.replace(/\.[^.]*$/, "") || name, video: name };
-  const movie = await makeBundle({ add: { [name]: { file }, [INFO_FILE]: { text: infoText(info) } } });
-  return serially(async () => addMovie(await newest(target), movie, info));
+  const { info, poster, problem } = await described;
+  const add = { [name]: { file }, [INFO_FILE]: { text: infoText(info) } };
+
+  if (poster) {
+    add[POSTER_FILE] = { base64: poster };
+  }
+
+  const movie = await makeBundle({ add });
+  const folder = await serially(async () => addMovie(await newest(target), movie, info));
+  return { folder, problem };
 }
 
 function startImport(path, name) {
@@ -2420,12 +2761,12 @@ function startImport(path, name) {
     }
   };
 
-  importMovie(path, name, target, progress).then((folder) => {
+  importMovie(path, name, target, progress).then(({ folder, problem }) => {
     item.remove();
 
     if (state.playlist && state.playlist.name === target && byId("editor").hidden) {
       select(folder);
-      startEditing();
+      show(byId("movie-result"), problem);
     }
   }, (error) => {
     const dismiss = make("button", "Dismiss", "secondary small");
@@ -3026,7 +3367,9 @@ byId("import-playlist").addEventListener("click", openImport);
 byId("add-file").addEventListener("click", () => {
   byId("file-dialog").showModal();
   browse([]);
+  showLookup();
 });
+byId("lookup-key").addEventListener("click", openLookup);
 byId("add-id").addEventListener("click", () => {
   byId("id-form").reset();
   show(byId("id-result"), "");
@@ -3075,6 +3418,7 @@ onSubmit("new-form", "new-result", async () => {
   return null;
 });
 onSubmit("id-form", "id-result", addById);
+onSubmit("lookup-form", "lookup-result", keepLookup);
 onSubmit("editor", "editor-result", saveEdit);
 onSubmit("import-read", "import-read-result", readImport);
 onClick("take-poster", "poster-result", takePoster);
