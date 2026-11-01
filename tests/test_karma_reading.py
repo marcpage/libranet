@@ -353,6 +353,13 @@ def test_shunned_content_is_neither_read_nor_asked_for(
         reader.held(block_id)
 
 
+def test_what_shares_the_bits_a_search_returns_is_at_a_target_held_or_not(
+    reader: TargetReader,
+) -> None:
+    assert reader.is_at(FIRST.validation, matching(FIRST.validation, MINIMUM_BITS))
+    assert not reader.is_at(FIRST.validation, matching(FIRST.validation, MINIMUM_BITS - 1))
+
+
 def test_one_block_is_read_by_its_id_as_it_is_read_at_its_target(
     reader: TargetReader,
     truth: CasStore,

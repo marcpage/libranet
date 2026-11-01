@@ -89,7 +89,7 @@ class _Looking:
 
 
 class _AtTarget(Mapping[ContentId, TransactionBlockCheck | BlockFinding]):
-    """The checks of the transaction blocks read at a target, for a validation block's check.
+    """The checks of the transaction blocks at a target, for a validation block's check.
 
     A block read there and not checked is among them too, so that a
     validation block staking on it is not taken to name one at another
@@ -99,21 +99,34 @@ class _AtTarget(Mapping[ContentId, TransactionBlockCheck | BlockFinding]):
     it too; or :class:`ValueError` for one passed over, so that the
     validation block is passed over too, at debug, as what was wrong was
     logged of the block it names. One found not full is read and checked ``again``.
+
+    So is one ``placed`` at the target that was not read there, as one stored
+    since is not, or one past what a search returns. Being at a target is a
+    matter of the bits a block's id shares with it, so that every node judges a
+    validation block alike, whenever each comes by the block it names (§3.8).
     """
 
     def __init__(
         self,
         checks: Mapping[ContentId, TransactionBlockCheck | NotFullBlock | BlockFinding | None],
         lacking: Mapping[ContentId, tuple[ContentId, ...]],
+        placed: Callable[[ContentId], bool],
         again: Callable[[ContentId], TransactionBlockCheck | BlockFinding],
     ) -> None:
         self._checks = checks
         self._lacking = lacking
+        self._placed = placed
         self._again = again
 
     def __getitem__(self, block_id: ContentId) -> TransactionBlockCheck | BlockFinding:
         if block_id in self._lacking:
             raise MissingContentError(self._lacking[block_id])
+
+        if block_id not in self._checks:
+            if not self._placed(block_id):
+                raise KeyError(block_id)
+
+            return self._again(block_id)
 
         check = self._checks[block_id]
 
@@ -123,7 +136,11 @@ class _AtTarget(Mapping[ContentId, TransactionBlockCheck | BlockFinding]):
         return self._again(block_id) if isinstance(check, NotFullBlock) else check
 
     def __contains__(self, block_id: object) -> bool:
-        return block_id in self._checks or block_id in self._lacking
+        return (
+            block_id in self._checks
+            or block_id in self._lacking
+            or (isinstance(block_id, ContentId) and self._placed(block_id))
+        )
 
     def __iter__(self) -> Iterator[ContentId]:
         return iter([*self._checks, *self._lacking])
@@ -269,7 +286,9 @@ class ChainFollower:
                 # once that comes.
                 lacking[held.block_id] = error.content_ids
 
-        return _AtTarget(checks, lacking, partial(self._again, named_for))
+        return _AtTarget(
+            checks, lacking, partial(self._reader.is_at, target), partial(self._again, named_for)
+        )
 
     def _validations(
         self, named_for: ContentId | None, target: DropTarget, transactions: _AtTarget
@@ -315,11 +334,13 @@ class ChainFollower:
     def _again(
         self, named_for: ContentId | None, block_id: ContentId
     ) -> TransactionBlockCheck | BlockFinding:
-        """Transaction block ``block_id``, found not full, read and checked again in whole.
+        """Transaction block ``block_id``, at the target and named by a validation block, in whole.
 
-        A validation block names it, and what that states of it is judged from
-        all of it. This copy may measure full, as another may (§3.8), and if so
-        it is kept whole from now on, for the validation block to be followed.
+        What that states of it is judged from all of it. One already checked
+        and full is as it was, held still or not. Any other is read and checked:
+        one found not full, whose copy now may measure full, as another may
+        (§3.8), or one not read at the target. If full, it is kept whole from now
+        on, for the validation block to be followed.
 
         Raises:
             MisplacedBlockError: it is of another target.
@@ -329,6 +350,11 @@ class ChainFollower:
                 of the chain cannot be read.
             ValueError: it names an id under a hash algorithm this node lacks.
         """
+        found = self._looking.transactions.get(block_id)
+
+        if isinstance(found, TransactionBlockCheck):
+            return found
+
         held = self._reader.block(block_id, TransactionBlock)
         check = TransactionBlockCheck.of_held(held, named_for, self._chain, bounds=self._bounds)
 
@@ -343,7 +369,7 @@ class ChainFollower:
         """Validation block ``held`` checked, read at the target named for ``named_for``.
 
         ``transactions`` are the checks of the transaction blocks at the
-        transaction target of the same generation.
+        transaction target of the same generation, read there or not.
 
         Raises:
             MisplacedBlockError: it is of another target.

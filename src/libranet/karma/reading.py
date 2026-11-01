@@ -306,6 +306,14 @@ class TargetReader:
         self.fetch(new)
         return bool(new)
 
+    def is_at(self, target: DropTarget, content_id: ContentId) -> bool:
+        """Whether ``content_id`` shares the bits with ``target``'s hash that place it there.
+
+        Those are as many as a search returns (KarmaLedger §2), so it is the same
+        whether the node holds it, has read it there, or has yet to.
+        """
+        return bool(self._search.matching(target.hex, [content_id]))
+
     def held(self, content_id: ContentId) -> bytes:
         """What the node holds of ``content_id``, decompressed if it is held compressed.
 
