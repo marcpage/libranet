@@ -138,6 +138,8 @@
   }
 
   video { display: block; width: 100%; max-height: 70vh; background: #000; border-radius: 6px; }
+  /* The movie, with focus, has no box around it to distract from it. */
+  video:focus { outline: none; }
   .details p { margin: 0.4rem 0; }
 
   /* A movie's or a collection's title, with what is done with it, and what leaves a movie, in the upper right corner. */
@@ -2106,6 +2108,41 @@ function leftFullscreen() {
   }
 }
 
+// What the browser draws on the video to control it keeps every key pressed
+// on it from the page, so that the keys above do nothing there. Focus is kept
+// on the video itself, then: Tab goes past those controls, to what is next on
+// the page, and full screen, where all else is hidden behind the movie, stays
+// on the video.
+const TABBABLE = "a[href], button, input, select, textarea, summary, video[controls], [tabindex]";
+
+function tabPastControls(event) {
+  const video = byId("video");
+
+  if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) {
+    return;
+  }
+
+  const stops = [...document.querySelectorAll(TABBABLE)].filter((each) => each === video
+    || (each.tabIndex >= 0 && !each.disabled && each.getClientRects().length > 0));
+  const next = document.fullscreenElement ? video : stops[stops.indexOf(video) + (event.shiftKey ? -1 : 1)];
+
+  if (next) {
+    event.preventDefault();
+    next.focus();
+  }
+}
+
+// Focus that came to the video, or that its controls kept as they played or
+// paused the movie, or showed it full screen or not, goes from them to the
+// video itself.
+function focusPastControls() {
+  const video = byId("video");
+
+  if (document.activeElement === video) {
+    video.focus();
+  }
+}
+
 function videoTrouble() {
   const video = byId("video");
 
@@ -3266,6 +3303,12 @@ video.addEventListener("play", playFullscreen);
 video.addEventListener("fullscreenchange", leftFullscreen);
 video.addEventListener("webkitendfullscreen", leftFullscreen);
 video.addEventListener("loadeddata", () => { byId("video-trouble").hidden = true; });
+video.addEventListener("keydown", tabPastControls);
+
+for (const type of ["focus", "play", "pause", "fullscreenchange"]) {
+  video.addEventListener(type, focusPastControls);
+}
+
 byId("video-again").addEventListener("click", () => {
   byId("video-trouble").hidden = true;
   video.load();
