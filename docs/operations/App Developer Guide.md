@@ -1508,15 +1508,18 @@ shares the most bits with the target, then has the shortest `reach`, read
 with `GET /data/signed/{id}` (§6.13).
 
 The shipped `karma` application, at `/karma/`, does each of these. It shows
-the chain a generation at a time, each generation's transaction block with
-its payments, its payout, and the balances it states, and its winning
-validation block with its stakes; the node's own Karma; anyone's, by their
-id; and, in a browser on the node's own machine, the Karma of whoever is
-signed in, paying one person or several, and staking on the latest full
-block. To link an identity's Karma, link to `/karma/?id={id}`, which shows
-it with the rest. It links an identity to its page elsewhere only where it
-knows whether it is a person or a node (§6.18): the node itself, and
-whoever is signed in.
+the generation the node follows, its head, and the heads competing with it,
+the other validation blocks placed at `karma validation:{id}` of the
+generation before; the node's own Karma; anyone's, by their id; and, in a
+browser on the node's own machine, the Karma of whoever is signed in, paying
+one person or several, and staking on the latest full block. Each
+validation block it names links to `/karma/?block={id}`, which shows that
+block alone: who stakes on the transaction block it validates, and how
+much, that block's payments, its payout, and the balances it states, and a
+link to the block before it. To link an identity's Karma, link to
+`/karma/?id={id}`, which shows it with the rest. It links an identity to
+its page elsewhere only where it knows whether it is a person or a node
+(§6.18): the node itself, and whoever is signed in.
 
 **Show each identity's Karma beside its trust** (§6.17), wherever a page
 shows a person or a node, linked to `/karma/?id={id}`, in Karma, with its

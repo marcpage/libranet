@@ -631,8 +631,9 @@ curl http://127.0.0.1:8080/data/karma
 ```
 
 Each answers `503` while the node follows no chain. The Karma application,
-at `/karma/`, shows the same in a browser: the chain a generation at a time,
-the node's Karma, and anyone's, by their id; and, in a browser on the node's
+at `/karma/`, shows the same in a browser: the generation followed, its
+head, and the heads competing with it, each block on a page of its own, the
+node's Karma, and anyone's, by their id; and, in a browser on the node's
 own machine, lets whoever is signed in pay others and stake. The user
 directory, the nodes application, and mail show each identity's Karma beside
 its trust, linked there. The node's Karma is its balance as the chain this

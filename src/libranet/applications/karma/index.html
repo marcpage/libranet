@@ -42,8 +42,7 @@
   main { max-width: 44rem; margin: 0 auto; padding: 2.5rem 1rem; }
   h1 { font-size: 1.5rem; margin: 0; }
   h2 { font-size: 1.15rem; margin: 0 0 0.75rem; }
-  h3 { font-size: 1.05rem; margin: 0 0 0.5rem; }
-  h4 { font-size: 1rem; margin: 1.25rem 0 0.25rem; }
+  h3 { font-size: 1.05rem; margin: 1.25rem 0 0.25rem; }
   a { color: var(--accent); }
 
   /* Home, the node's front page, in the upper right corner of every page. */
@@ -111,10 +110,11 @@
   .recipient .karma { flex: 1 1 7rem; max-width: 10rem; }
   #fee { max-width: 10rem; }
 
-  /* A generation of the chain, one at a time, and what its blocks hold. */
-  #generation-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 1rem 0 0.75rem; }
-  #generation-nav[hidden] { display: none; }
-  #go-to { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+  #sign-in { margin-top: 1rem; }
+
+  /* Going to a generation's block, and what a block holds. */
+  #go-to { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 1rem; }
+  #go-to[hidden] { display: none; }
   #go-to input { width: 6rem; }
   details { margin-top: 0.6rem; }
   summary { cursor: pointer; }
@@ -130,8 +130,38 @@
   <ul id="status"><li class="note">Reading the chain&hellip;</li></ul>
   <noscript><p class="note">Showing Karma needs JavaScript.</p></noscript>
 
-  <section id="account" hidden>
-    <h2 id="account-title">Sign in</h2>
+  <section id="chain" hidden>
+    <h2>The chain</h2>
+    <p id="chain-text" class="note">Asking the node&hellip;</p>
+    <dl class="facts" id="followed" hidden>
+      <dt>Generation</dt>
+      <dd id="followed-generation"></dd>
+      <dt>Head</dt>
+      <dd id="followed-head"></dd>
+      <dt>Weight</dt>
+      <dd id="followed-weight"></dd>
+    </dl>
+    <div id="competing" hidden>
+      <h3>Competing heads</h3>
+      <p id="competing-text" class="note"></p>
+      <ul class="items" id="competing-heads"></ul>
+    </div>
+    <form id="go-to" hidden>
+      <label for="go-to-generation">Generation</label>
+      <input id="go-to-generation" type="number" min="0" step="1" required>
+      <button type="submit">Show its block</button>
+    </form>
+    <p id="go-to-text" class="note"></p>
+  </section>
+
+  <section id="held" hidden>
+    <h2>Karma held</h2>
+    <dl class="facts">
+      <dt>This node</dt>
+      <dd id="node-balance">Reading&hellip;</dd>
+      <dt id="your-label" hidden>You</dt>
+      <dd id="your-balance" hidden></dd>
+    </dl>
     <form id="sign-in" hidden>
       <div class="fields">
         <label for="username">Username</label>
@@ -141,17 +171,10 @@
       </div>
       <div class="actions"><button type="submit">Sign in</button></div>
     </form>
-    <div id="signed-in" hidden>
-      <span id="signed-in-text"></span>
-      <dl class="facts" id="yours" hidden>
-        <dt>You hold</dt>
-        <dd id="your-balance"></dd>
-      </dl>
-    </div>
     <p id="account-text" class="note"></p>
   </section>
 
-  <section id="identity">
+  <section id="identity" hidden>
     <h2>Anyone's Karma</h2>
     <form id="look-up">
       <div class="fields">
@@ -193,30 +216,9 @@
     <p id="stake-text" class="note"></p>
   </section>
 
-  <section id="chain">
-    <h2>The chain</h2>
-    <p id="chain-text" class="note">Asking the node&hellip;</p>
-    <dl class="facts" id="followed" hidden>
-      <dt>Generation</dt>
-      <dd id="followed-generation"></dd>
-      <dt>Weight</dt>
-      <dd id="followed-weight"></dd>
-      <dt>Head</dt>
-      <dd><code class="id" id="followed-head"></code></dd>
-      <dt>This node holds</dt>
-      <dd id="followed-balance"></dd>
-    </dl>
-    <div id="generation-nav" hidden>
-      <button type="button" id="older">Older</button>
-      <button type="button" id="newer">Newer</button>
-      <button type="button" id="newest">Newest</button>
-      <form id="go-to">
-        <label for="go-to-generation">Generation</label>
-        <input id="go-to-generation" type="number" min="0" step="1" required>
-        <button type="submit">Show</button>
-      </form>
-    </div>
-    <div id="generation"></div>
+  <section id="block" hidden>
+    <h2 id="block-title">Validation block</h2>
+    <div id="block-shown"><p class="note">Reading&hellip;</p></div>
   </section>
 
   <footer>
@@ -231,7 +233,11 @@
     whoever is signed in pays others through the node, which signs the
     payment as them, and stakes on the latest full block, sharing the reward
     should a validation block holding the stake win.
-    A link to <code>/karma/?id=</code> and an identity's id shows its Karma.
+    A link to <code>/karma/?id=</code> and an identity's id shows its Karma,
+    and one to <code>/karma/?block=</code> and a validation block's id shows
+    that block alone: who stakes on the transaction block it validates, and
+    how much, that block's transactions and the balances it states, and a
+    link to the block before it.
   </footer>
 </main>
 <script>
@@ -265,6 +271,12 @@ const TYPED_KARMA = /^\s*([0-9]*)(?:\.([0-9]*))?\s*$/;
 // Where the transaction blocks of the generation after the head are placed:
 // this, then the head's id (KarmaLedger 3.1).
 const TRANSACTION_PREFIX = "karma transaction:";
+
+// Where the validation blocks of a generation are placed: this, then the id
+// of the winning validation block before it, or ROOT_NAME for the root's
+// (KarmaLedger 3.1).
+const VALIDATION_PREFIX = "karma validation:";
+const ROOT_NAME = "0";
 
 // A block is full when its drop, compressed as the node holds it, is no larger
 // than MOST_BLOCK_BYTES, and larger than that less FULL_ROOM_BYTES, or than
@@ -421,8 +433,8 @@ async function isLocal() {
 
 // What the page knows: who is signed in, and whether they can pay and stake,
 // signing as themselves; this node's id; the chain's generations read, by
-// number, the newest of them, and the one shown; and the block a stake is
-// made on, once one is found.
+// number, and the newest of them; and the block a stake is made on, once one
+// is found.
 const view = {
   session: null,
   you: null,
@@ -430,7 +442,6 @@ const view = {
   generations: new Map(),
   newest: null,
   holders: null,
-  shown: null,
   stakeOn: null,
 };
 
@@ -519,14 +530,16 @@ function balanceShown(balance) {
 }
 
 // A link showing `content` to the Karma of the identity `id` names, which this
-// page shows alone, as any page links to it. Followed here, it is shown
-// without loading the page again.
+// page shows alone, as any page links to it. Followed where the page shows
+// anyone's Karma, it is shown without loading the page again.
 function karmaLink(id, content) {
   const link = document.createElement("a");
   link.href = `/karma/?id=${encodeURIComponent(id)}`;
   link.append(content);
   link.addEventListener("click", (event) => {
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    const plain = event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+
+    if (!plain || byId("identity").hidden) {
       return;
     }
 
@@ -566,6 +579,21 @@ function identityOf(id) {
 // `value` as an identity, if it is an id, and as it is written otherwise.
 function identityOrText(value) {
   return typeof value === "string" && CONTENT_ID.test(value) ? identityOf(value) : make("code", String(value));
+}
+
+// Where this page shows validation block `id` alone, with what it holds.
+function blockHref(id) {
+  return `/karma/?block=${encodeURIComponent(id)}`;
+}
+
+// A link to the page of validation block `id`, showing `text`, or its id cut
+// short, whole when hovered over.
+function blockLink(id, text) {
+  const link = make("a", "");
+  link.href = blockHref(id);
+  link.title = id;
+  link.append(text === undefined ? make("code", shortId(id)) : text);
+  return link;
 }
 
 // Each label and value of `facts`, as a list of what is stated.
@@ -629,20 +657,16 @@ async function signedContents(id, what) {
 // page alone. Signing in reloads the page, which then shows their Karma, and
 // lets them pay and stake.
 function offerAccount(session) {
-  byId("account").hidden = false;
-
   if (session !== null) {
-    byId("account-title").textContent = "Signed in";
-    byId("signed-in").hidden = false;
-    byId("signed-in-text").textContent =
+    const signedInAs =
       session.fallback_for && !session.fallback
         ? `Signed in as ${session.username}, with the fallback password.`
         : `Signed in as ${session.username}.`;
     sayIn(
       "account-text",
       view.you === null
-        ? "Signed in as a fallback, you can pay and stake once you take over, in the user directory. Sign out on the home page."
-        : "Sign out on the home page.",
+        ? `${signedInAs} Signed in as a fallback, you can pay and stake once you take over, in the user directory. Sign out on the home page.`
+        : `${signedInAs} Sign out on the home page.`,
     );
     return;
   }
@@ -687,8 +711,9 @@ function offerAccount(session) {
 
 // Show the Karma of whoever is signed in, as the chain states it at the head.
 async function showYours() {
-  byId("yours").hidden = false;
+  byId("your-label").hidden = false;
   const shown = byId("your-balance");
+  shown.hidden = false;
   shown.textContent = "Reading…";
   const result = await call("GET", `/data/karma/balances/${view.session.id}`);
 
@@ -1107,16 +1132,6 @@ async function readFollowed() {
   return value;
 }
 
-// Show the head the node follows, its generation, the chain's weight through
-// it, and what the node holds there.
-function showFollowed(followed) {
-  byId("followed").hidden = false;
-  byId("followed-generation").textContent = String(followed.generation);
-  byId("followed-weight").textContent = formatWeight(followed.weight);
-  byId("followed-head").textContent = followed.head;
-  byId("followed-balance").replaceChildren(balanceShown(followed.balance));
-}
-
 // Read up to 100 generations before generation `before`, or the newest without
 // it (HttpApi 10.10), keeping each by number, and return how many were
 // listed; null while the node follows no chain. What is not shaped as the
@@ -1160,28 +1175,120 @@ async function readGenerations(before) {
   return listed.length;
 }
 
-// Read the newest generations again, forgetting those read before, which a
-// heavier chain the node has since come to follow may have replaced; and
-// return the newest, or null while the node follows no chain.
-async function readNewest() {
-  view.generations.clear();
-  const listed = await readGenerations(null);
+// Show the head the node follows, its generation, and the chain's weight
+// through it; and offer going to the block of any generation before it.
+function showHead(head) {
+  sayIn(
+    "chain-text",
+    `This node follows a chain of ${plural(head.generation + 1, "generation", "generations")}. ` +
+      "Each block links to a page of its own, showing what it holds.",
+  );
+  byId("followed").hidden = false;
+  byId("followed-generation").textContent = String(head.generation);
+  byId("followed-head").replaceChildren(blockLink(head.validation));
+  byId("followed-weight").textContent = formatWeight(head.weight);
+  byId("go-to").hidden = false;
+  byId("go-to-generation").max = String(head.generation);
+}
+
+// Show the validation blocks placed at the target the head was chosen from
+// (KarmaLedger 3.1): the head first, then each rival to it, which the node
+// weighs, following the chain through one should it be heavier, or as heavy
+// and better (3.5.3). Each links to its page.
+async function showCompeting() {
+  const head = view.generations.get(view.newest);
+  const before = view.newest === 0 ? { validation: ROOT_NAME } : view.generations.get(view.newest - 1);
+  byId("competing").hidden = false;
+  sayIn("competing-text", "Looking for the heads competing with it…");
+
+  if (before === undefined) {
+    throw new Error(`The node did not list generation ${view.newest - 1}, so the heads competing with its head cannot be looked for.`);
+  }
+
+  const search = await call("GET", dropPath(VALIDATION_PREFIX + before.validation));
+
+  if (!search.ok || !isObject(search.value) || !Array.isArray(search.value.results)) {
+    throw new Error(`The heads competing with it could not be searched for: ${refusal(search)}`);
+  }
+
+  const rivals = search.value.results.filter((id) => CONTENT_ID.test(id) && id !== head.validation);
+  const items = [head.validation, ...rivals].map((id) => {
+    const item = document.createElement("li");
+    item.append(blockLink(id));
+
+    if (id === head.validation) {
+      item.append(make("span", "followed", "who"));
+    }
+
+    return item;
+  });
+  byId("competing-heads").replaceChildren(...items);
+  sayIn(
+    "competing-text",
+    rivals.length === 0
+      ? `No other validation block is placed for generation ${view.newest}: the head has no rival.`
+      : `${plural(rivals.length, "other validation block is", "other validation blocks are")} placed for generation ${view.newest}. ` +
+          "This node follows the chain through a rival should it be heavier than the head's, or as heavy and better.",
+  );
+}
+
+// Go to the page of the winning validation block of the generation asked
+// for, reading the generations before it first if they are not read yet.
+async function goToGeneration(event) {
+  event.preventDefault();
+  const generation = Number(byId("go-to-generation").value);
+  sayIn("go-to-text", `Reading generation ${generation}…`);
+
+  try {
+    if (!view.generations.has(generation)) {
+      await readGenerations(generation + 1);
+    }
+
+    const entry = view.generations.get(generation);
+
+    if (entry === undefined) {
+      sayIn("go-to-text", `The node did not list generation ${generation}.`, "error");
+      return;
+    }
+
+    location.assign(blockHref(entry.validation));
+  } catch (error) {
+    sayIn("go-to-text", error.message, "error");
+  }
+}
+
+// Read the chain the node follows, and show its head, the heads competing
+// with it, and the node's own Karma there; and return whether it follows one.
+async function readChain() {
+  const [followed, listed] = await Promise.all([readFollowed(), readGenerations(null)]);
+
+  if (followed !== null) {
+    view.nodeId = followed.node_id;
+    view.holders = followed.holders;
+    byId("node-balance").replaceChildren(balanceShown(followed.balance));
+  }
 
   if (listed === null || view.generations.size === 0) {
-    view.newest = null;
-    return null;
+    sayIn("chain-text", "One node of a network starts its chain, on its /config page, and a node joining a network that has one finds it on its own.");
+    sayIn("node-balance", "None, as this node follows no Karma chain yet.");
+    status.say("This node follows no Karma chain yet, so no one's Karma is shown.");
+    return false;
   }
 
   view.newest = Math.max(...view.generations.keys());
-  return view.newest;
+  showHead(view.generations.get(view.newest));
+  status.say(`This node follows generation ${view.newest} of a Karma chain.`);
+
+  if (followed === null) {
+    sayIn("node-balance", "Not read yet.");
+    status.say("It has not read the balances at its head yet, so no one's Karma is shown; open this page again in a moment.");
+  }
+
+  showCompeting().catch((error) => sayIn("competing-text", error.message, "error"));
+  return true;
 }
 
-function showNav() {
-  byId("generation-nav").hidden = view.newest === null;
-  byId("older").disabled = view.shown === null || view.shown <= 0;
-  byId("newer").disabled = view.shown === null || view.shown >= view.newest;
-  byId("go-to-generation").max = String(view.newest);
-}
+// ---- One block ----
 
 // One transaction a block holds, as a list item (KarmaLedger 4.1, 5.2): the
 // payout, which moves the reward of the generation before, from those it
@@ -1252,161 +1359,198 @@ function listing(lead, parts) {
   return line;
 }
 
-// What a transaction block holds (KarmaLedger 5.1): who built it, its reach,
-// its transactions, and the balances it states.
-function transactionBlockShown(id, read) {
-  const { signer, contents } = read;
-  const shown = document.createElement("div");
-  const isBlock = isObject(contents) && Array.isArray(contents.transactions) && isObject(contents.balances);
+// Whether `contents` is shaped as a validation block's (KarmaLedger 6.1).
+function isValidationBlock(contents) {
+  return (
+    isObject(contents) &&
+    Number.isSafeInteger(contents.generation) &&
+    contents.generation >= 0 &&
+    Array.isArray(contents.stakes) &&
+    Array.isArray(contents.witnessed)
+  );
+}
 
-  if (!isBlock) {
-    shown.append(make("p", "It is not shaped as a transaction block.", "error"));
-    return shown;
+// Whether `contents` is shaped as a transaction block's (KarmaLedger 5.1).
+function isTransactionBlock(contents) {
+  return (
+    isObject(contents) &&
+    (contents.previous === null || CONTENT_ID.test(contents.previous)) &&
+    Array.isArray(contents.transactions) &&
+    isObject(contents.balances)
+  );
+}
+
+// Whether the chain the node follows goes through validation block `id`, of
+// generation `generation`, as said beside the block; with a link to the block
+// it goes through instead, should that be another.
+async function onChain(id, generation) {
+  try {
+    if ((await readGenerations(generation + 1)) === null) {
+      return "No, as this node follows no Karma chain yet.";
+    }
+  } catch (error) {
+    return make("span", error.message, "error");
   }
 
-  shown.append(
-    factsOf([
-      ["Id", make("code", id, "id")],
-      ["Built by", identityOrText(signer)],
-      ["Reach", Number.isSafeInteger(contents.reach) ? plural(contents.reach, "block", "blocks") : "not stated"],
-    ]),
-  );
-  const transactions = contents.transactions.map(transactionItem);
-  shown.append(folded(plural(transactions.length, "transaction", "transactions"), transactions));
-  const balances = Object.entries(contents.balances).map(([holder, balance]) => {
+  const entry = view.generations.get(generation);
+
+  if (entry === undefined) {
+    return `No: it has not reached generation ${generation} yet.`;
+  }
+
+  if (entry.validation === id) {
+    return `Yes, as the winning validation block of generation ${generation}.`;
+  }
+
+  const shown = make("span", "No: it goes through ");
+  shown.append(blockLink(entry.validation), " instead.");
+  return shown;
+}
+
+// One stake a validation block holds, as a list item (KarmaLedger 6.2): who
+// staked, how much, and when.
+function stakeItem(signed) {
+  const item = document.createElement("li");
+  const stake = signedJson(signed);
+
+  if (isObject(stake) && CONTENT_ID.test(stake.staker)) {
+    item.append(identityOf(stake.staker), " staked ", amountOf(stake.kismet), make("span", `, ${momentText(stake.created)}`, "note"));
+  } else {
+    item.append(make("span", `A stake this page cannot read: ${hashOf(signed)}`, "error"));
+  }
+
+  return item;
+}
+
+// The Kismet all the stakes `signed` that this page can read stake.
+function stakedKismet(signed) {
+  return signed.map(signedJson).reduce((sum, stake) => {
+    const counted = isObject(stake) && CONTENT_ID.test(stake.staker) && typeof stake.kismet === "string" && KISMET.test(stake.kismet);
+    return counted ? sum + BigInt(stake.kismet) : sum;
+  }, 0n);
+}
+
+// Show validation block `id` alone (KarmaLedger 6.1): its generation, who
+// built it, whether the chain followed goes through it, who stakes on the
+// transaction block it validates, and how much, and that block's
+// transactions and the balances it states (5.1); with a link to the block
+// before it, which that block builds on.
+async function showBlock(id) {
+  if (!CONTENT_ID.test(id)) {
+    throw new Error(`${id} is not a block's id, which is sha256/ and 64 hex digits.`);
+  }
+
+  const { signer, contents } = await signedContents(id, `Block ${id}`);
+
+  if (!isValidationBlock(contents)) {
+    throw new Error(`Block ${id} is not shaped as a validation block.`);
+  }
+
+  const generation = contents.generation;
+  const chained = onChain(id, generation);
+  const named = contents.stakes.map(signedJson).find((stake) => isObject(stake) && CONTENT_ID.test(stake.transaction_block));
+  const validates = named === undefined ? null : named.transaction_block;
+  let block = null;
+  let unread = "Its stakes name no transaction block, so it validates none.";
+
+  if (validates !== null) {
+    try {
+      block = await signedContents(validates, "The transaction block it validates");
+      unread = isTransactionBlock(block.contents) ? null : "The transaction block it validates is not shaped as one.";
+    } catch (error) {
+      unread = error.message;
+    }
+  }
+
+  document.title = `Karma: generation ${generation}`;
+  byId("block-title").textContent = generation === 0 ? "Validation block of generation 0, the root" : `Validation block of generation ${generation}`;
+  const links = make("div", "", "links");
+
+  if (unread === null && block.contents.previous !== null) {
+    links.append(blockLink(block.contents.previous, `Previous block, of generation ${generation - 1}`));
+  }
+
+  links.append(linkTo("/karma/", "The chain this node follows"));
+  const facts = [
+    ["Id", make("code", id, "id")],
+    ["Built by", identityOrText(signer)],
+    ["On the chain followed", await chained],
+    ["Runner-up", CONTENT_ID.test(contents.runner_up) ? blockLink(contents.runner_up) : "none"],
+    ["Witnesses", plural(contents.witnessed.length, "transaction", "transactions")],
+    ["Validates", validates === null ? "none" : make("code", validates, "id")],
+  ];
+
+  if (unread === null) {
+    const reach = block.contents.reach;
+    facts.push(
+      ["Which was built by", identityOrText(block.signer)],
+      ["Its reach", Number.isSafeInteger(reach) ? plural(reach, "block", "blocks") : "not stated"],
+    );
+  }
+
+  const stakes = contents.stakes.map(stakeItem);
+  const staked = `${plural(stakes.length, "stake", "stakes")}, ${formatKarma(String(stakedKismet(contents.stakes)))} Karma in all`;
+  const shown = byId("block-shown");
+  shown.replaceChildren(links, factsOf(facts), make("h3", "Who validates it"), folded(staked, stakes));
+
+  if (unread !== null) {
+    shown.append(make("p", unread, "error"));
+    return;
+  }
+
+  const transactions = block.contents.transactions.map(transactionItem);
+  const balances = Object.entries(block.contents.balances).map(([holder, balance]) => {
     const item = document.createElement("li");
     item.append(identityOrText(holder), ": ", isBalance(balance) ? balanceShown(balance) : make("span", "not a balance", "error"));
     return item;
   });
-  shown.append(folded(`${plural(balances.length, "balance", "balances")} stated`, balances));
-  return shown;
-}
-
-// What a validation block holds (KarmaLedger 6.1): who built it, its stakes,
-// its runner-up, and how many transactions it witnesses.
-function validationBlockShown(id, read) {
-  const { signer, contents } = read;
-  const shown = document.createElement("div");
-  const isBlock = isObject(contents) && Array.isArray(contents.stakes) && Array.isArray(contents.witnessed);
-
-  if (!isBlock) {
-    shown.append(make("p", "It is not shaped as a validation block.", "error"));
-    return shown;
-  }
-
   shown.append(
-    factsOf([
-      ["Id", make("code", id, "id")],
-      ["Built by", identityOrText(signer)],
-      ["Runner-up", CONTENT_ID.test(contents.runner_up) ? make("code", contents.runner_up, "id") : "none"],
-      ["Witnesses", plural(contents.witnessed.length, "transaction", "transactions")],
-    ]),
+    make("h3", "Its transactions"),
+    folded(plural(transactions.length, "transaction", "transactions"), transactions),
+    make("h3", "The balances it states"),
+    folded(plural(balances.length, "balance", "balances"), balances),
   );
-  const stakes = contents.stakes.map((signed) => {
-    const item = document.createElement("li");
-    const stake = signedJson(signed);
-
-    if (isObject(stake) && CONTENT_ID.test(stake.staker)) {
-      item.append(identityOf(stake.staker), " staked ", amountOf(stake.kismet), make("span", `, ${momentText(stake.created)}`, "note"));
-    } else {
-      item.append(make("span", `A stake this page cannot read: ${hashOf(signed)}`, "error"));
-    }
-
-    return item;
-  });
-  shown.append(folded(plural(stakes.length, "stake", "stakes"), stakes));
-  return shown;
 }
 
-// Fill `holder` with block `id` of the generation shown, as `shownAs` shows
-// it, once it is read; or say why it could not be.
-async function fillBlock(holder, id, what, shownAs) {
-  holder.replaceChildren(make("p", "Reading…", "note"));
+// Show validation block `id` alone, and none of the rest of the page; and
+// say which generation the node follows, and who this node is, as identities
+// are shown.
+async function startBlock(id) {
+  byId("block").hidden = false;
+  const reading = signedIn();
 
   try {
-    const read = await signedContents(id, what);
-    holder.replaceChildren(shownAs(id, read));
+    const followed = await readFollowed();
+    view.nodeId = followed === null ? null : followed.node_id;
+    status.say(
+      followed === null
+        ? "This node follows no Karma chain yet, or has not read the balances at its head."
+        : `This node follows generation ${followed.generation} of a Karma chain.`,
+    );
   } catch (error) {
-    holder.replaceChildren(make("p", error.message, "error"));
-  }
-}
-
-// Show generation `generation` of the chain, its two blocks, and what each
-// holds, reading the generations before it first if they are not read yet.
-async function showGeneration(generation) {
-  const number = Math.max(0, Math.min(generation, view.newest));
-  view.shown = number;
-  showNav();
-  const holder = byId("generation");
-  holder.replaceChildren(make("p", `Reading generation ${number}…`, "note"));
-
-  if (!view.generations.has(number)) {
-    await readGenerations(number + 1);
+    status.say(error.message, "error");
   }
 
-  const entry = view.generations.get(number);
+  view.session = await reading;
 
-  if (view.shown !== number) {
-    return;
+  try {
+    await showBlock(id);
+  } catch (error) {
+    byId("block-shown").replaceChildren(make("p", error.message, "error"));
   }
-
-  if (entry === undefined) {
-    holder.replaceChildren(make("p", `The node did not list generation ${number}.`, "error"));
-    return;
-  }
-
-  const transaction = document.createElement("div");
-  const validation = document.createElement("div");
-  holder.replaceChildren(
-    make("h3", number === 0 ? "Generation 0, the root" : `Generation ${number}`),
-    factsOf([["Weight through it", formatWeight(entry.weight)]]),
-    make("h4", "Its transaction block"),
-    transaction,
-    make("h4", "Its winning validation block"),
-    validation,
-  );
-  await Promise.all([
-    fillBlock(transaction, entry.transaction, `Transaction block ${number}`, transactionBlockShown),
-    fillBlock(validation, entry.validation, `Validation block ${number}`, validationBlockShown),
-  ]);
-}
-
-// Show a generation as asked, saying why it could not be.
-function showAsked(generation) {
-  showGeneration(generation).catch((error) => {
-    byId("generation").replaceChildren(make("p", error.message, "error"));
-  });
-}
-
-// Read the chain the node follows, and show its newest generation; and
-// return whether it follows one.
-async function readChain() {
-  const [followed, newest] = await Promise.all([readFollowed(), readNewest()]);
-
-  if (followed !== null) {
-    view.nodeId = followed.node_id;
-    view.holders = followed.holders;
-    showFollowed(followed);
-  }
-
-  if (newest === null) {
-    sayIn("chain-text", "One node of a network starts its chain, on its /config page, and a node joining a network that has one finds it on its own.");
-    status.say("This node follows no Karma chain yet, so no one's Karma is shown.");
-    return false;
-  }
-
-  sayIn("chain-text", `This node follows a chain of ${plural(newest + 1, "generation", "generations")}, shown here a generation at a time, the newest first.`);
-  status.say(`This node follows generation ${newest} of a Karma chain.`);
-
-  if (followed === null) {
-    status.say("It has not read the balances at its head yet, so no one's Karma is shown; open this page again in a moment.");
-  }
-
-  showAsked(newest);
-  return true;
 }
 
 async function start() {
+  const block = new URLSearchParams(location.search).get("block");
+
+  if (block !== null) {
+    await startBlock(block);
+    return;
+  }
+
+  ["chain", "held", "identity"].forEach((id) => {
+    byId(id).hidden = false;
+  });
   byId("look-up").addEventListener("submit", (event) => {
     event.preventDefault();
     const url = new URL(location.href);
@@ -1419,17 +1563,7 @@ async function start() {
   byId("pay-form").addEventListener("submit", pay);
   byId("stake-form").addEventListener("submit", stake);
   byId("stake-again").addEventListener("click", findStakeBlock);
-  byId("older").addEventListener("click", () => showAsked(view.shown - 1));
-  byId("newer").addEventListener("click", () => showAsked(view.shown + 1));
-  byId("newest").addEventListener("click", async () => {
-    if ((await readNewest()) !== null) {
-      showAsked(view.newest);
-    }
-  });
-  byId("go-to").addEventListener("submit", (event) => {
-    event.preventDefault();
-    showAsked(Number(byId("go-to-generation").value));
-  });
+  byId("go-to").addEventListener("submit", goToGeneration);
   addRecipient();
 
   const [session, local] = await Promise.all([signedIn(), isLocal()]);
