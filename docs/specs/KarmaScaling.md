@@ -196,13 +196,29 @@ them up as it grows (§7).
 A generation closes sooner when the waits between its steps (§5.2) are
 shorter:
 
-- **Search only until a block will be found.** `karma.block_seconds` is how
-  long a node searches a full transaction block's or a validation block's
-  nonce for more bits than a search needs. At 0, the reference node's
-  default, it takes the first nonce that is enough. At 10 seconds, a
-  generation would wait up to 20 seconds more, for its two blocks.
-- **Search on every core.** `karma.mining_processes` set to the machine's
-  cores finds 24 bits in a few seconds in place of about 14.
+- **Find the nonce a block needs sooner.** Every block is placed sharing at
+  least as many bits with its target as a search returns, 24 by default
+  ([Karma Ledger §2](KarmaLedger.md#2-relationship-to-other-documents)),
+  and a generation has two that are found in turn: the full transaction
+  block, then the validation block on it. Finding 24 bits takes about
+  2^24, some 17 million, hashes on average: about 14 seconds on one core
+  in Python, a few on several cores, under one in native code, and
+  milliseconds on a graphics card. It varies: one search in twenty takes
+  three times the average. Both searches lie on the way to a generation's
+  close, so each second saved on one is saved twice a generation.
+- **Decide how long a good nonce is worth.** Past the bits it needs, a
+  builder may search on for a nonce sharing more. Each bit doubles a
+  validation block's weight, as doubling its stake would
+  ([Karma Ledger §3.3](KarmaLedger.md#33-the-heaviest-chain)), and ranks a
+  full transaction block above rivals sharing fewer
+  ([Karma Ledger §5.5](KarmaLedger.md#55-scoring)). Each doubling of the
+  time searched adds about a bit, so a search ten times as long as finding
+  the needed bits takes finds about 3 more, and every second of it holds up
+  the generation, twice over for its two blocks. The specification sets no
+  time. A builder that takes the first nonce that is enough closes
+  generations soonest, and leaves stake to decide between validation
+  blocks (§6.2). One that searches longer wins more often against those
+  that do not, and every generation it builds closes later.
 - **Build as things happen, not on a timer.** A node may build its next
   transaction block as soon as it follows a new head, and stake as soon as
   it finds a full block, in place of waiting for its next build.
