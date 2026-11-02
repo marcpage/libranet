@@ -55,7 +55,7 @@ from libranet.supervision.registry import default_module_specs
 from libranet.supervision.specs import ModuleSpec
 from tests.helpers import new_identity, published, with_node_key
 from tests.karma_chains import BOUNDS as CHAIN_BOUNDS
-from tests.karma_chains import MINIMUM_BITS, Chain, hold, staked
+from tests.karma_chains import MINIMUM_BITS, Chain, hold, staked, validating
 
 HEAD = ContentId("sha256", "c1" * 32)
 BLOCK = ContentId("sha256", "b1" * 32)
@@ -1204,6 +1204,35 @@ def test_a_module_that_does_not_mine_still_stakes_on_a_full_block_at_its_heads_t
     assert [(each.staker, each.stake.transaction_block) for each in validation.stakes] == [
         (node.node_id, put_up)
     ]
+
+
+def test_the_module_stakes_on_a_full_block_it_finds_before_following_on_past_it(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    clock = Clock()
+    karma = KarmaConfig(look_seconds=5.0)
+    module = paying_module(storage, queues, clock, karma)
+    published(queues)
+    truth = CasStore.source_of_truth(storage)
+    erin = new_identity()
+    truth.write(erin.node_id, erin.public_key)
+    module.handle(given(paid_by_node(storage, 1, erin.node_id)))
+    (put_up,) = stored_ids(queues)
+    head = module.history.head
+    assert head is not None
+    # Erin, paid in the block, has staked on it already, and closed the
+    # generation for whoever finds it so.
+    target = GenerationTargets.after(head.validation).validation
+    hold(truth, validating(target, erin, module.reader.held(put_up)))
+    clock.now += karma.look_seconds
+    module.on_idle()
+
+    (built,) = stored_ids(queues)
+    validation = BlockDrop.parsed(module.reader.held(built), ValidationBlock).block
+    node = NodeIdentity.load(LibranetConfig(storage=storage))
+    assert sorted(each.staker for each in validation.stakes) == sorted([node.node_id, erin.node_id])
+    followed = module.history.head
+    assert followed is not None and followed.validation == built
 
 
 def test_the_module_stakes_the_share_its_operator_saved_in_place_of_its_configurations(

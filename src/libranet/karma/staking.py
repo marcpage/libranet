@@ -3,11 +3,12 @@
 Once a full, correct transaction block is held at the head's transaction
 target, the Karma module stakes on it, and builds a validation block of the
 stakes it has, so that the chain goes on (§3.1). Every
-``karma.build_interval_seconds``, it reads the blocks held at the head's two
-targets, checked as the chain followed checks them (Phase 6 Step 126), and
-takes the best scored transaction block there that is correct, and that no
-identity the node distrusts signed (§3.8, §5.5); of two as good, the one
-whose id sorts first.
+``karma.build_interval_seconds``, and as soon as it finds a full block there it
+has not built on, before it follows the chain on past it (KarmaScaling §6.1),
+it reads the blocks held at the head's two targets, checked as the chain
+followed checks them (Phase 6 Step 126), and takes the best scored transaction
+block there that is correct, and that no identity the node distrusts signed
+(§3.8, §5.5); of two as good, the one whose id sorts first.
 
 What covers an identity's stakes on that block is its Kismet as the block
 leaves it, less the fees of its transactions there, which the next block's
@@ -472,6 +473,8 @@ class ValidationBuilder:
         self._stakes = HeadStakes(
             history, reader, distrusts=distrusts, stake_percent=stake_percent, clock=clock
         )
+        # The full transaction blocks at the head's target as it last built.
+        self._built_on: frozenset[ContentId] = frozenset()
 
     def take(self, signed: SignedStake) -> None:
         """Keep ``signed``, a stake a person made through the node, for the blocks built.
@@ -495,8 +498,12 @@ class ValidationBuilder:
         if head is None:
             return
 
+        transactions, validations = self._follower.checked()
+
         try:
-            self._build(GenerationTargets.after(head.validation).validation)
+            self._build(
+                GenerationTargets.after(head.validation).validation, transactions, validations
+            )
 
         except MissingContentError:
             # Not logged: what it lacks is asked for, and it is built once
@@ -509,8 +516,34 @@ class ValidationBuilder:
         except (BundleError, ValueError) as error:
             _LOGGER.warning("Cannot build a Karma validation block: %s", error)
 
-    def _build(self, target: DropTarget) -> None:
+        self._built_on = frozenset(transactions)
+
+    def build_on_full(self) -> None:
+        """Build as :meth:`build` does, at once, if a full block has come since it last built.
+
+        That is a full transaction block at the head's transaction target. So
+        the node stakes on a generation's full block as it finds it, before it
+        follows the chain on past it, as it may at once, and not only at its
+        next build (KarmaScaling §6.1).
+        """
+        if self._history.head is None:
+            return
+
+        transactions, _ = self._follower.checked()
+
+        if not transactions.keys() <= self._built_on:
+            self.build()
+
+    def _build(
+        self,
+        target: DropTarget,
+        transactions: Mapping[ContentId, TransactionBlockCheck],
+        validations: Sequence[ValidationBlockCheck],
+    ) -> None:
         """Build a validation block at ``target``, the head's validation target, if one is to be.
+
+        ``transactions`` and ``validations`` are the blocks held at the head's
+        targets, as the chain followed checks them.
 
         Raises:
             MissingContentError: names the blocks of the chain it lacks.
@@ -522,7 +555,6 @@ class ValidationBuilder:
                 could not be started, or exited during the search, or the
                 drop could not be written.
         """
-        transactions, validations = self._follower.checked()
         identity = self._placing.identity()
         staked = self._stakes.staked(
             transactions,

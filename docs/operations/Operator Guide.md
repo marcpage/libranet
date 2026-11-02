@@ -590,7 +590,8 @@ Karma, up to 128 KiB under 1 MiB once 112 hold any. So block 1, on a new
 ledger, is full above 8 KiB, which a dozen or so payments fill.
 
 Once a full block is placed at its head's target, so that the generation
-may close, the node stakes on it as it next builds: `karma.stake_percent`,
+may close, the node stakes on it as soon as it finds it, before it follows the
+chain on past it, and not only as it next builds: `karma.stake_percent`,
 10% by default, of the Karma it holds as that block leaves it, less the fees
 it pays there, rounded down to whole Kismet. It stakes on the best full block
 there, by the bits its drop shares with the target, then the shortest reach,
