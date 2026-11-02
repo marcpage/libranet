@@ -1113,6 +1113,64 @@ def test_each_signature_is_checked_once_at_a_head_however_often_a_block_is_built
     assert not checked_since
 
 
+def test_a_full_block_is_read_once_at_a_head_while_it_is_held(
+    builder: BlockBuilder,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    following(follower, truth, first)
+    data = put_up(truth, first, dave, sent(alice, {bob.node_id: 1}, 1))
+    builder.build()
+    read_since: list[ContentId] = []
+    read = TargetReader._read  # pylint: disable=protected-access
+
+    def counted(self: TargetReader, content_id: ContentId) -> tuple[bytes, int | None]:
+        read_since.append(content_id)
+        return read(self, content_id)
+
+    monkeypatch.setattr(TargetReader, "_read", counted)
+    builder.build()
+    builder.superseded()
+
+    assert id_of(data) not in read_since
+
+
+def test_nothing_is_combined_again_while_nothing_read_or_carried_has_changed(
+    builder: BlockBuilder,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    following(follower, truth, first)
+    put_up(truth, first, dave, sent(alice, {bob.node_id: 1}, 1))
+    builder.build()
+    combined: list[CombinedBlock] = []
+    of = CombinedBlock.of
+
+    def counted(*given: Any, **asked: Any) -> CombinedBlock:
+        combined.append(of(*given, **asked))
+        return combined[-1]
+
+    monkeypatch.setattr(CombinedBlock, "of", counted)
+    builder.build()
+
+    assert not combined
+
+    put_up(truth, first, dave, sent(alice, {bob.node_id: 1}, 2))
+    builder.build()
+
+    assert [len(each.taken) for each in combined] == [2]
+
+
 def test_what_was_read_at_a_head_is_forgotten_at_the_next(
     shunning: BlockBuilder,
     placed: Placed,

@@ -1,5 +1,7 @@
 """Tests for reading what is placed at a target, and the chain it is built on (KarmaLedger §2)."""
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from datetime import UTC, datetime
 from fractions import Fraction
@@ -7,7 +9,7 @@ from logging import DEBUG, WARNING
 from typing import Any, Mapping
 from zlib import compress
 
-from pytest import LogCaptureFixture, fixture, mark, raises
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.bundle.errors import MissingContentError, ShunnedContentError
@@ -511,6 +513,74 @@ def test_a_block_known_is_neither_read_nor_asked_for_again(
     truth.write(block_id, staking)
 
     assert reader.read(FIRST.validation, ValidationBlock, known={block_id}) == []
+
+
+def test_a_block_kept_is_not_read_again_but_said_to_be_requested_while_it_is_held(
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    clock: Clock,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    staking: bytes,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    block_id = hold(truth, staking)
+    hold_keys(truth, alice, bob)
+    reader.read(FIRST.validation, ValidationBlock)
+    read_since: list[ContentId] = []
+    read = TargetReader._read  # pylint: disable=protected-access
+
+    def counted(self: TargetReader, content_id: ContentId) -> tuple[bytes, int | None]:
+        read_since.append(content_id)
+        return read(self, content_id)
+
+    monkeypatch.setattr(TargetReader, "_read", counted)
+    clock.now += 60.0
+
+    assert reader.read(FIRST.validation, ValidationBlock, kept={block_id}) == []
+    assert read_since == []
+    assert recorder.requested().count(block_id) == 2
+
+
+def test_a_block_kept_and_let_go_is_asked_for_and_waited_for(
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    staking: bytes,
+) -> None:
+    block_id = hold(truth, staking)
+    hold_keys(truth, alice, bob)
+    reader.read(FIRST.validation, ValidationBlock)
+    reader.answered(FIRST.validation.hex, [block_id])
+    truth.delete(block_id)
+
+    assert reader.read(FIRST.validation, ValidationBlock, kept={block_id}) == []
+    assert recorder.asked_for() == [block_id]
+    assert reader.awaits(FIRST.validation)
+
+
+def test_whether_content_is_held_and_not_shunned_is_said_without_reading_it(
+    storage: StorageConfig,
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    staking: bytes,
+) -> None:
+    block_id = id_of(staking)
+
+    assert not reader.holds(block_id)
+
+    hold(truth, staking)
+
+    assert reader.holds(block_id)
+    assert recorder.requested() == []
+
+    write_atomically(storage.shunned_list_path, ShunnedContent.body([block_id]))
+
+    assert not reader.holds(block_id)
 
 
 def test_a_read_knowing_a_block_another_lacks_leaves_its_wait_as_it_was(

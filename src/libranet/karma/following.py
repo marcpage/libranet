@@ -15,9 +15,11 @@ here: it is a head the node does not follow, which
 A block whose check needs what the node lacks, a signer's key or a block of
 the chain, is checked again once that has come: the reader asks for it
 (Phase 6 Step 124). A block checked is not checked again while the head is
-the same, and what was found of it is said once. One not full is not read or
-asked for again either, even if eviction lets it go, as no correct validation
-block can stake on it, and little is kept of it
+the same, and what was found of it is said once. One full is not read again
+either, but is kept held, as it may be validated: while it is held it is said
+to be in use, and once eviction lets it go, it is asked for again. One not full
+is neither read nor asked for again, even if eviction lets it go, as no correct
+validation block can stake on it, and little is kept of it
 (:class:`~libranet.karma.checking.NotFullBlock`): only a validation block naming
 it has it read again, to judge what that states of it. A block found
 unsigned, or whose signature fails, is shunned (§3.7, §3.8); one found false
@@ -267,17 +269,23 @@ class ChainFollower:
 
     def _transactions(self, named_for: ContentId | None, target: DropTarget) -> _AtTarget:
         """The checks of the transaction blocks held at ``target``, named for ``named_for``."""
-        # One checked and not full is done with: no validation block can stake
-        # on it, so eviction may have it, and it is not fetched again.
-        checks: dict[ContentId, TransactionBlockCheck | NotFullBlock | BlockFinding | None] = {
-            block_id: found
-            for block_id, found in self._looking.transactions.items()
-            if not isinstance(found, TransactionBlockCheck)
+        checks: dict[ContentId, TransactionBlockCheck | NotFullBlock | BlockFinding | None] = dict(
+            self._looking.transactions
+        )
+        # One checked and full is not read again, but kept held, as it may be
+        # validated. Any other checked is done with: no validation block can
+        # stake on it, so eviction may have it, and it is not fetched again.
+        full = {
+            block_id
+            for block_id, found in checks.items()
+            if isinstance(found, TransactionBlockCheck)
         }
         lacking: dict[ContentId, tuple[ContentId, ...]] = {}
         check = partial(self._transaction, named_for)
 
-        for held in self._reader.read(target, TransactionBlock, known=set(checks)):
+        for held in self._reader.read(
+            target, TransactionBlock, known=set(checks) - full, kept=full
+        ):
             try:
                 checks[held.block_id] = self._found(self._looking.transactions, held, check)
 

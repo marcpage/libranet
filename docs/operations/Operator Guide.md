@@ -570,9 +570,12 @@ transactions it holds, and whether it is full.
 
 It reads each block there once while its head is the same, and keeps in memory
 each transaction and which block holds it. So eviction may let go of a block
-that is not full, and the node does not fetch it again. It reads a full block
-each time, since that may be validated. A restart forgets all of this, so the
-node reads each block once more, fetching those it let go of.
+that is not full, and the node does not fetch it again. A full block it does not
+read again either, but keeps, since that may be validated: it tells eviction the
+block is in use, as a read does, and fetches it again if it is let go. Nor does
+it combine anything again while nothing it reads or carries has changed since it
+last built. A restart forgets all of this, so the node reads each block once
+more, fetching those it let go of.
 
 Each time it looks and each time it builds, the node shuns each smaller block
 at its head's target whose transactions are all in a correct block it holds
