@@ -840,6 +840,16 @@ class KarmaConfig(_Section):
     # takes one core of the node's.
     mining_processes: int = Field(default=1, ge=1)
 
+    # Whether the node mines: combines the transactions put up into
+    # transaction blocks, and builds validation blocks of others' stakes,
+    # searched for karma.block_seconds (KarmaLedger §5.6, §6.1, KarmaScaling
+    # §6.2). A node that cannot compete with the miners turns it off: it then
+    # builds validation blocks of its own stake, and those people make
+    # through it, alone, searched for only until a search will find them, so
+    # that it still stakes. It still puts up its transactions, each with the
+    # work a transaction needs (KarmaLedger §4.3).
+    mining: bool = True
+
     # How long the Karma module waits for content it asks the network for,
     # a block or a signer's key, before it goes on without it (Phase 6 Step
     # 124). It asks again the next time it needs it.
@@ -860,8 +870,9 @@ class KarmaConfig(_Section):
     # the best found, once that shares storage.search_min_bits with its target
     # (KarmaLedger §2, §5.5, §6.5, Phase 6 Step 131). A block that is only to
     # be found is searched for no longer than that takes. The search holds up
-    # the module's other work.
-    block_seconds: float = Field(default=10.0, ge=0)
+    # the module's other work. None by default: a generation closes sooner,
+    # and stake, not hashing, decides between blocks (KarmaScaling §6.1).
+    block_seconds: float = Field(default=0.0, ge=0)
 
     # What share of the Karma the chain states the node holds each of its
     # payments is, in percent, rounded down to whole Kismet (KarmaLedger

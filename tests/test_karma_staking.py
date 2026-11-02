@@ -4,9 +4,10 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from logging import DEBUG, INFO
+from typing import Any
 from zlib import compress
 
-from pytest import LogCaptureFixture, fixture
+from pytest import LogCaptureFixture, MonkeyPatch, fixture
 
 from libranet.bundle.signing import SignedBundle
 from libranet.bundle.storing import STORAGE_COMPRESSION_LEVEL
@@ -422,6 +423,30 @@ def test_a_stake_of_the_nodes_own_held_at_the_target_is_its_stake(
     assert taken is not None and taken.stakes == (staked(alice, id_of(data), 5),)
 
 
+def test_a_node_that_does_not_mine_takes_only_its_own_stake_held_and_those_given(
+    stakes: HeadStakes,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    carol: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    data = put_up(truth, first, carol, sent(alice, {bob.node_id: 100, dave.node_id: 100}, 1))
+    target = first.targets.validation
+    hold(truth, validating(target, alice, data), validating(target, dave, data))
+    by_bob = staked(bob, id_of(data), 7)
+    stakes.take(by_bob)
+
+    taken = stakes.staked(follower.checked()[0], alice, mining=False)
+
+    assert taken is not None
+    assert stakers(taken.stakes) == sorted([alice.node_id, bob.node_id])
+    assert {staked(alice, id_of(data), 5), by_bob} == set(taken.stakes)
+
+
 def test_a_stake_whose_signature_fails_is_passed_over_and_logged_once_at_a_head(
     stakes: HeadStakes,
     follower: ChainFollower,
@@ -595,8 +620,13 @@ def building(
     node: NodeIdentity,
     placed: Placed,
     bounds: BlockBounds = ROOMY,
+    *,
+    mining: bool = True,
 ) -> ValidationBuilder:
-    """What builds validation blocks as ``node``, staking a tenth, placing each drop in moments."""
+    """What builds validation blocks as ``node``, staking a tenth, placing each drop in moments.
+
+    Unless ``mining``, it builds them of its own stake, and those given.
+    """
     return ValidationBuilder(
         history,
         follower,
@@ -609,6 +639,7 @@ def building(
         stake_percent=lambda: 10.0,
         clock=NOW.timestamp,
         bounds=bounds,
+        mining=mining,
     )
 
 
@@ -705,6 +736,38 @@ def test_a_block_is_built_again_only_once_stakes_come_that_those_held_lack(
         [alice.node_id],
         sorted([alice.node_id, bob.node_id]),
     ]
+
+
+def test_a_node_that_does_not_mine_builds_a_block_of_its_own_stake_only_to_be_found(
+    history: ChainHistory,
+    follower: ChainFollower,
+    reader: TargetReader,
+    carried: CarriedTransactions,
+    placed: Placed,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    scored: list[bool] = []
+    place = BlockPlacing.placed
+
+    def placing(self: BlockPlacing, *given: Any, **asked: Any) -> Any:
+        scored.append(asked["scored"])
+        return place(self, *given, **asked)
+
+    monkeypatch.setattr(BlockPlacing, "placed", placing)
+    following(follower, truth, first)
+    data = put_up(truth, first, bob, sent(alice, {bob.node_id: 100}, 1))
+    hold(truth, validating(first.targets.validation, bob, data))
+    builder = building(history, follower, reader, carried, alice, placed, mining=False)
+
+    builder.build()
+    builder.build()
+
+    assert [stakers(block.stakes) for block in placed.blocks()] == [[alice.node_id]]
+    assert scored == [False]
 
 
 def test_a_block_is_built_of_a_stake_made_through_the_node(

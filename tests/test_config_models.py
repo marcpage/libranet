@@ -383,6 +383,15 @@ def test_karma_mines_with_one_process_by_default_and_never_none() -> None:
         KarmaConfig(mining_processes=0)
 
 
+def test_karma_mines_by_default_and_may_be_told_not_to() -> None:
+    assert KarmaConfig().mining is True
+    assert LibranetConfig.model_validate({"karma": {"mining": False}}).karma.mining is False
+
+
+def test_karma_searches_a_blocks_nonce_only_until_it_is_found_by_default() -> None:
+    assert KarmaConfig().block_seconds == 0.0
+
+
 def test_karma_waits_thirty_seconds_for_what_it_asks_for_and_always_some() -> None:
     assert KarmaConfig().fetch_wait_seconds == 30.0
 
@@ -951,6 +960,8 @@ def test_the_example_config_states_the_default_limits_waits_and_hidden_names() -
     assert stated["backup"]["restore_resume_seconds"] == BackupConfig().restore_resume_seconds
     assert stated["peers"]["turned_away_rest_seconds"] == PeerConfig().turned_away_rest_seconds
     assert stated["karma"]["mining_processes"] == KarmaConfig().mining_processes
+    assert stated["karma"]["mining"] == KarmaConfig().mining
+    assert stated["karma"]["block_seconds"] == KarmaConfig().block_seconds
     assert stated["karma"]["fetch_wait_seconds"] == KarmaConfig().fetch_wait_seconds
     assert stated["karma"]["payment_percent"] == KarmaConfig().payment_percent
     assert stated["karma"]["stake_percent"] == KarmaConfig().stake_percent

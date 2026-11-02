@@ -396,6 +396,14 @@ karma:
   # machine's; more finish sooner, and leave less to the rest of the node.
   mining_processes: 1
 
+  # Whether the node mines: combines the transactions put up into
+  # transaction blocks, and builds validation blocks of others' stakes. A
+  # node that cannot compete with the miners sets it false: it then only
+  # stakes, in validation blocks of its own stake and those people make
+  # through it, searched for only until a search will find them. It still
+  # puts up its own transactions, each with the work a transaction needs.
+  mining: true
+
   # How long, in seconds, the Karma module waits for a block or a signer's
   # key it asks the network for before it goes on without it. It asks again
   # the next time it needs it.
@@ -411,11 +419,13 @@ karma:
   # The sender may put up one carried no more again.
   carry_generations: 10
 
-  # How long, in seconds, the Karma module searches for the nonce of a block
-  # it places, as one it puts up for a transaction alone, before it takes the
-  # best found, once that shares storage.search_min_bits with its target. The
-  # search holds up the module's other work.
-  block_seconds: 10.0
+  # How long, in seconds, the Karma module searches for the nonce of a full
+  # transaction block or a validation block, whose bits rank it, before it
+  # takes the best found, once that shares storage.search_min_bits with its
+  # target. Any other block is searched for only until a search will find
+  # it. The search holds up the module's other work. At 0, a generation
+  # closes sooner, and stake, not hashing, decides between blocks.
+  block_seconds: 0.0
 
   # What share of the Karma the node holds each of its payments is, in
   # percent, rounded down to whole Kismet. It is read as the decimal it is
