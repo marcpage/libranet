@@ -385,6 +385,25 @@ def test_others_stakes_on_the_block_are_taken_but_those_of_whom_the_node_distrus
     assert staked(bob, id_of(data), 5) in taken.stakes
 
 
+def test_a_stake_of_0_held_at_the_target_is_not_taken(
+    stakes: HeadStakes,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    carol: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    data = put_up(truth, first, carol, sent(alice, {bob.node_id: 100}, 1))
+    hold(truth, validating(first.targets.validation, bob, data, kismet=0))
+
+    taken = stakes.staked(follower.checked()[0], alice)
+
+    assert taken is not None
+    assert stakers(taken.stakes) == [alice.node_id]
+
+
 def test_a_stake_of_the_nodes_own_held_at_the_target_is_its_stake(
     stakes: HeadStakes,
     follower: ChainFollower,

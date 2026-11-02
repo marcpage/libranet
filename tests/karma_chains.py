@@ -19,7 +19,7 @@ from libranet.cas.store import CasStore
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import BlockBounds, BlockDrop, TransactionBlock, ValidationBlock
 from libranet.karma.generations import GenerationTargets
-from libranet.karma.ledger import BalanceSheet, Reward, reach_of
+from libranet.karma.ledger import WEIGHT_GENERATIONS, BalanceSheet, Reward, StakeWeight, reach_of
 from libranet.karma.weight import ChainWeight
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
@@ -205,20 +205,45 @@ class Chain:
         """Its transaction block ``generation``."""
         return BlockDrop.parsed(self.generations[generation].transaction, TransactionBlock).block
 
+    def validation(self, generation: int) -> ValidationBlock:
+        """Its validation block ``generation``."""
+        return BlockDrop.parsed(self.generations[generation].validation, ValidationBlock).block
+
+    def latest(self, generation: int) -> dict[ContentId, Balance]:
+        """Each balance stated, the latest through its transaction block ``generation``."""
+        latest: dict[ContentId, Balance] = {}
+
+        for each in range(len(self.generations))[: generation + 1 or None]:
+            latest.update(self.transaction(each).balances)
+
+        return latest
+
+    def stake(self, generation: int = -1) -> int:
+        """The total effective stake of its validation block ``generation`` (§6.6)."""
+        stakes = StakeWeight.effective_stakes(self.validation(generation), self.latest(generation))
+        return sum(stakes.values())
+
     def weight(self) -> ChainWeight:
         """What it weighs through its latest generation (§3.3)."""
         last = self.generations[-1]
-        return self.transaction(-1).weight_through(id_of(last.transaction), id_of(last.validation))
+        return self.transaction(-1).weight_through(
+            id_of(last.transaction), id_of(last.validation), self.stake()
+        )
+
+    def most(self) -> ChainWeight:
+        """The most it weighs, as a claim's walk bounds it: each staker weighing whole (§3.3)."""
+        last = self.generations[-1]
+        staked = sum(stake.stake.kismet.count for stake in self.validation(-1).stakes)
+        return self.transaction(-1).weight_through(
+            id_of(last.transaction), id_of(last.validation), WEIGHT_GENERATIONS * staked
+        )
 
     def block_after(self, *signed: SignedTransaction) -> TransactionBlock:
         """The next transaction block, as it truly is, holding ``signed`` and the payout."""
         last = self.generations[-1]
         validated = self.transaction(-1)
         validation = BlockDrop.parsed(last.validation, ValidationBlock)
-        latest: dict[ContentId, Balance] = {}
-
-        for generation in range(len(self.generations)):
-            latest.update(self.transaction(generation).balances)
+        latest = self.latest(-1)
 
         stakers = {stake.staker for stake in validation.block.stakes}
         reward = Reward(
@@ -253,20 +278,21 @@ class Chain:
         bits: int | None = None,
         generation: int | None = None,
         witnessed: tuple[str, ...] = (),
+        kismet: int = 5,
     ) -> Chain:
         """This chain and the next generation: ``block``, or the next as it truly is.
 
         ``builder`` builds the transaction block, and ``staker`` the
         validation block of ``generation``, the block's unless given, staking
-        5 on it, and listing the hashes ``witnessed``, each drop sharing
-        ``bits`` with its target.
+        ``kismet`` on it, and listing the hashes ``witnessed``, each drop
+        sharing ``bits`` with its target.
         """
         built = self.block_after() if block is None else block
         transaction = signed_at(self.targets.transaction, builder, built, bits)
         validation = ValidationBlock(
             built.generation if generation is None else generation,
             None,
-            (staked(staker, id_of(transaction), 5),),
+            (staked(staker, id_of(transaction), kismet),),
             witnessed,
         )
         earlier = [
@@ -293,8 +319,9 @@ def validating(
     *,
     runner_up: bytes | None = None,
     bits: int | None = None,
+    kismet: int = 5,
 ) -> bytes:
-    """The validation block ``staker`` places at ``target``, staking 5 on transaction block ``on``.
+    """The validation block ``staker`` places at ``target``, staking ``kismet`` on block ``on``.
 
     It names the validation block ``runner_up`` as its runner-up, if given,
     and shares ``bits`` with its target.
@@ -302,7 +329,7 @@ def validating(
     block = ValidationBlock(
         BlockDrop.parsed(on, TransactionBlock).block.generation,
         None if runner_up is None else id_of(runner_up),
-        (staked(staker, id_of(on), 5),),
+        (staked(staker, id_of(on), kismet),),
         (),
     )
     return signed_at(target, staker, block, bits)

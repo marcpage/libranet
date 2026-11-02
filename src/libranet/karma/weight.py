@@ -1,11 +1,15 @@
-"""A chain's weight: the work it took to build (KarmaLedger §3.3).
+"""A chain's weight: the work it took to build, and the stake behind it (KarmaLedger §3.3).
 
 A drop whose id shares b leading bits with its target hash takes about 2^b
-hashes to find, so a chain weighs the sum of 2^b over both drops of every
-generation. Summing bits instead would let two 15-bit drops weigh as much as
-one of 30 bits, which took 32,768 times the work of either. A transaction
-block states the weight of the chain before it as a string of decimal
-digits, as an amount is written, since one drop alone may add 2^256 (§5.1).
+hashes to find. A chain weighs the sum, over its generations, of 2^b for the
+transaction block's drop, and 2^b for the validation block's times its total
+effective stake, in tenths of a Kismet (§6.6), or once where that is 0, as
+only the root's is. So a validation block holding twice the stake weighs as
+one sharing a bit more. Summing bits instead would let two 15-bit drops weigh
+as much as one of 30 bits, which took 32,768 times the work of either. A
+transaction block states the weight of the chain before it as a string of
+decimal digits, as an amount is written, since one drop alone may add more
+than 2^256 (§5.1).
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ from libranet.json_fields import decimal_count
 
 @dataclass(frozen=True, order=True)
 class ChainWeight:
-    """A chain's weight, ``work``: the sum of 2^b over its drops, each matching b bits.
+    """A chain's weight, ``work``: the sum of what each of its drops weighs (§3.3).
 
     Raises:
         ValueError: ``work`` is negative.
@@ -52,6 +56,31 @@ class ChainWeight:
         a search counts them (:mod:`libranet.cas.prefix`).
         """
         return cls.of_bits(matching_bits(target.hex, drop.hash))
+
+    @classmethod
+    def of_staked(cls, bits: int, stake: int) -> ChainWeight:
+        """The weight of a validation drop matching ``bits`` bits, its block holding ``stake``.
+
+        That is 2^``bits`` times ``stake``, its block's total effective stake
+        in tenths of a Kismet, or once if that is 0, as only the root's is.
+
+        Raises:
+            ValueError: ``bits`` is negative, or more than a hash has, or
+                ``stake`` is negative.
+        """
+        if stake < 0:
+            raise ValueError(f"A validation block's stake must not be negative, got {stake}")
+
+        return cls(cls.of_bits(bits).work * max(stake, 1))
+
+    @classmethod
+    def of_validation(cls, drop: ContentId, target: DropTarget, stake: int) -> ChainWeight:
+        """The weight of the validation drop ``drop``, placed at ``target``, holding ``stake``.
+
+        Raises:
+            ValueError: ``stake`` is negative.
+        """
+        return cls.of_staked(matching_bits(target.hex, drop.hash), stake)
 
     @classmethod
     def from_value(cls, value: object, *, named: str = "A chain's weight") -> ChainWeight:

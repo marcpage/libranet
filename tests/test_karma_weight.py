@@ -86,6 +86,23 @@ def test_a_drops_bits_are_counted_against_its_target(bits: int) -> None:
     assert ChainWeight.of_drop(_sharing(bits), TARGET) == ChainWeight(2**bits)
 
 
+@mark.parametrize("stake, times", [(0, 1), (1, 1), (4, 4), (10**15, 10**15)])
+def test_a_validation_drop_weighs_its_work_times_its_stake_and_once_for_none(
+    stake: int, times: int
+) -> None:
+    assert ChainWeight.of_staked(6, stake) == ChainWeight(2**6 * times)
+    assert ChainWeight.of_validation(_sharing(6), TARGET, stake) == ChainWeight(2**6 * times)
+
+
+def test_twice_the_stake_weighs_as_a_bit_more() -> None:
+    assert ChainWeight.of_staked(6, 2) == ChainWeight.of_staked(7, 1)
+
+
+def test_a_negative_stake_is_refused() -> None:
+    with raises(ValueError, match="must not be negative"):
+        ChainWeight.of_staked(6, -1)
+
+
 def test_a_drop_whose_id_is_its_target_hash_weighs_two_to_the_256() -> None:
     drop = ContentId("sha256", TARGET.hex)
 

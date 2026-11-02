@@ -64,6 +64,7 @@ def generation(truth: CasStore, chain: Chain, number: int) -> ChainGeneration:
         BlockDrop.parsed(drops.validation, ValidationBlock).block,
         id_of(drops.transaction),
         chain.transaction(number),
+        chain.stake(number),
     )
 
 

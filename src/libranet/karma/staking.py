@@ -72,6 +72,7 @@ from libranet.karma.ledger import Reward
 from libranet.karma.placing import BlockPlacing
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore, balances_left
+from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import Balance
 from libranet.protocol.karma_stakes import SignedStake, Stake
@@ -346,12 +347,13 @@ class HeadStakes:
     ) -> None:
         """Add to ``offered`` each of ``stakes`` on ``validated_id`` it lacks that may be taken.
 
-        Each is signed by its staker, whom the node does not distrust, with
-        their key, of ``keys``.
+        Each is of more than 0 Kismet (§6.2), and signed by its staker, whom
+        the node does not distrust, with their key, of ``keys``.
         """
         for signed in stakes:
             if (
                 signed.stake.transaction_block == validated_id
+                and signed.stake.kismet != Kismet(0)
                 and signed.hash not in offered
                 and not self._distrusts(signed.staker)
                 and self._verified(signed, keys)
@@ -555,11 +557,17 @@ class ValidationBuilder:
         the one whose id sorts first (§6.5).
         """
 
-        def rank(check: ValidationBlockCheck) -> tuple[bool, int, int, ContentId]:
+        def rank(check: ValidationBlockCheck) -> tuple[bool, int, int, int, ContentId]:
             score = check.score or ValidationScore(
-                matching_bits(target.hex, check.block_id.hash), 0
+                ChainWeight(0), matching_bits(target.hex, check.block_id.hash), 0
             )
-            return (not check.is_correct, -score.bits, -score.stake, check.block_id)
+            return (
+                not check.is_correct,
+                -score.weight.work,
+                -score.bits,
+                -score.stake,
+                check.block_id,
+            )
 
         return sorted(
             (

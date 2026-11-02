@@ -46,7 +46,7 @@ from libranet.karma.blocks import (
 )
 from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets
-from libranet.karma.ledger import BalanceSheet, Reward, reach_of
+from libranet.karma.ledger import BalanceSheet, Reward, StakeWeight, reach_of
 from libranet.karma.reading import HeldBlock
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
@@ -91,8 +91,20 @@ class ChainBefore:
 
     @property
     def weight(self) -> ChainWeight:
-        """The chain's weight through it, which a block built on it states (§5.1)."""
-        return self.validated.weight_through(self.validated_id, self.validation_id)
+        """The chain's weight through it, which a block built on it states (§3.3, §5.1).
+
+        Its validation block's drop is weighed by its stakes' effective stake,
+        each staker's balance read as the block it validates leaves it (§6.6).
+
+        Raises:
+            MissingContentError: names the blocks ``chain`` lacks.
+        """
+        stakes = StakeWeight.effective_stakes(
+            self.validation.block, self.chain.balances(self.stakers(), self.generation - 1)
+        )
+        return self.validated.weight_through(
+            self.validated_id, self.validation_id, sum(stakes.values())
+        )
 
     def stakers(self) -> set[ContentId]:
         """The stakers of its validation block, whom its reward pays (§6.6)."""

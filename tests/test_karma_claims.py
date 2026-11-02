@@ -115,7 +115,7 @@ def test_a_head_is_read_with_the_block_it_validates_as_they_claim(
         3,
         id_of(claimed.generations[2].validation),
         claimed.transaction(3).weight,
-        claimed.weight(),
+        claimed.most(),
     )
 
 
@@ -173,7 +173,7 @@ def test_a_chain_on_another_root_is_walked_to_its_root(
     assert isinstance(walked, ClaimedChain) and walked.ancestor == -1
 
 
-def test_a_false_weight_is_found_where_it_is_first_stated(
+def test_a_weight_more_than_the_chain_before_can_weigh_is_found_where_it_is_first_stated(
     history: ChainHistory,
     chain: HeldChain,
     truth: CasStore,
@@ -183,16 +183,42 @@ def test_a_false_weight_is_found_where_it_is_first_stated(
     bob: NodeIdentity,
 ) -> None:
     two = Chain(claimed.generations[:3])
-    lying = two.then(bob, alice, replace(two.block_after(), weight=ChainWeight(7)))
+    lying = two.then(bob, alice, replace(two.block_after(), weight=ChainWeight(2**40)))
     hold(truth, *lying.drops(2, 3))
     claim = HeadClaim(lying.head)
     claim.claimed(chain)
 
     assert claim.walk(history, chain) == FalseStatement(
         id_of(lying.generations[3].transaction),
-        f'A transaction block\'s "weight" must be {two.weight().value()}, got 7',
+        f'A transaction block\'s "weight" must be at most {two.most().value()}, got {2**40}',
     )
     assert recorder.asked_for() == []
+
+
+def test_a_weight_the_chain_before_could_weigh_but_does_not_is_found_as_it_is_checked(
+    history: ChainHistory,
+    chain: HeldChain,
+    reader: TargetReader,
+    truth: CasStore,
+    claimed: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+) -> None:
+    two = Chain(claimed.generations[:3])
+    lying = two.then(bob, alice, replace(two.block_after(), weight=two.weight() + ChainWeight(1)))
+    hold(truth, *lying.drops(1, 2, 3))
+    claim = HeadClaim(lying.head)
+    claim.claimed(chain)
+    walked = claim.walk(history, chain)
+    assert isinstance(walked, ClaimedChain)
+
+    failed = claim.check(walked, reader, bounds=BOUNDS)
+
+    assert failed is not None
+    block_id, found = failed
+    assert block_id == id_of(lying.generations[3].transaction)
+    assert isinstance(found, BlockFinding)
+    assert f'"weight" must be {two.weight().value()}' in found.statement
 
 
 def test_each_generation_is_checked_against_the_validation_block_before() -> None:

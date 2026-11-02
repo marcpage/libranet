@@ -273,18 +273,24 @@ class TransactionBlock:
         """The signed bundles it holds: each transaction but the payout, as its sender signed it."""
         return tuple(signed.bundle for signed in self.signed)
 
-    def weight_through(self, block_id: ContentId, validation_id: ContentId) -> ChainWeight:
+    def weight_through(
+        self, block_id: ContentId, validation_id: ContentId, stake: int
+    ) -> ChainWeight:
         """The chain's weight through this block, ``block_id``, and the block validating it.
 
-        That is its ``weight``, the chain's before it, and 2^b for each of
-        the two drops, it and validation block ``validation_id``, each
-        matching b bits of its target hash (§3.5).
+        That is its ``weight``, the chain's before it, 2^b for its own drop,
+        and 2^b times ``stake`` for validation block ``validation_id``'s, each
+        drop matching b bits of its target hash, ``stake`` being that block's
+        total effective stake, in tenths of a Kismet (§3.3).
+
+        Raises:
+            ValueError: ``stake`` is negative.
         """
         targets = GenerationTargets.built_on(self.previous)
         return (
             self.weight
             + ChainWeight.of_drop(block_id, targets.transaction)
-            + ChainWeight.of_drop(validation_id, targets.validation)
+            + ChainWeight.of_validation(validation_id, targets.validation, stake)
         )
 
     def _check_payout(self) -> None:

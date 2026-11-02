@@ -210,7 +210,7 @@ def test_a_false_weight_is_caught_where_it_is_first_stated_nothing_before_it_ask
         assert not changes.look()
 
     false = id_of(lying.generations[3].transaction)
-    statement = f'A transaction block\'s "weight" must be {two.weight().value()}, got {2**40}'
+    statement = f'A transaction block\'s "weight" must be at most {two.most().value()}, got {2**40}'
     assert recorder.said(EventType.KARMA_FALSE_BLOCK) == [
         {"block": str(false), "builder": str(carol.node_id), "staker": None, "statement": statement}
     ]
@@ -220,6 +220,48 @@ def test_a_false_weight_is_caught_where_it_is_first_stated_nothing_before_it_ask
     assert f"Not following the Karma chain through {lying.head}: {false} is not taken" in (
         caplog.text
     )
+
+
+def test_a_chain_heavier_for_its_stake_though_sharing_fewer_bits_is_followed(
+    follower: ChainFollower,
+    changes: HeadChanges,
+    history: ChainHistory,
+    truth: CasStore,
+    root: Chain,
+    alice: NodeIdentity,
+    carol: NodeIdentity,
+) -> None:
+    lucky = root.then(carol, alice, bits=12)
+    # 2^9 + 2^9 times 100 tenths outweighs 2^12 + 2^12 times 5.
+    staking_more = root.then(carol, alice, bits=9, kismet=100)
+    following(follower, truth, lucky)
+    hold(truth, *staking_more.drops(1))
+    changes.told(PEER, staking_more.head)
+
+    assert changes.look()
+    assert history.head is not None and history.head.validation == staking_more.head
+    assert history.head.weight == staking_more.weight()
+
+
+def test_a_chain_heavier_only_as_its_walk_bounds_it_is_not_followed(
+    follower: ChainFollower,
+    changes: HeadChanges,
+    history: ChainHistory,
+    truth: CasStore,
+    root: Chain,
+    alice: NodeIdentity,
+    carol: NodeIdentity,
+) -> None:
+    lucky = root.then(carol, alice, bits=12)
+    # Alice won the root, so weighs a tenth: 2^9 times 10 tenths, not the 100 bounded.
+    lighter = root.then(carol, alice, bits=9, kismet=10)
+    assert lighter.most() > lucky.weight() > lighter.weight()
+    following(follower, truth, lucky)
+    hold(truth, *lighter.drops(1))
+    changes.told(PEER, lighter.head)
+
+    assert not changes.look()
+    assert history.head is not None and history.head.validation == lucky.head
 
 
 def test_a_heavier_chain_is_followed_in_place_of_the_history_after_the_ancestor(
@@ -405,19 +447,19 @@ def test_a_better_validation_block_of_the_latest_generation_is_followed_as_heavi
 
 
 def sibling(
-    root: Chain, on: Chain, staker: NodeIdentity, builder: NodeIdentity, kismet: int
+    root: Chain, on: Chain, staker: NodeIdentity, builder: NodeIdentity, kismet: int, bits: int = 9
 ) -> bytes:
     """A validation block ``builder`` places beside ``on``'s first, ``staker`` staking ``kismet``.
 
-    It stakes on the same transaction block, and shares as many bits with its target.
+    It stakes on the same transaction block, and shares ``bits`` with its target.
     """
     block = ValidationBlock(
         1, None, (staked(staker, id_of(on.generations[1].transaction), kismet),), ()
     )
-    return signed_at(root.targets.validation, builder, block, 9)
+    return signed_at(root.targets.validation, builder, block, bits)
 
 
-def test_of_two_as_heavy_the_one_of_more_stake_is_followed_and_kept(
+def test_of_two_on_one_block_the_one_of_more_stake_is_heavier_followed_and_kept(
     follower: ChainFollower,
     changes: HeadChanges,
     history: ChainHistory,
@@ -437,7 +479,7 @@ def test_of_two_as_heavy_the_one_of_more_stake_is_followed_and_kept(
 
     assert history.generation(1).validation == id_of(better)
     assert history.generation(1).transaction == id_of(first.generations[1].transaction)
-    assert "Following the better Karma chain through generation 1" in caplog.text
+    assert "Following the heavier Karma chain through generation 1" in caplog.text
 
     # What it left, at the target and as a peer tells of it, does not bring it back.
     changes.told(PEER, first.head)
@@ -499,12 +541,13 @@ def test_of_two_as_heavy_the_one_of_more_bits_in_its_validation_block_is_followe
     carol: NodeIdentity,
 ) -> None:
     targets = root.targets
-    fewer_on = signed_at(targets.transaction, bob, root.block_after(), 10)
-    fewer = validating(targets.validation, alice, fewer_on, bits=9)
+    # Alice won the root, so weighs a tenth: 2^9 times 10 tenths is 2^10 times 5.
+    fewer_on = signed_at(targets.transaction, bob, root.block_after(), 9)
+    fewer = validating(targets.validation, alice, fewer_on, bits=9, kismet=10)
     following(follower, truth, Chain((*root.generations, Generation(fewer_on, fewer))))
     weight = history.generation(1).weight
     more_on = signed_at(targets.transaction, carol, root.block_after(), 9)
-    more = validating(targets.validation, alice, more_on, bits=10)
+    more = validating(targets.validation, alice, more_on, bits=10, kismet=5)
     hold(truth, more_on, more)
 
     assert changes.look()
@@ -564,9 +607,10 @@ def test_a_block_followed_that_a_tie_needs_is_asked_for_and_the_tie_goes_on_once
     alice: NodeIdentity,
     bob: NodeIdentity,
 ) -> None:
-    first = root.then(bob, alice, bits=9)
+    # As heavy, 2^9 times 4 tenths being 2^10 times 2, and better, sharing more bits.
+    first = root.then(bob, alice, bits=9, kismet=4)
     following(follower, truth, first)
-    better = sibling(root, first, alice, alice, 6)
+    better = sibling(root, first, alice, alice, 2, bits=10)
     hold(truth, better)
     truth.delete(first.head)
     changes.told(PEER, id_of(better))

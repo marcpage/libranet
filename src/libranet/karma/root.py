@@ -92,7 +92,9 @@ class ChainRoot:
         return cls(
             transaction,
             validation,
-            ChainGeneration.of(validation_id, validation_block, transaction_id, transaction_block),
+            ChainGeneration.of(
+                validation_id, validation_block, transaction_id, transaction_block, 0
+            ),
         )
 
     @staticmethod

@@ -71,8 +71,10 @@ FIRST_VALIDATION_ID = matching(FIRST.validation, 6)
 SECOND = GenerationTargets.after(FIRST_VALIDATION_ID)
 SECOND_ID = matching(SECOND.transaction, 7)
 
-# The weight of the chain before transaction block 2: 2^b over each drop.
-WEIGHT = ChainWeight(2**3 + 2**5 + 2**4 + 2**6)
+# The weight of the chain before transaction block 2: 2^b over each drop, and
+# validation block 1's drop counts times its stake: Alice's 500 Kismet, weighing a
+# tenth, since she won the root.
+WEIGHT = ChainWeight(2**3 + 2**5 + 2**4 + 2**6 * 500)
 
 
 @dataclass(frozen=True)
@@ -406,7 +408,10 @@ def test_what_a_block_states_falsely_by_itself_is_found_naming_its_builder(
 @mark.parametrize(
     "changed, statement",
     [
-        (lambda block: replace(block, weight=ChainWeight(119)), '"weight" must be 120, got 119'),
+        (
+            lambda block: replace(block, weight=ChainWeight(119)),
+            f'"weight" must be {WEIGHT.value()}, got 119',
+        ),
         (lambda block: replace(block, reach=2), '"reach" must be 1, got 2'),
     ],
 )
