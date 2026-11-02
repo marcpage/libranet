@@ -221,7 +221,10 @@ shorter:
   that do not, and every generation it builds closes later.
 - **Build as things happen, not on a timer.** A node may build its next
   transaction block as soon as it follows a new head, and stake as soon as
-  it finds a full block, in place of waiting for its next build.
+  it finds a full block, in place of waiting for its next build. The
+  reference node stakes as soon as it finds a full block, before it follows
+  the chain on past it, so that a generation closing fast does not leave its
+  stake out. It still builds transaction blocks on its timer.
 - **Push new blocks.** A node may send a block it places at a target to its
   peers, in place of waiting for them to search for it. The reference node
   already pushes new content, but to one peer only, the best match for it.
@@ -374,9 +377,9 @@ would go:
 | `karma.rating_interval_seconds` | `3600.0` | Longer, once blocks are full as built | As above |
 
 And the changes to the reference node's code that the protocol already
-allows: building as things happen, pushing new blocks to peers (§6.1),
-taking the largest stakes that fit (§6.4), and fees on a node's own
-payments (§6.7).
+allows: building transaction blocks as things happen, pushing new blocks to
+peers (§6.1), taking the largest stakes that fit (§6.4), and fees on a node's
+own payments (§6.7).
 
 ## 8. Limits Only the Protocol Can Lift
 

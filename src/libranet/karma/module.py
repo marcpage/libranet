@@ -130,21 +130,23 @@ Step 135)::
 
     data.shunned  {"algorithm", "hash"}
 
-After each build, it stakes ``karma.stake_percent`` of what covers the node,
-or the share its operator sets on ``/config``, which the web server keeps in
-``staking.json`` in ``storage.karma_dir`` (Phase 6 Step 138), on the best
-correct transaction block at its head's transaction target that no identity
-the node distrusts built, and builds a validation block of its stake and the
-others' on that block held at its head's validation target, but those of
-whom the node distrusts, naming a runner-up whose stakes it would take are
+After each build, and as it looks, as soon as it finds a full transaction
+block at its head's transaction target that it has not built on, before it
+follows the chain on past it, it stakes ``karma.stake_percent`` of what covers
+the node, or the share its operator sets on ``/config``, which the web server
+keeps in ``staking.json`` in ``storage.karma_dir`` (Phase 6 Step 138), on the
+best correct transaction block at its head's transaction target that no
+identity the node distrusts built, and builds a validation block of its stake
+and the others' on that block held at its head's validation target, but those
+of whom the node distrusts, naming a runner-up whose stakes it would take are
 covered, and listing the transactions not yet witnessed. It places it as it
 places a block of its own, unless a correct one it holds there holds every
-stake (:class:`~libranet.karma.staking.ValidationBuilder`, Phase 6 Step
-136), and follows the chain through it as it next looks. Among others'
-stakes, it takes each a person makes through the node, as the web server
-gives it, keeping it until its head changes (Phase 6 Step 137). A node that
-does not mine takes no stake of others' held there, and searches for its
-block's nonce only until a search will find it::
+stake (:class:`~libranet.karma.staking.ValidationBuilder`, Phase 6 Step 136),
+and follows the chain through it as it next looks. Among others' stakes, it
+takes each a person makes through the node, as the web server gives it,
+keeping it until its head changes (Phase 6 Step 137). A node that does not
+mine takes no stake of others' held there, and searches for its block's nonce
+only until a search will find it::
 
     karma.stake  {"stake": {"contents": "…", …}}
 """
@@ -626,8 +628,11 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     def _look(self, *, idle: bool) -> None:
         """Follow the chain on, if it is time to look, or, as the module ``idle``s, to look again.
 
-        It then weighs the heads it does not follow, and once it follows a
-        heavier chain, follows that on. The head is then said, and the
+        It first stakes on a full block at the head's transaction target that
+        it has not built on, so that it does before it follows the chain on
+        past it (KarmaScaling §6.1). It then weighs the heads it does not
+        follow, and once it follows a heavier chain, stakes on it, and follows
+        that on, in the same way. The head is then said, and the
         balances stated there written, if it changed, the node's payments
         made one transaction, if they are due, and the transactions carried
         to put up are put up there. A history that cannot be written is
@@ -638,8 +643,15 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         changes = self._changes
         putting = self._putting
         payments = self._payments
+        validating = self._validating
 
-        if follower is None or changes is None or putting is None or payments is None:
+        if (
+            follower is None
+            or changes is None
+            or putting is None
+            or payments is None
+            or validating is None
+        ):
             return
 
         if now < self._next_look_at and not (idle and self._look_again):
@@ -649,9 +661,11 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._next_look_at = now + self._config.karma.look_seconds
 
         try:
+            validating.build_on_full()
             follower.look()
 
             if changes.look():
+                validating.build_on_full()
                 follower.look()
 
         except OSError as error:

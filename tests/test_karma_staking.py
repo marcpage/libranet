@@ -770,6 +770,37 @@ def test_a_node_that_does_not_mine_builds_a_block_of_its_own_stake_only_to_be_fo
     assert scored == [False]
 
 
+def test_a_block_is_built_at_once_on_a_full_block_come_since_the_last_build(
+    builder: ValidationBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    data = put_up(truth, first, dave, sent(alice, {bob.node_id: 100}, 1))
+    builder.build_on_full()
+    builder.build_on_full()
+
+    assert [stakers(block.stakes) for block in placed.blocks()] == [[alice.node_id]]
+
+    hold(truth, validating(first.targets.validation, bob, data))
+    builder.build_on_full()
+
+    # No full block has come since, so a stake that has waits for the next build.
+    assert len(placed.drops) == 1
+
+    builder.build()
+
+    assert [stakers(block.stakes) for block in placed.blocks()] == [
+        [alice.node_id],
+        sorted([alice.node_id, bob.node_id]),
+    ]
+
+
 def test_a_block_is_built_of_a_stake_made_through_the_node(
     builder: ValidationBuilder,
     placed: Placed,
