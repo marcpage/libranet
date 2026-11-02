@@ -359,6 +359,7 @@ where it went.
 | #570 | A collection's Keep offline as a download icon in the upper right corner | None: a change to the page alone |
 | #571 | Keys as a question mark in a circle | None: a change to the page alone |
 | #572 | No “Signed in as” note under the title | None: a change to the page alone |
+| #598 | A warning on leaving the page while a movie is imported | None: a change to the page alone |
 
 ## 5. Suggested Build Order
 

@@ -715,6 +715,9 @@ const state = {
   poster: null,
   // Whether the person left fullscreen while the movie chosen played.
   leftFullscreen: false,
+  // How many movies are being imported, each of which the page itself adds to
+  // its collection once the node has stored its file.
+  imports: 0,
 };
 
 function byId(id) {
@@ -2778,6 +2781,15 @@ async function importMovie(path, name, target, progress) {
   return { folder, problem };
 }
 
+// Asks before the page is left while a movie is imported, since leaving it
+// leaves that movie out of its collection. It is listened for only while one
+// is, as some browsers do not keep a page that listens for it to go back to.
+function warnOfLeaving(event) {
+  event.preventDefault();
+  // Chrome and Edge before 119 ask only when this is set.
+  event.returnValue = true;
+}
+
 function startImport(path, name) {
   const target = state.playlist.name;
   const item = make("li");
@@ -2798,7 +2810,15 @@ function startImport(path, name) {
     }
   };
 
-  importMovie(path, name, target, progress).then(({ folder, problem }) => {
+  if (state.imports++ === 0) {
+    window.addEventListener("beforeunload", warnOfLeaving);
+  }
+
+  importMovie(path, name, target, progress).finally(() => {
+    if (--state.imports === 0) {
+      window.removeEventListener("beforeunload", warnOfLeaving);
+    }
+  }).then(({ folder, problem }) => {
     item.remove();
 
     if (state.playlist && state.playlist.name === target && byId("editor").hidden) {
