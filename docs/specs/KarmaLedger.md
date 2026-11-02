@@ -133,12 +133,20 @@ the heaviest chain goes through.
 ### 3.3 The Heaviest Chain
 
 A chain is a root and the generations built on it, each a transaction
-block and the validation block that validates it. Its **weight** is the sum
-of 2^b over both drops of every generation, where b is the number of
-leading bits the drop's id shares with its target hash. A drop matching b
-bits takes about 2^b hashes to find, so the weight is the work it took to
-build the chain. Summing bits instead would let two 15-bit drops weigh as
-much as one 30-bit drop, which took 32,768 times the work of either.
+block and the validation block that validates it. Its **weight** is the sum,
+over every generation, of 2^b for the transaction block's drop, and 2^b
+times S for the validation block's, where b is the number of leading bits
+the drop's id shares with its target hash, and S is the validation block's
+total effective stake, in tenths of a Kismet (§6.6), counted as 1 where it is
+0, as only the root's is (§7.3). A drop matching b bits takes about 2^b
+hashes to find, so the weight is the work it took to build the chain, each
+validation block's work weighted by the stake behind it: a block holding
+twice the stake weighs as one sharing a bit more. So a block that gathers
+many stakers' stakes outweighs a luckier one holding only its builder's, and
+its reward is shared among them all (§6.6). Summing bits instead would let
+two 15-bit drops weigh as much as one 30-bit drop, which took 32,768 times
+the work of either. Stake counts, not stakers, since an identity costs
+nothing to make (§8).
 
 The **heaviest chain** is the one of greatest weight. Of two as heavy, it is
 the one whose winning validation block is the best (§6.5) at the first
@@ -149,6 +157,10 @@ two chains, whatever else each holds after it. Every node follows the heaviest
 chain it knows. A node that follows a chain leaves it only for one heavier, or
 as heavy and better by this order (§3.5.3), so that nodes that saw the same
 blocks in another order come to follow one chain.
+
+In the example below, each validation block holds an effective stake of 1:
+1 Kismet staked by one who won the generation before, so that each drop
+weighs its work alone.
 
 ```mermaid
 flowchart RL
@@ -163,7 +175,9 @@ flowchart RL
 
 Each transaction block states the weight of the chain before it (§5.1), and
 a reader checks it against the block before. So a reader sees how heavy a
-chain claims to be from a single block, before it fetches the rest.
+chain claims to be from a single block, before it fetches the rest. Until it
+reads the balances of a validation block's stakers, it knows only the most
+that block can add: its work times its stakes, each staker weighing whole.
 
 A chain is never final. A block becomes harder to replace as weight is
 built after it, and a rival holding more work from any point back replaces
@@ -208,15 +222,19 @@ target, it goes through these steps in order:
 
 1. **Read the claim.** It reads that head and the transaction block it
    validates, whose `weight` says how heavy the chain behind it claims to
-   be. If that is lighter than its own head, the node stops evaluating the
-   new head.
+   be. With the most the two add, each of the head's stakers weighing whole
+   (§3.3), that is the most the new chain can weigh. If even that is lighter
+   than its own head, the node stops evaluating the new head.
 2. **Walk back.** It walks the new head's generations back, from each
    validation block to the transaction block its stakes name, and from that
    block's `previous` to the validation block before. It stops at the first
    validation block in its genealogy, the **common ancestor**. At each step
-   it checks that the transaction block's `weight` is the one before's plus
-   2^b for the two drops between, so that a false weight is caught where it
-   first fails. It also validates the generation.
+   it checks that the transaction block's `weight` is no more than the one
+   before's plus the most the two drops between can add, each staker
+   weighing whole, and, at the common ancestor, that it is the ancestor's
+   weight, so that a false weight is caught where it first fails. It also
+   validates the generation. Each `weight` is checked exactly as the new
+   branch is checked (step 4).
 3. **Collect the old branch.** It collects every transaction, payouts left
    out, in its own chain's transaction blocks after the common ancestor,
    through its own head.
@@ -226,7 +244,7 @@ target, it goes through these steps in order:
    in the new chain is already accounted for, and it strikes that
    transaction from what it collected.
 5. **Follow.** If every block validates as correct, and the new head is
-   still heavier, or as heavy and better (§3.3), the node follows it. Its
+   heavier, as checked, or as heavy and better (§3.3), the node follows it. Its
    genealogy after the common ancestor becomes the new chain's, and it tells
    its peers its new head
    (§3.5.2). Otherwise it keeps its own head. A block found to state
@@ -316,7 +334,8 @@ itself, and the chain its `previous` names, prove wrong:
   one, or of another `generation` than the block's.
 - **Against its target:** its `generation` is not one more than that of the
   validation block its target is named for; a validation block has no stake,
-  its stakes name more than one transaction block, or one built on that
+  a stake of 0 outside the root, its stakes name more than one transaction
+  block, or one built on that
   validation block that is not at the transaction target, or its `runner_up`
   names itself, a block at another target, or one validating the same
   transaction block; or a transaction block at the root's target does not
@@ -599,13 +618,14 @@ JSON object
 - **`previous`** is the id of the winning validation block g − 1, the one
   the block's target is named for, so that a block read on its own says
   what it builds on. It is `null` only in the root.
-- **`weight`** is the weight (§3.3) of the chain before this block: 2^b
-  over both drops of each of generations 0 through g − 1. It leaves out the
+- **`weight`** is the weight (§3.3) of the chain before this block: what
+  both drops of each of generations 0 through g − 1 weigh. It leaves out the
   block's own drop, whose bits are mined only once its content is fixed. It
   is a string of decimal digits, as an amount is (§4.1), since one drop
-  alone may add 2^256, and it is `"0"` in the root. A block's `weight` is
-  that of transaction block g − 1, plus 2^b for that block's drop and for
-  validation block g − 1's.
+  alone may add more than 2^256, and it is `"0"` in the root. A block's
+  `weight` is that of transaction block g − 1, plus 2^b for that block's
+  drop, and 2^b times validation block g − 1's total effective stake for
+  that one's.
 - **`reach`** is how many blocks back a reader goes to find every identity
   holding Kismet (§5.3).
 - **`transactions`** are the block's transactions, as objects, sorted by
@@ -849,7 +869,9 @@ A stake is a signed bundle whose `contents` is the JSON object
 - **`transaction_block`** is the id of the transaction block staked on.
   Every stake in a validation block names the same one, the block it
   validates (§6.1).
-- **`kismet`** is the amount staked.
+- **`kismet`** is the amount staked: more than 0, but in the root's
+  validation block, whose one stake is `"0"` (§7.3). A stake of 0 would add
+  a staker who risks nothing.
 - **`created`** is when the staker made the stake, an RFC 3339 moment in
   UTC, to the second, as a transaction's is (§4.1). So one staker can put
   up several stakes of one amount (Karma §29). Two that one staker makes
@@ -918,14 +940,17 @@ A validation block is correct when:
 Of a generation's correct validation blocks, the best is, in order (Karma
 §19):
 
-- the one sharing the most bits with its target hash;
-- of those, the one holding the greatest total effective stake: the sum,
-  over its stakes, of each stake's Kismet times its staker's weight
-  (§6.6); and
+- the one adding the most weight to its chain (§3.3): 2^b for the
+  transaction block it validates, and 2^b for its own drop times its total
+  effective stake, the sum, over its stakes, of each stake's Kismet times
+  its staker's weight (§6.6);
+- of those, the one sharing the most bits with its target hash;
+- of those, the one holding the greatest total effective stake; and
 - of those, the one whose id sorts first, as of two chains as heavy
   (§3.3).
 
-A builder builds the next generation on the best it has seen (§3.2).
+So the best is the one the heaviest chain goes through. A builder builds the
+next generation on the best it has seen (§3.2).
 
 ### 6.6 The Reward
 
@@ -1083,9 +1108,20 @@ does not follow (§3.5.3).
 - **A head is a pointer, not proof.** A peer may tell of a head that does
   not exist, or one whose chain does not weigh what its `weight` claims. A
   node reads the claimed weight from one block before it fetches more. As
-  it walks back, it checks each `weight` against the one before (§3.5.3),
-  and it follows only a chain it has checked. So a false weight costs it
-  fetches only as far back as the lie.
+  it walks back, it checks each `weight` against the most the one before
+  can weigh (§3.5.3), and it follows only a chain it has checked, weighed
+  exactly. So a weight claiming more than a chain can weigh costs it fetches
+  only as far back as the lie, and one claiming less than that, but still
+  false, is found as the chain is checked.
+- **Stake weighs, not stakers.** A validation block's drop weighs its work
+  times its total effective stake (§3.3), so one holding more Kismet sways
+  which block wins, and a chain's weight, as in any ledger weighted by
+  stake. Identities cost nothing to make, so counting stakers would let
+  anyone outweigh honest blocks with stakes of next to nothing: what counts
+  is the Kismet staked, and a stake of 0 is false outside the root (§6.2).
+  Kismet split among many identities weighs no more than held by one,
+  though a recent winner that moves its Kismet to an identity that has won
+  nothing escapes the tenth its stake would otherwise weigh (§6.6).
 - **Compression varies.** Whether a block is full decides which blocks are
   validated, the same bytes compress to sizes some 9% apart by which zlib
   and level compress them, and any node may compress a block again (HTTP

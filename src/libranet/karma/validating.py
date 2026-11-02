@@ -10,9 +10,10 @@ against its target and its chain is checked here: that its stakes name one
 transaction block, at the transaction target of its generation, which is
 correct; its ``generation``, against the validation block its target is
 named for; that its ``runner_up`` is another validation block there,
-validating another transaction block; that every stake, each
-staker's together, and the runner-up's stakes its reward would take are
-covered (§6.3); and that it lists no witness an earlier winning validation
+validating another transaction block; that every stake is of more than 0
+Kismet; that every stake, each staker's together, and the runner-up's stakes
+its reward would take are covered (§6.3); and that it lists no witness an
+earlier winning validation
 block of its chain lists. A block stating any of these falsely distrusts
 its builder, and a stake that alone exceeds what covers it distrusts its
 staker too (§3.8).
@@ -22,8 +23,9 @@ transaction block not full, or one larger than a block may be, each as the
 node holds it, which its builder's copy, compressed otherwise, may not be
 (§5.4). The root's validation block is checked by its shape, and one at its
 target that is not the root's is passed over (§7.3). Of a generation's
-correct blocks, the best shares the most bits with its target hash, then
-holds the greatest total effective stake, then has the id that sorts first.
+correct blocks, the best adds the most weight to the chain, its work times
+its total effective stake (§3.3), then shares the most bits with its target
+hash, then holds the greatest stake, then has the id that sorts first.
 
 The chain is read through a :class:`~libranet.karma.checking.ChainView`, and
 the transaction blocks at the same generation's target are given as the
@@ -51,6 +53,7 @@ from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.ledger import Reward, StakeWeight
 from libranet.karma.reading import HeldBlock
+from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import Balance
 
@@ -78,16 +81,33 @@ def balances_left(
 class ValidationScore:
     """What a correct validation block ranks by among its generation's (§6.5).
 
-    ``bits`` are those its drop shares with its target hash, and ``stake`` its
-    total effective stake, in tenths of a Kismet: the sum, over its stakes,
-    of each one's Kismet times its staker's weight (§6.6). One score is above
-    another with more bits, and of as many, with more stake. Of two blocks
-    scoring alike, the one whose id sorts first is the better
-    (:meth:`ValidationBlockCheck.best`).
+    ``weight`` is what its generation adds to the chain's weight (§3.3): its
+    own drop's, and that of the transaction block it validates. ``bits`` are
+    those its drop shares with its target hash, and ``stake`` its total
+    effective stake, in tenths of a Kismet: the sum, over its stakes, of each
+    one's Kismet times its staker's weight (§6.6). One score is above another
+    with more weight, of as much, with more bits, and of as many, with more
+    stake. Of two blocks scoring alike, the one whose id sorts first is the
+    better (:meth:`ValidationBlockCheck.best`), so the best is on the heaviest
+    chain.
     """
 
+    weight: ChainWeight
     bits: int
     stake: int
+
+    @classmethod
+    def of(
+        cls, validated_id: ContentId, named_for: ContentId | None, bits: int, stake: int
+    ) -> ValidationScore:
+        """The score of a block sharing ``bits``, and holding ``stake``.
+
+        It validates transaction block ``validated_id``, at the target named
+        for validation block ``named_for``, or the root's, if that is ``None``.
+        """
+        target = GenerationTargets.built_on(named_for).transaction
+        validated = ChainWeight.of_drop(validated_id, target)
+        return cls(validated + ChainWeight.of_staked(bits, stake), bits, stake)
 
 
 @dataclass(frozen=True)
@@ -162,6 +182,25 @@ class _Validating:
                 f"Its stakes name {validated_id}, built on {previous}, where a block at its "
                 f"target stakes on one built on {self.named_for}"
             )
+
+    def false_stake(self) -> str:
+        """What it states falsely of its stakes' Kismet, or ``""`` (§6.2).
+
+        Each must be of more than 0 Kismet: only the root's validation block
+        holds a stake of 0, checked by its shape (§7.3). A copy of it found
+        elsewhere is of another target, and passed over before this is asked.
+        """
+        empty = next(
+            (stake for stake in self.drop.block.stakes if stake.stake.kismet == Kismet(0)), None
+        )
+
+        if empty is None:
+            return ""
+
+        return (
+            f"A validation block's stakes must each be of more than 0 Kismet, but the root's, "
+            f"got 0 from {empty.staker}"
+        )
 
     def false_generation(self) -> str:
         """What it states falsely of its generation, or ``""`` (§3.8, §6.1).
@@ -338,6 +377,11 @@ class ValidationBlockCheck:
                 "A checked block is scored when it is correct, and says why when it is not"
             )
 
+    @property
+    def stake(self) -> int:
+        """Its total effective stake, in tenths of a Kismet, if it is correct, or else 0 (§6.6)."""
+        return 0 if self.score is None else self.score.stake
+
     @classmethod
     def of(
         cls,
@@ -485,7 +529,8 @@ class ValidationBlockCheck:
                 "transaction block, with no runner-up and no witness",
             )
 
-        return cls(checking.block_id, drop, ValidationScore(bits, 0))
+        score = ValidationScore.of(stakes[0].stake.transaction_block, None, bits, 0)
+        return cls(checking.block_id, drop, score)
 
     @classmethod
     def _on_chain(
@@ -515,7 +560,7 @@ class ValidationBlockCheck:
                 builder,
             )
 
-        statement = checking.false_generation()
+        statement = checking.false_generation() or checking.false_stake()
 
         if statement:
             return BlockFinding(statement, builder)
@@ -584,7 +629,11 @@ class ValidationBlockCheck:
             return cls(checking.block_id, drop, None, incorrect)
 
         stake = sum(StakeWeight.effective_stakes(drop.block, balances).values())
-        return cls(checking.block_id, drop, ValidationScore(bits, stake))
+        return cls(
+            checking.block_id,
+            drop,
+            ValidationScore.of(validated_id, checking.named_for, bits, stake),
+        )
 
     @staticmethod
     def _incorrect(

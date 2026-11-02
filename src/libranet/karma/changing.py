@@ -12,17 +12,18 @@ until it is come to. The heads are weighed one at a time, in the six steps of
 §3.5.3 (:class:`~libranet.karma.claims.HeadClaim`):
 
 1. **The claim is read**: the head, and the transaction block it validates,
-   whose ``weight``, with 2^b for each of the two drops, is what the chain
-   through them claims to weigh. If that is less than the chain followed
-   weighs, nothing more is read.
+   whose ``weight``, with what the two drops add, is the most the chain
+   through them claims to weigh, its stakers' balances not yet read (§3.3,
+   §6.6). If that is less than the chain followed weighs, nothing more is
+   read.
 2. **It walks back** to the common ancestor, checking each ``weight`` and
    ``generation`` as it goes.
 3. **The chain followed after the ancestor is collected**: each transaction
    of its transaction blocks, payouts aside, with the generation it was
    witnessed in (§4.5).
 4. **The new chain is checked forward** from the ancestor.
-5. **It is followed** if every block in it is correct, and it is heavier
-   still than the chain followed, or as heavy and better: the history after
+5. **It is followed** if every block in it is correct, and it is heavier,
+   as checked, than the chain followed, or as heavy and better: the history after
    the ancestor is replaced by it. The better of two as heavy is the one
    whose validation block is the best (§6.5) at the first generation they
    differ, both being built on the same block, so that their stakes are
@@ -291,8 +292,8 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
 
         if self._lighter(claimed.through):
             _LOGGER.debug(
-                "Not following the Karma chain through %s, claiming to weigh %s, less than the "
-                "chain followed",
+                "Not following the Karma chain through %s, claiming to weigh at most %s, less "
+                "than the chain followed",
                 claim.head,
                 claimed.through.value(),
             )
@@ -308,13 +309,15 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
         if failed is not None:
             return self._not_following(claim, self._why(*failed))
 
-        heavier = self._heavier(claimed.through)
+        weight = chain.generations[-1].weight
+        heavier = self._heavier(weight)
 
-        if not heavier and not self._better(chain):
+        if not heavier and (self._lighter(weight) or not self._better(chain)):
             _LOGGER.debug(
-                "Not following the Karma chain through %s, as heavy as the chain followed and "
-                "no better",
+                "Not following the Karma chain through %s, weighing %s, less than the chain "
+                "followed, or as much and no better",
                 claim.head,
+                weight.value(),
             )
             return False
 

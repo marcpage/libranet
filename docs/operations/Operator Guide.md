@@ -497,18 +497,20 @@ A node always follows the heaviest chain it has checked. When another validation
 block is placed beside its head that makes a heavier chain, or a peer tells it
 of a head that may be heavier, it checks that chain back to where it leaves its
 own, and follows it if every block is correct; `libranet-karma.log` says so,
-naming the generation the two chains share. Of two chains exactly as heavy, it
-follows the better one: at the first generation where they differ, the one
-whose validation block shares more bits with its target, then holds more stake,
-then has the id that sorts first. So nodes that saw the same blocks in another
-order still come to follow one chain. Nodes tell the peers they connect to
-of each new head they follow, and ask each for its own as they connect, so a
-node that has been apart from the rest finds the heavier chain soon after it
-reconnects. The transactions of the chain it leaves that the new one does not
-hold it keeps in `karma/carried.json`, to put into the blocks it builds, for
-`karma.carry_generations` after each was witnessed. A chain with a false block
-in it is not followed: the block's builder is distrusted, as above, and one
-stating its weight or generation falsely is shunned too.
+naming the generation the two chains share. A chain's weight counts each
+validation block's work times the stake it holds, so a block gathering many
+stakes outweighs a luckier one holding only its builder's. Of two chains
+exactly as heavy, it follows the better one: at the first generation where they
+differ, the one whose validation block shares more bits with its target, then
+holds more stake, then has the id that sorts first. So nodes that saw the same
+blocks in another order still come to follow one chain. Nodes tell the peers
+they connect to of each new head they follow, and ask each for its own as they
+connect, so a node that has been apart from the rest finds the heavier chain
+soon after it reconnects. The transactions of the chain it leaves that the new
+one does not hold it keeps in `karma/carried.json`, to put into the blocks it
+builds, for `karma.carry_generations` after each was witnessed. A chain with a
+false block in it is not followed: the block's builder is distrusted, as above,
+and one stating its weight or generation falsely is shunned too.
 
 Each transaction the node is to put up, as its own payments are, and those a
 person makes through it will be, it checks against the chain it follows.

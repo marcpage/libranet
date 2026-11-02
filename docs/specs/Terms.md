@@ -2916,8 +2916,8 @@ their own passwords open.
 A collection of signed stakes on one full transaction block of a generation,
 signed by its builder and made a drop at `karma validation:{validation}`. It
 names a runner-up, and lists the hashes of transactions its builder has seen.
-Of a generation's correct validation blocks, the best shares the most bits with
-its target hash, then holds the most effective stake. The one the heaviest
+Of a generation's correct validation blocks, the best adds the most weight to
+its chain: its work, times the effective stake it holds. The one the heaviest
 chain goes through wins, and its id names the next generation's targets.
 
 - **Sources:** [Karma §17](Karma.md#17-validation),
@@ -2989,9 +2989,11 @@ node can see; blocks on it go by eviction.
 
 ### Weight (Chain)
 
-The work in a Karma chain: the sum of 2^b over both drops of every generation,
-b being the leading bits each drop's id shares with its target hash. Each
-transaction block states, as `weight`, the weight of the chain before it.
+The work in a Karma chain, weighted by the stake behind it: the sum, over every
+generation, of 2^b for the transaction block's drop and 2^b times the validation
+block's total effective stake for its drop, b being the leading bits each
+drop's id shares with its target hash. Each transaction block states, as
+`weight`, the weight of the chain before it.
 
 - **Sources:** [Karma Ledger §3.3](KarmaLedger.md#33-the-heaviest-chain),
   [§5.1](KarmaLedger.md#51-contents).

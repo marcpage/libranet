@@ -319,6 +319,10 @@ def test_the_roots_generation_weighs_both_its_drops_and_keeps_its_key() -> None:
     block_id = matching(targets.transaction, 3)
     validation_id = matching(targets.validation, 5)
 
-    assert ChainGeneration.of(validation_id, validation, block_id, block) == ChainGeneration(
+    assert ChainGeneration.of(validation_id, validation, block_id, block, 0) == ChainGeneration(
         0, validation_id, block_id, ChainWeight(2**3 + 2**5), (root.key,), ("e" * 64,)
+    )
+    # A stake times its validation block's drop.
+    assert ChainGeneration.of(validation_id, validation, block_id, block, 7).weight == ChainWeight(
+        2**3 + 2**5 * 7
     )

@@ -656,11 +656,13 @@ A validation candidate has:
 3. a total weighted stake.
 
 When the next transaction block becomes complete, the best candidate is selected
-using proof-of-work quality, with weighted stake providing the relevant
-tie-breaking influence.
+by its proof-of-work quality times its total weighted stake: twice the stake
+counts as much as one more matching bit. So a candidate gathering the stakes of
+many participants outweighs a luckier one holding only its builder's, and the
+reward is shared among them all.
 
-This introduces an element of randomness and uncertainty into the selection
-process.
+The luck of the proof of work still introduces an element of randomness and
+uncertainty into the selection process.
 
 ---
 

@@ -449,5 +449,5 @@ class ChainFollower:
             return None
 
         return ChainGeneration.of(
-            check.block_id, check.drop.block, validated_id, validated.drop.block
+            check.block_id, check.drop.block, validated_id, validated.drop.block, check.stake
         )

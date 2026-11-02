@@ -11,7 +11,11 @@ common ancestor, or to a root. Each transaction block's ``generation`` and
 ``weight``, and each validation block's ``generation``, are checked against
 the validation block before, as the blocks are read, their signatures not
 yet checked, so that a false one is found where it is first stated, and
-nothing before it is read (:class:`FalseStatement`).
+nothing before it is read (:class:`FalseStatement`). Until its stakers'
+balances are read, a validation block's effective stake is known only to be
+no more than its stakes would be with each staker weighing whole (§6.6), so
+a ``weight`` stated after one not in the history is checked against that,
+and checked whole as the claim is checked forward.
 
 It is then checked forward from the ancestor (:meth:`HeadClaim.check`): each
 transaction block, and the validation block validating it, as Phase 6 Steps
@@ -39,6 +43,7 @@ from libranet.karma.blocks import (
 )
 from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.history import ChainGeneration, ChainHistory
+from libranet.karma.ledger import WEIGHT_GENERATIONS
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.validating import ValidationBlockCheck
 from libranet.karma.weight import ChainWeight
@@ -67,7 +72,8 @@ class ClaimedGeneration:
     stakes on transaction block ``transaction``, of generation
     ``generation``, built on validation block ``previous``, and stating that
     the chain before it weighs ``weight``. The chain through the two weighs
-    ``through``, as they claim.
+    no more than ``through``, as they claim: what it would if each of the
+    validation block's stakers weighed whole (§6.6).
     """
 
     validation: ContentId
@@ -102,6 +108,7 @@ class ClaimedGeneration:
 
         transaction_id = validation.stakes[0].stake.transaction_block
         transaction = chain.transaction(transaction_id).block
+        most = WEIGHT_GENERATIONS * sum(stake.stake.kismet.count for stake in validation.stakes)
         return cls(
             validation_id,
             validation.generation,
@@ -109,14 +116,17 @@ class ClaimedGeneration:
             transaction.generation,
             transaction.previous,
             transaction.weight,
-            transaction.weight_through(transaction_id, validation_id),
+            transaction.weight_through(transaction_id, validation_id, most),
         )
 
-    def false_on(self, before: int, weight: ChainWeight) -> FalseStatement | None:
+    def false_on(
+        self, before: int, weight: ChainWeight, *, at_most: bool = False
+    ) -> FalseStatement | None:
         """What it states falsely, built on a validation block of generation ``before``, or None.
 
-        The chain through that block weighs ``weight``. For a root, built on
-        none, ``before`` is -1, and ``weight`` 0 (§7.2, §7.3).
+        The chain through that block weighs ``weight``, or, ``at_most``, no
+        more than that. For a root, built on none, ``before`` is -1, and
+        ``weight`` 0 (§7.2, §7.3).
         """
         generation = before + 1
         named = "the root's" if self.previous is None else f"one more than that of {self.previous}"
@@ -135,11 +145,11 @@ class ClaimedGeneration:
                 f"{self.validation_generation}",
             )
 
-        if self.weight != weight:
+        if self.weight > weight or (not at_most and self.weight != weight):
             return FalseStatement(
                 self.transaction,
-                f'A transaction block\'s "weight" must be {weight.value()}, '
-                f"got {self.weight.value()}",
+                f'A transaction block\'s "weight" must be {"at most " if at_most else ""}'
+                f"{weight.value()}, got {self.weight.value()}",
             )
 
         return None
@@ -231,6 +241,7 @@ class ClaimedChain:
                 validation.drop.block,
                 claimed.transaction,
                 transaction.drop.block,
+                validation.stake,
             )
         )
         return None
@@ -371,7 +382,7 @@ class HeadClaim:
                 if isinstance(before, FalseStatement):
                     return before
 
-                false = last.false_on(before.validation_generation, before.through)
+                false = last.false_on(before.validation_generation, before.through, at_most=True)
 
                 if false is not None:
                     return false

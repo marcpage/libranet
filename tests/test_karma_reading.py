@@ -954,6 +954,6 @@ def test_the_roots_blocks_read_at_their_targets_are_checked_against_the_chain_he
     assert isinstance(transaction, TransactionBlockCheck)
     assert transaction.score == BlockScore(root_bits, 0, Fraction(0))
     assert isinstance(validated, ValidationBlockCheck)
-    assert validated.score == ValidationScore(
-        matching_bits(ROOT.validation.hex, validation_id.hash), 0
+    assert validated.score == ValidationScore.of(
+        root_id, None, matching_bits(ROOT.validation.hex, validation_id.hash), 0
     )

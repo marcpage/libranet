@@ -69,7 +69,9 @@ VALIDATION_ID = matching(SECOND.validation, 6)
 RUNNER_UP_ID = matching(SECOND.validation, 4)
 
 # The weight of the chain before transaction block 2: 2^b over each drop.
-WEIGHT = ChainWeight(2**3 + 2**5 + 2**4 + 2**6)
+# Validation block 1's drop counts times its stake: Alice's 500 Kismet, weighing a
+# tenth, since she won the root.
+WEIGHT = ChainWeight(2**3 + 2**5 + 2**4 + 2**6 * 500)
 
 
 @dataclass(frozen=True)
@@ -353,7 +355,7 @@ def validation(alice: NodeIdentity, bob: NodeIdentity) -> ValidationBlock:
     return validation_of(staked(alice, SECOND_ID, 1_000), staked(bob, SECOND_ID, 100))
 
 
-def test_a_correct_block_is_scored_by_its_bits_and_its_effective_stake(
+def test_a_correct_block_is_scored_by_the_weight_it_adds_its_bits_and_its_effective_stake(
     bob: NodeIdentity,
     chain: ChainInMemory,
     keys: dict[ContentId, bytes],
@@ -369,7 +371,8 @@ def test_a_correct_block_is_scored_by_its_bits_and_its_effective_stake(
     assert check.drop.block == validation
     # Alice won generation 1, so weighs a tenth; Bob has won none, and weighs
     # the whole.
-    assert check.score == ValidationScore(6, 1_000 * 1 + 100 * 10)
+    stake = 1_000 * 1 + 100 * 10
+    assert check.score == ValidationScore(ChainWeight(2**7 + 2**6 * stake), 6, stake)
 
 
 def test_a_drop_that_is_no_signed_block_is_unsigned(
@@ -432,6 +435,22 @@ def test_a_block_holding_no_stake_or_stakes_on_two_blocks_is_false(
     assert isinstance(found, BlockFinding)
     assert found.builder == bob.node_id
     assert found.statement.endswith(counted)
+
+
+def test_a_block_holding_a_stake_of_0_is_false(
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    chain: ChainInMemory,
+    keys: dict[ContentId, bytes],
+    transactions: dict[ContentId, TransactionBlockCheck | BlockFinding],
+) -> None:
+    holding = validation_of(staked(alice, SECOND_ID, 1_000), staked(bob, SECOND_ID, 0))
+
+    found = checked(holding, alice, chain, keys, transactions)
+
+    assert isinstance(found, BlockFinding)
+    assert found.builder == alice.node_id
+    assert found.statement.endswith(f"more than 0 Kismet, but the root's, got 0 from {bob.node_id}")
 
 
 @mark.parametrize("generation", [1, 2])
@@ -685,7 +704,7 @@ def test_a_runner_ups_stakes_taken_are_covered_by_this_blocks_transaction_block(
 
     if correct:
         assert isinstance(check, ValidationBlockCheck)
-        assert check.score == ValidationScore(6, 1_000)
+        assert check.score == ValidationScore.of(SECOND_ID, FIRST_VALIDATION_ID, 6, 1_000)
 
     else:
         assert isinstance(check, BlockFinding)
@@ -730,7 +749,7 @@ def test_a_block_naming_a_rival_at_its_target_as_its_runner_up_is_correct(
     check = checked(naming, alice, rival, keys, at_target)
 
     assert isinstance(check, ValidationBlockCheck)
-    assert check.score == ValidationScore(6, 1_000)
+    assert check.score == ValidationScore.of(SECOND_ID, FIRST_VALIDATION_ID, 6, 1_000)
 
 
 @mark.parametrize(
@@ -833,7 +852,7 @@ def test_the_roots_validation_block_is_correct_by_its_shape(
     )
 
     assert isinstance(check, ValidationBlockCheck)
-    assert check.score == ValidationScore(5, 0)
+    assert check.score == ValidationScore(ChainWeight(2**3 + 2**5), 5, 0)
 
 
 @mark.parametrize(
@@ -903,12 +922,26 @@ def test_a_block_at_the_roots_target_validating_a_false_root_is_passed_over(
 @mark.parametrize(
     "better, worse",
     [
-        ((ValidationScore(7, 0), "0f"), (ValidationScore(6, 10**9), "01")),
-        ((ValidationScore(6, 2_000), "0f"), (ValidationScore(6, 1_999), "01")),
-        ((ValidationScore(6, 2_000), "01"), (ValidationScore(6, 2_000), "0f")),
+        # More stake outweighs more bits.
+        (
+            (ValidationScore.of(SECOND_ID, FIRST_VALIDATION_ID, 6, 4), "0f"),
+            (ValidationScore.of(SECOND_ID, FIRST_VALIDATION_ID, 7, 1), "01"),
+        ),
+        (
+            (ValidationScore(ChainWeight(2**7 * 2), 7, 2), "0f"),
+            (ValidationScore(ChainWeight(2**6 * 4), 6, 4), "01"),
+        ),
+        (
+            (ValidationScore(ChainWeight(2**8), 6, 2), "0f"),
+            (ValidationScore(ChainWeight(2**8), 6, 1), "01"),
+        ),
+        (
+            (ValidationScore(ChainWeight(2**6), 6, 1), "01"),
+            (ValidationScore(ChainWeight(2**6), 6, 1), "0f"),
+        ),
     ],
 )
-def test_the_best_has_the_most_bits_then_the_most_stake_then_the_id_sorting_first(
+def test_the_best_adds_the_most_weight_then_has_the_most_bits_then_stake_then_the_lowest_id(
     bob: NodeIdentity,
     validation: ValidationBlock,
     better: tuple[ValidationScore, str],
@@ -928,14 +961,16 @@ def test_a_block_not_correct_is_never_the_best(
 ) -> None:
     drop = drop_of(bob, validation)
     passed_over = ranked(None, ContentId("sha256", "01" * 32), drop)
-    correct = ranked(ValidationScore(0, 0), ContentId("sha256", "0f" * 32), drop)
+    correct = ranked(ValidationScore(ChainWeight(1), 0, 0), ContentId("sha256", "0f" * 32), drop)
 
     assert ValidationBlockCheck.best([passed_over, correct]) is correct
     assert ValidationBlockCheck.best([passed_over]) is None
     assert ValidationBlockCheck.best([]) is None
 
 
-@mark.parametrize("score, incorrect", [(None, ""), (ValidationScore(6, 0), "Not full")])
+@mark.parametrize(
+    "score, incorrect", [(None, ""), (ValidationScore(ChainWeight(2**6), 6, 0), "Not full")]
+)
 def test_a_checked_block_is_either_scored_or_not_correct(
     bob: NodeIdentity,
     validation: ValidationBlock,

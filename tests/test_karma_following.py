@@ -349,7 +349,8 @@ def test_a_generation_is_followed_once_its_blocks_are_stored(
         id_of(first),
         id_of(first_validation),
     )
-    assert followed.weight == root.weight() + ChainWeight(2**9) + ChainWeight.of_drop(
+    # Alice won the root, so weighs a tenth, and her stake of 5 Kismet counts 5 tenths.
+    assert followed.weight == root.weight() + ChainWeight(2**9 * 5) + ChainWeight.of_drop(
         id_of(first), root.next.transaction
     )
 
@@ -600,6 +601,28 @@ def test_the_best_of_several_is_followed_and_nothing_lighter_shunned(
 
     assert history.generation(1).validation == id_of(better_validation)
     assert recorder.shunned(keys) == []
+    assert recorder.said(EventType.KARMA_FALSE_BLOCK) == []
+
+
+def test_a_block_holding_more_stake_is_followed_over_one_sharing_more_bits(
+    follower: ChainFollower,
+    history: ChainHistory,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    root: Root,
+    first: bytes,
+    better_validation: bytes,
+) -> None:
+    # 2^9 times 100 tenths outweighs 2^12 times 6.
+    staking_more = validating(root, first, alice, 100, 9)
+    hold(truth, root.transaction, root.validation, first, better_validation, staking_more)
+    hold_keys(truth, alice, bob)
+
+    follower.look()
+
+    assert history.generation(1).validation == id_of(staking_more)
     assert recorder.said(EventType.KARMA_FALSE_BLOCK) == []
 
 
