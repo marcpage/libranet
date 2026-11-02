@@ -786,8 +786,11 @@ def test_a_module_following_a_chain_reads_the_target_its_head_was_chosen_from_to
 
     assert head is not None
     after = GenerationTargets.after(head.validation)
-    # The head's targets are read again to shun what is superseded there.
+    # The head's targets are read to stake on a full block there, to follow
+    # the chain on, and again to shun what is superseded there.
     assert searched(queues) == [
+        after.transaction.hex,
+        after.validation.hex,
         after.transaction.hex,
         after.validation.hex,
         ROOT.validation.hex,
@@ -1171,19 +1174,17 @@ def test_the_module_stakes_on_a_full_block_at_its_heads_target_and_follows_the_b
     with caplog.at_level(INFO):
         module.on_idle()
 
-    (built,) = stored_ids(queues)
+    # It follows the block it builds at once, and goes on to build on it.
+    built, payout, *_ = stored_ids(queues)
     validation = BlockDrop.parsed(module.reader.held(built), ValidationBlock).block
     node = NodeIdentity.load(LibranetConfig(storage=storage))
     assert [(each.staker, each.stake.transaction_block) for each in validation.stakes] == [
         (node.node_id, put_up)
     ]
     assert f"Built Karma validation block {built} of 1 stakes" in caplog.text
-
-    clock.now += karma.look_seconds
-    module.on_idle()
-
     head = module.history.head
     assert head is not None and (head.generation, head.validation) == (2, built)
+    assert BlockDrop.parsed(module.reader.held(payout), TransactionBlock).block.previous == built
 
 
 def test_a_module_that_does_not_mine_still_stakes_on_a_full_block_at_its_heads_target(
@@ -1271,7 +1272,7 @@ def test_a_stake_made_through_the_node_is_in_the_validation_block_the_module_bui
     clock.now += karma.build_interval_seconds
     module.on_idle()
 
-    (built,) = stored_ids(queues)
+    built, *_ = stored_ids(queues)
     validation = BlockDrop.parsed(module.reader.held(built), ValidationBlock).block
     node = NodeIdentity.load(LibranetConfig(storage=storage))
     assert sorted(each.staker for each in validation.stakes) == sorted([node.node_id, erin.node_id])
