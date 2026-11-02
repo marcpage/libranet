@@ -953,6 +953,29 @@ def test_the_karma_page_finds_full_blocks_where_the_ledger_places_them(karma_pag
     assert f"const FULL_ROOM_BYTES = {FULL_BLOCK_ROOM_BYTES};" in karma_page
 
 
+def test_the_karma_page_finds_competing_heads_where_the_ledger_places_them(
+    karma_page: str,
+) -> None:
+    some_id = ContentId.for_data(b"a validation block", "sha256")
+    [prefix] = findall(r'const VALIDATION_PREFIX = "([^"]*)";', karma_page)
+    [root] = findall(r'const ROOT_NAME = "([^"]*)";', karma_page)
+
+    # Beside the head, at the target it was chosen from (KarmaLedger 3.1, 3.5.3).
+    assert DropTarget.of(prefix + str(some_id)) == GenerationTargets.after(some_id).validation
+    assert DropTarget.of(prefix + root) == GenerationTargets.root().validation
+    assert "dropPath(VALIDATION_PREFIX + before.validation)" in karma_page
+
+
+def test_the_karma_page_shows_each_validation_block_alone_at_a_link_of_its_own(
+    karma_page: str,
+) -> None:
+    # The block's id one value (#593).
+    assert "return `/karma/?block=${encodeURIComponent(id)}`;" in karma_page
+    assert 'new URLSearchParams(location.search).get("block")' in karma_page
+    # With a link to the block before it, which its transaction block builds on.
+    assert "links.append(blockLink(block.contents.previous, " in karma_page
+
+
 @mark.parametrize("page_fixture", ["karma_page", "directory_page", "mail_page", "nodes_page"])
 def test_each_page_showing_karma_counts_kismet_as_the_ledger_does(
     request: FixtureRequest, page_fixture: str
