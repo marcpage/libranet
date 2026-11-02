@@ -2810,31 +2810,35 @@ function startImport(path, name) {
     }
   };
 
+  const ended = (text, isError) => {
+    const dismiss = make("button", "Dismiss", "secondary small");
+    dismiss.type = "button";
+    dismiss.addEventListener("click", () => item.remove());
+    label.textContent = text;
+    label.className = isError ? "error" : "";
+    bar.remove();
+    note.remove();
+    item.append(dismiss);
+  };
+
   if (state.imports++ === 0) {
     window.addEventListener("beforeunload", warnOfLeaving);
   }
 
+  // The movie added is not opened: the page stays where it is, on the
+  // collection or the movie chosen, until the person chooses one. Why it was
+  // not looked up, if it was not, stays in the activity list until dismissed.
   importMovie(path, name, target, progress).finally(() => {
     if (--state.imports === 0) {
       window.removeEventListener("beforeunload", warnOfLeaving);
     }
-  }).then(({ folder, problem }) => {
-    item.remove();
-
-    if (state.playlist && state.playlist.name === target && byId("editor").hidden) {
-      select(folder);
-      show(byId("movie-result"), problem);
+  }).then(({ problem }) => {
+    if (problem) {
+      ended(`“${name}” was added. ${problem}`, false);
+    } else {
+      item.remove();
     }
-  }, (error) => {
-    const dismiss = make("button", "Dismiss", "secondary small");
-    dismiss.type = "button";
-    dismiss.addEventListener("click", () => item.remove());
-    label.textContent = `“${name}” was not added: ${error.message}`;
-    label.className = "error";
-    bar.remove();
-    note.remove();
-    item.append(dismiss);
-  });
+  }, (error) => ended(`“${name}” was not added: ${error.message}`, true));
 }
 
 // Adding a movie by its id.
