@@ -540,6 +540,35 @@ def test_a_validation_block_is_followed_when_the_copy_it_names_held_since_measur
     assert followed.transaction == id_of(first)
 
 
+def test_a_full_block_checked_is_not_read_again_while_the_head_is_the_same(
+    follower: ChainFollower,
+    truth: CasStore,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    root: Root,
+    first: bytes,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    hold(truth, root.transaction, root.validation)
+    hold_keys(truth, alice, bob)
+    follower.look()
+    hold(truth, first)
+    follower.checked()
+    read_since: list[ContentId] = []
+    read = TargetReader._read  # pylint: disable=protected-access
+
+    def counted(self: TargetReader, content_id: ContentId) -> tuple[bytes, int | None]:
+        read_since.append(content_id)
+        return read(self, content_id)
+
+    monkeypatch.setattr(TargetReader, "_read", counted)
+
+    transactions, _ = follower.checked()
+
+    assert id_of(first) in transactions
+    assert id_of(first) not in read_since
+
+
 def test_a_full_block_is_asked_for_again_once_let_go(
     follower: ChainFollower,
     reader: TargetReader,

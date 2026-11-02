@@ -37,13 +37,17 @@ Each block is read once: each transaction is kept by its hash, with its
 signature checked, and the hashes the block holds by its id, and a block found
 correct or not, and not full, is not read or fetched again, even if eviction
 lets it go. So the blocks put up cost a node as they arrive, not as it builds.
-One full is read each time, as it counts only while it is held: it may be
-validated, and if it is lost, it is to be built again.
+One full is not read again either, but counts only while it is held: it may be
+validated, and if it is lost, it is to be built again. While it is held, it is
+said to be in use, as a read says, and once it is not, it is asked for again,
+should it be found there still.
 
 Nothing is built while one block held at the head's transaction target,
 correct but perhaps for not being full, holds every transaction that would
 be taken: the same blocks build the same block, so each new transaction
-builds one more. With no transaction to take, and no such block held, a
+builds one more. Nor is anything combined again while nothing read or carried
+has changed since the node last built at the head, as it would build what it
+built, or not, before. With no transaction to take, and no such block held, a
 block holding only the payout is built, so that the balances the head's
 reward leaves are stated at the target, where those it pays may spend it
 (§7.4). Nothing is built while a block found at the head's transaction
@@ -344,31 +348,55 @@ class _SeenBlock:
     held: HeldBlock | None
 
 
+@dataclass(frozen=True)
+class _Basis:
+    """What a block built at a head is built of.
+
+    ``transactions`` are the hashes of those kept, whose signatures checked,
+    and ``blocks`` each block at the head's transaction target, with whether it
+    is correct, but perhaps for being full, or ``None`` while that is not known.
+    """
+
+    transactions: frozenset[str]
+    blocks: frozenset[tuple[ContentId, bool | None]]
+
+
 @dataclass
 class _Found:
     """What a builder has found at ``head``, forgotten when the head changes.
 
     ``seen`` is what is kept of each block read at the head's transaction
     target, ``correct`` whether each is correct, but perhaps for being full,
-    and ``settled`` the blocks not to read again. ``transactions`` is each
-    transaction read whose signature has checked, by its hash, ``unchecked``
-    each whose has not been yet, and ``forged`` the hash of each whose failed,
-    logged once. ``searched`` holds the hash of each false start's target the
-    peers have been asked for.
+    ``settled`` the blocks not to read again, and ``full`` those found full,
+    correct or not, kept while they are held, and not read again either.
+    ``transactions`` is each transaction read whose signature has checked, by
+    its hash, ``unchecked`` each whose has not been yet, and ``forged`` the
+    hash of each whose failed, logged once. ``searched`` holds the hash of each
+    false start's target the peers have been asked for, and ``built_of`` what
+    the node last combined a block of, whether or not it placed one.
     """
 
     head: ContentId | None = None
     seen: dict[ContentId, _SeenBlock] = field(default_factory=dict)
     correct: dict[ContentId, bool] = field(default_factory=dict)
     settled: set[ContentId] = field(default_factory=set)
+    full: set[ContentId] = field(default_factory=set)
     transactions: dict[str, SignedTransaction] = field(default_factory=dict)
     unchecked: dict[str, SignedTransaction] = field(default_factory=dict)
     forged: set[str] = field(default_factory=set)
     searched: set[str] = field(default_factory=set)
+    built_of: _Basis | None = None
 
     def kept(self) -> int:
         """How many blocks are kept, and hashes of the transactions in them."""
         return len(self.seen) + sum(len(seen.hashes) for seen in self.seen.values())
+
+    def basis(self, at_target: Iterable[_SeenBlock]) -> _Basis:
+        """What a block built now is built of, with ``at_target`` the blocks held there."""
+        return _Basis(
+            frozenset(self.transactions),
+            frozenset((seen.block_id, self.correct.get(seen.block_id)) for seen in at_target),
+        )
 
 
 @dataclass(frozen=True)
@@ -418,10 +446,11 @@ class BlockBuilder:
         in no one block held there, or of the payout alone, if there are none,
         and no correct block is held there. None is built while a block
         found at that target is not held, and is waited for: it is built once
-        that comes, or is given up on. A block of the chain it lacks is asked
-        for, and it is built as this is next called; one that cannot be built for an
-        error of the system, or because what it is built of cannot be read,
-        is logged.
+        that comes, or is given up on. Nothing is combined again while what it
+        would be built of is what it was built of last. A block of the chain it
+        lacks is asked for, and it is built as this is next called; one that
+        cannot be built for an error of the system, or because what it is built
+        of cannot be read, is logged.
         """
         head = self._history.head
 
@@ -443,42 +472,15 @@ class BlockBuilder:
             self._offer(drop)
 
         self._check(each.signed for each in self._carried.readable_at(self._history))
+        basis = self._found.basis(at_target)
+
+        if basis == self._found.built_of:
+            # Not logged: the same blocks build the same block, built or not
+            # as it was the last time.
+            return
 
         try:
-            combined = CombinedBlock.of(
-                list(self._found.transactions.values()),
-                head.validation,
-                self._chain,
-                bounds=self._filling.bounds,
-            )
-
-            if self._held(combined.taken, at_target):
-                return
-
-            filled = FilledBlock.of(combined, self._placing.identity(), bounds=self._filling.bounds)
-
-            if filled is None:
-                _LOGGER.warning(
-                    "Building no Karma transaction block at head %s: not one transaction fits "
-                    "in %d bytes",
-                    head.validation,
-                    self._filling.bounds.most_bytes,
-                )
-                return
-
-            holders = combined.before.holders()
-
-            # Not logged: it is looked at again each build, and is built once
-            # more transactions make it full, or enough to combine.
-            if (
-                combined.taken
-                and not self._filling.bounds.is_full(filled.measured_bytes, holders)
-                and self._uncombined(combined.taken, at_target) < self._filling.combine_transactions
-            ):
-                return
-
-            if not self._held(filled.drop.block.signed, at_target):
-                self._place(filled, head.validation, holders)
+            self._combine(head, at_target)
 
         except MissingContentError:
             # Not logged: what it lacks is asked for, and it is built once
@@ -490,6 +492,60 @@ class BlockBuilder:
 
         except (BundleError, ValueError) as error:
             _LOGGER.warning("Cannot build a Karma transaction block: %s", error)
+
+        else:
+            self._found.built_of = basis
+
+    def _combine(self, head: ChainGeneration, at_target: Sequence[_SeenBlock]) -> None:
+        """Build a block on ``head`` of what is kept, unless one ``at_target`` holds it all.
+
+        It is placed once it would be full, or ``combine_transactions`` of what
+        it takes are in no one block ``at_target``.
+
+        Raises:
+            MissingContentError: names the blocks of the chain it lacks.
+            OSError: the node's key cannot be loaded, a searching process
+                could not be started, or exited during the search, or the
+                drop could not be written.
+            BundleError: what it is built of cannot be read, or it is larger
+                than an object may be, even compressed.
+            ValueError: what it is built of cannot be read, or its nonce
+                cannot be searched for as asked.
+        """
+        combined = CombinedBlock.of(
+            list(self._found.transactions.values()),
+            head.validation,
+            self._chain,
+            bounds=self._filling.bounds,
+        )
+
+        if self._held(combined.taken, at_target):
+            return
+
+        filled = FilledBlock.of(combined, self._placing.identity(), bounds=self._filling.bounds)
+
+        if filled is None:
+            _LOGGER.warning(
+                "Building no Karma transaction block at head %s: not one transaction fits "
+                "in %d bytes",
+                head.validation,
+                self._filling.bounds.most_bytes,
+            )
+            return
+
+        holders = combined.before.holders()
+
+        # Not logged: it is looked at again each build, and is built once more
+        # transactions make it full, or enough to combine.
+        if (
+            combined.taken
+            and not self._filling.bounds.is_full(filled.measured_bytes, holders)
+            and self._uncombined(combined.taken, at_target) < self._filling.combine_transactions
+        ):
+            return
+
+        if not self._held(filled.drop.block.signed, at_target):
+            self._place(filled, head.validation, holders)
 
     def superseded(self) -> dict[ContentId, ContentId]:
         """The blocks held at the head's transaction target that another held there supersedes.
@@ -562,22 +618,27 @@ class BlockBuilder:
         """What is kept of each transaction block read at ``head``'s transaction target.
 
         What is new there is read, what it holds is kept, and it is checked,
-        each once, unless it is full, which counts only while it is held. What
-        was found at another head is forgotten, and so is all of this, to read
-        again, should more than :data:`_MOST_KEPT` be kept.
+        each once. One full counts only while it is held, and is read again
+        only once it is held again. What was found at another head is
+        forgotten, and so is all of this, to read again, should more than
+        :data:`_MOST_KEPT` be kept.
         """
         if head.validation != self._found.head or self._found.kept() >= _MOST_KEPT:
             self._found = _Found(head.validation)
 
         found = self._found
-        found.seen = {
-            block_id: seen for block_id, seen in found.seen.items() if block_id in found.settled
-        }
         read = self._reader.read(
             GenerationTargets.after(head.validation).transaction,
             TransactionBlock,
             known=found.settled,
+            kept=found.full,
         )
+        found.full = {block_id for block_id in found.full if self._reader.holds(block_id)}
+        found.seen = {
+            block_id: seen
+            for block_id, seen in found.seen.items()
+            if block_id in found.settled or block_id in found.full
+        }
 
         for held, drop in self._parsed(read):
             found.seen[held.block_id] = _SeenBlock(
@@ -593,7 +654,10 @@ class BlockBuilder:
         return list(found.seen.values())
 
     def _settle(self, head: ChainGeneration) -> None:
-        """Let go of each block read that is known to be correct or not, and not to be full."""
+        """Let go of each block read that is known to be correct or not.
+
+        One full is kept while it is held, and one not full is settled.
+        """
         unsettled = [seen for seen in self._found.seen.values() if seen.held is not None]
         holders = self._holders(head) if unsettled else None
 
@@ -603,10 +667,15 @@ class BlockBuilder:
         for seen in unsettled:
             self._is_correct(seen)
 
-            if seen.block_id in self._found.correct and not self._filling.bounds.is_full(
-                seen.compressed_bytes, holders
-            ):
-                seen.held = None
+            if seen.block_id not in self._found.correct:
+                continue
+
+            seen.held = None
+
+            if self._filling.bounds.is_full(seen.compressed_bytes, holders):
+                self._found.full.add(seen.block_id)
+
+            else:
                 self._found.settled.add(seen.block_id)
 
     def _holders(self, head: ChainGeneration) -> int | None:

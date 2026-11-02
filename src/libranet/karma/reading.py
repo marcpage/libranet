@@ -11,7 +11,8 @@ peers, and the stats module seeks the target (Phase 4 Step 93)::
 
 What is read is said to be a request of this node's, at most once a minute for
 any one piece of content, so that eviction counts it as it does any content in
-use::
+use, and so is what a caller keeps of a block it read before, while it is held,
+though it is not read again::
 
     data.requested  {"algorithm", "hash", "external": false}
 
@@ -215,6 +216,7 @@ class TargetReader:
         kind: type[_Block],
         *,
         known: Collection[ContentId] = (),
+        kept: Collection[ContentId] = (),
         searching: bool = True,
     ) -> list[HeldBlock]:
         """The blocks of ``kind`` the node holds at ``target``, those placed nearest first.
@@ -229,7 +231,10 @@ class TargetReader:
         waited for (:meth:`awaits`). Anything held that is not what it is
         held as is passed over, and logged. What is ``known``, that the caller
         has done with, is neither read nor asked for, whether or not it is
-        held still.
+        held still. What is ``kept``, read before, and kept by the caller
+        while it is held, is not read again either: while it is held it is
+        said to be requested, as a read says, and once it is not it is asked
+        for, and waited for, as anything found and not held is.
         """
         prefix: str = target.hex
         answers: _Answers = self._reading(prefix)
@@ -245,6 +250,10 @@ class TargetReader:
 
         for block_id in self._shunned.unshunned(found):
             if block_id in known:
+                continue
+
+            if block_id in kept and self._content.exists(block_id):
+                self._say_requested(block_id)
                 continue
 
             try:
@@ -313,6 +322,10 @@ class TargetReader:
         whether the node holds it, has read it there, or has yet to.
         """
         return bool(self._search.matching(target.hex, [content_id]))
+
+    def holds(self, content_id: ContentId) -> bool:
+        """Whether the node holds ``content_id``, and does not shun it; nothing is read."""
+        return not self._shunned.shuns(content_id) and self._content.exists(content_id)
 
     def held(self, content_id: ContentId) -> bytes:
         """What the node holds of ``content_id``, decompressed if it is held compressed.
