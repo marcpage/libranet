@@ -118,7 +118,9 @@ the transactions it carries, into one block, as full as it can be, and, once
 that would be full, or ``karma.combine_transactions`` of them are in no one
 block it holds there, places it there as it places a block of its own, unless
 a block it holds there holds them all
-(:class:`~libranet.karma.building.BlockBuilder`, Phase 6 Step 134).
+(:class:`~libranet.karma.building.BlockBuilder`, Phase 6 Step 134). It does
+so only if ``karma.mining``: a node that does not mine builds no transaction
+block but those that put up its transactions (KarmaScaling §6.2).
 
 After each look and each build, it shuns each transaction block at its
 head's transaction target whose transactions are all in another it holds
@@ -140,7 +142,9 @@ places a block of its own, unless a correct one it holds there holds every
 stake (:class:`~libranet.karma.staking.ValidationBuilder`, Phase 6 Step
 136), and follows the chain through it as it next looks. Among others'
 stakes, it takes each a person makes through the node, as the web server
-gives it, keeping it until its head changes (Phase 6 Step 137)::
+gives it, keeping it until its head changes (Phase 6 Step 137). A node that
+does not mine takes no stake of others' held there, and searches for its
+block's nonce only until a search will find it::
 
     karma.stake  {"stake": {"contents": "…", …}}
 """
@@ -357,6 +361,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             stake_percent=StakingRule(karma_dir, self._config.karma.stake_percent).percent,
             clock=self._clock,
             bounds=self._bounds,
+            mining=self._config.karma.mining,
         )
         self._balances = HeadBalances(
             self._history, HeldChain(self._history, self._reader), karma_dir
@@ -672,7 +677,8 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         """Combine the blocks at the head's targets into one, and stake, every build interval.
 
         A validation block is built after the transaction block, so that one
-        just built full may be staked on.
+        just built full may be staked on. A node that does not mine combines
+        nothing, and only stakes (KarmaScaling §6.2).
         """
         now = self._clock()
 
@@ -680,7 +686,10 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             return
 
         self._next_build_at = now + self._config.karma.build_interval_seconds
-        self._building.build()
+
+        if self._config.karma.mining:
+            self._building.build()
+
         self._shun()
         self._validating.build()
 

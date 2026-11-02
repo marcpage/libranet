@@ -144,10 +144,11 @@ The settings an operator is most likely to change:
 | `storage.search_min_bits` | `24` | How many leading bits a hash must share with what is searched for to be found; a drop placed matching fewer is not found. No more than `network.drop_max_minimum_bits` |
 | `backup.interval_seconds` | `3600.0` | How often each backed-up directory is looked at (§5.1) |
 | `karma.mining_processes` | `1` | How many processes Karma searches for nonces with, and so how many of the machine's cores it may take |
+| `karma.mining` | `true` | Whether the node mines, combining transactions into blocks and building validation blocks of others' stakes; `false` only stakes (§4.8) |
 | `karma.fetch_wait_seconds` | `30.0` | How long Karma waits for a block or a key it asks the network for before going on without it |
 | `karma.look_seconds` | `60.0` | How often Karma looks for the next generation of the chain it follows, or for a root while it follows none (§4.8) |
 | `karma.carry_generations` | `10` | How many generations after it was witnessed a transaction of a chain the node leaves is carried over into the heavier one, or one the node puts up waits for its sender to cover it (§4.8) |
-| `karma.block_seconds` | `10.0` | How long Karma searches for the nonce of a full transaction block or a validation block, whose bits rank it, before taking the best found. Any other block is searched for only until a search will find it (§4.8) |
+| `karma.block_seconds` | `0.0` | How long Karma searches for the nonce of a full transaction block or a validation block, whose bits rank it, before taking the best found. Any other block is searched for only until a search will find it (§4.8) |
 | `karma.payment_percent` | `0.01` | What share of the Karma the node holds each of its payments is, in percent, rounded down to whole Kismet (§4.8) |
 | `karma.payment_batch` | `100` | How many of the node's payments Karma queues before it puts them up together, as one transaction (§4.8) |
 | `karma.payment_interval_seconds` | `3600.0` | How long after the node's last transaction Karma puts up the payments it has queued, however few (§4.8) |
@@ -604,6 +605,20 @@ lack. A stake in a block another names as its runner-up is lost to that
 block's stakers: at `0`, the node stakes nothing, and builds validation
 blocks of others' stakes alone. `libranet-karma.log` says each stake the
 node makes, and each validation block it builds.
+
+Mining is the combining of transactions into blocks, and the building of
+validation blocks of others' stakes, each searched for `karma.block_seconds`
+for more bits than it needs, since more bits weigh more. That is 0 by default,
+so the node searches only until a search will find each block, and stake
+decides between blocks. A node that cannot keep up with faster ones, such as
+those mining on graphics cards, may stop mining altogether: set
+`karma.mining` to `false`. It then combines no transactions, and builds its
+validation blocks of its own stake, and those people make through it, alone,
+searched for only until a search will find them. The nodes that mine take its
+stake into theirs, so it still stakes, and shares the reward of a block that
+wins. It still puts up its own payments, each mined for the work a
+transaction needs, about a quarter of a minute on one core. A network needs
+some nodes that mine, or no generation closes.
 
 In **How much this node stakes**, give a share from 0 to 100, in percent,
 and **Save**, to have the node stake that, in place of `karma.stake_percent`,

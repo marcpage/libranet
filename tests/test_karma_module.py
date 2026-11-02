@@ -107,6 +107,7 @@ def rooting_module(
     bounds: BlockBounds = BOUNDS,
     stake_percent: float = 10.0,
     combine_transactions: int = 100,
+    mining: bool = True,
 ) -> KarmaModule:
     """The Karma module of a node over ``storage``, started, which makes a root in moments.
 
@@ -120,6 +121,7 @@ def rooting_module(
                 transaction_seconds=0.0,
                 stake_percent=stake_percent,
                 combine_transactions=combine_transactions,
+                mining=mining,
             ),
         )
     )
@@ -1066,6 +1068,25 @@ def test_the_module_combines_the_blocks_at_the_heads_target_every_build_interval
     assert stored_ids(queues) == []
 
 
+def test_a_module_that_does_not_mine_combines_nothing(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    clock = Clock()
+    module = rooting_module(storage, queues, clock, bounds=FILLED, stake_percent=0.0, mining=False)
+    module.handle(root_requested())
+    published(queues)
+
+    for seconds in (1, 2):
+        module.handle(given(paid_by_node(storage, seconds)))
+
+    assert len(stored_ids(queues)) == 2
+
+    clock.now += LibranetConfig().karma.build_interval_seconds
+    module.on_idle()
+
+    assert stored_ids(queues) == []
+
+
 def test_the_module_shuns_the_blocks_at_the_heads_target_that_the_one_it_builds_supersedes(
     storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
 ) -> None:
@@ -1163,6 +1184,26 @@ def test_the_module_stakes_on_a_full_block_at_its_heads_target_and_follows_the_b
 
     head = module.history.head
     assert head is not None and (head.generation, head.validation) == (2, built)
+
+
+def test_a_module_that_does_not_mine_still_stakes_on_a_full_block_at_its_heads_target(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    clock = Clock()
+    karma = KarmaConfig(mining=False)
+    module = paying_module(storage, queues, clock, karma)
+    published(queues)
+    module.handle(given(paid_by_node(storage, 1)))
+    (put_up,) = stored_ids(queues)
+    clock.now += karma.build_interval_seconds
+    module.on_idle()
+
+    (built,) = stored_ids(queues)
+    validation = BlockDrop.parsed(module.reader.held(built), ValidationBlock).block
+    node = NodeIdentity.load(LibranetConfig(storage=storage))
+    assert [(each.staker, each.stake.transaction_block) for each in validation.stakes] == [
+        (node.node_id, put_up)
+    ]
 
 
 def test_the_module_stakes_the_share_its_operator_saved_in_place_of_its_configurations(

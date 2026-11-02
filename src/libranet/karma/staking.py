@@ -41,6 +41,12 @@ is. The chain followed takes it as the head as the module next looks.
 Nothing is built while a correct validation block held at the head's
 validation target holds every stake that would be taken, so a block is built
 again only while stakes come that those held lack.
+
+A node that does not mine (``karma.mining``, KarmaScaling §6.2) takes no
+stake of others' held there: its block holds its own stake, found there or
+signed, and those people make through it, and its nonce is searched for only
+until a search will find it. Miners take those stakes into their blocks as
+they take any held there.
 """
 
 from __future__ import annotations
@@ -232,6 +238,7 @@ class HeadStakes:
         identity: NodeIdentity,
         *,
         also: Iterable[ContentId] = (),
+        mining: bool = True,
     ) -> StakedBlock | None:
         """The stakes a validation block takes on the best of ``transactions``, or ``None``.
 
@@ -239,10 +246,11 @@ class HeadStakes:
         transaction target, as the chain followed checks them, and the best
         is the best scored that is correct, and that no distrusted identity
         built (:meth:`_validated`). The stakes are those on it held at the
-        head's validation target, and those given (:meth:`_offered`), and
-        ``identity``'s, the node's (:meth:`_own_stake`), each staker's
-        covered together (:meth:`StakeCover.taken`). What covers ``also``,
-        whose stakes a runner-up may hold, is read with them.
+        head's validation target, but others' unless ``mining``, and those
+        given (:meth:`_offered`), and ``identity``'s, the node's
+        (:meth:`_own_stake`), each staker's covered together
+        (:meth:`StakeCover.taken`). What covers ``also``, whose stakes a
+        runner-up may hold, is read with them.
 
         Returns:
             Them, or ``None`` while no chain is followed, none of
@@ -264,7 +272,8 @@ class HeadStakes:
             return None
 
         validated_id, validated = chosen
-        offered = self._offered(validated_id, GenerationTargets.after(head.validation).validation)
+        target = GenerationTargets.after(head.validation).validation
+        offered = self._offered(validated_id, target, None if mining else identity.node_id)
         stakers = {identity.node_id, *also, *(signed.staker for signed in offered)}
         cover = StakeCover.of(validated, stakers, self._chain)
 
@@ -304,10 +313,13 @@ class HeadStakes:
             self._passed_over.clear()
             self._given.clear()
 
-    def _offered(self, validated_id: ContentId, target: DropTarget) -> list[SignedStake]:
+    def _offered(
+        self, validated_id: ContentId, target: DropTarget, only: ContentId | None
+    ) -> list[SignedStake]:
         """The stakes on ``validated_id`` held at ``target``, and those given, once each.
 
-        Those held are in the validation blocks there. Each is signed by its
+        Those held are in the validation blocks there, and are only
+        ``only``'s, if it names a staker. Each is signed by its
         staker, whom the node does not distrust (§3.8). One whose staker's
         key is not held is passed over, and the key asked for. One whose
         signature fails is passed over, and logged once at a head. A block
@@ -325,7 +337,10 @@ class HeadStakes:
                 _LOGGER.debug("Karma block %s holds no stakes: %s", held.block_id, error)
                 continue
 
-            self._offer(offered, validated_id, drop.block.stakes, held.keys)
+            stakes = [
+                signed for signed in drop.block.stakes if only is None or signed.staker == only
+            ]
+            self._offer(offered, validated_id, stakes, held.keys)
 
         given = [
             signed
@@ -428,8 +443,9 @@ class ValidationBuilder:
     carried is in ``carried``. The stakes are taken as :class:`HeadStakes`
     takes them, of the share ``stake_percent`` gives, as ``distrusts`` says
     whom the node distrusts, at the time ``clock`` gives. A block is signed,
-    placed, and stored as ``placing`` says. It fits within ``bounds``: the
-    specification's, unless a test gives others.
+    placed, and stored as ``placing`` says, its bits scoring it only if
+    ``mining``. It fits within ``bounds``: the specification's, unless a test
+    gives others.
     """
 
     def __init__(
@@ -444,12 +460,14 @@ class ValidationBuilder:
         stake_percent: Callable[[], float],
         clock: Callable[[], float] = time,
         bounds: BlockBounds = BLOCK_BOUNDS,
+        mining: bool = True,
     ) -> None:
         self._history = history
         self._follower = follower
         self._carried = carried
         self._placing = placing
         self._bounds = bounds
+        self._mining = mining
         self._chain = HeldChain(history, reader)
         self._stakes = HeadStakes(
             history, reader, distrusts=distrusts, stake_percent=stake_percent, clock=clock
@@ -510,6 +528,7 @@ class ValidationBuilder:
             transactions,
             identity,
             also={signed.staker for check in validations for signed in check.drop.block.stakes},
+            mining=self._mining,
         )
 
         if staked is None or self._held(staked.stakes, validations):
@@ -625,7 +644,7 @@ class ValidationBuilder:
             OSError: a searching process could not be started, or exited
                 during the search, or the drop could not be written.
         """
-        placed = self._placing.placed(drop, target)
+        placed = self._placing.placed(drop, target, scored=self._mining)
 
         if placed is None:
             return
