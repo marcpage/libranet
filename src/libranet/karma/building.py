@@ -34,10 +34,11 @@ after that until it shares ``storage.search_min_bits`` with its target (§2),
 and it is stored and announced, as a block put up for a transaction alone is.
 
 Each block is read once, and checked once, as the chain followed checks it
-(:meth:`~libranet.karma.following.ChainFollower.checked_block`): each
-transaction is kept by its hash, with its signature checked, and the hashes
-the block holds by its id, and a block found correct or not, and not full, is
-not read or fetched again, even if eviction lets it go. So the blocks put up
+(:meth:`~libranet.karma.following.ChainFollower.checked_block`), and let go of
+before the next is read, as many full blocks may come, each far larger read
+than held: each transaction is kept by its hash, with its signature checked,
+and the hashes the block holds by its id, and a block found correct or not,
+and not full, is not read or fetched again, even if eviction lets it go. So the blocks put up
 cost a node as they arrive, not as it builds. One full is not read again
 either, but counts only while it is held: it may be validated, and if it is
 lost, it is to be built again. While it is held, it is said to be in use, as a
@@ -664,9 +665,7 @@ class BlockBuilder:
         self._settle(found.seen.values(), holders)
         return list(found.seen.values())
 
-    def _settle(
-        self, seen_blocks: Iterable[_SeenBlock], holders: Callable[[], int | None]
-    ) -> None:
+    def _settle(self, seen_blocks: Iterable[_SeenBlock], holders: Callable[[], int | None]) -> None:
         """Let go of each of ``seen_blocks`` that is known to be correct or not.
 
         One full is kept while it is held, and one not full is settled. How
