@@ -1,0 +1,1142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>TV</title>
+<style>
+  :root {
+    --background: #0d0b0b;
+    --surface: #1a1414;
+    --text: #f0e9e6;
+    --muted: #ab9f9b;
+    --border: #3d2b2b;
+    --accent: #c8102e;
+    --accent-text: #fff6f0;
+    --bad: #ff8a80;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  header, main { max-width: 76rem; margin: 0 auto; padding: 0 1rem; }
+  header {
+    padding-top: 2.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+  }
+  main { padding-bottom: 2rem; }
+  header .toolbar { margin: 0; }
+
+  :focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+  .home {
+    position: absolute;
+    top: 0.75rem;
+    right: 1rem;
+    font-size: 1.5rem;
+    line-height: 1;
+    text-decoration: none;
+  }
+  h1 { font-size: 1.5rem; margin: 0; }
+  h2 { font-size: 1.15rem; margin: 0; }
+  h3 { font-size: 1.05rem; margin: 0 0 0.75rem; }
+  h4 { font-size: 0.95rem; margin: 1.25rem 0 0.5rem; }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1.25rem 0;
+  }
+
+  .subtitle, .hint, .note { color: var(--muted); }
+  .subtitle { margin: 0.25rem 0 0; }
+  .hint { margin: 0 0 0.75rem; }
+  .note { font-size: 0.9em; }
+  .state { margin: 1rem 0 0; }
+  .result { margin: 0.75rem 0 0; }
+  .error { color: var(--bad); }
+
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; }
+  .id { user-select: all; word-break: break-all; }
+
+  .heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 0; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; margin: 1rem 0 0; }
+
+  button {
+    font: inherit;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 0.4rem 0.9rem;
+    background: var(--accent);
+    color: var(--accent-text);
+    cursor: pointer;
+  }
+
+  button.secondary { background: transparent; color: var(--text); }
+  button.danger { background: transparent; color: var(--bad); border-color: var(--bad); }
+  button.small { padding: 0.2rem 0.55rem; font-size: 0.85rem; }
+  button:disabled { opacity: 0.6; cursor: default; }
+
+  button.icon { padding: 0.3rem; line-height: 0; background: transparent; color: var(--text); border-color: transparent; }
+  button.icon:hover:not(:disabled) { border-color: var(--border); }
+  button.icon.danger { color: var(--bad); }
+
+  .icon svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--muted); }
+  label.wide { flex: 1 1 16rem; }
+  label.check { flex-direction: row; align-items: center; gap: 0.5rem; font-size: 1rem; color: var(--text); }
+  .fields { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; margin: 0 0 0.75rem; }
+
+  input, select, textarea {
+    font: inherit;
+    font-size: 1rem;
+    color: var(--text);
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.4rem 0.55rem;
+  }
+
+  textarea { width: 100%; resize: vertical; }
+
+  .player {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  video { display: block; width: 100%; max-height: 70vh; background: #000; border-radius: 6px; }
+  video:focus { outline: none; }
+  .details p { margin: 0.4rem 0; }
+
+  .title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+  .title-row h2 { overflow-wrap: anywhere; }
+  .icons { display: flex; flex: none; gap: 0.25rem; margin: -0.3rem -0.3rem 0 0; }
+  .description { white-space: pre-wrap; }
+  .poster-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 0 0 0.75rem; }
+  .poster-row img { width: 8rem; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; }
+
+  .filter { display: block; width: 100%; margin: 0.75rem 0 0; }
+
+  .seasons-bar { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 1rem 0; border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; }
+  .seasons-bar button { padding: 0.3rem 0.75rem; font-size: 0.9rem; }
+  .seasons-bar button[aria-selected="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+
+  .episodes, .series-grid {
+    list-style: none;
+    margin: 1rem 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+    gap: 1rem;
+  }
+
+  button.pick {
+    display: block;
+    width: 100%;
+    padding: 0.35rem;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+  }
+
+  button.pick[aria-pressed="true"] { border-color: var(--accent); }
+
+  .episodes li, .series-grid li { display: flex; flex-direction: column; }
+
+  .poster {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius: 6px;
+    background: var(--border);
+  }
+
+  span.poster { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 1.75rem; }
+  .caption { display: block; padding: 0.4rem 0.15rem 0; }
+  .caption strong, .caption .note { display: block; overflow-wrap: anywhere; }
+
+  .choices { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .choices button[aria-current="true"] { background: var(--accent); color: var(--accent-text); }
+
+  .entries {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 50vh;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .entries li { padding: 0.35rem 0.6rem; }
+  .entries li + li { border-top: 1px solid var(--border); }
+
+  .entries button {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.15rem 0;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+  }
+
+  .entries button span:first-child { overflow-wrap: anywhere; }
+  .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; margin: 0 0 0.5rem; }
+  .crumbs button { padding: 0.1rem 0.4rem; }
+
+  .activity { list-style: none; margin: 0.75rem 0 0; padding: 0; }
+  .activity li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; margin: 0.35rem 0; }
+
+  dialog {
+    width: min(40rem, calc(100vw - 2rem));
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  dialog::backdrop { background: rgb(0 0 0 / 0.5); }
+
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 1rem; margin: 0; }
+  .keys dd { margin: 0; }
+
+  kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.05rem 0.35rem;
+    background: var(--background);
+  }
+</style>
+</head>
+<body>
+<a class="home" href="/" title="Home" aria-label="Home">&#x1F3E0;</a>
+<header>
+  <div>
+    <h1>TV</h1>
+    <p class="subtitle" id="client-note">Asking the node&hellip;</p>
+  </div>
+  <div class="toolbar">
+    <button type="button" class="secondary" id="choose-series" hidden>Series</button>
+    <button type="button" class="icon" id="show-keys" title="Keys" aria-label="Keys">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.75 2.17C12.5 12.1 12 12.6 12 13.5V14 M12 17.5v.01"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+  <noscript><section><p>This page needs JavaScript.</p></section></noscript>
+  <p class="state" id="page-state" role="status" hidden></p>
+
+  <section id="chooser" aria-labelledby="chooser-heading" hidden>
+    <h2 id="chooser-heading">Series</h2>
+    <p class="state" id="chooser-state" role="status" hidden></p>
+    <ul class="choices state" id="chooser-list"></ul>
+    <div class="toolbar signed-in-only" hidden>
+      <button type="button" id="new-series">New series</button>
+      <button type="button" class="secondary" id="import-series">Import a series</button>
+    </div>
+  </section>
+
+  <section id="player-section" aria-labelledby="episode-title" hidden>
+    <div class="player">
+      <div>
+        <video id="video" controls preload="metadata" playsinline></video>
+        <div id="video-trouble" hidden>
+          <p class="result error" id="video-state" role="alert"></p>
+          <div class="toolbar">
+            <button type="button" class="secondary small" id="video-again">Try again</button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="details" id="details">
+          <div class="title-row">
+            <h2 id="episode-title"></h2>
+            <div class="icons">
+              <button type="button" class="icon signed-in-only" id="edit-episode" title="Edit" aria-label="Edit" hidden>
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
+              </button>
+              <button type="button" class="icon danger signed-in-only" id="remove-episode" title="Remove" aria-label="Remove" hidden>
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16 M9 7V4h6v3 M6 7l1 14h10l1-14 M10 11v6 M14 11v6"/></svg>
+              </button>
+              <button type="button" class="icon" id="close-episode" title="Back to the series" aria-label="Back to the series">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12 M18 6L6 18"/></svg>
+              </button>
+            </div>
+          </div>
+          <p class="note" id="episode-facts"></p>
+          <p class="description" id="episode-description"></p>
+          <p class="result" id="episode-result" role="status" hidden></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="library" aria-labelledby="series-name" hidden>
+    <div class="title-row">
+      <div class="heading">
+        <h2 id="series-name"></h2>
+        <span class="note" id="series-count"></span>
+      </div>
+      <div class="icons">
+        <button type="button" class="icon signed-in-only" id="add-file" title="Add from a file" aria-label="Add from a file" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 4H5v17h12v-8 M18 3v6 M15 6h6 M8 13h6 M8 17h6"/></svg>
+        </button>
+        <button type="button" class="icon" id="filter-episodes" title="Filter" aria-label="Filter">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M16 16l5 5"/></svg>
+        </button>
+      </div>
+    </div>
+    <nav class="seasons-bar" id="seasons-bar" aria-label="Seasons"></nav>
+    <div id="season-header" hidden>
+      <div class="title-row">
+        <h3 id="season-name"></h3>
+        <div class="icons">
+          <button type="button" class="icon signed-in-only" id="edit-season-btn" title="Edit Season Details" aria-label="Edit Season Details" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
+          </button>
+        </div>
+      </div>
+      <p class="description" id="season-description"></p>
+    </div>
+    <input type="search" class="filter" id="episodes-filter" aria-label="Words to look for"
+      placeholder="Search episodes by title or details" autocomplete="off" spellcheck="false" hidden>
+    <ul class="activity" id="activity"></ul>
+    <p class="result" id="series-result" role="status" hidden></p>
+    <p class="state" id="series-state" hidden></p>
+    <ol class="episodes" id="episodes-grid"></ol>
+  </section>
+</main>
+
+<dialog id="new-dialog" aria-labelledby="new-heading">
+  <form id="new-form">
+    <h3 id="new-heading">New series</h3>
+    <div class="fields">
+      <label class="wide">Name <input id="new-name" required autocomplete="off"></label>
+    </div>
+    <p class="hint">Series are searched at TMDB when created, and kept at a drop of yours signed and encrypted for you.</p>
+    <p class="result" id="new-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Make</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="file-dialog" aria-labelledby="file-heading">
+  <h3 id="file-heading">Add an episode from a file</h3>
+  <p class="hint">The folders this node offers. Choose a video to import as an episode.</p>
+  <p class="hint"><span id="lookup-note"></span>
+    <button type="button" class="secondary small" id="lookup-key" disabled>TMDB key</button></p>
+  <nav class="crumbs" id="folder-path" aria-label="Where in the folders"></nav>
+  <ul class="entries" id="folder-entries"></ul>
+  <p class="result" id="folder-state" role="status" hidden></p>
+  <div class="buttons">
+    <button type="button" class="secondary" data-close>Close</button>
+  </div>
+</dialog>
+
+<dialog id="lookup-dialog" aria-labelledby="lookup-heading">
+  <form id="lookup-form">
+    <h3 id="lookup-heading">Looking up at TMDB</h3>
+    <p class="hint">The movie application's TMDB key is used here too.</p>
+    <div class="fields">
+      <label class="wide">API key, or API read access token
+        <input id="lookup-field" autocomplete="off" spellcheck="false">
+      </label>
+    </div>
+    <p class="note">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+    <p class="result" id="lookup-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="keys-dialog" aria-labelledby="keys-heading">
+  <h3 id="keys-heading">Keys</h3>
+  <dl class="keys">
+    <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt>
+    <dd>Move through episodes or seasons.</dd>
+    <dt><kbd>Enter</kbd></dt>
+    <dd>Choose episode or season.</dd>
+    <dt><kbd>Space</kbd> <kbd>G</kbd></dt>
+    <dd>Play or pause.</dd>
+    <dt><kbd>F</kbd></dt>
+    <dd>Full screen.</dd>
+    <dt><kbd>S</kbd> <kbd>X</kbd></dt>
+    <dd>Stop and return to series.</dd>
+    <dt><kbd>N</kbd> <kbd>P</kbd></dt>
+    <dd>Next / Previous episode across seasons.</dd>
+    <dt><kbd>[</kbd> <kbd>]</kbd></dt>
+    <dd>Previous / Next season.</dd>
+    <dt><kbd>C</kbd></dt>
+    <dd>Return to Series chooser.</dd>
+    <dt><kbd>`</kbd></dt>
+    <dd>Filter episodes by keywords.</dd>
+    <dt><kbd>?</kbd> <kbd>/</kbd></dt>
+    <dd>Show shortcut keys.</dd>
+  </dl>
+  <div class="buttons">
+    <button type="button" class="secondary" data-close>Done</button>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+
+const CLIENT = "/data/client";
+const DIRECTORY = "/data/directory";
+const IMPORTS = "/data/imports";
+const BUNDLES = "/data/bundles";
+const DATA = "/data/";
+const SESSION = "/data/session";
+const SIGNED = "/data/signed";
+const DROPS = "/data/drop";
+const ENCRYPTED = "/data/encrypted/";
+
+const SERIES_PREFIX = "tv series:";
+const TMDB_PREFIX = "movie tmdb:";
+const TOKEN_START = "eyJ";
+const REMEMBERED_SERIES = "tv.series";
+
+const TMDB_API = "https://api.themoviedb.org/3";
+const TMDB_IMAGES = "https://image.tmdb.org/t/p";
+const RATING_COUNTRY = "US";
+const CAST_NAMED = 5;
+const STILL_SIZE = "w1280";
+const POSTER_SIZE = "w780";
+
+const IMPORT_POLL_SECONDS = 1;
+const DEFAULT_RETRY_SECONDS = 5;
+const MAX_WAITS = 6;
+const POSTER_TRIES = 3;
+
+const CONTENT_ID = /^[a-z0-9-]+\/[0-9a-f]+(?:\/[A-Za-z0-9:-]+\/[0-9a-f]+)?$/;
+
+const state = {
+  local: false,
+  owner: null,
+  series: null,
+  selectedSeason: null,
+  selectedEpisode: null,
+  imports: 0,
+};
+
+function byId(id) { return document.getElementById(id); }
+
+function make(tag, text, className) {
+  const node = document.createElement(tag);
+  if (text !== undefined && text !== null) node.textContent = String(text);
+  if (className) node.className = className;
+  return node;
+}
+
+function show(element, message, isError = false) {
+  element.textContent = message;
+  element.classList.toggle("error", isError);
+  element.hidden = !message;
+}
+
+function sleep(seconds) { return new Promise((resolve) => setTimeout(resolve, seconds * 1000)); }
+function isObject(value) { return typeof value === "object" && value !== null && !Array.isArray(value); }
+function isText(value) { return typeof value === "string" && value !== ""; }
+function isShown(value) { return isText(value) || (typeof value === "number" && Number.isFinite(value)); }
+function plural(count, one, many) { return count === 1 ? `1 ${one}` : `${count} ${many}`; }
+
+function wordsOf(text) {
+  return text.toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter(isText);
+}
+
+function formatDuration(seconds) {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) return "";
+  const whole = Math.round(seconds);
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor(whole / 60) % 60;
+  const two = (count) => String(count).padStart(2, "0");
+  return hours ? `${hours}:${two(minutes)}:${two(whole % 60)}` : `${minutes}:${two(whole % 60)}`;
+}
+
+function retryAfter(headers) {
+  const seconds = Number.parseInt(headers.get("Retry-After") || "", 10);
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.max(seconds, 1) : DEFAULT_RETRY_SECONDS;
+}
+
+class Unreachable extends Error {}
+class Refusal extends Error {
+  constructor(result) {
+    const problem = isObject(result.value) ? result.value : {};
+    super(problem.detail || problem.title || `The node answered ${result.status}.`);
+    this.status = result.status;
+  }
+}
+
+async function call(method, path, { body, headers = {}, cache = "no-store" } = {}) {
+  const init = { method, cache, headers: { ...headers } };
+  if (body !== undefined) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+  let response;
+  try {
+    response = await fetch(path, init);
+  } catch (error) {
+    throw new Unreachable(`The node could not be reached: ${error.message}`);
+  }
+  const text = await response.text();
+  let value = null;
+  try { value = text ? JSON.parse(text) : null; } catch (error) { value = null; }
+  return { status: response.status, ok: response.ok, headers: response.headers, value };
+}
+
+async function patiently(method, path, options) {
+  for (let waits = 0; ; waits += 1) {
+    const result = await call(method, path, options);
+    if (result.status !== 503 || waits >= MAX_WAITS) return result;
+    await sleep(retryAfter(result.headers));
+  }
+}
+
+function encodedPath(path) { return path.split("/").map(encodeURIComponent).join("/"); }
+function entryUrl(bundle, path) { return `${DATA}${bundle}/${encodedPath(path)}`; }
+
+async function readEntry(bundle, path) {
+  const result = await patiently("GET", entryUrl(bundle, path), { cache: "default" });
+  if (!result.ok) throw new Refusal(result);
+  if (result.value === null) throw new Error(`${path} is not JSON.`);
+  return result.value;
+}
+
+function parseId(text) {
+  let id = text.trim();
+  const at = id.indexOf(DATA);
+  if (at >= 0) id = id.slice(at + DATA.length);
+  id = id.replace(/\/+$/, "");
+  return CONTENT_ID.test(id) ? id : null;
+}
+
+async function makeBundle(edit) {
+  const result = await patiently("POST", BUNDLES, { body: edit });
+  if (!result.ok || !isObject(result.value) || typeof result.value.bundle !== "string") {
+    throw new Refusal(result);
+  }
+  return result.value.bundle;
+}
+
+class Series {
+  constructor(name, bundle, data) {
+    this.name = name;
+    this.bundle = bundle;
+    this.data = data; // decoded series.json
+    this.seasonsMap = new Map(); // seasonNumber -> { seasonJson, episodes: Map(epFolder -> info) }
+  }
+
+  static async read(bundle, name) {
+    const file = await readEntry(bundle, "series.json");
+    if (!isObject(file) || !Array.isArray(file.seasons)) {
+      throw new Error("That bundle's series.json is not valid.");
+    }
+    const series = new Series(name || (isText(file.name) ? file.name : "Untitled"), bundle, file);
+    
+    for (const seasonFolder of file.seasons) {
+      try {
+        const seasonJson = await readEntry(bundle, `${seasonFolder}/season.json`);
+        const seasonNum = typeof seasonJson.number === "number" ? seasonJson.number : 1;
+        const order = Array.isArray(seasonJson.order) ? seasonJson.order : [];
+        const episodes = new Map();
+        for (const epFolder of order) {
+          try {
+            const info = await readEntry(bundle, `${seasonFolder}/${epFolder}/info.json`);
+            episodes.set(epFolder, info);
+          } catch (e) {
+            episodes.set(epFolder, null);
+          }
+        }
+        series.seasonsMap.set(seasonFolder, { seasonJson, episodes, order });
+      } catch (e) {
+        console.warn(`Failed reading season ${seasonFolder}: ${e.message}`);
+      }
+    }
+    return series;
+  }
+
+  url(seasonFolder, epFolder, file) {
+    return entryUrl(this.bundle, `${seasonFolder}/${epFolder}/${file}`);
+  }
+
+  seasonNumbers() {
+    const folders = [...this.seasonsMap.keys()];
+    folders.sort((a, b) => {
+      const numA = this.seasonsMap.get(a).seasonJson.number ?? 0;
+      const numB = this.seasonsMap.get(b).seasonJson.number ?? 0;
+      if (numA === 0) return 1;
+      if (numB === 0) return -1;
+      return numA - numB;
+    });
+    return folders;
+  }
+
+  entry() {
+    return { name: this.name, bundle: this.bundle, changed: new Date().toISOString() };
+  }
+}
+
+async function foundAt(target) {
+  const search = await call("GET", `${DROPS}/${encodeURIComponent(target)}`);
+  if (!search.ok || !isObject(search.value) || !Array.isArray(search.value.results)) {
+    throw new Refusal(search);
+  }
+  return search.value.results.filter((id) => isText(id) && CONTENT_ID.test(id));
+}
+
+class SeriesKept {
+  constructor(list) {
+    this.list = list;
+  }
+
+  static target() {
+    return `${SERIES_PREFIX}${state.owner.id}`;
+  }
+
+  static async read() {
+    if (!state.owner) return new SeriesKept([]);
+    const ids = await foundAt(SeriesKept.target());
+    const lists = await Promise.all(ids.map((id) => SeriesKept.version(id)));
+    const merged = new Map();
+
+    ids.forEach((id, index) => {
+      for (const entry of lists[index] || []) {
+        const held = merged.get(entry.name);
+        const later = !held || entry.changed > held.entry.changed ||
+          (entry.changed === held.entry.changed && id < held.id);
+        if (later) merged.set(entry.name, { entry, id });
+      }
+    });
+
+    const list = [...merged.values()].map((held) => held.entry);
+    list.sort((a, b) => a.name.localeCompare(b.name));
+    return new SeriesKept(list);
+  }
+
+  static async version(id) {
+    const result = await patiently("GET", `${ENCRYPTED}${id}`);
+    if (!result.ok || !isObject(result.value) || result.value.signer !== state.owner.id || !isText(result.value.contents)) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(result.value.contents);
+      return Array.isArray(parsed.series) ? parsed.series : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  find(name) {
+    return this.list.find((entry) => entry.name === name) || null;
+  }
+}
+
+async function placeSeriesVersion(seriesList) {
+  const result = await patiently("POST", SIGNED, {
+    body: {
+      target: SeriesKept.target(),
+      text: JSON.stringify({ series: seriesList }),
+      seconds: 1,
+      minimum_bits: 24,
+      encrypt: { for: state.owner.id },
+    },
+  });
+  if (!result.ok || !isObject(result.value) || !isText(result.value.id)) {
+    throw new Refusal(result);
+  }
+  return result.value.id;
+}
+
+function recallSeries() {
+  try {
+    return JSON.parse(localStorage.getItem(REMEMBERED_SERIES) || "null");
+  } catch (e) {
+    return null;
+  }
+}
+
+function rememberSeries(entry) {
+  try {
+    localStorage.setItem(REMEMBERED_SERIES, JSON.stringify(entry));
+  } catch (e) {}
+}
+
+async function showChooser() {
+  const chooser = byId("chooser");
+  const status = byId("chooser-state");
+  const list = byId("chooser-list");
+  chooser.hidden = false;
+  list.replaceChildren();
+  show(status, "Asking the node…");
+
+  let kept;
+  try {
+    kept = await SeriesKept.read();
+  } catch (e) {
+    show(status, `Series could not be read: ${e.message}`, true);
+    return;
+  }
+
+  list.replaceChildren(...kept.list.map((entry) => {
+    const item = make("li");
+    const btn = make("button", entry.name, "secondary");
+    btn.type = "button";
+    if (state.series && state.series.name === entry.name) btn.setAttribute("aria-current", "true");
+    btn.addEventListener("click", () => openSeries(entry));
+    item.append(btn);
+    return item;
+  }));
+
+  if (kept.list.length > 0) {
+    show(status, "Choose a series.");
+  } else if (state.owner) {
+    show(status, "You keep no series yet. Make one.");
+  } else {
+    show(status, "Sign in on the home page to manage series.");
+  }
+}
+
+async function openSeries(entry) {
+  const status = byId("page-state");
+  show(status, `Reading “${entry.name}”…`);
+  try {
+    state.series = await Series.read(entry.bundle, entry.name);
+    rememberSeries(entry);
+    showLibrary();
+  } finally {
+    show(status, "");
+  }
+}
+
+function showLibrary() {
+  closePlayer();
+  byId("chooser").hidden = true;
+  byId("library").hidden = false;
+  const series = state.series;
+  byId("series-name").textContent = series.name;
+  
+  for (const el of document.querySelectorAll("#library .signed-in-only")) {
+    el.hidden = !state.owner;
+  }
+
+  const seasonFolders = series.seasonNumbers();
+  if (seasonFolders.length > 0 && (!state.selectedSeason || !seasonFolders.includes(state.selectedSeason))) {
+    state.selectedSeason = seasonFolders[0];
+  }
+
+  renderSeasonsBar();
+  renderEpisodesGrid();
+}
+
+function renderSeasonsBar() {
+  const bar = byId("seasons-bar");
+  const series = state.series;
+  const seasonFolders = series.seasonNumbers();
+  
+  bar.replaceChildren(...seasonFolders.map((folder) => {
+    const data = series.seasonsMap.get(folder);
+    const btn = make("button", data.seasonJson.name || `Season ${data.seasonJson.number}`, "secondary");
+    btn.type = "button";
+    btn.setAttribute("aria-selected", String(folder === state.selectedSeason));
+    btn.addEventListener("click", () => {
+      state.selectedSeason = folder;
+      renderSeasonsBar();
+      renderEpisodesGrid();
+    });
+    return btn;
+  }));
+  bar.hidden = seasonFolders.length === 0;
+}
+
+function renderEpisodesGrid() {
+  const grid = byId("episodes-grid");
+  const series = state.series;
+  const season = series.seasonsMap.get(state.selectedSeason);
+  
+  if (!season) {
+    grid.replaceChildren();
+    byId("season-header").hidden = true;
+    return;
+  }
+
+  byId("season-name").textContent = season.seasonJson.name || `Season ${season.seasonJson.number}`;
+  byId("season-description").textContent = season.seasonJson.description || "";
+  byId("season-header").hidden = !season.seasonJson.name && !season.seasonJson.description;
+
+  const items = season.order.map((epFolder) => {
+    const info = season.episodes.get(epFolder) || {};
+    const item = make("li");
+    const pick = make("button", null, "pick");
+    pick.type = "button";
+    pick.dataset.folder = epFolder;
+    
+    const poster = info.poster ? make("img", null, "poster") : make("span", "▶", "poster");
+    if (info.poster) {
+      poster.src = series.url(state.selectedSeason, epFolder, info.poster);
+    }
+    
+    const caption = make("span", null, "caption");
+    const epNum = Array.isArray(info.episodes) ? info.episodes[0] : 1;
+    caption.append(make("strong", `E${epNum}: ${info.title || epFolder}`), make("span", formatDuration(info.duration_seconds), "note"));
+    
+    pick.append(poster, caption);
+    pick.addEventListener("click", () => selectEpisode(state.selectedSeason, epFolder));
+    item.append(pick);
+    return item;
+  });
+
+  grid.replaceChildren(...items);
+}
+
+function closePlayer() {
+  const video = byId("video");
+  video.pause();
+  video.removeAttribute("src");
+  video.removeAttribute("poster");
+  delete video.dataset.source;
+  video.load();
+  state.selectedEpisode = null;
+  byId("video-trouble").hidden = true;
+  byId("player-section").hidden = true;
+  byId("library").hidden = false;
+}
+
+function selectEpisode(seasonFolder, epFolder) {
+  const series = state.series;
+  const season = series.seasonsMap.get(seasonFolder);
+  const info = season.episodes.get(epFolder);
+  const video = byId("video");
+  const source = info && isText(info.video) ? `${seasonFolder}/${epFolder}/${info.video}` : "";
+
+  state.selectedEpisode = { seasonFolder, epFolder };
+  show(byId("episode-result"), "");
+
+  if (video.dataset.source !== source) {
+    video.dataset.source = source;
+    byId("video-trouble").hidden = true;
+    if (source) {
+      video.src = series.url(seasonFolder, epFolder, info.video);
+    } else {
+      video.removeAttribute("src");
+      video.load();
+    }
+  }
+
+  byId("player-section").hidden = false;
+  byId("library").hidden = true;
+  
+  const epNum = Array.isArray(info.episodes) ? info.episodes[0] : 1;
+  byId("episode-title").textContent = `S${season.seasonJson.number}E${epNum} — ${info.title || epFolder}`;
+  byId("episode-facts").textContent = [info.aired, formatDuration(info.duration_seconds)].filter(isShown).join(" · ");
+  byId("episode-description").textContent = info && isText(info.description) ? info.description : "";
+  
+  if (info && isText(info.poster)) {
+    video.poster = series.url(seasonFolder, epFolder, info.poster);
+  } else {
+    video.removeAttribute("poster");
+  }
+
+  video.play().catch(() => {});
+}
+
+// File importing & browser modal
+async function openFileBrowser() {
+  byId("file-dialog").showModal();
+  await browseFolders([]);
+}
+
+async function browseFolders(segments) {
+  const list = byId("folder-entries");
+  const status = byId("folder-state");
+  const crumbs = [makeCrumb("Folders", [])];
+
+  segments.forEach((segment, index) => {
+    crumbs.push(make("span", "›", "note"), makeCrumb(segment, segments.slice(0, index + 1)));
+  });
+
+  byId("folder-path").replaceChildren(...crumbs);
+  list.replaceChildren();
+  list.hidden = true;
+  show(status, "Asking the node…");
+
+  const path = segments.length ? `${DIRECTORY}/${encodedPath(segments.join("/"))}` : DIRECTORY;
+  let result;
+  try {
+    result = await call("GET", path);
+  } catch (error) {
+    show(status, error.message, true);
+    return;
+  }
+
+  if (!result.ok || !isObject(result.value) || !isObject(result.value.entries)) {
+    show(status, new Refusal(result).message, true);
+    return;
+  }
+
+  const entries = Object.entries(result.value.entries).filter(([, e]) => isObject(e))
+    .sort(([a], [b]) => a.localeCompare(b));
+  const folders = entries.filter(([, e]) => e.type === "directory");
+  const videos = entries.filter(([, e]) => e.type === "file" && isText(e.content_type) && e.content_type.startsWith("video/"));
+
+  list.replaceChildren(
+    ...folders.map(([name]) => entryRow(`${name}/`, "", () => browseFolders([...segments, name]))),
+    ...videos.map(([name, entry]) => entryRow(name, formatSize(entry.size), () => {
+      byId("file-dialog").close();
+      startEpisodeImport([...segments, name].join("/"), name);
+    })),
+  );
+  list.hidden = folders.length + videos.length === 0;
+  show(status, "");
+}
+
+function makeCrumb(text, segments) {
+  const btn = make("button", text, "secondary small");
+  btn.type = "button";
+  btn.addEventListener("click", () => browseFolders(segments));
+  return btn;
+}
+
+function entryRow(text, detail, action) {
+  const item = make("li");
+  const btn = make("button");
+  btn.type = "button";
+  btn.append(make("span", text), make("span", detail, "note"));
+  btn.addEventListener("click", action);
+  item.append(btn);
+  return item;
+}
+
+function formatSize(bytes) {
+  if (typeof bytes !== "number") return "";
+  for (const [unit, size] of [["GB", 1e9], ["MB", 1e6], ["kB", 1e3]]) {
+    if (bytes >= size) return `${(bytes / size).toFixed(1)} ${unit}`;
+  }
+  return `${bytes} B`;
+}
+
+function parseEpisodeNumbers(name) {
+  const match = /(?:s(\d+)\s*e(\d+))|(?:(\d+)x(\d+))/i.exec(name);
+  if (match) {
+    const season = Number(match[1] || match[3]);
+    const episode = Number(match[2] || match[4]);
+    return { season, episodes: [episode] };
+  }
+  return { season: 1, episodes: [1] };
+}
+
+async function startEpisodeImport(path, fileName) {
+  const item = make("li");
+  const label = make("span", `Importing “${fileName}”`);
+  const bar = make("progress");
+  const note = make("span", "", "note");
+  item.append(label, bar, note);
+  byId("activity").append(item);
+
+  const started = await call("POST", IMPORTS, { body: { path } });
+  if (started.status !== 202 || !isObject(started.value) || !isText(started.value.import_id)) {
+    label.textContent = `Import failed for “${fileName}”`;
+    label.className = "error";
+    bar.remove();
+    note.remove();
+    return;
+  }
+
+  const importId = started.value.import_id;
+  let fileBundle = null;
+
+  for (;;) {
+    const res = await call("GET", IMPORTS);
+    if (res.ok && isObject(res.value?.imports?.[importId])) {
+      const rec = res.value.imports[importId];
+      if (rec.status === "done") {
+        fileBundle = rec.file;
+        break;
+      }
+      if (rec.status === "failed") {
+        label.textContent = `Import failed: ${rec.error || "Unknown"}`;
+        label.className = "error";
+        bar.remove();
+        note.remove();
+        return;
+      }
+      if (rec.size) {
+        bar.max = rec.size;
+        bar.value = rec.bytes_read || 0;
+      }
+    }
+    await sleep(1);
+  }
+
+  item.remove();
+  // Add episode to current series
+  const parsed = parseEpisodeNumbers(fileName);
+  const seasonFolder = `S${String(parsed.season).padStart(2, "0")}`;
+  const epFolder = fileBundle.split("/")[1].slice(0, 16);
+
+  const info = {
+    title: fileName.replace(/\.[^/.]+$/, ""),
+    season: parsed.season,
+    episodes: parsed.episodes,
+    aired: new Date().toISOString().slice(0, 10),
+    video: fileName,
+  };
+
+  const add = {
+    [`${seasonFolder}/${epFolder}/${fileName}`]: { file: fileBundle },
+    [`${seasonFolder}/${epFolder}/info.json`]: { text: JSON.stringify(info, null, 2) },
+  };
+
+  // Ensure season.json exists
+  const series = state.series;
+  let seasonData = series.seasonsMap.get(seasonFolder);
+  if (!seasonData) {
+    const seasonJson = { number: parsed.season, name: `Season ${parsed.season}`, order: [epFolder] };
+    add[`${seasonFolder}/season.json`] = { text: JSON.stringify(seasonJson, null, 2) };
+    series.seasonsMap.set(seasonFolder, { seasonJson, episodes: new Map([[epFolder, info]]), order: [epFolder] });
+    series.data.seasons = [...(series.data.seasons || []), seasonFolder];
+    add["series.json"] = { text: JSON.stringify(series.data, null, 2) };
+  } else {
+    seasonData.order.push(epFolder);
+    seasonData.episodes.set(epFolder, info);
+    add[`${seasonFolder}/season.json`] = {
+      text: JSON.stringify({ ...seasonData.seasonJson, order: seasonData.order }, null, 2),
+    };
+  }
+
+  const newBundle = await makeBundle({ base: series.bundle, add });
+  const updatedSeries = await Series.read(newBundle, series.name);
+  state.series = updatedSeries;
+  
+  // Update person's kept list
+  const kept = await SeriesKept.read();
+  const newList = kept.list.map((s) => s.name === updatedSeries.name ? updatedSeries.entry() : s);
+  if (!newList.some((s) => s.name === updatedSeries.name)) newList.push(updatedSeries.entry());
+  await placeSeriesVersion(newList);
+
+  showLibrary();
+}
+
+async function start() {
+  state.local = await (async () => {
+    try { const r = await call("GET", CLIENT); return r.ok && r.value?.local === true; } catch (e) { return false; }
+  })();
+  state.owner = state.local ? await (async () => {
+    try { const r = await call("GET", SESSION); return r.ok && isText(r.value?.id) ? r.value : null; } catch (e) { return false; }
+  })() : null;
+
+  for (const el of document.querySelectorAll(".signed-in-only")) {
+    el.hidden = !state.owner;
+  }
+
+  byId("client-note").textContent = state.owner ? "" : (state.local ? "Sign in on the home page to manage series." : "Playback only on remote clients.");
+  byId("choose-series").hidden = false;
+
+  const remembered = recallSeries();
+  if (!remembered) {
+    await showChooser();
+    return;
+  }
+
+  let kept;
+  try {
+    kept = await SeriesKept.read();
+  } catch (e) {}
+
+  const entry = kept?.find(remembered.name) || remembered;
+  try {
+    state.series = await Series.read(entry.bundle, entry.name);
+    showLibrary();
+  } catch (e) {
+    await showChooser();
+  }
+}
+
+// Event Bindings
+for (const btn of document.querySelectorAll("[data-close]")) {
+  btn.addEventListener("click", () => btn.closest("dialog").close());
+}
+
+byId("choose-series").addEventListener("click", showChooser);
+byId("add-file").addEventListener("click", openFileBrowser);
+byId("new-series").addEventListener("click", () => {
+  byId("new-form").reset();
+  show(byId("new-result"), "");
+  byId("new-dialog").showModal();
+});
+byId("close-episode").addEventListener("click", closePlayer);
+byId("show-keys").addEventListener("click", () => byId("keys-dialog").showModal());
+
+onSubmit("new-form", "new-result", async () => {
+  const name = byId("new-name").value.trim();
+  if (!name) throw new Error("Give the series a name.");
+  
+  const seriesJson = { name, seasons: [] };
+  const bundle = await makeBundle({ encrypted: true, add: { "series.json": { text: JSON.stringify(seriesJson, null, 2) } } });
+  const entry = { name, bundle, changed: new Date().toISOString() };
+  
+  const kept = await SeriesKept.read();
+  await placeSeriesVersion([...kept.list, entry]);
+  
+  byId("new-dialog").close();
+  state.series = await Series.read(bundle, name);
+  rememberSeries(entry);
+  showLibrary();
+  return null;
+});
+
+function onSubmit(formId, resultId, action) {
+  byId(formId).addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await action();
+    } catch (err) {
+      show(byId(resultId), err.message, true);
+    }
+  });
+}
+
+start();
+</script>
+</body>
+</html>
