@@ -208,14 +208,14 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
 
         generation = self._head_generation()
 
-        if True:
+        if generation != self._generation:
             self._found.clear()
             self._weighed.clear()
 
         else:
             # The head changed to a heavier chain, or an as heavy and better
             # one, so what was found lighter, or no better, is so still.
-            self._weighed -= self._gave_up
+            pass
 
         self._head = head
         self._generation = generation
