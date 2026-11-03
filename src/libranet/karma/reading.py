@@ -54,6 +54,7 @@ weighs a stake is read (§5.3, §6.6).
 """
 
 from __future__ import annotations
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from logging import getLogger
 from time import time
@@ -93,6 +94,25 @@ _Block = TypeVar("_Block", TransactionBlock, ValidationBlock)
 #: How often a read of one piece of content is said to be a request, however
 #: often it is read: a look at a target may read a block many times a minute.
 _REQUEST_SAID_SECONDS: Final = 60.0
+
+#: How many blocks of a chain a reader keeps parsed, those read last, so that
+#: the blocks a head and its rivals share are parsed once, not for each check.
+_KEPT_CHAIN_BLOCKS: Final = 4
+
+
+@dataclass
+class _Read:
+    """What a reader keeps of what it read.
+
+    ``said`` is when a read of each piece of content was last said, and
+    ``blocks`` the blocks of a chain read last, parsed, by id and kind, the
+    last read last.
+    """
+
+    said: dict[ContentId, float] = field(default_factory=dict)
+    blocks: OrderedDict[tuple[ContentId, type], BlockDrop[Any]] = field(
+        default_factory=OrderedDict
+    )
 
 
 @dataclass
@@ -184,8 +204,7 @@ class TargetReader:
         self._asked: dict[ContentId, float] = {}
         # What peers have named at each target being read, by its hash.
         self._answers: dict[str, _Answers] = {}
-        # When a read of each piece of content was last said.
-        self._requested: dict[ContentId, float] = {}
+        self._read_kept = _Read()
 
     @classmethod
     def of(
@@ -326,6 +345,41 @@ class TargetReader:
         whether the node holds it, has read it there, or has yet to.
         """
         return bool(self._search.matching(target.hex, [content_id]))
+
+    def chain_block(self, block_id: ContentId, kind: type[_Block]) -> BlockDrop[_Block]:
+        """Block ``block_id`` of a chain, of ``kind``, as its builder signed it, signatures unchecked.
+
+        It is parsed once while it is among the :data:`_KEPT_CHAIN_BLOCKS`
+        read last, and is held still, and said to be requested as each read
+        of it is. One not held is read as :meth:`held` reads it, and so asked
+        for again, as one evicted is.
+
+        Raises:
+            MissingContentError: it is not held, and is asked for.
+            ShunnedContentError: the node shuns it.
+            BundleError: what is held is not it, or holds no signed bundle,
+                as :meth:`held` and
+                :meth:`~libranet.karma.blocks.BlockDrop.parsed` say.
+            ValueError: what it signs is no block of ``kind``, as the error
+                names.
+        """
+        blocks = self._read_kept.blocks
+        key = (block_id, kind)
+
+        if key in blocks and self.holds(block_id):
+            blocks.move_to_end(key)
+            self._say_requested(block_id)
+            kept: BlockDrop[_Block] = blocks[key]
+            return kept
+
+        drop = BlockDrop.parsed(self.held(block_id), kind)
+        blocks[key] = drop
+        blocks.move_to_end(key)
+
+        while len(blocks) > _KEPT_CHAIN_BLOCKS:
+            blocks.popitem(last=False)
+
+        return drop
 
     def holds(self, content_id: ContentId) -> bool:
         """Whether the node holds ``content_id``, and does not shun it; nothing is read."""
@@ -540,17 +594,16 @@ class TargetReader:
         as long as the node goes on reading it (HighLevelDesign §4.5).
         """
         now = self._clock()
-        said = self._requested.get(content_id)
+        kept = self._read_kept
+        said = kept.said.get(content_id)
 
         if said is not None and now - said < _REQUEST_SAID_SECONDS:
             return
 
-        self._requested = {
-            each: when
-            for each, when in self._requested.items()
-            if now - when < _REQUEST_SAID_SECONDS
+        kept.said = {
+            each: when for each, when in kept.said.items() if now - when < _REQUEST_SAID_SECONDS
         }
-        self._requested[content_id] = now
+        kept.said[content_id] = now
         self._publish(EventType.DATA_REQUESTED, {**content_id.fields(), "external": False})
 
     @staticmethod
@@ -633,7 +686,7 @@ class HeldChain:
             ValueError: what it signs is no validation block, as the error
                 names.
         """
-        return BlockDrop.parsed(self._reader.held(block_id), ValidationBlock)
+        return self._reader.chain_block(block_id, ValidationBlock)
 
     def transaction(self, block_id: ContentId) -> BlockDrop[TransactionBlock]:
         """Transaction block ``block_id``, as its builder signed it.
@@ -647,7 +700,7 @@ class HeldChain:
             ValueError: what it signs is no transaction block, as the error
                 names.
         """
-        return BlockDrop.parsed(self._reader.held(block_id), TransactionBlock)
+        return self._reader.chain_block(block_id, TransactionBlock)
 
     def stated(self, generation: int) -> Mapping[ContentId, Balance]:
         """The balances the chain's transaction block ``generation`` states.

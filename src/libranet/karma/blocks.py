@@ -551,21 +551,25 @@ class BlockFinding:
 
 
 class CheckedSignatures:
-    """The signatures found to check at a head, each checked once while the head is the same.
+    """The signatures found to check at a generation, each checked once while it is followed.
 
-    Each is known by its signer, the hash of what it signs, and itself, so
-    that a copy of what one signed, under another signature, is checked on
-    its own.
+    So switching between rival heads of one generation, which hold the same
+    transactions, checks none again. Each is known by its signer, the hash of
+    what it signs, and itself, so that a copy of what one signed, under
+    another signature, is checked on its own.
     """
 
     def __init__(self) -> None:
-        self._head: ContentId | None = None
+        self._generation: int | None = None
         self._checked: set[tuple[ContentId, str, bytes]] = set()
 
-    def at(self, head: ContentId | None) -> CheckedSignatures:
-        """These, all forgotten first if ``head`` is not the head they were found at."""
-        if head != self._head:
-            self._head = head
+    def at(self, generation: int | None) -> CheckedSignatures:
+        """These, all forgotten first if the chain followed is at another generation now.
+
+        ``generation`` is the head's, or ``None`` while no chain is followed.
+        """
+        if generation != self._generation:
+            self._generation = generation
             self._checked = set()
 
         return self

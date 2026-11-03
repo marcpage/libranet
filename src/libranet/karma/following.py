@@ -161,8 +161,8 @@ class ChainFollower:
     What it finds of a block is said with ``publish``, and each block is
     checked against ``bounds``: the specification's, unless a test gives
     less. What is signed in a block is not checked again once ``signatures``
-    found it to check at the head, as each block of many holding one
-    transaction is checked.
+    found it to check at the generation followed, as each block of many
+    holding one transaction is checked.
     """
 
     def __init__(
@@ -261,6 +261,11 @@ class ChainFollower:
             if isinstance(found, (TransactionBlockCheck, NotFullBlock))
             for transaction_hash in found.hashes
         }
+
+    def _generation(self) -> int | None:
+        """The generation of the head, or ``None`` if no chain is followed."""
+        head = self._history.head
+        return None if head is None else head.generation
 
     def _named_for(self) -> ContentId | None:
         """The head, which the next generation's targets are named for, or ``None`` if none."""
@@ -372,7 +377,7 @@ class ChainFollower:
             named_for,
             self._chain,
             bounds=self._bounds,
-            signatures=self._signatures.at(named_for),
+            signatures=self._signatures.at(self._generation()),
         )
         return check.kept() if isinstance(check, TransactionBlockCheck) else check
 
@@ -406,7 +411,7 @@ class ChainFollower:
             named_for,
             self._chain,
             bounds=self._bounds,
-            signatures=self._signatures.at(named_for),
+            signatures=self._signatures.at(self._generation()),
         )
 
         if isinstance(check, TransactionBlockCheck) and check.full:
@@ -436,7 +441,7 @@ class ChainFollower:
             self._chain,
             transactions=transactions,
             bounds=self._bounds,
-            signatures=self._signatures.at(named_for),
+            signatures=self._signatures.at(self._generation()),
         )
 
     def _found(
