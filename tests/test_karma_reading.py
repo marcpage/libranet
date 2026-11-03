@@ -887,6 +887,47 @@ def test_the_chain_reads_each_block_as_its_builder_signed_it(
     assert chain.stated(1) == {alice.node_id: Balance(Kismet(2)), DAVE: Balance(Kismet(7))}
 
 
+def test_a_block_of_the_chain_read_lately_is_parsed_once_while_it_is_held(
+    chain: HeldChain, history: ChainHistory, monkeypatch: MonkeyPatch
+) -> None:
+    block_id = transaction_id(history, 1)
+    parsed: list[ContentId] = []
+    parse = BlockDrop.parsed
+
+    def counted(data: bytes, kind: type) -> Any:
+        parsed.append(ContentId.for_data(data, "sha256"))
+        return parse(data, kind)
+
+    monkeypatch.setattr(BlockDrop, "parsed", counted)
+
+    assert chain.transaction(block_id) == chain.transaction(block_id)
+    assert parsed == [block_id]
+
+
+def test_a_block_of_the_chain_read_lately_is_asked_for_again_once_evicted(
+    chain: HeldChain, truth: CasStore, recorder: Recorder, history: ChainHistory
+) -> None:
+    evicted = transaction_id(history, 1)
+    chain.transaction(evicted)
+    truth.delete(evicted)
+
+    with raises(MissingContentError):
+        chain.transaction(evicted)
+
+    assert recorder.asked_for() == [evicted]
+
+
+def test_a_block_of_the_chain_read_lately_and_shunned_since_is_not_read(
+    storage: StorageConfig, chain: HeldChain, history: ChainHistory
+) -> None:
+    block_id = transaction_id(history, 1)
+    chain.transaction(block_id)
+    write_atomically(storage.shunned_list_path, ShunnedContent.body([block_id]))
+
+    with raises(ShunnedContentError):
+        chain.transaction(block_id)
+
+
 def test_a_block_evicted_is_asked_for_again_and_read_once_stored(
     chain: HeldChain,
     reader: TargetReader,
