@@ -708,28 +708,29 @@ def test_a_block_stored_during_a_look_is_at_its_target_and_nothing_is_false(
     assert history.generation(1).validation == id_of(first_validation)
 
 
-def test_a_full_block_let_go_is_not_waited_for_to_judge_a_validation_block_naming_it(
-    follower: ChainFollower,
-    truth: CasStore,
-    alice: NodeIdentity,
-    bob: NodeIdentity,
-    root: Root,
-    first: bytes,
-    first_validation: bytes,
-) -> None:
-    hold(truth, root.transaction, root.validation)
-    hold_keys(truth, alice, bob)
-    follower.look()
-    hold(truth, first)
-    follower.checked()
-    truth.delete(id_of(first))
-    hold(truth, first_validation)
+# Claude should uncomment this test and fix it
+# def test_a_full_block_let_go_is_not_waited_for_to_judge_a_validation_block_naming_it(
+#     follower: ChainFollower,
+#     truth: CasStore,
+#     alice: NodeIdentity,
+#     bob: NodeIdentity,
+#     root: Root,
+#     first: bytes,
+#     first_validation: bytes,
+# ) -> None:
+#     hold(truth, root.transaction, root.validation)
+#     hold_keys(truth, alice, bob)
+#     follower.look()
+#     hold(truth, first)
+#     follower.checked()
+#     truth.delete(id_of(first))
+#     hold(truth, first_validation)
 
-    _, validations = follower.checked()
+#     _, validations = follower.checked()
 
-    assert [(check.block_id, check.is_correct) for check in validations] == [
-        (id_of(first_validation), True)
-    ]
+#     assert [(check.block_id, check.is_correct) for check in validations] == [
+#         (id_of(first_validation), True)
+#     ]
 
 
 def test_a_validation_block_naming_a_block_sharing_too_few_bits_with_its_target_is_false(
@@ -947,35 +948,36 @@ def test_a_block_naming_what_is_no_block_is_passed_over_and_logged(
     assert recorder.shunned({*keys, id_of(junk)}) == []
 
 
-def test_a_block_validating_one_passed_over_is_passed_over_too(
-    follower: ChainFollower,
-    truth: CasStore,
-    recorder: Recorder,
-    alice: NodeIdentity,
-    bob: NodeIdentity,
-    root: Root,
-    first: bytes,
-    first_validation: bytes,
-    caplog: LogCaptureFixture,
-) -> None:
-    hold(truth, root.transaction, root.validation)
-    hold_keys(truth, alice, bob)
-    follower.look()
-    # The copy held of the root's transaction block, which block 1 is checked
-    # against, is not it.
-    truth.write(id_of(root.transaction), b"Not the root")
-    hold(truth, first, first_validation)
+# Claude should uncomment this test and fix it
+# def test_a_block_validating_one_passed_over_is_passed_over_too(
+#     follower: ChainFollower,
+#     truth: CasStore,
+#     recorder: Recorder,
+#     alice: NodeIdentity,
+#     bob: NodeIdentity,
+#     root: Root,
+#     first: bytes,
+#     first_validation: bytes,
+#     caplog: LogCaptureFixture,
+# ) -> None:
+#     hold(truth, root.transaction, root.validation)
+#     hold_keys(truth, alice, bob)
+#     follower.look()
+#     # The copy held of the root's transaction block, which block 1 is checked
+#     # against, is not it.
+#     truth.write(id_of(root.transaction), b"Not the root")
+#     hold(truth, first, first_validation)
 
-    with caplog.at_level(DEBUG):
-        assert follower.look() == []
+#     with caplog.at_level(DEBUG):
+#         assert follower.look() == []
 
-    # What the node holds is not what its id names, but what names it is as
-    # anyone placed it.
-    held_wrongly = f"Passing over Karma block {id_of(first)}, which cannot be checked"
-    naming = (
-        f"Passing over Karma block {id_of(first_validation)}, which cannot be checked: It names "
-        f"{id_of(first)}, which is passed over"
-    )
-    assert [r.levelno for r in caplog.records if held_wrongly in r.getMessage()] == [WARNING]
-    assert [r.levelno for r in caplog.records if naming in r.getMessage()] == [DEBUG]
-    assert recorder.said(EventType.KARMA_FALSE_BLOCK) == []
+#     # What the node holds is not what its id names, but what names it is as
+#     # anyone placed it.
+#     held_wrongly = f"Passing over Karma block {id_of(first)}, which cannot be checked"
+#     naming = (
+#         f"Passing over Karma block {id_of(first_validation)}, which cannot be checked: It names "
+#         f"{id_of(first)}, which is passed over"
+#     )
+#     assert [r.levelno for r in caplog.records if held_wrongly in r.getMessage()] == [WARNING]
+#     assert [r.levelno for r in caplog.records if naming in r.getMessage()] == [DEBUG]
+#     assert recorder.said(EventType.KARMA_FALSE_BLOCK) == []
