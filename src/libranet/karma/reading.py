@@ -110,9 +110,7 @@ class _Read:
     """
 
     said: dict[ContentId, float] = field(default_factory=dict)
-    blocks: OrderedDict[tuple[ContentId, type], BlockDrop[Any]] = field(
-        default_factory=OrderedDict
-    )
+    blocks: OrderedDict[tuple[ContentId, type], BlockDrop[Any]] = field(default_factory=OrderedDict)
 
 
 @dataclass

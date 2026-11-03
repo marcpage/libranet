@@ -215,7 +215,7 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
         else:
             # The head changed to a heavier chain, or an as heavy and better
             # one, so what was found lighter, or no better, is so still.
-            pass
+            self._weighed -= self._gave_up
 
         self._head = head
         self._generation = generation
