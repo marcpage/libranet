@@ -22,6 +22,7 @@ from libranet.karma.blocks import (
 from libranet.karma.checking import (
     BlockScore,
     ChainBefore,
+    FullBlock,
     NotFullBlock,
     TransactionBlockCheck,
     TransactionVerdict,
@@ -575,7 +576,7 @@ def test_a_block_not_full_and_otherwise_incorrect_is_not_correct_if_full(
     assert not check.correct_if_full
 
 
-def test_a_full_block_is_kept_whole(
+def test_all_of_a_full_blocks_check_is_kept_but_the_block(
     alice: NodeIdentity,
     chain: ChainInMemory,
     keys: dict[ContentId, bytes],
@@ -585,7 +586,24 @@ def test_a_full_block_is_kept_whole(
 
     assert isinstance(check, TransactionBlockCheck)
     assert check.full
-    assert check.kept() is check
+    kept = check.kept()
+    assert kept == FullBlock(check.score, "", alice.node_id, check.hashes)
+    assert kept.correct_if_full
+    assert kept.whole(check.drop) == check
+
+
+def test_a_full_block_otherwise_incorrect_is_kept_so(
+    alice: NodeIdentity, bob: NodeIdentity, chain: ChainInMemory, keys: dict[ContentId, bytes]
+) -> None:
+    paid = paying(alice, {bob.node_id: 300}, fee=5, created=moment(2))
+    check = checked(block_on(chain, paid), alice, chain, keys)
+
+    assert isinstance(check, TransactionBlockCheck)
+    kept = check.kept()
+    assert isinstance(kept, FullBlock)
+    assert kept.score is None
+    assert not kept.correct_if_full
+    assert kept.whole(check.drop) == check
 
 
 def test_those_holding_kismet_are_counted_with_the_payout_applied(chain: ChainInMemory) -> None:
