@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from itertools import count
-from logging import DEBUG, INFO, WARNING
+from logging import DEBUG, INFO
 from typing import Any, Iterable
 from zlib import compress
 
