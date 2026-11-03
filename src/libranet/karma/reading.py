@@ -240,7 +240,8 @@ class TargetReader:
         kept: Collection[ContentId] = (),
         searching: bool = True,
     ) -> list[HeldBlock]:
-        """The blocks of ``kind`` the node holds at ``target``, all read, as :meth:`read_each` reads."""
+        """The blocks of ``kind`` the node holds at ``target``, all read,
+        as :meth:`read_each` reads."""
         return list(self.read_each(target, kind, known=known, kept=kept, searching=searching))
 
     def read_each(
