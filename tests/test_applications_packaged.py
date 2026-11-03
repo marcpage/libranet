@@ -89,6 +89,7 @@ DIRECTORY_APPLICATION = "directory"
 MAIL_APPLICATION = "mail"
 NODES_APPLICATION = "nodes"
 KARMA_APPLICATION = "karma"
+TV_APPLICATION = "tv"
 ROOT_PAGE_SOURCE = PACKAGED_APPLICATIONS / "root" / "index.html"
 CONFIG_PAGE_SOURCE = PACKAGED_APPLICATIONS / "config" / "index.html"
 MOVIE_PAGE_SOURCE = PACKAGED_APPLICATIONS / "movie" / "index.html"
@@ -257,6 +258,7 @@ def test_the_node_ships_the_root_config_movie_directory_mail_nodes_and_karma_app
             MAIL_APPLICATION,
             NODES_APPLICATION,
             KARMA_APPLICATION,
+            TV_APPLICATION,
         }
     )
 
