@@ -518,11 +518,10 @@ def test_a_head_found_lighter_is_not_weighed_again_as_heavier_rivals_are_followe
     monkeypatch.setattr(HeadClaim, "claimed", counted)
 
     for kismet in (6, 7):
-        rival = sibling(root, first, alice, alice, kismet)
-        hold(truth, rival)
+        hold(truth, sibling(root, first, alice, alice, kismet))
 
         assert changes.look()
-        assert history.generation(1).validation == id_of(rival)
+        assert history.generation(1).validation == id_of(sibling(root, first, alice, alice, kismet))
 
     assert id_of(lighter) not in weighed
 

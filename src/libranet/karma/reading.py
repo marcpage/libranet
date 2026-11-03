@@ -345,7 +345,7 @@ class TargetReader:
         return bool(self._search.matching(target.hex, [content_id]))
 
     def chain_block(self, block_id: ContentId, kind: type[_Block]) -> BlockDrop[_Block]:
-        """Block ``block_id`` of a chain, of ``kind``, as its builder signed it, signatures unchecked.
+        """Block ``block_id`` of a chain, of ``kind``, as signed, its signatures not checked again.
 
         It is parsed once while it is among the :data:`_KEPT_CHAIN_BLOCKS`
         read last, and is held still, and said to be requested as each read
