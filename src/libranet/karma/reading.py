@@ -57,7 +57,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from logging import getLogger
 from time import time
-from typing import Callable, Collection, Final, Iterable, Mapping, Protocol, TypeVar
+from typing import Any, Callable, Collection, Final, Iterable, Mapping, Protocol, TypeVar
 from zlib import compress
 
 from libranet.bundle.content import ContentSource
@@ -125,13 +125,17 @@ class HeldBlock:
     ``compressed_bytes`` its size compressed: the copy held, if that is
     compressed, and otherwise ``data`` as the node compresses what it stores
     (§5.4). ``keys`` are those the node holds of everyone who signed what it
-    holds: its builder, and each sender or staker in it.
+    holds: its builder, and each sender or staker in it. ``drop`` is the block
+    as read from ``data`` to find them, its signatures not checked, so that a
+    check does not read it again, or ``None`` if it is no block of the kind
+    read.
     """
 
     block_id: ContentId
     data: bytes
     compressed_bytes: int
     keys: Mapping[ContentId, bytes] = field(default_factory=dict)
+    drop: BlockDrop[Any] | None = field(default=None, compare=False, repr=False)
 
 
 class TargetReader:
@@ -493,8 +497,9 @@ class TargetReader:
         compressed_bytes = (
             len(compress(data, STORAGE_COMPRESSION_LEVEL)) if held_bytes is None else held_bytes
         )
-        keys = self.keys(self._signers(data, kind), named_by=str(block_id))
-        return HeldBlock(block_id, data, compressed_bytes, keys)
+        signers, drop = self._parsed(data, kind)
+        keys = self.keys(signers, named_by=str(block_id))
+        return HeldBlock(block_id, data, compressed_bytes, keys, drop)
 
     def _read(self, content_id: ContentId) -> tuple[bytes, int | None]:
         """What is held of ``content_id``, and the size of the zlib stream it is held as, if it is.
@@ -549,29 +554,31 @@ class TargetReader:
         self._publish(EventType.DATA_REQUESTED, {**content_id.fields(), "external": False})
 
     @staticmethod
-    def _signers(data: bytes, kind: type[_Block]) -> list[ContentId]:
-        """Everyone the drop ``data`` names as signing what it holds, its builder first.
+    def _parsed(
+        data: bytes, kind: type[_Block]
+    ) -> tuple[list[ContentId], BlockDrop[_Block] | None]:
+        """Who the drop ``data`` names as signing what it holds, its builder first, and its block.
 
         A drop that is no signed bundle names no one, and one that signs no
         block of ``kind`` names its builder alone, whose key its check reads
-        to find it so (Step 119).
+        to find it so (Step 119); neither holds a block.
         """
         try:
             bundle = SignedBundle.decoded(data.rpartition(DROP_SEPARATOR)[0])
 
         except BundleError:
             # Not logged: its check finds it unsigned.
-            return []
+            return [], None
 
         try:
             drop: BlockDrop[_Block] = BlockDrop.of(bundle, kind)
 
         except (BundleError, ValueError):
             # Not logged: its check finds it false.
-            return [bundle.signer]
+            return [bundle.signer], None
 
         signers = [bundle.signer, *(signed.signer for signed in drop.block.bundles())]
-        return list(dict.fromkeys(signers))
+        return list(dict.fromkeys(signers)), drop
 
 
 class ChainGenerations(Protocol):

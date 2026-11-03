@@ -59,6 +59,7 @@ from libranet.karma.blocks import (
     BLOCK_BOUNDS,
     BlockBounds,
     BlockFinding,
+    CheckedSignatures,
     ValidationBlock,
     unchecked_level,
 )
@@ -82,7 +83,8 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
 
     What it finds of a block is said with ``publish``, the blocks are read
     from what ``reader`` holds, each checked against ``bounds``, the
-    specification's unless a test gives less, and what a chain left holds
+    specification's unless a test gives less, but what is signed in each that
+    ``signatures`` found to check at the head, and what a chain left holds
     that the new one does not is kept in ``carried``.
     """
 
@@ -94,12 +96,14 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
         carried: CarriedTransactions,
         *,
         bounds: BlockBounds = BLOCK_BOUNDS,
+        signatures: CheckedSignatures | None = None,
     ) -> None:
         self._history = history
         self._reader = reader
         self._publish = publish
         self._carried = carried
         self._bounds = bounds
+        self._signatures = CheckedSignatures() if signatures is None else signatures
         self._chain = HeldChain(history, reader)
         # The head these were found at, and what was found of each block,
         # the heads found at a target and those told by each peer, and each
@@ -260,7 +264,12 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
         failed = (
             claimed
             if isinstance(claimed, FalseStatement)
-            else followed.check(claimed, self._reader, bounds=self._bounds)
+            else followed.check(
+                claimed,
+                self._reader,
+                bounds=self._bounds,
+                signatures=self._signatures.at(self._head_id()),
+            )
         )
 
         if failed is not None:
@@ -304,7 +313,12 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
         if isinstance(chain, FalseStatement):
             return self._not_following(claim, self._said(chain))
 
-        failed = claim.check(chain, self._reader, bounds=self._bounds)
+        failed = claim.check(
+            chain,
+            self._reader,
+            bounds=self._bounds,
+            signatures=self._signatures.at(self._head_id()),
+        )
 
         if failed is not None:
             return self._not_following(claim, self._why(*failed))

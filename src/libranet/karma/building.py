@@ -33,14 +33,16 @@ signed by the node, its drop's nonce searched for for
 after that until it shares ``storage.search_min_bits`` with its target (§2),
 and it is stored and announced, as a block put up for a transaction alone is.
 
-Each block is read once: each transaction is kept by its hash, with its
-signature checked, and the hashes the block holds by its id, and a block found
-correct or not, and not full, is not read or fetched again, even if eviction
-lets it go. So the blocks put up cost a node as they arrive, not as it builds.
-One full is not read again either, but counts only while it is held: it may be
-validated, and if it is lost, it is to be built again. While it is held, it is
-said to be in use, as a read says, and once it is not, it is asked for again,
-should it be found there still.
+Each block is read once, and checked once, as the chain followed checks it
+(:meth:`~libranet.karma.following.ChainFollower.checked_block`): each
+transaction is kept by its hash, with its signature checked, and the hashes
+the block holds by its id, and a block found correct or not, and not full, is
+not read or fetched again, even if eviction lets it go. So the blocks put up
+cost a node as they arrive, not as it builds. One full is not read again
+either, but counts only while it is held: it may be validated, and if it is
+lost, it is to be built again. While it is held, it is said to be in use, as a
+read says, and once it is not, it is asked for again, should it be found there
+still.
 
 Nothing is built while one block held at the head's transaction target,
 correct but perhaps for not being full, holds every transaction that would
@@ -87,7 +89,8 @@ from libranet.karma.blocks import (
     unchecked_level,
 )
 from libranet.karma.carried import CarriedTransactions
-from libranet.karma.checking import ChainBefore, ChainView, TransactionBlockCheck
+from libranet.karma.checking import ChainBefore, ChainView, NotFullBlock, TransactionBlockCheck
+from libranet.karma.following import ChainFollower
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.ledger import BalanceSheet, reach_of
@@ -411,7 +414,8 @@ class BlockBuilder:
     """Combines the blocks at the head's targets, and what is carried, into one (§5.6).
 
     The chain is the one ``history`` keeps, its blocks read from what
-    ``reader`` holds, and what is carried is in ``carried``. A block is
+    ``reader`` holds, and checked as ``follower`` checks them, once each, and
+    what is carried is in ``carried``. A block is
     signed, placed, and stored as ``placing`` says. It is filled within
     ``bounds``: the specification's, unless a test gives others, and placed
     though not full once ``combine_transactions`` of what it takes are in no
@@ -422,6 +426,7 @@ class BlockBuilder:
     def __init__(
         self,
         history: ChainHistory,
+        follower: ChainFollower,
         reader: TargetReader,
         carried: CarriedTransactions,
         placing: BlockPlacing,
@@ -430,6 +435,7 @@ class BlockBuilder:
         bounds: BlockBounds = BLOCK_BOUNDS,
     ) -> None:
         self._history = history
+        self._follower = follower
         self._reader = reader
         self._carried = carried
         self._placing = placing
@@ -756,12 +762,17 @@ class BlockBuilder:
     ) -> list[tuple[HeldBlock, BlockDrop[TransactionBlock]]]:
         """Each of ``held`` that is a transaction block, read, its signatures not checked.
 
-        Its transactions are each checked on their own. Each other is
-        logged, and passed over, and not read again at the head.
+        One the reader read as a transaction block is not read again. Its
+        transactions are each checked on their own. Each other is logged, and
+        passed over, and not read again at the head.
         """
         parsed: list[tuple[HeldBlock, BlockDrop[TransactionBlock]]] = []
 
         for each in held:
+            if each.drop is not None and isinstance(each.drop.block, TransactionBlock):
+                parsed.append((each, each.drop))
+                continue
+
             try:
                 parsed.append((each, BlockDrop.parsed(each.data, TransactionBlock)))
 
@@ -864,7 +875,9 @@ class BlockBuilder:
     def _is_correct(self, seen: _SeenBlock) -> bool:
         """Whether ``seen``, at the head's transaction target, is correct, but perhaps for fullness.
 
-        One whose check lacks what is not held is not, until it comes.
+        It is as the chain followed checks it, once
+        (:meth:`~libranet.karma.following.ChainFollower.checked_block`). One
+        whose check lacks what is not held is not, until it comes.
         """
         correct = self._found.correct
 
@@ -875,25 +888,16 @@ class BlockBuilder:
             return False
 
         try:
-            check = TransactionBlockCheck.of_held(
-                seen.held,
-                self._found.head,
-                self._chain,
-                bounds=replace(self._filling.bounds, room_bytes=self._filling.bounds.most_bytes),
-            )
+            found = self._follower.checked_block(seen.held)
 
         except MissingContentError:
             # Not logged: what it lacks is asked for, and it is checked again
             # once that comes.
             return False
 
-        except (BundleError, ValueError) as error:
-            # Not logged as a warning: the chain followed checks each block at
-            # the target.
-            _LOGGER.debug("Karma block %s cannot be checked: %s", seen.block_id, error)
-            check = None
-
-        correct[seen.block_id] = isinstance(check, TransactionBlockCheck) and check.is_correct
+        correct[seen.block_id] = (
+            isinstance(found, (TransactionBlockCheck, NotFullBlock)) and found.correct_if_full
+        )
         return correct[seen.block_id]
 
     def _place(self, filled: FilledBlock, head: ContentId, holders: int) -> None:

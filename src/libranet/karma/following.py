@@ -13,19 +13,22 @@ here: it is a head the node does not follow, which
 :class:`~libranet.karma.changing.HeadChanges` weighs (Phase 6 Step 129).
 
 A block whose check needs what the node lacks, a signer's key or a block of
-the chain, is checked again once that has come: the reader asks for it
-(Phase 6 Step 124). A block checked is not checked again while the head is
-the same, and what was found of it is said once. One full is not read again
-either, but is kept held, as it may be validated: while it is held it is said
-to be in use, and once eviction lets it go, it is asked for again. One not full
-is neither read nor asked for again, even if eviction lets it go, as no correct
-validation block can stake on it, and little is kept of it
-(:class:`~libranet.karma.checking.NotFullBlock`): only a validation block naming
-it has it read again, to judge what that states of it. A block found
-unsigned, or whose signature fails, is shunned (§3.7, §3.8); one found false
-is said, for its builder, and the staker of a stake that alone exceeds what
-covers it, to be distrusted (Phase 6 Step 127). Each is logged at debug, as
-what anyone may place (Coding Style §9.3)::
+the chain, is checked again once that has come: the reader asks for it (Phase
+6 Step 124). A block checked is not checked again while the head is the same,
+whether this or the node's builder asks first
+(:meth:`ChainFollower.checked_block`), and what was found of it is said once.
+What is signed in it is checked once at the head too, however many blocks hold
+it, as many hold each transaction a node puts up and builders combine. One
+full is not read again either, but is kept held, as it may be validated: while
+it is held it is said to be in use, and once eviction lets it go, it is asked
+for again. One not full is neither read nor asked for again, even if eviction
+lets it go, as no correct validation block can stake on it, and little is kept
+of it (:class:`~libranet.karma.checking.NotFullBlock`): only a validation
+block naming it has it read again, to judge what that states of it. A block
+found unsigned, or whose signature fails, is shunned (§3.7, §3.8); one found
+false is said, for its builder, and the staker of a stake that alone exceeds
+what covers it, to be distrusted (Phase 6 Step 127). Each is logged at debug,
+as what anyone may place (Coding Style §9.3)::
 
     data.shunned       {"algorithm", "hash"}
     karma.false_block  {"block": "sha256/…", "builder": "sha256/…",
@@ -57,6 +60,7 @@ from libranet.karma.blocks import (
     BLOCK_BOUNDS,
     BlockBounds,
     BlockFinding,
+    CheckedSignatures,
     TransactionBlock,
     ValidationBlock,
     unchecked_level,
@@ -156,7 +160,9 @@ class ChainFollower:
 
     What it finds of a block is said with ``publish``, and each block is
     checked against ``bounds``: the specification's, unless a test gives
-    less.
+    less. What is signed in a block is not checked again once ``signatures``
+    found it to check at the head, as each block of many holding one
+    transaction is checked.
     """
 
     def __init__(
@@ -166,11 +172,13 @@ class ChainFollower:
         publish: Publish,
         *,
         bounds: BlockBounds = BLOCK_BOUNDS,
+        signatures: CheckedSignatures | None = None,
     ) -> None:
         self._history = history
         self._reader = reader
         self._publish = publish
         self._bounds = bounds
+        self._signatures = CheckedSignatures() if signatures is None else signatures
         self._chain = HeldChain(history, reader)
         self._looking = _Looking(GenerationTargets.built_on(self._named_for()))
 
@@ -221,6 +229,29 @@ class ChainFollower:
             if isinstance(check, TransactionBlockCheck)
         }
         return transactions, checks
+
+    def checked_block(
+        self, held: HeldBlock
+    ) -> TransactionBlockCheck | NotFullBlock | BlockFinding | None:
+        """What is found of transaction block ``held``, read at the head's transaction target.
+
+        It is checked as :meth:`look` checks it, unless it was at the head,
+        and what is found of it said, so that a block is checked once, whoever
+        asks first.
+
+        Returns:
+            What is kept of its check, or ``None`` if it is passed over.
+
+        Raises:
+            MissingContentError: names what its check lacks, which is asked for.
+        """
+        named_for = self._named_for()
+        targets = GenerationTargets.built_on(named_for)
+
+        if targets != self._looking.targets:
+            self._looking = _Looking(targets)
+
+        return self._found(self._looking.transactions, held, partial(self._transaction, named_for))
 
     def transaction_hashes(self) -> set[str]:
         """The hash of each transaction in the transaction blocks checked at the head's target."""
@@ -336,7 +367,13 @@ class ChainFollower:
             ValueError: it names an id under a hash algorithm this node
                 lacks.
         """
-        check = TransactionBlockCheck.of_held(held, named_for, self._chain, bounds=self._bounds)
+        check = TransactionBlockCheck.of_held(
+            held,
+            named_for,
+            self._chain,
+            bounds=self._bounds,
+            signatures=self._signatures.at(named_for),
+        )
         return check.kept() if isinstance(check, TransactionBlockCheck) else check
 
     def _again(
@@ -364,7 +401,13 @@ class ChainFollower:
             return found
 
         held = self._reader.block(block_id, TransactionBlock)
-        check = TransactionBlockCheck.of_held(held, named_for, self._chain, bounds=self._bounds)
+        check = TransactionBlockCheck.of_held(
+            held,
+            named_for,
+            self._chain,
+            bounds=self._bounds,
+            signatures=self._signatures.at(named_for),
+        )
 
         if isinstance(check, TransactionBlockCheck) and check.full:
             self._looking.transactions[block_id] = check
@@ -388,7 +431,12 @@ class ChainFollower:
                 ``transactions`` passed over.
         """
         return ValidationBlockCheck.of_held(
-            held, named_for, self._chain, transactions=transactions, bounds=self._bounds
+            held,
+            named_for,
+            self._chain,
+            transactions=transactions,
+            bounds=self._bounds,
+            signatures=self._signatures.at(named_for),
         )
 
     def _found(

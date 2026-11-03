@@ -261,6 +261,17 @@ def test_the_blocks_at_a_target_are_read_with_the_keys_of_all_who_signed_them(
     assert reader.waiting == frozenset()
 
 
+def test_a_block_read_holds_its_block_as_read_so_that_it_is_not_read_again(
+    reader: TargetReader, truth: CasStore, alice: NodeIdentity, bob: NodeIdentity, staking: bytes
+) -> None:
+    hold(truth, staking)
+    hold_keys(truth, alice, bob)
+
+    (held,) = reader.read(FIRST.validation, ValidationBlock)
+
+    assert held.drop == BlockDrop.parsed(staking, ValidationBlock)
+
+
 def test_a_block_held_compressed_is_read_decompressed_and_measured_as_held(
     reader: TargetReader, truth: CasStore, recorder: Recorder, staking: bytes
 ) -> None:

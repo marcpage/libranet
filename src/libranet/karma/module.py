@@ -169,7 +169,7 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.trust import TrustState
 from libranet.json_format import moment_at
 from libranet.karma.balances import HeadBalances
-from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds
+from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds, CheckedSignatures
 from libranet.karma.building import BlockBuilder
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.changing import HeadChanges
@@ -315,11 +315,18 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         karma_dir = self._config.storage.karma_dir
         carried = CarriedTransactions(karma_dir, self._config.karma.carry_generations)
         self._history = ChainHistory.open(karma_dir)
+        # Each signature is checked once at a head, whichever check meets it.
+        signatures = CheckedSignatures()
         self._follower = ChainFollower(
-            self._history, self._reader, self.publish, bounds=self._bounds
+            self._history, self._reader, self.publish, bounds=self._bounds, signatures=signatures
         )
         self._changes = HeadChanges(
-            self._history, self._reader, self.publish, carried, bounds=self._bounds
+            self._history,
+            self._reader,
+            self.publish,
+            carried,
+            bounds=self._bounds,
+            signatures=signatures,
         )
         placing = BlockPlacing(
             partial(NodeIdentity.load, self._config),
@@ -347,6 +354,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         )
         self._building = BlockBuilder(
             self._history,
+            self._follower,
             self._reader,
             carried,
             placing,

@@ -25,7 +25,7 @@ from libranet.karma.following import ChainFollower
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainHistory
 from libranet.karma.placing import BlockPlacing
-from libranet.karma.reading import HeldChain, TargetReader
+from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
 from libranet.messaging.events import EventType
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import Balance
@@ -179,10 +179,17 @@ def building(
     placed: Placed,
     bounds: BlockBounds = ROOMY,
     combine_transactions: int = 100,
+    *,
+    follower: ChainFollower | None = None,
 ) -> BlockBuilder:
-    """What builds blocks as Carol, placing each drop in moments."""
+    """What builds blocks as Carol, placing each drop in moments.
+
+    It checks the blocks it reads as ``follower`` does, or a chain follower of
+    its own.
+    """
     return BlockBuilder(
         history,
+        ChainFollower(history, reader, Recorder(), bounds=bounds) if follower is None else follower,
         reader,
         carried,
         BlockPlacing(
@@ -1111,6 +1118,37 @@ def test_each_signature_is_checked_once_at_a_head_however_often_a_block_is_built
     builder.build()
 
     assert not checked_since
+
+
+def test_a_block_is_checked_once_whether_the_chain_followed_or_a_build_meets_it_first(
+    history: ChainHistory,
+    reader: TargetReader,
+    carried: CarriedTransactions,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    dave: NodeIdentity,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    following(follower, truth, first)
+    data = put_up(truth, first, dave, sent(alice, {dave.node_id: 1}, 1))
+    checked: list[ContentId] = []
+    of_held = TransactionBlockCheck.of_held
+
+    def counted(held: HeldBlock, *given: Any, **asked: Any) -> Any:
+        checked.append(held.block_id)
+        return of_held(held, *given, **asked)
+
+    monkeypatch.setattr(TransactionBlockCheck, "of_held", counted)
+    builder = building(history, reader, carried, dave, placed, follower=follower)
+
+    builder.build()
+    follower.checked()
+    builder.superseded()
+
+    assert checked.count(id_of(data)) == 1
 
 
 def test_a_full_block_is_read_once_at_a_head_while_it_is_held(
