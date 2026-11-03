@@ -71,7 +71,7 @@ from libranet.karma.blocks import (
     ValidationBlock,
 )
 from libranet.karma.carried import CarriedTransactions
-from libranet.karma.checking import ChainView, TransactionBlockCheck
+from libranet.karma.checking import ChainView, FullBlock
 from libranet.karma.following import ChainFollower
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainHistory
@@ -235,7 +235,7 @@ class HeadStakes:
 
     def staked(
         self,
-        transactions: Mapping[ContentId, TransactionBlockCheck],
+        transactions: Mapping[ContentId, FullBlock],
         identity: NodeIdentity,
         *,
         also: Iterable[ContentId] = (),
@@ -243,10 +243,10 @@ class HeadStakes:
     ) -> StakedBlock | None:
         """The stakes a validation block takes on the best of ``transactions``, or ``None``.
 
-        ``transactions`` are the transaction blocks held at the head's
-        transaction target, as the chain followed checks them, and the best
-        is the best scored that is correct, and that no distrusted identity
-        built (:meth:`_validated`). The stakes are those on it held at the
+        ``transactions`` are what is kept of the full transaction blocks held at
+        the head's transaction target, as the chain followed checks them, and
+        the best is the best scored that is correct, and that no distrusted
+        identity built, read whole (:meth:`_validated`). The stakes are those on it held at the
         head's validation target, but others' unless ``mining``, and those
         given (:meth:`_offered`), and ``identity``'s, the node's
         (:meth:`_own_stake`), each staker's covered together
@@ -259,7 +259,9 @@ class HeadStakes:
 
         Raises:
             MissingContentError: names the blocks within reach that the
-                chain lacks.
+                chain lacks, or the best of ``transactions``, if it is not
+                held.
+            BundleError: the best of ``transactions`` cannot be read again.
         """
         head = self._history.head
 
@@ -285,26 +287,29 @@ class HeadStakes:
         return StakedBlock(validated_id, cover, stakes) if stakes else None
 
     def _validated(
-        self, transactions: Mapping[ContentId, TransactionBlockCheck]
+        self, transactions: Mapping[ContentId, FullBlock]
     ) -> tuple[ContentId, TransactionBlock] | None:
         """The best scored of ``transactions`` that is correct, and no distrusted identity built.
 
-        Of two as good, it is the one whose id sorts first (§5.5).
+        Of two as good, it is the one whose id sorts first (§5.5). It alone is
+        read again, whole.
+
+        Raises:
+            MissingContentError: it is not held, and is asked for.
+            BundleError: it cannot be read again.
         """
         scored = [
-            (check.score, block_id, check.drop.block)
-            for block_id, check in transactions.items()
-            if check.score is not None and not self._distrusts(check.drop.builder)
+            (found.score, block_id)
+            for block_id, found in transactions.items()
+            if found.score is not None and not self._distrusts(found.builder)
         ]
 
         if not scored:
             return None
 
-        top = max(score for score, _, _ in scored)
-        _, block_id, block = min(
-            (each for each in scored if each[0] == top), key=lambda each: each[1]
-        )
-        return block_id, block
+        top = max(score for score, _ in scored)
+        block_id = min(block_id for score, block_id in scored if score == top)
+        return block_id, self._reader.chain_block(block_id, TransactionBlock).block
 
     def _at(self, head: ContentId | None) -> None:
         """Forget what was found at the head before, and the stakes given, if ``head`` is new."""
@@ -537,16 +542,18 @@ class ValidationBuilder:
     def _build(
         self,
         target: DropTarget,
-        transactions: Mapping[ContentId, TransactionBlockCheck],
+        transactions: Mapping[ContentId, FullBlock],
         validations: Sequence[ValidationBlockCheck],
     ) -> None:
         """Build a validation block at ``target``, the head's validation target, if one is to be.
 
         ``transactions`` and ``validations`` are the blocks held at the head's
-        targets, as the chain followed checks them.
+        targets, as the chain followed checks them: what is kept of each full
+        transaction block, and each validation block.
 
         Raises:
-            MissingContentError: names the blocks of the chain it lacks.
+            MissingContentError: names the blocks of the chain it lacks, or
+                the transaction block to stake on, if it is not held.
             BundleError: what it is built of cannot be read, or it is larger
                 than an object may be, even compressed.
             ValueError: what it is built of cannot be read, or its nonce
