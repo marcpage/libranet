@@ -47,6 +47,7 @@ SHIPPED_APPLICATIONS: Final = MappingProxyType(
         "/": "root",
         "config": "config",
         "movie": "movie",
+        "tv": "tv",
         "directory": "directory",
         "mail": "mail",
         "nodes": "nodes",
