@@ -44,7 +44,11 @@ for its builder to be distrusted (Phase 6 Step 127)::
 Then, and for a block that is not correct, the head followed is kept. Not
 even the part of the chain before that block is followed (§9): a later head
 past it is weighed again, and found the same. What is found of each block,
-and each head weighed, is kept while the head followed is the same.
+and each head weighed, is kept while the chain followed is at the same
+generation, though its head changes: it changes only to a heavier chain, or
+an as heavy and better one, so a head found lighter, or no better, is so
+still, and is not weighed again as each of many rivals is followed in turn.
+Only a head given up on is weighed again once the head changes.
 """
 
 from __future__ import annotations
@@ -84,8 +88,8 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
     What it finds of a block is said with ``publish``, the blocks are read
     from what ``reader`` holds, each checked against ``bounds``, the
     specification's unless a test gives less, but what is signed in each that
-    ``signatures`` found to check at the head, and what a chain left holds
-    that the new one does not is kept in ``carried``.
+    ``signatures`` found to check at the generation followed, and what a chain
+    left holds that the new one does not is kept in ``carried``.
     """
 
     def __init__(
@@ -105,14 +109,17 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
         self._bounds = bounds
         self._signatures = CheckedSignatures() if signatures is None else signatures
         self._chain = HeldChain(history, reader)
-        # The head these were found at, and what was found of each block,
-        # the heads found at a target and those told by each peer, and each
-        # weighed, while the head is the same.
+        # The head these were found at, and its generation, and what was
+        # found of each block, the heads found at a target and those told by
+        # each peer, and each weighed, while the generation is the same, and
+        # those given up on, while the head is.
         self._head = self._head_id()
+        self._generation = self._head_generation()
         self._found: dict[ContentId, BlockFinding] = {}
         self._queue: list[ContentId] = []
         self._told: dict[ContentId, ContentId] = {}
         self._weighed: set[ContentId] = set()
+        self._gave_up: set[ContentId] = set()
         self._claim: HeadClaim | None = None
 
     def told(self, node_id: ContentId, head: ContentId) -> None:
@@ -131,6 +138,7 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
             _LOGGER.info(
                 "Not weighing Karma head %s further: what it needs has not come", claim.head
             )
+            self._gave_up.add(claim.head)
             self._done(claim)
 
     def look(self) -> bool:
@@ -181,19 +189,37 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
         head = self._history.head
         return None if head is None else head.validation
 
-    def _note_head(self, collected: Sequence[CarriedTransaction] = ()) -> None:
-        """Forget what was found while the head was another, and carry ``collected`` on, if it is.
+    def _head_generation(self) -> int | None:
+        """The generation of the head followed, or ``None`` while none is."""
+        head = self._history.head
+        return None if head is None else head.generation
 
-        What is carried already is carried on with it.
+    def _note_head(self, collected: Sequence[CarriedTransaction] = ()) -> None:
+        """Note a new head, if it is, and carry ``collected`` on.
+
+        What was found while the chain was at another generation is
+        forgotten, and each head given up on is weighed again. What is
+        carried already is carried on with ``collected``.
         """
         head = self._head_id()
 
         if head == self._head:
             return
 
+        generation = self._head_generation()
+
+        if generation != self._generation:
+            self._found.clear()
+            self._weighed.clear()
+
+        else:
+            # The head changed to a heavier chain, or an as heavy and better
+            # one, so what was found lighter, or no better, is so still.
+            self._weighed -= self._gave_up
+
         self._head = head
-        self._found.clear()
-        self._weighed.clear()
+        self._generation = generation
+        self._gave_up.clear()
         self._carry(collected)
 
     def _find(self) -> None:
@@ -268,7 +294,7 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
                 claimed,
                 self._reader,
                 bounds=self._bounds,
-                signatures=self._signatures.at(self._head_id()),
+                signatures=self._signatures.at(self._head_generation()),
             )
         )
 
@@ -317,7 +343,7 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
             chain,
             self._reader,
             bounds=self._bounds,
-            signatures=self._signatures.at(self._head_id()),
+            signatures=self._signatures.at(self._head_generation()),
         )
 
         if failed is not None:

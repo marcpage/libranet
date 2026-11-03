@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 from dataclasses import replace
+from typing import Any
 from logging import DEBUG, ERROR, INFO, WARNING
 from zlib import compress
 
-from pytest import LogCaptureFixture, fixture
+from pytest import LogCaptureFixture, MonkeyPatch, fixture
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import matching_bits
@@ -16,6 +17,7 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import ValidationBlock
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.changing import HeadChanges
+from libranet.karma.claims import HeadClaim
 from libranet.karma.following import ChainFollower
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainHistory
@@ -486,6 +488,69 @@ def test_of_two_on_one_block_the_one_of_more_stake_is_heavier_followed_and_kept(
 
     assert not changes.look()
     assert history.generation(1).validation == id_of(better)
+
+
+def test_a_head_found_lighter_is_not_weighed_again_as_heavier_rivals_are_followed_in_turn(
+    follower: ChainFollower,
+    changes: HeadChanges,
+    history: ChainHistory,
+    truth: CasStore,
+    root: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    carol: NodeIdentity,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    first = root.then(bob, alice, bits=9)
+    following(follower, truth, first)
+    lighter = sibling(root, first, alice, carol, 4)
+    hold(truth, lighter)
+
+    assert not changes.look()
+
+    weighed: list[ContentId] = []
+    claimed = HeadClaim.claimed
+
+    def counted(self: HeadClaim, chain: Any) -> Any:
+        weighed.append(self.head)
+        return claimed(self, chain)
+
+    monkeypatch.setattr(HeadClaim, "claimed", counted)
+
+    for kismet in (6, 7):
+        hold(truth, sibling(root, first, alice, alice, kismet))
+
+        assert changes.look()
+        assert history.generation(1).validation == id_of(sibling(root, first, alice, alice, kismet))
+
+    assert id_of(lighter) not in weighed
+
+
+def test_a_head_given_up_on_is_weighed_again_once_the_head_changes(
+    follower: ChainFollower,
+    changes: HeadChanges,
+    history: ChainHistory,
+    truth: CasStore,
+    root: Chain,
+    heavier: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+) -> None:
+    first = root.then(bob, alice, bits=9)
+    following(follower, truth, first)
+    hold(truth, *heavier.drops(2, 3))
+    changes.told(PEER, heavier.head)
+    changes.look()
+    changes.given_up([id_of(heavier.generations[1].validation)])
+    hold(truth, sibling(root, first, alice, alice, 6))
+
+    assert changes.look()
+
+    hold(truth, *heavier.drops(1))
+    changes.told(PEER, heavier.head)
+
+    assert changes.look()
+    assert history.head is not None and history.head.validation == heavier.head
 
 
 def test_of_two_as_heavy_the_one_of_less_stake_is_not_followed(

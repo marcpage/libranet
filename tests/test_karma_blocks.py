@@ -609,7 +609,7 @@ def test_a_block_read_already_is_not_read_again_as_it_is_decoded(
     assert not read
 
 
-def test_a_signature_found_to_check_at_a_head_is_not_checked_again_there(
+def test_a_signature_found_to_check_at_a_generation_is_not_checked_again_there(
     alice: NodeIdentity, monkeypatch: MonkeyPatch
 ) -> None:
     honest = paying(alice)
@@ -622,12 +622,12 @@ def test_a_signature_found_to_check_at_a_head_is_not_checked_again_there(
 
     monkeypatch.setattr(SignedBundle, "verified", counted)
     signatures = CheckedSignatures()
-    signatures.at(PREVIOUS).verified(honest.bundle, alice.public_key)
-    signatures.at(PREVIOUS).verified(honest.bundle, alice.public_key)
+    signatures.at(2).verified(honest.bundle, alice.public_key)
+    signatures.at(2).verified(honest.bundle, alice.public_key)
 
     assert checked == [honest.hash]
 
-    signatures.at(None).verified(honest.bundle, alice.public_key)
+    signatures.at(3).verified(honest.bundle, alice.public_key)
 
     assert checked == [honest.hash, honest.hash]
 
