@@ -262,7 +262,7 @@ class ChainFollower:
             for transaction_hash in found.hashes
         }
 
-    def _generation(self) -> int | None:
+    def _head_generation(self) -> int | None:
         """The generation of the head, or ``None`` if no chain is followed."""
         head = self._history.head
         return None if head is None else head.generation
@@ -377,7 +377,7 @@ class ChainFollower:
             named_for,
             self._chain,
             bounds=self._bounds,
-            signatures=self._signatures.at(self._generation()),
+            signatures=self._signatures.at(self._head_generation()),
         )
         return check.kept() if isinstance(check, TransactionBlockCheck) else check
 
@@ -411,7 +411,7 @@ class ChainFollower:
             named_for,
             self._chain,
             bounds=self._bounds,
-            signatures=self._signatures.at(self._generation()),
+            signatures=self._signatures.at(self._head_generation()),
         )
 
         if isinstance(check, TransactionBlockCheck) and check.full:
@@ -441,7 +441,7 @@ class ChainFollower:
             self._chain,
             transactions=transactions,
             bounds=self._bounds,
-            signatures=self._signatures.at(self._generation()),
+            signatures=self._signatures.at(self._head_generation()),
         )
 
     def _found(
