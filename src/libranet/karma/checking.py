@@ -41,6 +41,7 @@ from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
     BlockFinding,
+    CheckedSignatures,
     TransactionBlock,
     ValidationBlock,
 )
@@ -405,12 +406,14 @@ class NotFullBlock:
     """What is kept of a transaction block checked, and found not full as held (§5.4).
 
     ``hashes`` are those of the transactions it holds, for a validation block to
-    witness. No correct validation block stakes on it, so the rest is let go of,
-    and read again from what is held, or asked for, should a validation block
-    name it.
+    witness, and ``correct_if_full`` whether it is correct but for not being
+    full, so that a builder may take it to hold its transactions (§5.6). No
+    correct validation block stakes on it, so the rest is let go of, and read
+    again from what is held, or asked for, should a validation block name it.
     """
 
     hashes: frozenset[str]
+    correct_if_full: bool
 
 
 @dataclass(frozen=True)
@@ -421,7 +424,9 @@ class TransactionBlockCheck:
     below every correct one, and is never validated: its ``score`` is
     ``None``, and ``incorrect`` says why (§5.5). ``full`` is ``False`` when
     it is incorrect for not being full, which its builder's copy, compressed
-    otherwise, may be (§3.8, §5.4). :meth:`of` checks a block.
+    otherwise, may be (§3.8, §5.4), and ``correct_if_full`` whether it is
+    correct but perhaps for that, as a builder takes it to hold its
+    transactions (§5.6). :meth:`of` checks a block.
 
     Raises:
         ValueError: ``score`` and ``incorrect`` are both given, or neither.
@@ -431,6 +436,7 @@ class TransactionBlockCheck:
     score: BlockScore | None
     incorrect: str = ""
     full: bool = True
+    correct_if_full: bool = True
 
     def __post_init__(self) -> None:
         if (self.score is None) == (not self.incorrect):
@@ -445,7 +451,7 @@ class TransactionBlockCheck:
 
     def kept(self) -> TransactionBlockCheck | NotFullBlock:
         """What to keep of it while the head is the same: all of it, unless it is not full."""
-        return self if self.full else NotFullBlock(self.hashes)
+        return self if self.full else NotFullBlock(self.hashes, self.correct_if_full)
 
     @classmethod
     def of(
@@ -458,6 +464,8 @@ class TransactionBlockCheck:
         *,
         compressed_bytes: int,
         bounds: BlockBounds = BLOCK_BOUNDS,
+        parsed: BlockDrop[TransactionBlock] | None = None,
+        signatures: CheckedSignatures | None = None,
     ) -> TransactionBlockCheck | BlockFinding:
         """Transaction block ``block_id``, the drop ``data``, checked; or what it states falsely.
 
@@ -465,9 +473,10 @@ class TransactionBlockCheck:
         ``named_for``, or at the root's, ``karma transaction:0``, when that
         is ``None``, where it is checked by its shape (§7.2). ``chain`` is
         the chain through ``named_for``. Signatures are checked with
-        ``keys``, and the work of each transaction, and whether the block is
-        full, the copy held being ``compressed_bytes`` compressed, against
-        ``bounds``.
+        ``keys``, but those ``signatures`` found to check before, and the
+        work of each transaction, and whether the block is full, the copy
+        held being ``compressed_bytes`` compressed, against ``bounds``.
+        ``parsed`` is the block, read from ``data`` already, if it was.
 
         Returns:
             A :class:`BlockFinding` naming no builder if it is unsigned, and
@@ -485,7 +494,9 @@ class TransactionBlockCheck:
             UnknownAlgorithmError: it names an id under a hash algorithm this
                 node lacks.
         """
-        found = BlockDrop.decoded(data, TransactionBlock, keys, bounds=bounds)
+        found = BlockDrop.decoded(
+            data, TransactionBlock, keys, bounds=bounds, parsed=parsed, signatures=signatures
+        )
 
         if isinstance(found, BlockFinding):
             return found
@@ -513,8 +524,13 @@ class TransactionBlockCheck:
         chain: ChainView,
         *,
         bounds: BlockBounds = BLOCK_BOUNDS,
+        signatures: CheckedSignatures | None = None,
     ) -> TransactionBlockCheck | BlockFinding:
         """Transaction block ``held``, as the node holds it, checked, as :meth:`of` checks it.
+
+        It is not read again, if the node read it as a transaction block, and
+        what is signed in it that ``signatures`` found to check is not checked
+        again.
 
         Raises:
             MisplacedBlockError: as :meth:`of`.
@@ -530,6 +546,8 @@ class TransactionBlockCheck:
             held.keys,
             compressed_bytes=held.compressed_bytes,
             bounds=bounds,
+            parsed=held.drop,
+            signatures=signatures,
         )
 
     @property
@@ -610,10 +628,20 @@ class TransactionBlockCheck:
             return BlockFinding(statement, drop.builder)
 
         holders = before.holders()
-        incorrect = cls._incorrect(sheet, verdicts, compressed_bytes, bounds, holders)
+        full = bounds.is_full(compressed_bytes, holders)
+        otherwise = cls._incorrect(sheet, verdicts)
 
-        if incorrect:
-            return cls(drop, None, incorrect, bounds.is_full(compressed_bytes, holders))
+        if not full:
+            return cls(
+                drop,
+                None,
+                cls._not_full(compressed_bytes, bounds, holders),
+                False,
+                not otherwise and compressed_bytes <= bounds.most_bytes,
+            )
+
+        if otherwise:
+            return cls(drop, None, otherwise, True, False)
 
         return cls(drop, BlockScore.of(block, bits, before.chain))
 
@@ -656,26 +684,27 @@ class TransactionBlockCheck:
         return ""
 
     @staticmethod
-    def _incorrect(
-        sheet: BalanceSheet,
-        verdicts: Mapping[str, TransactionVerdict],
-        compressed_bytes: int,
-        bounds: BlockBounds,
-        holders: int,
-    ) -> str:
-        """Why ``sheet``'s block is incorrect, though it states nothing false, or ``""`` (§5.5).
+    def _not_full(compressed_bytes: int, bounds: BlockBounds, holders: int) -> str:
+        """Why a block of ``compressed_bytes`` is incorrect, not being full in ``bounds`` (§5.4).
 
         ``holders`` hold Kismet in the balances it is checked against, which
-        sets how large it must be to be full (§5.4).
+        sets how large it must be to be full.
+        """
+        return (
+            f"A transaction block must be full, more than "
+            f"{bounds.full_above(holders)} bytes compressed and at most "
+            f"{bounds.most_bytes}, got {compressed_bytes}"
+        )
+
+    @staticmethod
+    def _incorrect(sheet: BalanceSheet, verdicts: Mapping[str, TransactionVerdict]) -> str:
+        """Why ``sheet``'s block is incorrect but for fullness, though it states nothing false.
+
+        Returns:
+            Why, or ``""`` if it is correct but perhaps for not being full
+            (§5.5).
         """
         block = sheet.block
-
-        if not bounds.is_full(compressed_bytes, holders):
-            return (
-                f"A transaction block must be full, more than "
-                f"{bounds.full_above(holders)} bytes compressed and at most "
-                f"{bounds.most_bytes}, got {compressed_bytes}"
-            )
 
         if not block.is_half_free:
             return "At least half a transaction block's transactions but the payout must be free"

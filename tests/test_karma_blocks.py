@@ -1,5 +1,7 @@
 """Tests for transaction blocks and validation blocks, and blocks as drops (KarmaLedger §5, §6)."""
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -8,7 +10,7 @@ from json import loads
 from logging import DEBUG, WARNING
 from typing import Any, Callable
 
-from pytest import fixture, mark, raises
+from pytest import MonkeyPatch, fixture, mark, raises
 
 from libranet.bundle.errors import (
     BundleSignatureError,
@@ -28,6 +30,7 @@ from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
     BlockFinding,
+    CheckedSignatures,
     TransactionBlock,
     ValidationBlock,
     unchecked_level,
@@ -580,6 +583,65 @@ def test_a_validation_block_as_a_drop_is_decoded_as_written(
 
     assert isinstance(decoded, BlockDrop)
     assert decoded.block == validation
+
+
+def test_a_block_read_already_is_not_read_again_as_it_is_decoded(
+    builder: NodeIdentity,
+    block: TransactionBlock,
+    keys: dict[ContentId, bytes],
+    monkeypatch: MonkeyPatch,
+) -> None:
+    drop = BlockDrop.of(builder.signed(block.text()), TransactionBlock)
+    read: list[type] = []
+    of = BlockDrop.of
+
+    def counted(bundle: SignedBundle, kind: type) -> Any:
+        read.append(kind)
+        return of(bundle, kind)
+
+    monkeypatch.setattr(BlockDrop, "of", counted)
+
+    decoded = BlockDrop.decoded(
+        drop.content() + NONCE, TransactionBlock, keys, bounds=NO_WORK, parsed=drop
+    )
+
+    assert decoded == drop
+    assert not read
+
+
+def test_a_signature_found_to_check_at_a_head_is_not_checked_again_there(
+    alice: NodeIdentity, monkeypatch: MonkeyPatch
+) -> None:
+    honest = paying(alice)
+    checked: list[str] = []
+    verified = SignedBundle.verified
+
+    def counted(self: SignedBundle, public_key: bytes) -> None:
+        checked.append(self.hash)
+        verified(self, public_key)
+
+    monkeypatch.setattr(SignedBundle, "verified", counted)
+    signatures = CheckedSignatures()
+    signatures.at(PREVIOUS).verified(honest.bundle, alice.public_key)
+    signatures.at(PREVIOUS).verified(honest.bundle, alice.public_key)
+
+    assert checked == [honest.hash]
+
+    signatures.at(None).verified(honest.bundle, alice.public_key)
+
+    assert checked == [honest.hash, honest.hash]
+
+
+def test_what_was_signed_under_another_signature_is_checked_on_its_own(
+    alice: NodeIdentity, bob: NodeIdentity
+) -> None:
+    honest = paying(alice)
+    forged = SignedBundle(alice.node_id, honest.bundle.contents, paying(bob).bundle.signature)
+    signatures = CheckedSignatures()
+    signatures.verified(honest.bundle, alice.public_key)
+
+    with raises(BundleSignatureError):
+        signatures.verified(forged, alice.public_key)
 
 
 def test_a_block_checked_already_is_parsed_again_without_its_signatures(

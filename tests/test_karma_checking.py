@@ -557,7 +557,22 @@ def test_a_block_not_full_is_incorrect(
     assert check.score is None
     assert not check.full
     assert "must be full" in check.incorrect
-    assert check.kept() == NotFullBlock(frozenset(signed.hash for signed in block.signed))
+    # Correct but for not being full, unless it is larger than a block may be.
+    fits = compressed_bytes <= BOUNDS.most_bytes
+    assert check.correct_if_full is fits
+    assert check.kept() == NotFullBlock(frozenset(signed.hash for signed in block.signed), fits)
+
+
+def test_a_block_not_full_and_otherwise_incorrect_is_not_correct_if_full(
+    alice: NodeIdentity, bob: NodeIdentity, chain: ChainInMemory, keys: dict[ContentId, bytes]
+) -> None:
+    paid = paying(alice, {bob.node_id: 300}, fee=5, created=moment(2))
+
+    check = checked(block_on(chain, paid), alice, chain, keys, compressed_bytes=0)
+
+    assert isinstance(check, TransactionBlockCheck)
+    assert "must be full" in check.incorrect
+    assert not check.correct_if_full
 
 
 def test_a_full_block_is_kept_whole(
@@ -608,6 +623,7 @@ def test_a_block_breaking_the_half_free_rule_is_incorrect(
 
     assert isinstance(check, TransactionBlockCheck)
     assert check.full
+    assert not check.correct_if_full
     assert "must be free" in check.incorrect
 
 

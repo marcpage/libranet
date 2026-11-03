@@ -45,6 +45,7 @@ from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
     BlockFinding,
+    CheckedSignatures,
     TransactionBlock,
     ValidationBlock,
 )
@@ -394,6 +395,8 @@ class ValidationBlockCheck:
         transactions: Mapping[ContentId, TransactionBlockCheck | BlockFinding],
         compressed_bytes: int,
         bounds: BlockBounds = BLOCK_BOUNDS,
+        parsed: BlockDrop[ValidationBlock] | None = None,
+        signatures: CheckedSignatures | None = None,
     ) -> ValidationBlockCheck | BlockFinding:
         """Validation block ``block_id``, the drop ``data``, checked; or what it states falsely.
 
@@ -403,9 +406,10 @@ class ValidationBlockCheck:
         chain through ``named_for``, and ``transactions`` the checks of the
         transaction blocks read at the transaction target of the same
         generation, by id: one its stakes name that is not among them is at
-        another target. Signatures are checked with ``keys``, and its size,
-        the copy held being ``compressed_bytes`` compressed, against
-        ``bounds``.
+        another target. Signatures are checked with ``keys``, but those
+        ``signatures`` found to check before, and its size, the copy held
+        being ``compressed_bytes`` compressed, against ``bounds``. ``parsed``
+        is the block, read from ``data`` already, if it was.
 
         Returns:
             A :class:`BlockFinding` naming no builder if it is unsigned, and
@@ -425,13 +429,14 @@ class ValidationBlockCheck:
             UnknownAlgorithmError: it names an id under a hash algorithm this
                 node lacks.
         """
-        found = BlockDrop.decoded(data, ValidationBlock, keys, bounds=bounds)
+        found = BlockDrop.decoded(
+            data, ValidationBlock, keys, bounds=bounds, parsed=parsed, signatures=signatures
+        )
 
         if isinstance(found, BlockFinding):
             return found
 
-        target = GenerationTargets.built_on(named_for).validation
-        bits = matching_bits(target.hex, block_id.hash)
+        bits = matching_bits(GenerationTargets.built_on(named_for).validation.hex, block_id.hash)
 
         if named_for is None:
             return cls._root(_Validating(block_id, found, None, 0, chain, transactions), bits)
@@ -449,8 +454,13 @@ class ValidationBlockCheck:
         *,
         transactions: Mapping[ContentId, TransactionBlockCheck | BlockFinding],
         bounds: BlockBounds = BLOCK_BOUNDS,
+        signatures: CheckedSignatures | None = None,
     ) -> ValidationBlockCheck | BlockFinding:
         """Validation block ``held``, as the node holds it, checked, as :meth:`of` checks it.
+
+        It is not read again, if the node read it as a validation block, and
+        what is signed in it that ``signatures`` found to check is not checked
+        again.
 
         Raises:
             MisplacedBlockError: as :meth:`of`.
@@ -467,6 +477,8 @@ class ValidationBlockCheck:
             transactions=transactions,
             compressed_bytes=held.compressed_bytes,
             bounds=bounds,
+            parsed=held.drop,
+            signatures=signatures,
         )
 
     @property

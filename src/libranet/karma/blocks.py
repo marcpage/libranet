@@ -550,6 +550,40 @@ class BlockFinding:
         )
 
 
+class CheckedSignatures:
+    """The signatures found to check at a head, each checked once while the head is the same.
+
+    Each is known by its signer, the hash of what it signs, and itself, so
+    that a copy of what one signed, under another signature, is checked on
+    its own.
+    """
+
+    def __init__(self) -> None:
+        self._head: ContentId | None = None
+        self._checked: set[tuple[ContentId, str, bytes]] = set()
+
+    def at(self, head: ContentId | None) -> CheckedSignatures:
+        """These, all forgotten first if ``head`` is not the head they were found at."""
+        if head != self._head:
+            self._head = head
+            self._checked = set()
+
+        return self
+
+    def verified(self, bundle: SignedBundle, public_key: bytes) -> None:
+        """Raise unless ``bundle`` checks with ``public_key``, unless it was found to before.
+
+        Raises:
+            BundleSignatureError: as :meth:`~libranet.bundle.signing.SignedBundle.verified`
+                says.
+        """
+        signed = (bundle.signer, bundle.hash, bundle.signature)
+
+        if signed not in self._checked:
+            bundle.verified(public_key)
+            self._checked.add(signed)
+
+
 @dataclass(frozen=True)
 class BlockDrop(Generic[_Block]):
     """``block``, as its builder signed it in ``bundle``: a drop's content, before its nonce (§2).
@@ -613,13 +647,18 @@ class BlockDrop(Generic[_Block]):
         keys: Mapping[ContentId, bytes],
         *,
         bounds: BlockBounds = BLOCK_BOUNDS,
+        parsed: BlockDrop[Any] | None = None,
+        signatures: CheckedSignatures | None = None,
     ) -> BlockDrop[_Block] | BlockFinding:
         """The block of ``kind`` the drop ``data`` holds, or what it states falsely by itself.
 
         Each signature in it is checked with the key ``keys`` gives its
         signer, and each transaction's work against ``bounds``. A signature
         whose key is not given is neither unsigned nor false: the caller
-        fetches the key, and reads the block again.
+        fetches the key, and reads the block again. ``parsed`` is the block
+        of ``kind`` read from ``data`` already, its signatures not checked, so
+        that it is not read again, and what is signed in it that
+        ``signatures`` found to check is not checked again.
 
         Returns:
             The block its builder signed, if nothing in it is found false; or
@@ -638,40 +677,23 @@ class BlockDrop(Generic[_Block]):
             UnknownAlgorithmError: it names an id under a hash algorithm this
                 node lacks.
         """
-        content, separator, _ = data.rpartition(DROP_SEPARATOR)
+        drop: BlockDrop[_Block] | None
 
-        if not separator:
-            return BlockFinding("A block's drop must hold a null byte before its nonce")
+        if parsed is not None and isinstance(parsed.block, kind):
+            bundle, drop, statement = parsed.bundle, parsed, ""
 
-        try:
-            bundle = SignedBundle.decoded(content)
+        else:
+            read = cls._read(data, kind)
 
-        except (MalformedBundleError, BundleSignatureError) as error:
-            # Not logged: it is the finding, for the caller to log.
-            return BlockFinding(f"A block's drop must be a signed bundle: {error}")
+            if isinstance(read, BlockFinding):
+                return read
+
+            bundle, drop, statement = read
 
         signers = [bundle.signer]
-        drop: BlockDrop[_Block] | None = None
-        statement = ""
 
-        # Read before its builder's signature is checked, so that every key
-        # it needs is asked for at once.
-        try:
-            drop = cls.of(bundle, kind)
+        if drop is not None:
             signers.extend(signed.signer for signed in drop.block.bundles())
-
-        except UnknownAlgorithmError:
-            raise
-
-        except (ValueError, BundleSignatureError) as error:
-            other = cls._other_kind(bundle, kind)
-
-            if other:
-                raise MisplacedBlockError(f"It is a {other}, not a {kind.__name__}") from error
-
-            # Not logged: it is the finding, once the builder's
-            # signature checks.
-            statement = str(error)
 
         wanted = tuple(dict.fromkeys(signer for signer in signers if signer not in keys))
 
@@ -688,7 +710,9 @@ class BlockDrop(Generic[_Block]):
         if drop is None:
             return BlockFinding(statement, bundle.signer)
 
-        statement = cls._false_statement(drop.block, keys, bounds)
+        statement = cls._false_statement(
+            drop.block, keys, bounds, signatures or CheckedSignatures()
+        )
 
         if statement:
             return BlockFinding(statement, bundle.signer)
@@ -697,6 +721,57 @@ class BlockDrop(Generic[_Block]):
             raise MissingContentError(wanted)
 
         return drop
+
+    @classmethod
+    def _read(
+        cls, data: bytes, kind: type[_Block]
+    ) -> tuple[SignedBundle, BlockDrop[_Block] | None, str] | BlockFinding:
+        """The signed bundle the drop ``data`` holds, the block of ``kind`` it signs, if it does.
+
+        Its signatures are not checked. With them is what it states falsely,
+        if what it signs is no block of ``kind``, which is found once its
+        builder's signature checks.
+
+        Returns:
+            The bundle, the block or ``None``, and what it states falsely or
+            ``""``; or a :class:`BlockFinding` naming no builder, if it is no
+            signed bundle.
+
+        Raises:
+            MisplacedBlockError: it is no block of ``kind``, but one of the
+                other kind, placed at another's target.
+            UnsupportedBundleError: it, or what it holds, is signed in a way
+                this node cannot check.
+            UnknownAlgorithmError: it names an id under a hash algorithm this
+                node lacks.
+        """
+        content, separator, _ = data.rpartition(DROP_SEPARATOR)
+
+        if not separator:
+            return BlockFinding("A block's drop must hold a null byte before its nonce")
+
+        try:
+            bundle = SignedBundle.decoded(content)
+
+        except (MalformedBundleError, BundleSignatureError) as error:
+            # Not logged: it is the finding, for the caller to log.
+            return BlockFinding(f"A block's drop must be a signed bundle: {error}")
+
+        try:
+            return bundle, cls.of(bundle, kind), ""
+
+        except UnknownAlgorithmError:
+            raise
+
+        except (ValueError, BundleSignatureError) as error:
+            other = cls._other_kind(bundle, kind)
+
+            if other:
+                raise MisplacedBlockError(f"It is a {other}, not a {kind.__name__}") from error
+
+            # Not logged: it is the finding, once the builder's signature
+            # checks.
+            return bundle, None, str(error)
 
     def content(self) -> bytes:
         """The drop's content: the signed bundle's JSON, which a null byte and a nonce follow."""
@@ -738,12 +813,14 @@ class BlockDrop(Generic[_Block]):
         block: TransactionBlock | ValidationBlock,
         keys: Mapping[ContentId, bytes],
         bounds: BlockBounds,
+        signatures: CheckedSignatures,
     ) -> str:
         """What ``block`` states falsely in what it holds, or ``""``, as far as ``keys`` check it.
 
         A transaction under ``bounds``' work is false (§4.3), and so is a
         transaction or a stake whose signature fails, under the key ``keys``
-        gives its signer. One whose key is not given is passed over.
+        gives its signer, unless ``signatures`` found it to check before. One
+        whose key is not given is passed over.
         """
         # Only a transaction block holds work to count.
         if isinstance(block, TransactionBlock):
@@ -757,7 +834,7 @@ class BlockDrop(Generic[_Block]):
         for bundle in block.bundles():
             if bundle.signer in keys:
                 try:
-                    bundle.verified(keys[bundle.signer])
+                    signatures.verified(bundle, keys[bundle.signer])
 
                 except BundleSignatureError as error:
                     # Not logged: it is the finding, for the caller to log.

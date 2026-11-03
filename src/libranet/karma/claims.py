@@ -38,6 +38,7 @@ from libranet.karma.blocks import (
     BLOCK_BOUNDS,
     BlockBounds,
     BlockFinding,
+    CheckedSignatures,
     TransactionBlock,
     ValidationBlock,
 )
@@ -204,12 +205,18 @@ class ClaimedChain:
         return self._witnessed.get(transaction_hash)
 
     def check(
-        self, claimed: ClaimedGeneration, reader: TargetReader, *, bounds: BlockBounds
+        self,
+        claimed: ClaimedGeneration,
+        reader: TargetReader,
+        *,
+        bounds: BlockBounds,
+        signatures: CheckedSignatures | None = None,
     ) -> tuple[ContentId, TransactionBlockCheck | ValidationBlockCheck | BlockFinding] | None:
         """Check ``claimed``, the generation after the last this holds, and hold it if correct.
 
         Its blocks are read from what ``reader`` holds, and checked against
-        ``bounds``.
+        ``bounds``, but what is signed in them that ``signatures`` found to
+        check before.
 
         Returns:
             ``None`` if both its blocks are correct; or else the first that
@@ -223,13 +230,20 @@ class ClaimedChain:
         """
         chain = HeldChain(self, reader)
         transaction = self._transaction(
-            claimed.transaction, claimed.previous, chain, reader, bounds
+            claimed.transaction,
+            claimed.previous,
+            chain,
+            reader,
+            bounds=bounds,
+            signatures=signatures,
         )
 
         if not isinstance(transaction, TransactionBlockCheck) or not transaction.is_correct:
             return claimed.transaction, transaction
 
-        validation = self._validation(claimed, chain, reader, transaction, bounds)
+        validation = self._validation(
+            claimed, chain, reader, transaction, bounds=bounds, signatures=signatures
+        )
 
         if not isinstance(validation, ValidationBlockCheck) or not validation.is_correct:
             return claimed.validation, validation
@@ -262,7 +276,9 @@ class ClaimedChain:
         named_for: ContentId | None,
         chain: HeldChain,
         reader: TargetReader,
+        *,
         bounds: BlockBounds,
+        signatures: CheckedSignatures | None,
     ) -> TransactionBlockCheck | BlockFinding:
         """Transaction block ``block_id``, built on ``named_for``, checked against ``chain``.
 
@@ -272,7 +288,9 @@ class ClaimedChain:
             ValueError: it names an id under a hash algorithm this node lacks.
         """
         held = reader.block(block_id, TransactionBlock)
-        return TransactionBlockCheck.of_held(held, named_for, chain, bounds=bounds)
+        return TransactionBlockCheck.of_held(
+            held, named_for, chain, bounds=bounds, signatures=signatures
+        )
 
     def _validation(
         self,
@@ -280,7 +298,9 @@ class ClaimedChain:
         chain: HeldChain,
         reader: TargetReader,
         validated: TransactionBlockCheck,
+        *,
         bounds: BlockBounds,
+        signatures: CheckedSignatures | None,
     ) -> ValidationBlockCheck | BlockFinding:
         """``claimed``'s validation block checked against ``chain``, validating ``validated``.
 
@@ -308,11 +328,21 @@ class ClaimedChain:
                 and chain.transaction(block_id).block.previous == claimed.previous
             ):
                 at_target[block_id] = self._transaction(
-                    block_id, claimed.previous, chain, reader, bounds
+                    block_id,
+                    claimed.previous,
+                    chain,
+                    reader,
+                    bounds=bounds,
+                    signatures=signatures,
                 )
 
         return ValidationBlockCheck.of_held(
-            held, claimed.previous, chain, transactions=at_target, bounds=bounds
+            held,
+            claimed.previous,
+            chain,
+            transactions=at_target,
+            bounds=bounds,
+            signatures=signatures,
         )
 
 
@@ -400,11 +430,17 @@ class HeadClaim:
         return self.chain
 
     def check(
-        self, chain: ClaimedChain, reader: TargetReader, *, bounds: BlockBounds = BLOCK_BOUNDS
+        self,
+        chain: ClaimedChain,
+        reader: TargetReader,
+        *,
+        bounds: BlockBounds = BLOCK_BOUNDS,
+        signatures: CheckedSignatures | None = None,
     ) -> tuple[ContentId, TransactionBlockCheck | ValidationBlockCheck | BlockFinding] | None:
         """Check it forward against ``chain``, from the first generation not checked.
 
-        Each generation correct is held by ``chain``.
+        Each generation correct is held by ``chain``. What is signed in a
+        block that ``signatures`` found to check before is not checked again.
 
         Returns:
             ``None`` once every block checks correct; or else the first that
@@ -417,7 +453,7 @@ class HeadClaim:
                 lacks, or a block that is no block of its kind.
         """
         for claimed in self.walked[::-1][len(chain.generations) :]:
-            failed = chain.check(claimed, reader, bounds=bounds)
+            failed = chain.check(claimed, reader, bounds=bounds, signatures=signatures)
 
             if failed is not None:
                 return failed
