@@ -208,7 +208,7 @@ class HeadChanges:  # pylint: disable=too-many-instance-attributes
 
         generation = self._head_generation()
 
-        if generation != self._generation:
+        if True:
             self._found.clear()
             self._weighed.clear()
 
