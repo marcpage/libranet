@@ -58,7 +58,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from logging import getLogger
 from time import time
-from typing import Any, Callable, Collection, Final, Iterable, Mapping, Protocol, TypeVar
+from typing import Any, Callable, Collection, Final, Iterable, Iterator, Mapping, Protocol, TypeVar
 from zlib import compress
 
 from libranet.bundle.content import ContentSource
@@ -240,7 +240,26 @@ class TargetReader:
         kept: Collection[ContentId] = (),
         searching: bool = True,
     ) -> list[HeldBlock]:
+        """The blocks of ``kind`` the node holds at ``target``, all read,
+        as :meth:`read_each` reads."""
+        return list(self.read_each(target, kind, known=known, kept=kept, searching=searching))
+
+    def read_each(
+        self,
+        target: DropTarget,
+        kind: type[_Block],
+        *,
+        known: Collection[ContentId] = (),
+        kept: Collection[ContentId] = (),
+        searching: bool = True,
+    ) -> Iterator[HeldBlock]:
         """The blocks of ``kind`` the node holds at ``target``, those placed nearest first.
+
+        Each is read as it is taken, so that a caller done with each before it
+        takes the next holds one read at a time, as many full blocks may come
+        to a target, each far larger read than held. Nothing is searched for
+        until the first is taken, and what is lacking is asked for once all
+        are.
 
         They are what it holds nearest the target's hash, and what peers
         have named there (:meth:`answered`), of those a search returns, less
@@ -266,7 +285,6 @@ class TargetReader:
         found = self._search.matching(
             prefix, nearest(prefix, {*self._search.search(prefix), *answers.named})
         )
-        blocks: list[HeldBlock] = []
         lacking: list[ContentId] = []
 
         for block_id in self._shunned.unshunned(found):
@@ -289,7 +307,7 @@ class TargetReader:
                 _LOGGER.warning("Passing over %s at Karma target %s: %s", block_id, prefix, error)
                 continue
 
-            blocks.append(self._block(block_id, data, held_bytes, kind))
+            yield self._block(block_id, data, held_bytes, kind)
 
         self.fetch(lacking)
         # One known is kept as it was: another caller may be waiting for it, and
@@ -298,7 +316,6 @@ class TargetReader:
             block_id: answers.lacking.get(block_id, answers.read_at)
             for block_id in [*lacking, *(each for each in answers.lacking if each in known)]
         }
-        return blocks
 
     def awaits(self, target: DropTarget, *, known: Collection[ContentId] = ()) -> bool:
         """Whether a block the last read of ``target`` found there, but lacked, is waited for.
@@ -347,10 +364,11 @@ class TargetReader:
     def chain_block(self, block_id: ContentId, kind: type[_Block]) -> BlockDrop[_Block]:
         """Block ``block_id`` of a chain, of ``kind``, as signed, its signatures not checked again.
 
-        It is parsed once while it is among the :data:`_KEPT_CHAIN_BLOCKS`
-        read last, and is held still, and said to be requested as each read
-        of it is. One not held is read as :meth:`held` reads it, and so asked
-        for again, as one evicted is.
+        So is a full block checked before at a target, which may join a chain
+        (:class:`~libranet.karma.checking.FullBlock`). It is parsed once while
+        it is among the :data:`_KEPT_CHAIN_BLOCKS` read last, and is held still,
+        and said to be requested as each read of it is. One not held is read as
+        :meth:`held` reads it, and so asked for again, as one evicted is.
 
         Raises:
             MissingContentError: it is not held, and is asked for.

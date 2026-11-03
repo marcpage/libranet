@@ -34,10 +34,11 @@ after that until it shares ``storage.search_min_bits`` with its target (§2),
 and it is stored and announced, as a block put up for a transaction alone is.
 
 Each block is read once, and checked once, as the chain followed checks it
-(:meth:`~libranet.karma.following.ChainFollower.checked_block`): each
-transaction is kept by its hash, with its signature checked, and the hashes
-the block holds by its id, and a block found correct or not, and not full, is
-not read or fetched again, even if eviction lets it go. So the blocks put up
+(:meth:`~libranet.karma.following.ChainFollower.checked_block`), and let go of
+before the next is read, as many full blocks may come, each far larger read
+than held: each transaction is kept by its hash, with its signature checked,
+and the hashes the block holds by its id, and a block found correct or not,
+and not full, is not read or fetched again, even if eviction lets it go. So the blocks put up
 cost a node as they arrive, not as it builds. One full is not read again
 either, but counts only while it is held: it may be validated, and if it is
 lost, it is to be built again. While it is held, it is said to be in use, as a
@@ -70,8 +71,9 @@ target names is never superseded, nor one full, as the copy held measures it
 from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field, replace
+from functools import cache, partial
 from logging import getLogger
-from typing import Final, Iterable, Mapping, Sequence
+from typing import Callable, Final, Iterable, Iterator, Mapping, Sequence
 from zlib import compress
 
 from libranet.bundle.errors import BundleError, BundleSignatureError, MissingContentError
@@ -89,7 +91,7 @@ from libranet.karma.blocks import (
     unchecked_level,
 )
 from libranet.karma.carried import CarriedTransactions
-from libranet.karma.checking import ChainBefore, ChainView, NotFullBlock, TransactionBlockCheck
+from libranet.karma.checking import ChainBefore, ChainView, FullBlock, NotFullBlock
 from libranet.karma.following import ChainFollower
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
@@ -624,16 +626,16 @@ class BlockBuilder:
         """What is kept of each transaction block read at ``head``'s transaction target.
 
         What is new there is read, what it holds is kept, and it is checked,
-        each once. One full counts only while it is held, and is read again
-        only once it is held again. What was found at another head is
-        forgotten, and so is all of this, to read again, should more than
-        :data:`_MOST_KEPT` be kept.
+        each once, and let go of before the next is read. One full counts only
+        while it is held, and is read again only once it is held again. What
+        was found at another head is forgotten, and so is all of this, to read
+        again, should more than :data:`_MOST_KEPT` be kept.
         """
         if head.validation != self._found.head or self._found.kept() >= _MOST_KEPT:
             self._found = _Found(head.validation)
 
         found = self._found
-        read = self._reader.read(
+        read = self._reader.read_each(
             GenerationTargets.after(head.validation).transaction,
             TransactionBlock,
             known=found.settled,
@@ -646,28 +648,34 @@ class BlockBuilder:
             if block_id in found.settled or block_id in found.full
         }
 
+        holders = cache(partial(self._holders, head))
+
         for held, drop in self._parsed(read):
-            found.seen[held.block_id] = _SeenBlock(
+            seen = _SeenBlock(
                 held.block_id,
                 drop.block.previous,
                 frozenset(signed.hash for signed in drop.block.signed),
                 held.compressed_bytes,
                 held,
             )
+            found.seen[held.block_id] = seen
             self._offer(drop)
+            self._settle([seen], holders)
 
-        self._settle(head)
+        self._settle(found.seen.values(), holders)
         return list(found.seen.values())
 
-    def _settle(self, head: ChainGeneration) -> None:
-        """Let go of each block read that is known to be correct or not.
+    def _settle(self, seen_blocks: Iterable[_SeenBlock], holders: Callable[[], int | None]) -> None:
+        """Let go of each of ``seen_blocks`` that is known to be correct or not.
 
-        One full is kept while it is held, and one not full is settled.
+        One full is kept while it is held, and one not full is settled. How
+        many hold Kismet, which sets how large a full one is, ``holders``
+        reads, only if one is to be let go of.
         """
-        unsettled = [seen for seen in self._found.seen.values() if seen.held is not None]
-        holders = self._holders(head) if unsettled else None
+        unsettled = [seen for seen in seen_blocks if seen.held is not None]
+        count = holders() if unsettled else None
 
-        if holders is None:
+        if count is None:
             return
 
         for seen in unsettled:
@@ -678,7 +686,7 @@ class BlockBuilder:
 
             seen.held = None
 
-            if self._filling.bounds.is_full(seen.compressed_bytes, holders):
+            if self._filling.bounds.is_full(seen.compressed_bytes, count):
                 self._found.full.add(seen.block_id)
 
             else:
@@ -759,22 +767,21 @@ class BlockBuilder:
 
     def _parsed(
         self, held: Iterable[HeldBlock]
-    ) -> list[tuple[HeldBlock, BlockDrop[TransactionBlock]]]:
+    ) -> Iterator[tuple[HeldBlock, BlockDrop[TransactionBlock]]]:
         """Each of ``held`` that is a transaction block, read, its signatures not checked.
 
-        One the reader read as a transaction block is not read again. Its
-        transactions are each checked on their own. Each other is logged, and
-        passed over, and not read again at the head.
+        Each is read as it is taken. One the reader read as a transaction
+        block is not read again. Its transactions are each checked on their
+        own. Each other is logged, and passed over, and not read again at the
+        head.
         """
-        parsed: list[tuple[HeldBlock, BlockDrop[TransactionBlock]]] = []
-
         for each in held:
             if each.drop is not None and isinstance(each.drop.block, TransactionBlock):
-                parsed.append((each, each.drop))
+                yield each, each.drop
                 continue
 
             try:
-                parsed.append((each, BlockDrop.parsed(each.data, TransactionBlock)))
+                drop = BlockDrop.parsed(each.data, TransactionBlock)
 
             except (BundleError, ValueError) as error:
                 self._found.settled.add(each.block_id)
@@ -784,8 +791,9 @@ class BlockBuilder:
                     each.block_id,
                     error,
                 )
+                continue
 
-        return parsed
+            yield each, drop
 
     def _check(self, offered: Iterable[SignedTransaction]) -> None:
         """Keep each of ``offered``, and each read, whose signature checks (§4.4).
@@ -896,7 +904,7 @@ class BlockBuilder:
             return False
 
         correct[seen.block_id] = (
-            isinstance(found, (TransactionBlockCheck, NotFullBlock)) and found.correct_if_full
+            isinstance(found, (FullBlock, NotFullBlock)) and found.correct_if_full
         )
         return correct[seen.block_id]
 

@@ -18,17 +18,23 @@ the chain, is checked again once that has come: the reader asks for it (Phase
 whether this or the node's builder asks first
 (:meth:`ChainFollower.checked_block`), and what was found of it is said once.
 What is signed in it is checked once at the head too, however many blocks hold
-it, as many hold each transaction a node puts up and builders combine. One
-full is not read again either, but is kept held, as it may be validated: while
-it is held it is said to be in use, and once eviction lets it go, it is asked
-for again. One not full is neither read nor asked for again, even if eviction
-lets it go, as no correct validation block can stake on it, and little is kept
-of it (:class:`~libranet.karma.checking.NotFullBlock`): only a validation
-block naming it has it read again, to judge what that states of it. A block
-found unsigned, or whose signature fails, is shunned (§3.7, §3.8); one found
-false is said, for its builder, and the staker of a stake that alone exceeds
-what covers it, to be distrusted (Phase 6 Step 127). Each is logged at debug,
-as what anyone may place (Coding Style §9.3)::
+it, as many hold each transaction a node puts up and builders combine. The
+transaction blocks at a target are read one at a time, each let go of before
+the next is read, as many full blocks may come, each far larger read than
+held. One full is not read again for its check, but is kept held, as it may be
+validated: while it is held it is said to be in use, and once eviction lets it
+go, it is asked for again. All of its check is kept but the block
+(:class:`~libranet.karma.checking.FullBlock`), which is read again, through the
+few blocks the reader keeps parsed, when a validation block naming it is
+judged, or when it is staked on or followed. One not full is neither read nor
+asked for again, even if eviction lets it go, as no correct validation block
+can stake on it, and little is kept of it
+(:class:`~libranet.karma.checking.NotFullBlock`): only a validation block naming
+it has it read again, to judge what that states of it. A block found unsigned,
+or whose signature fails, is shunned (§3.7, §3.8); one found false is said, for
+its builder, and the staker of a stake that alone exceeds what covers it, to be
+distrusted (Phase 6 Step 127). Each is logged at debug, as what anyone may
+place (Coding Style §9.3)::
 
     data.shunned       {"algorithm", "hash"}
     karma.false_block  {"block": "sha256/…", "builder": "sha256/…",
@@ -65,7 +71,7 @@ from libranet.karma.blocks import (
     ValidationBlock,
     unchecked_level,
 )
-from libranet.karma.checking import NotFullBlock, TransactionBlockCheck
+from libranet.karma.checking import FullBlock, NotFullBlock, TransactionBlockCheck
 from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
@@ -86,8 +92,8 @@ class _Looking:
     """
 
     targets: GenerationTargets
-    transactions: dict[ContentId, TransactionBlockCheck | NotFullBlock | BlockFinding | None] = (
-        field(default_factory=dict)
+    transactions: dict[ContentId, FullBlock | NotFullBlock | BlockFinding | None] = field(
+        default_factory=dict
     )
     validations: dict[ContentId, ValidationBlockCheck | BlockFinding | None] = field(
         default_factory=dict
@@ -104,7 +110,8 @@ class _AtTarget(Mapping[ContentId, TransactionBlockCheck | BlockFinding]):
     ``lacking`` says its check lacks, so that the validation block waits for
     it too; or :class:`ValueError` for one passed over, so that the
     validation block is passed over too, at debug, as what was wrong was
-    logged of the block it names. One found not full is read and checked ``again``.
+    logged of the block it names. One found full is read ``again``, and one
+    found not full is read and checked again.
 
     So is one ``placed`` at the target that was not read there, as one stored
     since is not, or one past what a search returns. Being at a target is a
@@ -114,7 +121,7 @@ class _AtTarget(Mapping[ContentId, TransactionBlockCheck | BlockFinding]):
 
     def __init__(
         self,
-        checks: Mapping[ContentId, TransactionBlockCheck | NotFullBlock | BlockFinding | None],
+        checks: Mapping[ContentId, FullBlock | NotFullBlock | BlockFinding | None],
         lacking: Mapping[ContentId, tuple[ContentId, ...]],
         placed: Callable[[ContentId], bool],
         again: Callable[[ContentId], TransactionBlockCheck | BlockFinding],
@@ -139,7 +146,7 @@ class _AtTarget(Mapping[ContentId, TransactionBlockCheck | BlockFinding]):
         if check is None:
             raise ValueError(f"It names {block_id}, which is passed over")
 
-        return self._again(block_id) if isinstance(check, NotFullBlock) else check
+        return self._again(block_id) if isinstance(check, (FullBlock, NotFullBlock)) else check
 
     def __contains__(self, block_id: object) -> bool:
         return (
@@ -210,7 +217,7 @@ class ChainFollower:
 
         return followed
 
-    def checked(self) -> tuple[dict[ContentId, TransactionBlockCheck], list[ValidationBlockCheck]]:
+    def checked(self) -> tuple[dict[ContentId, FullBlock], list[ValidationBlockCheck]]:
         """The blocks held at the targets of the generation after the head's, stating nothing false.
 
         They are read and checked as :meth:`look` checks them, each not
@@ -219,20 +226,18 @@ class ChainFollower:
         so is a transaction block found not full, which is not staked on.
 
         Returns:
-            The transaction blocks, by id, and the validation blocks, each
-            correct or not.
+            What is kept of the transaction blocks, by id, each correct or not,
+            and the validation blocks, each correct or not.
         """
         checks = self._checked_at(self._named_for())
         transactions = {
-            block_id: check
-            for block_id, check in self._looking.transactions.items()
-            if isinstance(check, TransactionBlockCheck)
+            block_id: found
+            for block_id, found in self._looking.transactions.items()
+            if isinstance(found, FullBlock)
         }
         return transactions, checks
 
-    def checked_block(
-        self, held: HeldBlock
-    ) -> TransactionBlockCheck | NotFullBlock | BlockFinding | None:
+    def checked_block(self, held: HeldBlock) -> FullBlock | NotFullBlock | BlockFinding | None:
         """What is found of transaction block ``held``, read at the head's transaction target.
 
         It is checked as :meth:`look` checks it, unless it was at the head,
@@ -258,7 +263,7 @@ class ChainFollower:
         return {
             transaction_hash
             for found in self._looking.transactions.values()
-            if isinstance(found, (TransactionBlockCheck, NotFullBlock))
+            if isinstance(found, (FullBlock, NotFullBlock))
             for transaction_hash in found.hashes
         }
 
@@ -305,21 +310,18 @@ class ChainFollower:
 
     def _transactions(self, named_for: ContentId | None, target: DropTarget) -> _AtTarget:
         """The checks of the transaction blocks held at ``target``, named for ``named_for``."""
-        checks: dict[ContentId, TransactionBlockCheck | NotFullBlock | BlockFinding | None] = dict(
+        checks: dict[ContentId, FullBlock | NotFullBlock | BlockFinding | None] = dict(
             self._looking.transactions
         )
         # One checked and full is not read again, but kept held, as it may be
         # validated. Any other checked is done with: no validation block can
         # stake on it, so eviction may have it, and it is not fetched again.
-        full = {
-            block_id
-            for block_id, found in checks.items()
-            if isinstance(found, TransactionBlockCheck)
-        }
+        full = {block_id for block_id, found in checks.items() if isinstance(found, FullBlock)}
         lacking: dict[ContentId, tuple[ContentId, ...]] = {}
         check = partial(self._transaction, named_for)
 
-        for held in self._reader.read(
+        # Each is let go of before the next is read.
+        for held in self._reader.read_each(
             target, TransactionBlock, known=set(checks) - full, kept=full
         ):
             try:
@@ -361,7 +363,7 @@ class ChainFollower:
 
     def _transaction(
         self, named_for: ContentId | None, held: HeldBlock
-    ) -> TransactionBlockCheck | NotFullBlock | BlockFinding:
+    ) -> FullBlock | NotFullBlock | BlockFinding:
         """What to keep of transaction block ``held``, read at the target named for ``named_for``.
 
         Raises:
@@ -387,23 +389,24 @@ class ChainFollower:
         """Transaction block ``block_id``, at the target and named by a validation block, in whole.
 
         What that states of it is judged from all of it. One already checked
-        and full is as it was, held still or not. Any other is read and checked:
-        one found not full, whose copy now may measure full, as another may
-        (§3.8), or one not read at the target. If full, it is kept whole from now
-        on, for the validation block to be followed.
+        and full is read again, its check as it was. Any other is read and
+        checked: one found not full, whose copy now may measure full, as another
+        may (§3.8), or one not read at the target. If full, it is kept as one
+        checked full is from now on, for the validation block to be followed.
 
         Raises:
             MisplacedBlockError: it is of another target.
             MissingContentError: names what it lacks, itself if it is not held,
-                which is asked for.
+                which is asked for, as one checked full is once eviction lets it
+                go.
             BundleError: it is shunned, or it cannot be checked here, or a block
                 of the chain cannot be read.
             ValueError: it names an id under a hash algorithm this node lacks.
         """
         found = self._looking.transactions.get(block_id)
 
-        if isinstance(found, TransactionBlockCheck):
-            return found
+        if isinstance(found, FullBlock):
+            return found.whole(self._reader.chain_block(block_id, TransactionBlock))
 
         held = self._reader.block(block_id, TransactionBlock)
         check = TransactionBlockCheck.of_held(
@@ -415,7 +418,7 @@ class ChainFollower:
         )
 
         if isinstance(check, TransactionBlockCheck) and check.full:
-            self._looking.transactions[block_id] = check
+            self._looking.transactions[block_id] = check.kept()
 
         return check
 
@@ -494,14 +497,15 @@ class ChainFollower:
     def _generation(self, check: ValidationBlockCheck) -> ChainGeneration | None:
         """The generation in which ``check``'s validation block, correct, is the winner.
 
-        Its transaction block is one checked at the target of the same
-        generation, as a correct block's is. Were it not, that is logged,
-        and there is no generation.
+        Its transaction block is one checked full at the target of the same
+        generation, as a correct block's is, and read again. Were it not, that
+        is logged, and there is no generation. Nor is there one while it is not
+        held: it is asked for, and the validation block is followed once it
+        comes.
         """
         validated_id = check.drop.block.stakes[0].stake.transaction_block
-        validated = self._looking.transactions.get(validated_id)
 
-        if not isinstance(validated, TransactionBlockCheck):
+        if not isinstance(self._looking.transactions.get(validated_id), FullBlock):
             _LOGGER.error(
                 "Not following Karma validation block %s: %s, which it validates, was not checked",
                 check.block_id,
@@ -509,6 +513,23 @@ class ChainFollower:
             )
             return None
 
+        try:
+            validated = self._reader.chain_block(validated_id, TransactionBlock)
+
+        except MissingContentError:
+            # Not logged: it is asked for, and followed once it comes.
+            return None
+
+        except BundleError as error:
+            _LOGGER.warning(
+                "Not following Karma validation block %s: %s, which it validates, cannot be "
+                "read again: %s",
+                check.block_id,
+                validated_id,
+                error,
+            )
+            return None
+
         return ChainGeneration.of(
-            check.block_id, check.drop.block, validated_id, validated.drop.block, check.stake
+            check.block_id, check.drop.block, validated_id, validated.block, check.stake
         )

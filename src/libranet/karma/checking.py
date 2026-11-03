@@ -417,6 +417,33 @@ class NotFullBlock:
 
 
 @dataclass(frozen=True)
+class FullBlock:
+    """What is kept of a transaction block checked, and found full: all of its check but the block.
+
+    ``score`` and ``incorrect`` are as its check found, ``builder`` built it,
+    and ``hashes`` are those of the transactions it holds, for a validation
+    block to witness. The block itself, most of what its check holds, is let
+    go of, and read again from what is held, or asked for, when all of it is
+    needed: to be staked on, to judge a validation block naming it, or to be
+    followed (:meth:`whole`).
+    """
+
+    score: BlockScore | None
+    incorrect: str
+    builder: ContentId
+    hashes: frozenset[str]
+
+    @property
+    def correct_if_full(self) -> bool:
+        """Whether it is correct: being full, it is correct if full only if it is correct."""
+        return self.score is not None
+
+    def whole(self, drop: BlockDrop[TransactionBlock]) -> TransactionBlockCheck:
+        """Its check again, of ``drop``, the block read again: as it was, not checked again."""
+        return TransactionBlockCheck(drop, self.score, self.incorrect, True, self.correct_if_full)
+
+
+@dataclass(frozen=True)
 class TransactionBlockCheck:
     """Transaction block ``drop``, checked and found to state nothing false: correct, or not.
 
@@ -449,9 +476,12 @@ class TransactionBlockCheck:
         """The hash of each transaction it holds."""
         return frozenset(signed.hash for signed in self.drop.block.signed)
 
-    def kept(self) -> TransactionBlockCheck | NotFullBlock:
-        """What to keep of it while the head is the same: all of it, unless it is not full."""
-        return self if self.full else NotFullBlock(self.hashes, self.correct_if_full)
+    def kept(self) -> FullBlock | NotFullBlock:
+        """What to keep of it while the head is the same: all but the block, if it is full."""
+        if not self.full:
+            return NotFullBlock(self.hashes, self.correct_if_full)
+
+        return FullBlock(self.score, self.incorrect, self.drop.builder, self.hashes)
 
     @classmethod
     def of(
