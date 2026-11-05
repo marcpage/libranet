@@ -13,11 +13,11 @@ where the movie application keeps collections of movies, it keeps series.
 A series has seasons, a season has episodes, and an episode is a video
 file.
 
-Every step below comes from an issue in the GitHub **TV app** milestone:
-#591 asks for this plan, and #592 for the application it plans. Every
-issue in the milestone is either a step or accounted for in §4. The
-milestone is not a numbered phase: it adds one application, and can be
-built alongside any phase.
+Every step below comes from an issue in the GitHub **TV app** milestone.
+Issue #591 asks for this plan, and #592 for the application it plans,
+which #614 to #618 split into a step each. Every issue in the milestone is
+either a step or accounted for in §4. The milestone is not a numbered
+phase: it adds one application, and can be built alongside any phase.
 
 Nothing here changes the node. Every endpoint the application uses is one
 the movie application uses already. The only Python it changes is the list
@@ -25,7 +25,7 @@ of applications shipped, and its tests.
 
 ## 2. What It Adds
 
-Five steps, none built yet:
+Five steps, the first built:
 
 - **The TV application.** A person's series, each looked up at TMDB, with
   episodes added from files and played one after another. Step 144.
@@ -62,10 +62,10 @@ The conventions of [Improve Movie Web App](Improve%20Movie%20Web%20App.md)
 
 ---
 
-## Step 144 — The TV Application
+## Step 144 — The TV Application ✅
 
-**Issue:** #592. **Depends on:** Phase 3 Steps 67 to 74; Phase 4 Steps 78,
-79; Improve Movie Web App Steps 83, 86 to 88.
+**Issue:** #614, from #592. **Depends on:** Phase 3 Steps 67 to 74;
+Phase 4 Steps 78, 79; Improve Movie Web App Steps 83, 86 to 88.
 
 Settled with the user:
 
@@ -267,11 +267,61 @@ local client: a series made from TMDB's matches, and one made with none;
 episodes of two seasons added from files; one played to its end, and on
 into the next season, in full screen and out of it; and every key.
 
+Built. A first page of its own, not a copy of the movie page, went in
+with PR #625. It was replaced by the movie page, changed for series, so
+the changes series make show in `git diff --no-index` of the two pages
+rather than in a change set of their own. It was checked on a node of its
+own in headless Chrome, with TMDB's answers given by the browser: every
+flow above, a series named apart, editing that moves an episode into a
+new season and removes the one it left, removing, the filter, and the
+season remembered. Safari is yet to be checked.
+
+Calls made while building it, not yet reviewed:
+
+- **What later steps add is left out:** Add by id, Share, Keep offline,
+  Import a series, and an episode's Share, until Steps 146 and 148.
+- **What TMDB does not know.** An episode it knows no such number of is
+  named for its file, and the activity list says so. A season it does not
+  know is made with only its number. A search that finds nothing, or that
+  TMDB does not answer, is said, and the series can be made with only its
+  name.
+- **A name ending in a year** is searched with `first_air_date_year`, and
+  if that finds none, by the whole name, as the movie page searches by a
+  year and then without one.
+- **Numbering a file.** In a folder named for its season, a file is
+  numbered by the first word of its name that is a number, or `E`, `Ep`,
+  or `Episode` and one. A file whose name and folder give no numbers is
+  asked about in a dialog of its own, and its title is taken from its
+  name.
+- **The editor takes episode numbers separated by commas**, so that a file
+  of several episodes (Step 145) is edited without losing any.
+- **The season shown follows the episode chosen**, so that leaving an
+  episode shows it in its season, and is remembered as chosen.
+- **`[` and `]` act on the series page**, with focus on the first episode
+  of the season chosen. While an episode is open, `N` and `P` cross
+  seasons instead.
+- **`N` and `P`, with no episode chosen**, start from the episode with
+  focus, or from the first or last of those listed, as the movie page's do.
+- **A season whose `season.json` cannot be read** is shown, with no
+  episodes, and is not changed until it can be read.
+- **The season's heading** is its label, `Season 1` say, where TMDB gives
+  no other name, so that its Edit icon has a name to sit beside.
+- **The chooser reads each series' `series.json`** to show its backdrop.
+
+**Open questions:**
+
+- **Signed in with a fallback password**, a person's series are not read,
+  and neither are their collections in the movie application: the session
+  holds only the fallback's key, and each version is encrypted for the
+  person's, so the node answers `403 Forbidden` (`wrong-key`). Both pages
+  show an empty list. Whether the node should open a person's versions in
+  such a session, or the pages should say why the list is empty.
+
 ---
 
 ## Step 145 — Adding a Folder
 
-**Issue:** #592. **Depends on:** Step 144.
+**Issue:** #615, from #592. **Depends on:** Step 144.
 
 Settled with the user:
 
@@ -318,7 +368,7 @@ give no numbers; and a season some of whose episodes are held already.
 
 ## Step 146 — Sharing a Series or an Episode
 
-**Issue:** #592. **Depends on:** Step 144.
+**Issue:** #616, from #592. **Depends on:** Step 144.
 
 Settled with the user:
 
@@ -382,7 +432,7 @@ id; and a movie refused by the TV page, and an episode by the movie page.
 
 ## Step 147 — What Has Been Watched
 
-**Issue:** #592. **Depends on:** Step 144.
+**Issue:** #617, from #592. **Depends on:** Step 144.
 
 Settled with the user:
 
@@ -446,8 +496,8 @@ node while a season is added to it on another, both kept once merged.
 
 ## Step 148 — Keeping Series Offline
 
-**Issue:** #592. **Depends on:** Steps 144, 146; Improve Movie Web App
-Step 115.
+**Issue:** #618, from #592. **Depends on:** Steps 144, 146; Improve Movie
+Web App Step 115.
 
 As movies are kept offline (Improve Movie Web App Step 115), with the same
 endpoints, `/data/archives`, and nothing new of the node.
@@ -497,7 +547,12 @@ Every issue in the **TV app** milestone, by number, and where it went.
 | Issue | Asks for | Step |
 | --- | --- | --- |
 | #591 | Defining the TV application | None: this plan |
-| #592 | Implementing the TV application | 144 to 148 |
+| #592 | Implementing the TV application, split into #614 to #618 | 144 to 148 |
+| #614 | The TV application | 144 |
+| #615 | Adding a folder | 145 |
+| #616 | Sharing a series or an episode | 146 |
+| #617 | What has been watched | 147 |
+| #618 | Keeping series offline | 148 |
 
 ## 5. Suggested Build Order
 

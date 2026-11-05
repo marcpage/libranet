@@ -6,6 +6,7 @@
 <meta name="color-scheme" content="dark">
 <title>TV</title>
 <style>
+  /* Always dark, like a theater, with its red curtains for accents. */
   :root {
     --background: #0d0b0b;
     --surface: #1a1414;
@@ -39,8 +40,10 @@
   main { padding-bottom: 2rem; }
   header .toolbar { margin: 0; }
 
+  /* What has focus from the keyboard, plain on the dark. */
   :focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 
+  /* Home, the node's front page, in the upper right corner of every page. */
   .home {
     position: absolute;
     top: 0.75rem;
@@ -71,6 +74,8 @@
   .error { color: var(--bad); }
 
   code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; }
+
+  /* A content id: one click selects all of it. */
   .id { user-select: all; word-break: break-all; }
 
   .heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; }
@@ -92,6 +97,7 @@
   button.small { padding: 0.2rem 0.55rem; font-size: 0.85rem; }
   button:disabled { opacity: 0.6; cursor: default; }
 
+  /* A button shown as an icon alone, which it is named for. */
   button.icon { padding: 0.3rem; line-height: 0; background: transparent; color: var(--text); border-color: transparent; }
   button.icon:hover:not(:disabled) { border-color: var(--border); }
   button.icon.danger { color: var(--bad); }
@@ -123,6 +129,7 @@
 
   textarea { width: 100%; resize: vertical; }
 
+  /* The episode playing, the full width, and below it what is known of it. */
   .player {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -131,9 +138,11 @@
   }
 
   video { display: block; width: 100%; max-height: 70vh; background: #000; border-radius: 6px; }
+  /* The episode, with focus, has no box around it to distract from it. */
   video:focus { outline: none; }
   .details p { margin: 0.4rem 0; }
 
+  /* An episode's, a series', or a season's name, with what is done with it, and what leaves an episode, in the upper right corner. */
   .title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
   .title-row h2 { overflow-wrap: anywhere; }
   .icons { display: flex; flex: none; gap: 0.25rem; margin: -0.3rem -0.3rem 0 0; }
@@ -141,18 +150,30 @@
   .poster-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 0 0 0.75rem; }
   .poster-row img { width: 8rem; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; }
 
+  /* The filter of the episodes listed, below the series' name. */
   .filter { display: block; width: 100%; margin: 0.75rem 0 0; }
 
-  .seasons-bar { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 1rem 0; border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; }
-  .seasons-bar button { padding: 0.3rem 0.75rem; font-size: 0.9rem; }
-  .seasons-bar button[aria-selected="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  /* A button for each season of the series, the one chosen marked. */
+  .seasons { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0 0; }
+  .seasons button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
 
-  .episodes, .series-grid {
+  /* The season chosen: its name, with what edits it beside it, and beside its poster, its year and description. */
+  .season { margin: 1.25rem 0 0; }
+  .season .title-row { justify-content: flex-start; align-items: center; margin: 0 0 0.75rem; }
+  .season .title-row h3 { margin: 0; }
+  .season .icons { margin: 0; }
+  .season-body { display: flex; align-items: flex-start; gap: 1rem; }
+  .season-body p { margin: 0 0 0.4rem; }
+  .season-poster { flex: 0 0 7rem; }
+  .season-poster .poster { aspect-ratio: 2 / 3; }
+
+  /* The series to choose from, and the episodes of the season chosen. */
+  .cards {
     list-style: none;
     margin: 1rem 0 0;
     padding: 0;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
     gap: 1rem;
   }
 
@@ -169,7 +190,7 @@
 
   button.pick[aria-pressed="true"] { border-color: var(--accent); }
 
-  .episodes li, .series-grid li { display: flex; flex-direction: column; }
+  .cards li { display: flex; flex-direction: column; }
 
   .poster {
     display: block;
@@ -184,9 +205,7 @@
   .caption { display: block; padding: 0.4rem 0.15rem 0; }
   .caption strong, .caption .note { display: block; overflow-wrap: anywhere; }
 
-  .choices { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
-  .choices button[aria-current="true"] { background: var(--accent); color: var(--accent-text); }
-
+  /* Lists of choices: folders, and the series TMDB knows of a name. */
   .entries {
     list-style: none;
     margin: 0;
@@ -213,11 +232,13 @@
   }
 
   .entries button span:first-child { overflow-wrap: anywhere; }
+  .entries .sentence { display: block; color: var(--muted); font-size: 0.9em; }
   .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; margin: 0 0 0.5rem; }
   .crumbs button { padding: 0.1rem 0.4rem; }
 
   .activity { list-style: none; margin: 0.75rem 0 0; padding: 0; }
   .activity li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; margin: 0.35rem 0; }
+  .activity progress { flex: 0 1 12rem; }
 
   dialog {
     width: min(40rem, calc(100vw - 2rem));
@@ -230,6 +251,7 @@
 
   dialog::backdrop { background: rgb(0 0 0 / 0.5); }
 
+  /* The keys, and what each does. */
   .keys { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 1rem; margin: 0; }
   .keys dd { margin: 0; }
 
@@ -265,10 +287,9 @@
   <section id="chooser" aria-labelledby="chooser-heading" hidden>
     <h2 id="chooser-heading">Series</h2>
     <p class="state" id="chooser-state" role="status" hidden></p>
-    <ul class="choices state" id="chooser-list"></ul>
+    <ul class="cards" id="chooser-list"></ul>
     <div class="toolbar signed-in-only" hidden>
       <button type="button" id="new-series">New series</button>
-      <button type="button" class="secondary" id="import-series">Import a series</button>
     </div>
   </section>
 
@@ -299,10 +320,36 @@
               </button>
             </div>
           </div>
+          <p class="note" id="episode-place"></p>
           <p class="note" id="episode-facts"></p>
           <p class="description" id="episode-description"></p>
           <p class="result" id="episode-result" role="status" hidden></p>
         </div>
+        <form id="editor" hidden>
+          <h3>Details</h3>
+          <div class="fields">
+            <label class="wide">Title <input id="edit-title" autocomplete="off"></label>
+            <label>Season <input id="edit-season" inputmode="numeric" size="4" autocomplete="off"></label>
+            <label>Episode <input id="edit-episodes" inputmode="numeric" size="6" autocomplete="off"></label>
+          </div>
+          <div class="fields">
+            <label>Aired <input type="date" id="edit-aired"></label>
+            <label>Duration <input id="edit-duration" size="8" autocomplete="off" placeholder="47:30"></label>
+          </div>
+          <div class="fields">
+            <label class="wide">Description <textarea id="edit-description" rows="4"></textarea></label>
+          </div>
+          <div class="poster-row">
+            <img id="poster-preview" alt="The still" hidden>
+            <button type="button" class="secondary small" id="take-poster">Use the frame showing as the still</button>
+          </div>
+          <p class="result" id="poster-result" role="status" hidden></p>
+          <div class="buttons">
+            <button type="button" class="secondary" id="cancel-edit">Cancel</button>
+            <button type="submit">Save</button>
+          </div>
+          <p class="result" id="editor-result" role="status" hidden></p>
+        </form>
       </div>
     </div>
   </section>
@@ -317,40 +364,78 @@
         <button type="button" class="icon signed-in-only" id="add-file" title="Add from a file" aria-label="Add from a file" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 4H5v17h12v-8 M18 3v6 M15 6h6 M8 13h6 M8 17h6"/></svg>
         </button>
+        <button type="button" class="icon signed-in-only" id="edit-series" title="Edit" aria-label="Edit" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
+        </button>
         <button type="button" class="icon" id="filter-episodes" title="Filter" aria-label="Filter">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M16 16l5 5"/></svg>
         </button>
       </div>
     </div>
-    <nav class="seasons-bar" id="seasons-bar" aria-label="Seasons"></nav>
-    <div id="season-header" hidden>
+    <input type="search" class="filter" id="episode-filter" aria-label="Words to look for"
+      placeholder="Whole words to look for" autocomplete="off" spellcheck="false" hidden>
+    <ul class="activity" id="activity"></ul>
+    <p class="result" id="library-result" role="status" hidden></p>
+    <div class="details">
+      <p class="note" id="series-facts" hidden></p>
+      <p id="series-cast" hidden></p>
+      <p class="description" id="series-description" hidden></p>
+    </div>
+    <nav class="seasons" id="seasons" aria-label="Seasons"></nav>
+    <div class="season" id="season" hidden>
       <div class="title-row">
         <h3 id="season-name"></h3>
         <div class="icons">
-          <button type="button" class="icon signed-in-only" id="edit-season-btn" title="Edit Season Details" aria-label="Edit Season Details" hidden>
+          <button type="button" class="icon signed-in-only" id="edit-season" title="Edit the season" aria-label="Edit the season" hidden>
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
           </button>
         </div>
       </div>
-      <p class="description" id="season-description"></p>
+      <div class="season-body">
+        <span class="season-poster" id="season-poster" hidden></span>
+        <div>
+          <p class="note" id="season-facts" hidden></p>
+          <p class="description" id="season-description" hidden></p>
+        </div>
+      </div>
     </div>
-    <input type="search" class="filter" id="episodes-filter" aria-label="Words to look for"
-      placeholder="Search episodes by title or details" autocomplete="off" spellcheck="false" hidden>
-    <ul class="activity" id="activity"></ul>
-    <p class="result" id="series-result" role="status" hidden></p>
-    <p class="state" id="series-state" hidden></p>
-    <ol class="episodes" id="episodes-grid"></ol>
+    <p class="state" id="library-state" hidden></p>
+    <ol class="cards" id="episodes"></ol>
   </section>
 </main>
 
 <dialog id="new-dialog" aria-labelledby="new-heading">
+  <h3 id="new-heading">New series</h3>
   <form id="new-form">
-    <h3 id="new-heading">New series</h3>
     <div class="fields">
       <label class="wide">Name <input id="new-name" required autocomplete="off"></label>
     </div>
-    <p class="hint">Series are searched at TMDB when created, and kept at a drop of yours signed and encrypted for you.</p>
+    <p class="hint"><span id="new-lookup-note"></span>
+      <button type="button" class="secondary small" id="new-lookup-key" disabled>TMDB key</button></p>
+    <p class="hint">Your list of series is kept at a drop of yours, signed by you and encrypted for
+    you alone, so that you find it on any node you sign in on. A series itself is held by the
+    network, encrypted, and can be read only by whoever is given its id.</p>
     <p class="result" id="new-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit" id="new-go">Make</button>
+    </div>
+  </form>
+  <div id="new-matches" hidden>
+    <p class="hint" id="new-matches-note"></p>
+    <ul class="entries" id="new-choices"></ul>
+    <p class="result" id="new-choice-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="button" class="secondary" id="new-none">None of these</button>
+    </div>
+  </div>
+  <form id="apart-form" hidden>
+    <p class="hint" id="apart-note"></p>
+    <div class="fields">
+      <label class="wide">Name <input id="apart-name" required autocomplete="off"></label>
+    </div>
+    <p class="result" id="apart-result" role="status" hidden></p>
     <div class="buttons">
       <button type="button" class="secondary" data-close>Cancel</button>
       <button type="submit">Make</button>
@@ -360,7 +445,10 @@
 
 <dialog id="file-dialog" aria-labelledby="file-heading">
   <h3 id="file-heading">Add an episode from a file</h3>
-  <p class="hint">The folders this node offers. Choose a video to import as an episode.</p>
+  <p class="hint">The folders this node offers. Choose a video, and it is imported into the
+  network, and added to this series, in its season. Its season and episode come from its file's
+  name, as S01E02 or 1x02, or from a number in its name, in a folder named for its season, such as
+  Season 1, or Specials.</p>
   <p class="hint"><span id="lookup-note"></span>
     <button type="button" class="secondary small" id="lookup-key" disabled>TMDB key</button></p>
   <nav class="crumbs" id="folder-path" aria-label="Where in the folders"></nav>
@@ -371,10 +459,36 @@
   </div>
 </dialog>
 
+<dialog id="numbers-dialog" aria-labelledby="numbers-heading">
+  <form id="numbers-form">
+    <h3 id="numbers-heading"></h3>
+    <p class="hint">Its file's name gives no season and episode, as S01E02 or 1x02 would, and the
+    folder it is in is named for no season.</p>
+    <div class="fields">
+      <label>Season <input id="numbers-season" inputmode="numeric" size="4" required autocomplete="off"></label>
+      <label>Episode <input id="numbers-episode" inputmode="numeric" size="4" required autocomplete="off"></label>
+    </div>
+    <p class="hint">Season 0 is the specials.</p>
+    <p class="result" id="numbers-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Add</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="lookup-dialog" aria-labelledby="lookup-heading">
   <form id="lookup-form">
-    <h3 id="lookup-heading">Looking up at TMDB</h3>
-    <p class="hint">The movie application's TMDB key is used here too.</p>
+    <h3 id="lookup-heading">Looking series up at TMDB</h3>
+    <p class="hint">A new series is looked up at TMDB, The Movie Database, by the name given, and
+    you choose which of the series of that name it is. Its name, the year it first aired, its
+    rating, cast, description, and a backdrop are taken from there. So is what is known of each
+    episode added from a file, and of its season, by its numbers: its title, air date, description,
+    duration, and a still. Each can be edited after. Only those names and numbers, and the key, are
+    sent to TMDB. TMDB gives a key to anyone with an account at themoviedb.org, in its settings,
+    under API. This is the movie application's key too, so a key given in either serves both. It is
+    kept at a drop of yours, signed by you and encrypted for you alone, as your series are. Left
+    empty, nothing is looked up, here or in the movie application.</p>
     <div class="fields">
       <label class="wide">API key, or API read access token
         <input id="lookup-field" autocomplete="off" spellcheck="false">
@@ -389,29 +503,74 @@
   </form>
 </dialog>
 
+<dialog id="series-dialog" aria-labelledby="series-heading">
+  <form id="series-form">
+    <h3 id="series-heading"></h3>
+    <div class="fields">
+      <label>Year <input id="series-year" inputmode="numeric" size="5" autocomplete="off"></label>
+      <label>Rating <input id="series-rating" size="6" autocomplete="off"></label>
+    </div>
+    <div class="fields">
+      <label class="wide">Cast, one to a line <textarea id="series-cast-field" rows="3"></textarea></label>
+    </div>
+    <div class="fields">
+      <label class="wide">Description <textarea id="series-description-field" rows="4"></textarea></label>
+    </div>
+    <p class="result" id="series-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="season-dialog" aria-labelledby="season-heading">
+  <form id="season-form">
+    <h3 id="season-heading"></h3>
+    <div class="fields">
+      <label class="wide">Name <input id="season-name-field" autocomplete="off"></label>
+      <label>Year <input id="season-year" inputmode="numeric" size="5" autocomplete="off"></label>
+    </div>
+    <div class="fields">
+      <label class="wide">Description <textarea id="season-description-field" rows="4"></textarea></label>
+    </div>
+    <p class="result" id="season-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="keys-dialog" aria-labelledby="keys-heading">
   <h3 id="keys-heading">Keys</h3>
+  <p class="hint">Anywhere on the page but in a field, and while no other dialog is open.</p>
   <dl class="keys">
     <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt>
-    <dd>Move through episodes or seasons.</dd>
+    <dd>Move through the episodes, the seasons, or the series, as they are laid out, from the one with focus.</dd>
+    <dt><kbd>Home</kbd> <kbd>End</kbd></dt>
+    <dd>To the first, or the last.</dd>
     <dt><kbd>Enter</kbd></dt>
-    <dd>Choose episode or season.</dd>
+    <dd>Choose the episode or the season, or open the series.</dd>
     <dt><kbd>Space</kbd> <kbd>G</kbd></dt>
-    <dd>Play or pause.</dd>
+    <dd>Play or pause the episode chosen. Space presses a button that has focus instead.</dd>
     <dt><kbd>F</kbd></dt>
-    <dd>Full screen.</dd>
+    <dd>Full screen, or back.</dd>
     <dt><kbd>S</kbd> <kbd>X</kbd></dt>
-    <dd>Stop and return to series.</dd>
+    <dd>Stop, and leave the episode: out of full screen, and back to it in its season.</dd>
     <dt><kbd>N</kbd> <kbd>P</kbd></dt>
-    <dd>Next / Previous episode across seasons.</dd>
+    <dd>The next episode, or the one before, on into the next season or back into the one before,
+    playing on if one was playing.</dd>
     <dt><kbd>[</kbd> <kbd>]</kbd></dt>
-    <dd>Previous / Next season.</dd>
+    <dd>The season before, or the next, in the series.</dd>
     <dt><kbd>C</kbd></dt>
-    <dd>Return to Series chooser.</dd>
+    <dd>Choose another series.</dd>
     <dt><kbd>`</kbd></dt>
-    <dd>Filter episodes by keywords.</dd>
+    <dd>Filter the episodes of every season, as the magnifying glass does, to those with every whole
+    word typed. Enter keeps the filter, and Escape empties it. It starts empty each time, so ` then
+    Enter shows the seasons again.</dd>
     <dt><kbd>?</kbd> <kbd>/</kbd></dt>
-    <dd>Show shortcut keys.</dd>
+    <dd>These keys.</dd>
   </dl>
   <div class="buttons">
     <button type="button" class="secondary" data-close>Done</button>
@@ -421,6 +580,8 @@
 <script>
 "use strict";
 
+// The endpoints this page uses (HttpApi 2.4, 12.2, 12.3). What a bundle
+// holds is read at DATA, then its id, then a path (HttpApi 12.1).
 const CLIENT = "/data/client";
 const DIRECTORY = "/data/directory";
 const IMPORTS = "/data/imports";
@@ -431,40 +592,142 @@ const SIGNED = "/data/signed";
 const DROPS = "/data/drop";
 const ENCRYPTED = "/data/encrypted/";
 
+// Where a person's series are kept, "tv series:{id}": in versions at the
+// drop, each signed by them and encrypted for them (HttpApi 9, 11.5, 11.6).
+// The node keeps no series for whoever is not signed in.
 const SERIES_PREFIX = "tv series:";
-const TMDB_PREFIX = "movie tmdb:";
-const TOKEN_START = "eyJ";
-const REMEMBERED_SERIES = "tv.series";
 
+// What each version placed asks the node to search for its nonce, matching as
+// many bits as a node's search returns by default, so that it is found.
+const DROP_SECONDS = 1;
+const DROP_MINIMUM_BITS = 24;
+
+// Where this browser remembers the last series open, and the season last
+// chosen in each, by the series' name.
+const REMEMBERED = "tv.series";
+const REMEMBERED_SEASONS = "tv.seasons";
+
+// What a series, a season in it, and an episode hold.
+const SERIES_FILE = "series.json";
+const SEASON_FILE = "season.json";
+const INFO_FILE = "info.json";
+const POSTER_FILE = "poster.jpg";
+
+// What a series' series.json, a season's season.json, and an episode's
+// info.json hold, in the order each is written.
+const SERIES_KEYS = ["name", "tmdb_id", "year", "rating", "cast", "description", "poster", "seasons"];
+const SEASON_KEYS = ["number", "name", "year", "description", "poster", "order"];
+const INFO_KEYS = [
+  "title", "series", "series_tmdb_id", "season", "episodes", "aired", "description",
+  "duration_seconds", "video", "poster",
+];
+
+// The number of the season of specials, which is listed after every other.
+const SPECIALS = 0;
+
+// How many hex digits of an episode bundle's hash name its folder in a season.
+const FOLDER_DIGITS = 16;
+
+// A still is a JPEG of the frame showing, no wider than this.
+const POSTER_MAX_WIDTH = 1280;
+const POSTER_QUALITY = 0.85;
+
+// Where what is known of a series, a season, and an episode is looked up:
+// TMDB, The Movie Database (developer.themoviedb.org), and where it serves
+// pictures.
 const TMDB_API = "https://api.themoviedb.org/3";
 const TMDB_IMAGES = "https://image.tmdb.org/t/p";
+
+// Where the key a person looks things up at TMDB with is kept, "movie
+// tmdb:{id}": the movie application's, so that a key given in either
+// application serves both. It is in versions at the drop, each signed by them
+// and encrypted for them, as their series are, the newest of which holds the
+// key.
+const TMDB_PREFIX = "movie tmdb:";
+
+// How a key TMDB gives starts if it is an API read access token, sent as a
+// bearer token, rather than an API key, sent in the query: as every JSON Web
+// Token does.
+const TOKEN_START = "eyJ";
+
+// Whose rating a series is given, how many of its cast are named, and how
+// wide a picture is taken: a series' backdrop and an episode's still, which
+// fit where a poster is shown, or a season's poster.
 const RATING_COUNTRY = "US";
 const CAST_NAMED = 5;
 const STILL_SIZE = "w1280";
 const POSTER_SIZE = "w780";
 
+// What a release's name adds after an episode's title, from the first of which
+// on is not the title: its resolution, source, codecs, and edition.
+const NOT_TITLE = /^(?:\d{3,4}[pi]|4k|uhd|hdr(?:10)?|\d{1,2}bit|[xh]26[45]|hevc|xvid|divx|blu-?ray|b[dr]rip|remux|web-?(?:dl|rip)|hdtv|hdrip|dvd(?:rip|scr)?|aac|ac3|dts|ddp?\d?|atmos|truehd|repack|extended|unrated|remastered|imax)(?:-\w+)?$/i;
+
+// How a video file's name gives its season and episode: S01E02, s1e2, or 1x02.
+const EPISODE_MARKS = [
+  /(?:^|[^a-z0-9])s(\d{1,3})[ ._-]?e(\d{1,4})(?![0-9])/i,
+  /(?:^|[^a-z0-9])(\d{1,2})x(\d{1,3})(?![0-9])/i,
+];
+
+// How a folder is named for the season it holds: Season 1, Series 1, or S1;
+// or Specials, for season 0. A file in one is numbered by the first word of
+// its name that is a number, or E, Ep, or Episode and one.
+const SEASON_FOLDER = /^(?:season|series|s)[ ._-]*(\d{1,3})$/i;
+const SPECIALS_FOLDER = /^specials?$/i;
+const EPISODE_WORD = /^(?:e|ep|episode)?(\d{1,4})$/i;
+
+// How a series' name ends in the year it first aired, as "Doctor Who 2005"
+// or "Doctor Who (2005)" do.
+const NAMED_YEAR = /^(.*?)[\s([]*((?:19|20)\d\d)[)\]]?$/;
+
+// How often an import is asked after.
 const IMPORT_POLL_SECONDS = 1;
+
+// What a 503 that does not say is waited for, and how many are waited out
+// before the answer is given up on.
 const DEFAULT_RETRY_SECONDS = 5;
 const MAX_WAITS = 6;
+
+// How many times a picture is asked for before it is given up on.
 const POSTER_TRIES = 3;
 
+// A content id, plain or carrying the key of a bundle stored encrypted (HttpApi 5).
 const CONTENT_ID = /^[a-z0-9-]+\/[0-9a-f]+(?:\/[A-Za-z0-9:-]+\/[0-9a-f]+)?$/;
 
 const state = {
+  // Whether this browser is on the node's own machine (HttpApi 2.4).
   local: false,
+  // Whoever is signed in (HttpApi 11.4), whose own series are kept, or null,
+  // for whom none are.
   owner: null,
+  // The series open, the folder of the season chosen in it, and the path of
+  // the episode chosen in it: its season's folder, then its own.
   series: null,
-  selectedSeason: null,
-  selectedEpisode: null,
+  season: null,
+  selected: null,
+  // The still taken while editing: its bytes, as base64, and a URL showing it.
+  poster: null,
+  // Whether the person left fullscreen while the episode chosen played.
+  leftFullscreen: false,
+  // How many episodes are being imported, each of which the page itself adds
+  // to its series once the node has stored its file.
   imports: 0,
 };
 
-function byId(id) { return document.getElementById(id); }
+function byId(id) {
+  return document.getElementById(id);
+}
 
 function make(tag, text, className) {
   const node = document.createElement(tag);
-  if (text !== undefined && text !== null) node.textContent = String(text);
-  if (className) node.className = className;
+
+  if (text !== undefined && text !== null) {
+    node.textContent = String(text);
+  }
+
+  if (className) {
+    node.className = className;
+  }
+
   return node;
 }
 
@@ -474,18 +737,57 @@ function show(element, message, isError = false) {
   element.hidden = !message;
 }
 
-function sleep(seconds) { return new Promise((resolve) => setTimeout(resolve, seconds * 1000)); }
-function isObject(value) { return typeof value === "object" && value !== null && !Array.isArray(value); }
-function isText(value) { return typeof value === "string" && value !== ""; }
-function isShown(value) { return isText(value) || (typeof value === "number" && Number.isFinite(value)); }
-function plural(count, one, many) { return count === 1 ? `1 ${one}` : `${count} ${many}`; }
+function sleep(seconds) {
+  return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+}
 
+function isObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isText(value) {
+  return typeof value === "string" && value !== "";
+}
+
+// Whether a value from a series', a season's, or an episode's JSON is one this
+// page shows.
+function isShown(value) {
+  return isText(value) || (typeof value === "number" && Number.isFinite(value));
+}
+
+// Whether `value` is a season's or an episode's number.
+function isNumber(value) {
+  return Number.isInteger(value) && value >= 0;
+}
+
+// Whether `text` is a day, as YYYY-MM-DD.
+function isDay(text) {
+  return typeof text === "string" && /^\d{4}-\d{2}-\d{2}$/.test(text);
+}
+
+function plural(count, one, many) {
+  return count === 1 ? `1 ${one}` : `${count} ${many}`;
+}
+
+// The whole words of `text`, in lower case: its runs of letters and digits.
 function wordsOf(text) {
   return text.toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter(isText);
 }
 
+// A series' name as series are found by it, ignoring case.
+function nameKey(name) {
+  return name.toLowerCase();
+}
+
+function sameName(one, other) {
+  return nameKey(one) === nameKey(other);
+}
+
 function formatDuration(seconds) {
-  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) return "";
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
+    return "";
+  }
+
   const whole = Math.round(seconds);
   const hours = Math.floor(whole / 3600);
   const minutes = Math.floor(whole / 60) % 60;
@@ -493,12 +795,60 @@ function formatDuration(seconds) {
   return hours ? `${hours}:${two(minutes)}:${two(whole % 60)}` : `${minutes}:${two(whole % 60)}`;
 }
 
+// Seconds, from "2850", "47:30", or "1:23:45": null for nothing, NaN for anything else.
+function parseDuration(text) {
+  if (text === "") {
+    return null;
+  }
+
+  if (!/^\d+(?::[0-5]?\d){0,2}$/.test(text)) {
+    return NaN;
+  }
+
+  return text.split(":").reduce((total, part) => total * 60 + Number(part), 0);
+}
+
+// The day `day`, as YYYY-MM-DD, as the browser shows a date; "" for none.
+function dateText(day) {
+  if (!isDay(day)) {
+    return isText(day) ? day : "";
+  }
+
+  const [year, month, date] = day.split("-").map(Number);
+  return new Date(year, month - 1, date).toLocaleDateString();
+}
+
+// The year of the day `day`, as TMDB gives it, as YYYY-MM-DD; undefined if none.
+function yearOf(day) {
+  return isText(day) && /^\d{4}/.test(day) ? Number(day.slice(0, 4)) : undefined;
+}
+
+function formatSize(bytes) {
+  if (typeof bytes !== "number") {
+    return "";
+  }
+
+  for (const [unit, size] of [["GB", 1e9], ["MB", 1e6], ["kB", 1e3]]) {
+    if (bytes >= size) {
+      return `${(bytes / size).toFixed(1)} ${unit}`;
+    }
+  }
+
+  return `${bytes} B`;
+}
+
+// How long `headers` say to wait before asking again (HttpApi 5.2): at least a
+// second, so that a Retry-After of 0 does not ask again at once, and the
+// default when they do not say.
 function retryAfter(headers) {
   const seconds = Number.parseInt(headers.get("Retry-After") || "", 10);
   return Number.isFinite(seconds) && seconds >= 0 ? Math.max(seconds, 1) : DEFAULT_RETRY_SECONDS;
 }
 
+// The node could not be reached at all.
 class Unreachable extends Error {}
+
+// An answer that is not what was asked for, saying what the node said of it.
 class Refusal extends Error {
   constructor(result) {
     const problem = isObject(result.value) ? result.value : {};
@@ -507,327 +857,739 @@ class Refusal extends Error {
   }
 }
 
+// One request to the node. `value` is the body read as JSON, or null. What
+// changes is never answered from the browser's cache; what a bundle holds
+// never changes, and may be.
 async function call(method, path, { body, headers = {}, cache = "no-store" } = {}) {
   const init = { method, cache, headers: { ...headers } };
+
   if (body !== undefined) {
     init.headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(body);
   }
+
   let response;
+
   try {
     response = await fetch(path, init);
   } catch (error) {
     throw new Unreachable(`The node could not be reached: ${error.message}`);
   }
+
   const text = await response.text();
   let value = null;
-  try { value = text ? JSON.parse(text) : null; } catch (error) { value = null; }
+
+  try {
+    value = text ? JSON.parse(text) : null;
+  } catch (error) {
+    value = null;
+  }
+
   return { status: response.status, ok: response.ok, headers: response.headers, value };
 }
 
+// As call, but waiting out the 503s the node answers while it fetches what it lacks.
 async function patiently(method, path, options) {
   for (let waits = 0; ; waits += 1) {
     const result = await call(method, path, options);
-    if (result.status !== 503 || waits >= MAX_WAITS) return result;
+
+    if (result.status !== 503 || waits >= MAX_WAITS) {
+      return result;
+    }
+
     await sleep(retryAfter(result.headers));
   }
 }
 
-function encodedPath(path) { return path.split("/").map(encodeURIComponent).join("/"); }
-function entryUrl(bundle, path) { return `${DATA}${bundle}/${encodedPath(path)}`; }
+function encodedPath(path) {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
 
+// Where the entry at `path` in `bundle` is read. The empty path is the
+// bundle's root, which needs its "/" (HttpApi 12.1).
+function entryUrl(bundle, path) {
+  return `${DATA}${bundle}/${encodedPath(path)}`;
+}
+
+// The JSON at `path` in `bundle`: a file, or a directory's entries.
 async function readEntry(bundle, path) {
   const result = await patiently("GET", entryUrl(bundle, path), { cache: "default" });
-  if (!result.ok) throw new Refusal(result);
-  if (result.value === null) throw new Error(`${path} is not JSON.`);
+
+  if (!result.ok) {
+    throw new Refusal(result);
+  }
+
+  if (result.value === null) {
+    throw new Error(`${path} is not JSON.`);
+  }
+
   return result.value;
 }
 
-function parseId(text) {
-  let id = text.trim();
-  const at = id.indexOf(DATA);
-  if (at >= 0) id = id.slice(at + DATA.length);
-  id = id.replace(/\/+$/, "");
-  return CONTENT_ID.test(id) ? id : null;
+// The folder an episode is added to a season in, named by its bundle's hash.
+function folderOf(episode) {
+  return episode.split("/")[1].slice(0, FOLDER_DIGITS);
 }
 
+// The folder of season `number` in a series: S01, S02, and S00 for specials.
+function seasonFolder(number) {
+  return `S${String(number).padStart(2, "0")}`;
+}
+
+function seasonLabel(number) {
+  return number === SPECIALS ? "Specials" : `Season ${number}`;
+}
+
+// The episode numbers `info` gives, those of the episodes its file holds.
+function episodeNumbers(info) {
+  return info && Array.isArray(info.episodes) ? info.episodes.filter(isNumber) : [];
+}
+
+// The episodes `numbers` of season `season`, as a sentence names them.
+function episodeText(season, numbers) {
+  return `${numbers.length === 1 ? "episode" : "episodes"} ${numbers.join(", ")} of ${seasonLabel(season)}`;
+}
+
+// `value` as a JSON file holds it, `keys` first, in their order, then any
+// others it has, leaving out any undefined.
+function jsonText(keys, value) {
+  const ordered = {};
+
+  for (const key of [...keys, ...Object.keys(value)]) {
+    if (!(key in ordered) && value[key] !== undefined) {
+      ordered[key] = value[key];
+    }
+  }
+
+  return `${JSON.stringify(ordered, null, 2)}\n`;
+}
+
+// `value` without its members that are undefined.
+function defined(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, each]) => each !== undefined));
+}
+
+// Makes a bundle (HttpApi 12.3) and returns its id.
 async function makeBundle(edit) {
   const result = await patiently("POST", BUNDLES, { body: edit });
+
   if (!result.ok || !isObject(result.value) || typeof result.value.bundle !== "string") {
     throw new Refusal(result);
   }
+
   return result.value.bundle;
 }
 
+// One season of a series: its folder, what its season.json holds, or null
+// where that could not be read, and what is known of each episode, by its
+// folder, in episode order, or null where that could not be read.
+class Season {
+  constructor(folder, details, episodes) {
+    this.folder = folder;
+    this.details = details;
+    this.episodes = episodes;
+  }
+
+  // The season in `folder` of the series `bundle`.
+  static async read(bundle, folder) {
+    let details = null;
+
+    try {
+      const file = await readEntry(bundle, `${folder}/${SEASON_FILE}`);
+      details = isObject(file) && Array.isArray(file.order) && file.order.every(isText) ? file : null;
+
+      if (!details) {
+        console.warn(`The ${SEASON_FILE} of ${folder} is not a season's.`);
+      }
+    } catch (error) {
+      console.warn(`The ${SEASON_FILE} of ${folder} could not be read: ${error.message}`);
+    }
+
+    const order = details ? [...new Set(details.order)] : [];
+    const infos = await Promise.all(order.map((episode) => Season.info(bundle, `${folder}/${episode}`)));
+    return new Season(folder, details, new Map(order.map((episode, index) => [episode, infos[index]])));
+  }
+
+  // What is known of the episode at `path` of `bundle`, or null.
+  static async info(bundle, path) {
+    try {
+      const info = await readEntry(bundle, `${path}/${INFO_FILE}`);
+      return isObject(info) ? info : null;
+    } catch (error) {
+      console.warn(`The ${INFO_FILE} of ${path} could not be read: ${error.message}`);
+      return null;
+    }
+  }
+
+  // Its number, as its season.json gives it, or else as its folder's name does.
+  get number() {
+    if (this.details && isNumber(this.details.number)) {
+      return this.details.number;
+    }
+
+    const named = /^S(\d+)$/.exec(this.folder);
+    return named ? Number(named[1]) : NaN;
+  }
+
+  label() {
+    return seasonLabel(this.number);
+  }
+
+  // Its name, where it has one other than its label.
+  name() {
+    const name = this.details && this.details.name;
+    return isText(name) && name !== this.label() ? name : "";
+  }
+
+  order() {
+    return [...this.episodes.keys()];
+  }
+
+  text() {
+    return jsonText(SEASON_KEYS, { ...this.details, order: this.order() });
+  }
+
+  with(details, episodes) {
+    return new Season(this.folder, details, episodes);
+  }
+}
+
+// The first episode number `info` gives, by which an episode is placed in its season.
+function firstEpisode(info) {
+  const numbers = episodeNumbers(info);
+  return numbers.length ? Math.min(...numbers) : Infinity;
+}
+
+// `episodes`, with the episode in `folder`, known as `info`, at its place in
+// episode order.
+function inEpisodeOrder(episodes, folder, info) {
+  const entries = [...episodes].filter(([each]) => each !== folder);
+  const at = entries.findIndex(([, each]) => firstEpisode(each) > firstEpisode(info));
+  entries.splice(at < 0 ? entries.length : at, 0, [folder, info]);
+  return new Map(entries);
+}
+
+// `seasons` in season order, with specials last.
+function inSeasonOrder(seasons) {
+  const rank = (season) => (season.number === SPECIALS || Number.isNaN(season.number) ? Infinity : season.number);
+  return [...seasons].sort((one, other) => rank(one) - rank(other));
+}
+
+// One version of a series: its bundle, what its series.json holds, and each
+// season it holds, in season order.
 class Series {
-  constructor(name, bundle, data) {
+  constructor(name, bundle, details, seasons) {
     this.name = name;
     this.bundle = bundle;
-    this.data = data; // decoded series.json
-    this.seasonsMap = new Map(); // seasonNumber -> { seasonJson, episodes: Map(epFolder -> info) }
+    this.details = details;
+    this.seasons = seasons;
   }
 
+  // The series `bundle` holds, named `name`, or as its series.json names it.
   static async read(bundle, name) {
-    const file = await readEntry(bundle, "series.json");
-    if (!isObject(file) || !Array.isArray(file.seasons)) {
-      throw new Error("That bundle's series.json is not valid.");
+    const file = await readEntry(bundle, SERIES_FILE);
+
+    if (!isObject(file) || !Array.isArray(file.seasons) || !file.seasons.every(isText)) {
+      throw new Error(`That bundle's ${SERIES_FILE} is not a series'.`);
     }
-    const series = new Series(name || (isText(file.name) ? file.name : "Untitled"), bundle, file);
-    
-    for (const seasonFolder of file.seasons) {
-      try {
-        const seasonJson = await readEntry(bundle, `${seasonFolder}/season.json`);
-        const seasonNum = typeof seasonJson.number === "number" ? seasonJson.number : 1;
-        const order = Array.isArray(seasonJson.order) ? seasonJson.order : [];
-        const episodes = new Map();
-        for (const epFolder of order) {
-          try {
-            const info = await readEntry(bundle, `${seasonFolder}/${epFolder}/info.json`);
-            episodes.set(epFolder, info);
-          } catch (e) {
-            episodes.set(epFolder, null);
-          }
-        }
-        series.seasonsMap.set(seasonFolder, { seasonJson, episodes, order });
-      } catch (e) {
-        console.warn(`Failed reading season ${seasonFolder}: ${e.message}`);
+
+    const folders = [...new Set(file.seasons)];
+    const seasons = await Promise.all(folders.map((folder) => Season.read(bundle, folder)));
+    return new Series(name || (isText(file.name) ? file.name : "Untitled"), bundle, file, seasons);
+  }
+
+  url(path) {
+    return entryUrl(this.bundle, path);
+  }
+
+  // Its TMDB id, or undefined if it was made with none.
+  tmdbId() {
+    return Number.isInteger(this.details.tmdb_id) ? this.details.tmdb_id : undefined;
+  }
+
+  season(folder) {
+    return this.seasons.find((season) => season.folder === folder) || null;
+  }
+
+  // What is known of the episode at `path`, or null.
+  info(path) {
+    const [folder, episode] = path.split("/");
+    const season = this.season(folder);
+    return (season && season.episodes.get(episode)) || null;
+  }
+
+  holds(path) {
+    const [folder, episode] = path.split("/");
+    const season = this.season(folder);
+    return Boolean(season && season.episodes.has(episode));
+  }
+
+  // The paths of the episodes of `seasons`, in season order, and in episode order within each.
+  paths(seasons = this.seasons) {
+    return seasons.flatMap((season) => season.order().map((episode) => `${season.folder}/${episode}`));
+  }
+
+  title(path) {
+    const info = this.info(path);
+    return (info && (isText(info.title) ? info.title : info.video)) || path.split("/")[1];
+  }
+
+  // The path of the episode of season `season` numbered as any of `numbers`,
+  // but the one at `except`; null if it holds none.
+  holding(season, numbers, except = null) {
+    const held = this.season(seasonFolder(season));
+
+    for (const path of held ? this.paths([held]) : []) {
+      if (path !== except && episodeNumbers(this.info(path)).some((number) => numbers.includes(number))) {
+        return path;
       }
     }
-    return series;
+
+    return null;
   }
 
-  url(seasonFolder, epFolder, file) {
-    return entryUrl(this.bundle, `${seasonFolder}/${epFolder}/${file}`);
-  }
-
-  seasonNumbers() {
-    const folders = [...this.seasonsMap.keys()];
-    folders.sort((a, b) => {
-      const numA = this.seasonsMap.get(a).seasonJson.number ?? 0;
-      const numB = this.seasonsMap.get(b).seasonJson.number ?? 0;
-      if (numA === 0) return 1;
-      if (numB === 0) return -1;
-      return numA - numB;
+  // The paths of the episodes of every season, in order, whose title and
+  // facts, as the list shows them, hold every one of `words` as a whole word.
+  matching(words) {
+    return this.paths().filter((path) => {
+      const own = new Set(wordsOf(`${this.title(path)} ${facts(this.info(path))}`));
+      return words.every((word) => own.has(word));
     });
-    return folders;
+  }
+
+  count() {
+    return this.seasons.reduce((total, season) => total + season.episodes.size, 0);
+  }
+
+  // Its series.json, holding `details` and listing `seasons`.
+  text(details = this.details, seasons = this.seasons) {
+    return jsonText(SERIES_KEYS, { ...details, seasons: seasons.map((season) => season.folder) });
   }
 
   entry() {
-    return { name: this.name, bundle: this.bundle, changed: new Date().toISOString() };
+    return { name: this.name, bundle: this.bundle };
+  }
+
+  with(bundle, details, seasons) {
+    return new Series(this.name, bundle, details, seasons);
   }
 }
 
+function isEntry(entry) {
+  return isObject(entry) && isText(entry.name) && isText(entry.bundle);
+}
+
+// The ids a search of the drop `target` finds (HttpApi 9.7). The node finds
+// only what shares enough leading bits with its hash to have been placed there.
 async function foundAt(target) {
   const search = await call("GET", `${DROPS}/${encodeURIComponent(target)}`);
-  if (!search.ok || !isObject(search.value) || !Array.isArray(search.value.results)) {
+  const answered = search.ok && isObject(search.value) && isText(search.value.target) &&
+    Array.isArray(search.value.results);
+
+  if (!answered) {
     throw new Refusal(search);
   }
+
   return search.value.results.filter((id) => isText(id) && CONTENT_ID.test(id));
 }
 
-class SeriesKept {
-  constructor(list) {
-    this.list = list;
+// The session ended while the page was open (HttpApi 11.4).
+class SessionEnded extends Error {
+  constructor() {
+    super("Your session has ended. Reload the page, and sign in again.");
   }
+}
 
-  static target() {
-    return `${SERIES_PREFIX}${state.owner.id}`;
+// The series kept for whoever is signed in, each by name at its newest
+// version: a version at their drop, or more than one, made apart, on two
+// nodes say, and merged as they are read, each series at the version that
+// last changed it. No series are kept for whoever is not signed in.
+class Kept {
+  constructor(list, versions = []) {
+    this.list = list;
+    // The ids of the person's versions read, which the next replaces.
+    this.versions = versions;
   }
 
   static async read() {
-    if (!state.owner) return new SeriesKept([]);
-    const ids = await foundAt(SeriesKept.target());
-    const lists = await Promise.all(ids.map((id) => SeriesKept.version(id)));
+    if (!state.owner) {
+      return new Kept([]);
+    }
+
+    const ids = await foundAt(Kept.target());
+    const lists = await Promise.all(ids.map((id) => Kept.version(id)));
     const merged = new Map();
 
     ids.forEach((id, index) => {
       for (const entry of lists[index] || []) {
-        const held = merged.get(entry.name);
+        const held = merged.get(nameKey(entry.name));
         const later = !held || entry.changed > held.entry.changed ||
           (entry.changed === held.entry.changed && id < held.id);
-        if (later) merged.set(entry.name, { entry, id });
+
+        if (later) {
+          merged.set(nameKey(entry.name), { entry, id });
+        }
       }
     });
 
     const list = [...merged.values()].map((held) => held.entry);
-    list.sort((a, b) => a.name.localeCompare(b.name));
-    return new SeriesKept(list);
+    list.sort((one, other) => one.name.localeCompare(other.name));
+    return new Kept(list, ids.filter((id, index) => lists[index] !== null));
   }
 
+  // The drop of whoever is signed in.
+  static target() {
+    return `${SERIES_PREFIX}${state.owner.id}`;
+  }
+
+  // The series the version at the drop `id` lists, opened with the key of
+  // whoever is signed in (HttpApi 11.6); null if it is not held, or is not a
+  // version they signed.
   static async version(id) {
-    const result = await patiently("GET", `${ENCRYPTED}${id}`);
-    if (!result.ok || !isObject(result.value) || result.value.signer !== state.owner.id || !isText(result.value.contents)) {
+    const contents = await openVersion(id);
+
+    if (!isObject(contents) || !Array.isArray(contents.series)) {
+      console.warn(`Passing over ${id}: it is no version of your series.`);
       return null;
     }
-    try {
-      const parsed = JSON.parse(result.value.contents);
-      return Array.isArray(parsed.series) ? parsed.series : null;
-    } catch (e) {
-      return null;
-    }
+
+    return contents.series.filter((entry) => isEntry(entry) && isText(entry.changed));
   }
 
+  // Places `list` as a version of the person's series, signed by them and
+  // encrypted for them, each series it changes marked when, then blocks the
+  // versions it replaces (HttpApi 5.5), so that they do not push the newest
+  // out of a search.
+  async place(list) {
+    const before = new Map(this.list.map((entry) => [nameKey(entry.name), entry]));
+    const now = new Date().toISOString();
+    const series = list.map((entry) => {
+      const held = before.get(nameKey(entry.name));
+      return held && held.bundle === entry.bundle ? held : { ...entry, changed: now };
+    });
+    await placeVersion(Kept.target(), { series });
+
+    for (const id of this.versions) {
+      const shunned = await call("DELETE", `${DATA}${id}`);
+
+      if (!shunned.ok) {
+        console.warn(`The replaced version ${id} was not shunned: ${new Refusal(shunned).message}`);
+      }
+    }
+
+    return new Kept(series);
+  }
+
+  // Keeps the list `change` makes of the one kept, read again for it.
+  static async change(change) {
+    if (!state.owner) {
+      throw new Error("No one is signed in, so no series are kept. Sign in on the home page.");
+    }
+
+    const kept = await Kept.read();
+    return kept.place(change(kept.list));
+  }
+
+  // The series named `name`, ignoring case, or null.
   find(name) {
-    return this.list.find((entry) => entry.name === name) || null;
+    return this.list.find((entry) => sameName(entry.name, name)) || null;
   }
 }
 
-async function placeSeriesVersion(seriesList) {
+// Places a version holding `contents` at the drop `target`, signed by
+// whoever is signed in and encrypted for them (HttpApi 11.5, 11.6), and
+// returns its id.
+async function placeVersion(target, contents) {
   const result = await patiently("POST", SIGNED, {
     body: {
-      target: SeriesKept.target(),
-      text: JSON.stringify({ series: seriesList }),
-      seconds: 1,
-      minimum_bits: 24,
+      target,
+      text: JSON.stringify(contents),
+      seconds: DROP_SECONDS,
+      minimum_bits: DROP_MINIMUM_BITS,
       encrypt: { for: state.owner.id },
     },
   });
+
+  if (result.status === 401) {
+    throw new SessionEnded();
+  }
+
+  if (result.status === 403) {
+    throw new Error("Signed in with your fallback password, nothing you keep is changed until your fallback takes over.");
+  }
+
   if (!result.ok || !isObject(result.value) || !isText(result.value.id)) {
     throw new Refusal(result);
   }
+
   return result.value.id;
 }
 
-function recallSeries() {
+// What the version at the drop `id` holds, as JSON, opened with the key of
+// whoever is signed in (HttpApi 11.6); null if it is not held, or is not a
+// version they signed.
+async function openVersion(id) {
+  const result = await patiently("GET", `${ENCRYPTED}${id}`);
+
+  if (result.status === 401) {
+    throw new SessionEnded();
+  }
+
+  const value = result.value;
+
+  if (!result.ok || !isObject(value) || value.signer !== state.owner.id || !isText(value.contents)) {
+    console.warn(`Passing over ${id}: it is no version of yours held here.`);
+    return null;
+  }
+
   try {
-    return JSON.parse(localStorage.getItem(REMEMBERED_SERIES) || "null");
-  } catch (e) {
+    return JSON.parse(value.contents);
+  } catch (error) {
     return null;
   }
 }
 
-function rememberSeries(entry) {
+function recall() {
   try {
-    localStorage.setItem(REMEMBERED_SERIES, JSON.stringify(entry));
-  } catch (e) {}
+    const entry = JSON.parse(localStorage.getItem(REMEMBERED) || "null");
+    return isEntry(entry) ? entry : null;
+  } catch (error) {
+    return null;
+  }
 }
 
-async function showChooser() {
-  const chooser = byId("chooser");
-  const status = byId("chooser-state");
-  const list = byId("chooser-list");
-  chooser.hidden = false;
-  list.replaceChildren();
-  show(status, "Asking the node…");
-
-  let kept;
+function remember(entry) {
   try {
-    kept = await SeriesKept.read();
-  } catch (e) {
-    show(status, `Series could not be read: ${e.message}`, true);
-    return;
-  }
-
-  list.replaceChildren(...kept.list.map((entry) => {
-    const item = make("li");
-    const btn = make("button", entry.name, "secondary");
-    btn.type = "button";
-    if (state.series && state.series.name === entry.name) btn.setAttribute("aria-current", "true");
-    btn.addEventListener("click", () => openSeries(entry));
-    item.append(btn);
-    return item;
-  }));
-
-  if (kept.list.length > 0) {
-    show(status, "Choose a series.");
-  } else if (state.owner) {
-    show(status, "You keep no series yet. Make one.");
-  } else {
-    show(status, "Sign in on the home page to manage series.");
+    localStorage.setItem(REMEMBERED, JSON.stringify(entry));
+  } catch (error) {
+    console.warn(`This browser cannot remember the series open: ${error.message}`);
   }
 }
 
-async function openSeries(entry) {
-  const status = byId("page-state");
-  show(status, `Reading “${entry.name}”…`);
+function forget() {
   try {
-    state.series = await Series.read(entry.bundle, entry.name);
-    rememberSeries(entry);
-    showLibrary();
-  } finally {
-    show(status, "");
+    localStorage.removeItem(REMEMBERED);
+  } catch (error) {
+    console.warn(`This browser cannot forget the series open: ${error.message}`);
   }
 }
 
-function showLibrary() {
-  closePlayer();
-  byId("chooser").hidden = true;
-  byId("library").hidden = false;
-  const series = state.series;
-  byId("series-name").textContent = series.name;
-  
-  for (const el of document.querySelectorAll("#library .signed-in-only")) {
-    el.hidden = !state.owner;
+// The season last chosen in each series this browser remembers, by the
+// series' name, ignoring case.
+function rememberedSeasons() {
+  try {
+    const seasons = JSON.parse(localStorage.getItem(REMEMBERED_SEASONS) || "{}");
+    return isObject(seasons) ? seasons : {};
+  } catch (error) {
+    return {};
   }
-
-  const seasonFolders = series.seasonNumbers();
-  if (seasonFolders.length > 0 && (!state.selectedSeason || !seasonFolders.includes(state.selectedSeason))) {
-    state.selectedSeason = seasonFolders[0];
-  }
-
-  renderSeasonsBar();
-  renderEpisodesGrid();
 }
 
-function renderSeasonsBar() {
-  const bar = byId("seasons-bar");
-  const series = state.series;
-  const seasonFolders = series.seasonNumbers();
-  
-  bar.replaceChildren(...seasonFolders.map((folder) => {
-    const data = series.seasonsMap.get(folder);
-    const btn = make("button", data.seasonJson.name || `Season ${data.seasonJson.number}`, "secondary");
-    btn.type = "button";
-    btn.setAttribute("aria-selected", String(folder === state.selectedSeason));
-    btn.addEventListener("click", () => {
-      state.selectedSeason = folder;
-      renderSeasonsBar();
-      renderEpisodesGrid();
-    });
-    return btn;
-  }));
-  bar.hidden = seasonFolders.length === 0;
+function recallSeason(name) {
+  const folder = rememberedSeasons()[nameKey(name)];
+  return isText(folder) ? folder : null;
 }
 
-function renderEpisodesGrid() {
-  const grid = byId("episodes-grid");
-  const series = state.series;
-  const season = series.seasonsMap.get(state.selectedSeason);
-  
-  if (!season) {
-    grid.replaceChildren();
-    byId("season-header").hidden = true;
-    return;
+function rememberSeason(name, folder) {
+  const seasons = rememberedSeasons();
+  seasons[nameKey(name)] = folder;
+
+  try {
+    localStorage.setItem(REMEMBERED_SEASONS, JSON.stringify(seasons));
+  } catch (error) {
+    console.warn(`This browser cannot remember the season chosen: ${error.message}`);
   }
+}
 
-  byId("season-name").textContent = season.seasonJson.name || `Season ${season.seasonJson.number}`;
-  byId("season-description").textContent = season.seasonJson.description || "";
-  byId("season-header").hidden = !season.seasonJson.name && !season.seasonJson.description;
+// A series was changed elsewhere since this page read it.
+class Conflict extends Error {}
 
-  const items = season.order.map((epFolder) => {
-    const info = season.episodes.get(epFolder) || {};
-    const item = make("li");
-    const pick = make("button", null, "pick");
-    pick.type = "button";
-    pick.dataset.folder = epFolder;
-    
-    const poster = info.poster ? make("img", null, "poster") : make("span", "▶", "poster");
-    if (info.poster) {
-      poster.src = series.url(state.selectedSeason, epFolder, info.poster);
+// Keeps `next` as its series' newest version: `previous` is the version it
+// was made from, or null for a new series.
+async function keepVersion(previous, next) {
+  await Kept.change((list) => {
+    const index = list.findIndex((entry) => sameName(entry.name, next.name));
+
+    if (previous === null && index >= 0) {
+      throw new Error(`You already keep a series named “${list[index].name}”.`);
     }
-    
-    const caption = make("span", null, "caption");
-    const epNum = Array.isArray(info.episodes) ? info.episodes[0] : 1;
-    caption.append(make("strong", `E${epNum}: ${info.title || epFolder}`), make("span", formatDuration(info.duration_seconds), "note"));
-    
-    pick.append(poster, caption);
-    pick.addEventListener("click", () => selectEpisode(state.selectedSeason, epFolder));
-    item.append(pick);
-    return item;
-  });
 
-  grid.replaceChildren(...items);
+    if (index < 0) {
+      return [...list, next.entry()];
+    }
+
+    if (list[index].bundle !== previous.bundle) {
+      throw new Conflict(`“${next.name}” was changed elsewhere since this page read it.`);
+    }
+
+    return list.map((entry, at) => (at === index ? next.entry() : entry));
+  });
+  remember(next.entry());
 }
+
+// Changes to series are made one at a time, each from the version the one
+// before it made.
+let changing = Promise.resolve();
+
+function serially(action) {
+  const run = changing.then(action);
+  changing = run.catch(() => undefined);
+  return run;
+}
+
+// The newest version this page knows of the series named `name`.
+async function newest(name) {
+  if (state.series && sameName(state.series.name, name)) {
+    return state.series;
+  }
+
+  const entry = (await Kept.read()).find(name);
+
+  if (!entry) {
+    throw new Error(`You no longer keep a series named “${name}”.`);
+  }
+
+  return Series.read(entry.bundle, entry.name);
+}
+
+// Makes a new version of `series`, keeps it as the newest, and returns it.
+// Its series.json, and each season's season.json, is written again only if
+// it changed. The episode `moved`, from its path to another, as [from, to],
+// stays chosen if it was.
+async function changeSeries(
+  series, { add = {}, remove = [], details = series.details, seasons = series.seasons, moved = null },
+) {
+  const additions = { ...add };
+
+  if (series.text(details, seasons) !== series.text()) {
+    additions[SERIES_FILE] = { text: series.text(details, seasons) };
+  }
+
+  for (const season of seasons) {
+    const before = series.season(season.folder);
+
+    if (season.details !== null && (!before || before.text() !== season.text())) {
+      additions[`${season.folder}/${SEASON_FILE}`] = { text: season.text() };
+    }
+  }
+
+  const bundle = await makeBundle({ base: series.bundle, add: additions, remove });
+  const next = series.with(bundle, details, seasons);
+
+  if (bundle !== series.bundle) {
+    try {
+      await keepVersion(series, next);
+    } catch (error) {
+      if (!(error instanceof Conflict)) {
+        throw error;
+      }
+
+      if (state.series && sameName(state.series.name, series.name)) {
+        await reopen(series.name);
+      }
+
+      throw new Error(`${error.message} Its newest version has been read, so make the change again.`);
+    }
+  }
+
+  if (state.series && sameName(state.series.name, next.name)) {
+    if (moved && state.selected === moved[0]) {
+      const video = byId("video");
+      state.selected = moved[1];
+
+      if (isText(video.dataset.source)) {
+        video.dataset.source = `${moved[1]}${video.dataset.source.slice(moved[0].length)}`;
+      }
+
+      state.season = moved[1].split("/")[0];
+      rememberSeason(next.name, state.season);
+    }
+
+    state.series = next;
+    renderLibrary();
+  }
+
+  return next;
+}
+
+// Makes a series named `name`, with no seasons, and with what TMDB gave of
+// it, `found`, if anything, and keeps it.
+async function makeSeries(name, found = null) {
+  const details = { ...(found ? defined(found.details) : {}), name };
+  const add = {};
+
+  if (found && found.poster) {
+    details.poster = POSTER_FILE;
+    add[POSTER_FILE] = { base64: found.poster };
+  }
+
+  add[SERIES_FILE] = { text: jsonText(SERIES_KEYS, { ...details, seasons: [] }) };
+  const bundle = await makeBundle({ encrypted: true, add });
+  const series = new Series(name, bundle, { ...details, seasons: [] }, []);
+  await keepVersion(null, series);
+  return series;
+}
+
+// `seasons`, with the episode at `path`, known as `info`, at its place in its
+// season: the season made first, with what TMDB gave of it, `made`, if
+// anything, if none is held. A season's poster made goes into `add`.
+function seasonsWith(seasons, add, path, info, made) {
+  const [folder, episode] = path.split("/");
+  const held = seasons.find((season) => season.folder === folder);
+
+  if (held && held.details === null) {
+    throw new Error(`What is known of ${held.label()} could not be read, so it is not changed. Reload the page, and try again.`);
+  }
+
+  if (held) {
+    const episodes = inEpisodeOrder(held.episodes, episode, info);
+    return seasons.map((season) => (season === held ? held.with(held.details, episodes) : season));
+  }
+
+  const details = { ...(made ? defined(made.details) : {}), number: info.season };
+
+  if (made && made.poster) {
+    details.poster = POSTER_FILE;
+    add[`${folder}/${POSTER_FILE}`] = { base64: made.poster };
+  }
+
+  return inSeasonOrder([...seasons, new Season(folder, details, new Map([[episode, info]]))]);
+}
+
+// `seasons` without the episode at `path`, and what is removed for it: its
+// folder, or its season's, if the season holds no other.
+function seasonsWithout(seasons, path) {
+  const [folder, episode] = path.split("/");
+  const held = seasons.find((season) => season.folder === folder);
+
+  if (held.episodes.size <= 1) {
+    return { seasons: seasons.filter((season) => season !== held), remove: [folder] };
+  }
+
+  const episodes = new Map(held.episodes);
+  episodes.delete(episode);
+  return { seasons: seasons.map((season) => (season === held ? held.with(held.details, episodes) : season)), remove: [path] };
+}
+
+// Adds the episode bundle `episode`, known as `info`, to `series`, in a
+// folder of its own in its season's, the season made first, with what TMDB
+// gave of it, `made`, if the series holds none of its number. One whose
+// numbers the series holds already is not added. Returns the episode's path.
+async function addEpisode(series, episode, info, made = null) {
+  const numbers = episodeNumbers(info);
+  const path = `${seasonFolder(info.season)}/${folderOf(episode)}`;
+
+  if (series.holds(path) || series.holding(info.season, numbers)) {
+    throw new Error(`“${series.name}” already holds ${episodeText(info.season, numbers)}, so this one was not added.`);
+  }
+
+  const add = { [path]: { from: episode, path: "" } };
+  const seasons = seasonsWith(series.seasons, add, path, info, made);
+  await changeSeries(series, { add, seasons });
+  return path;
+}
+
+// Opening a series, and choosing one.
 
 function closePlayer() {
   const video = byId("video");
@@ -836,72 +1598,1532 @@ function closePlayer() {
   video.removeAttribute("poster");
   delete video.dataset.source;
   video.load();
-  state.selectedEpisode = null;
+  stopEditing();
+  state.selected = null;
   byId("video-trouble").hidden = true;
   byId("player-section").hidden = true;
   byId("library").hidden = false;
 }
 
-function selectEpisode(seasonFolder, epFolder) {
-  const series = state.series;
-  const season = series.seasonsMap.get(seasonFolder);
-  const info = season.episodes.get(epFolder);
-  const video = byId("video");
-  const source = info && isText(info.video) ? `${seasonFolder}/${epFolder}/${info.video}` : "";
+// Shows `series`, at the season last chosen in it.
+function showSeries(series) {
+  closePlayer();
+  state.series = series;
+  state.season = null;
+  remember(series.entry());
 
-  state.selectedEpisode = { seasonFolder, epFolder };
+  for (const element of document.querySelectorAll("#library .signed-in-only, #details .signed-in-only")) {
+    element.hidden = !state.owner;
+  }
+
+  // Each series opens with its seasons shown, not the filter's matches.
+  byId("episode-filter").value = "";
+  byId("episode-filter").hidden = true;
+  byId("chooser").hidden = true;
+  show(byId("library-result"), "");
+  renderLibrary();
+  focusEpisode(null);
+}
+
+async function openSeries(entry) {
+  const status = byId("page-state");
+  show(status, `Reading “${entry.name}”…`);
+
+  try {
+    showSeries(await Series.read(entry.bundle, entry.name));
+  } finally {
+    show(status, "");
+  }
+}
+
+// Reads again the newest version kept of the series open, named `name`,
+// leaving the episode chosen open, and any edit to it.
+async function reopen(name) {
+  const entry = (await Kept.read()).find(name);
+
+  if (entry) {
+    state.series = await Series.read(entry.bundle, entry.name);
+    remember(state.series.entry());
+    renderLibrary();
+  }
+}
+
+async function showChooser() {
+  const chooser = byId("chooser");
+  const status = byId("chooser-state");
+  const list = byId("chooser-list");
+  chooser.hidden = false;
+  list.replaceChildren();
+
+  if (!state.owner) {
+    show(status, "No one is signed in, so no series are shown.");
+    return;
+  }
+
+  show(status, "Asking the node…");
+  let kept;
+
+  try {
+    kept = await Kept.read();
+  } catch (error) {
+    show(status, `Your series could not be read: ${error.message}`, true);
+    return;
+  }
+
+  // Each series is shown with its backdrop, which its series.json names.
+  const details = await Promise.all(kept.list.map((entry) => readEntry(entry.bundle, SERIES_FILE).catch((error) => {
+    console.warn(`The ${SERIES_FILE} of “${entry.name}” could not be read: ${error.message}`);
+    return null;
+  })));
+  list.replaceChildren(...kept.list.map((entry, index) => seriesChoice(entry, details[index])));
+  const first = list.querySelector("[aria-pressed=true]") || list.querySelector("button")
+    || chooser.querySelector(".toolbar:not([hidden]) button");
+
+  if (first) {
+    first.focus();
+  }
+
+  show(status, kept.list.length > 0 ? "Choose a series." : "You keep no series yet. Make one.");
+}
+
+function seriesChoice(entry, details) {
+  const item = make("li");
+  const pick = make("button", null, "pick");
+  const text = make("span", null, "caption");
+  const year = isObject(details) && isShown(details.year) ? String(details.year) : "";
+  pick.type = "button";
+  pick.setAttribute("aria-pressed", String(Boolean(state.series && sameName(state.series.name, entry.name))));
+  text.append(make("strong", entry.name), make("span", year, "note"));
+  pick.append(posterImage(isObject(details) && isText(details.poster) ? entryUrl(entry.bundle, details.poster) : null), text);
+  pick.addEventListener("click", () => perform(pick, byId("chooser-state"), () => openSeries(entry)));
+  item.append(pick);
+  return item;
+}
+
+// The series and its episodes.
+
+function renderLibrary() {
+  const series = state.series;
+  const focused = byId("episodes").contains(document.activeElement) ? document.activeElement.dataset.path : null;
+  const cast = Array.isArray(series.details.cast) ? series.details.cast.filter(isText) : [];
+  byId("library").hidden = state.selected !== null;
+  byId("series-name").textContent = series.name;
+  show(byId("series-facts"), seriesFacts(series));
+  show(byId("series-cast"), cast.length ? `With ${cast.join(", ")}` : "");
+  show(byId("series-description"), isText(series.details.description) ? series.details.description : "");
+
+  // A series shows the season last chosen in it, while it holds that season,
+  // or else its first.
+  if (!series.season(state.season)) {
+    const recalled = recallSeason(series.name);
+    state.season = series.season(recalled) ? recalled : (series.seasons[0] || { folder: null }).folder;
+  }
+
+  renderSeasons();
+  renderEpisodes();
+
+  // The episode that had focus keeps it in the newer version.
+  if (focused !== null) {
+    focusEpisode(focused);
+  }
+
+  if (state.selected !== null && !series.holds(state.selected)) {
+    closePlayer();
+  } else if (state.selected !== null) {
+    showDetails();
+  }
+}
+
+function seriesFacts(series) {
+  const details = series.details;
+  const held = `${plural(series.seasons.length, "season", "seasons")}, ${plural(series.count(), "episode", "episodes")}`;
+  return [details.year, details.rating, held].filter(isShown).join(" · ");
+}
+
+// A button for each season of the series open, the one chosen marked, with
+// focus kept on the one that had it.
+function renderSeasons() {
+  const list = byId("seasons");
+  const focused = list.contains(document.activeElement) ? document.activeElement.dataset.folder : null;
+  list.replaceChildren(...state.series.seasons.map((season) => {
+    const control = make("button", season.label(), "secondary");
+    control.type = "button";
+    control.dataset.folder = season.folder;
+    control.setAttribute("aria-pressed", String(season.folder === state.season));
+    control.addEventListener("click", () => chooseSeason(season.folder));
+    return control;
+  }));
+
+  const again = [...list.children].find((control) => control.dataset.folder === focused);
+
+  if (again) {
+    again.focus();
+  }
+}
+
+// Shows the season in `folder` of the series open, and remembers it as the
+// one last chosen in the series.
+function chooseSeason(folder) {
+  state.season = folder;
+  rememberSeason(state.series.name, folder);
+
+  for (const control of byId("seasons").querySelectorAll("button")) {
+    control.setAttribute("aria-pressed", String(control.dataset.folder === folder));
+  }
+
+  renderEpisodes();
+}
+
+// Shows the episodes of the season chosen, or, while the filter has words,
+// those it matches of every season, each with its season; and says how many
+// it shows, or why none are.
+function renderEpisodes() {
+  const series = state.series;
+  const filter = byId("episode-filter").value.trim();
+  const words = wordsOf(filter);
+  const season = series.season(state.season);
+  const paths = words.length ? series.matching(words) : series.paths(season ? [season] : []);
+  const count = series.count();
+  const episodes = plural(count, "episode", "episodes");
+  byId("episodes").replaceChildren(...paths.map((path) => episodeItem(series, path, words.length > 0)));
+  byId("seasons").hidden = words.length > 0 || series.seasons.length === 0;
+  showSeason(words.length ? null : season);
+  byId("series-count").textContent = words.length ? `${paths.length} of ${episodes}` : "";
+
+  if (count > 0 && words.length > 0 && paths.length === 0) {
+    show(byId("library-state"), `No episode here has every word of “${filter}”.`);
+  } else if (count > 0) {
+    show(byId("library-state"), "");
+  } else {
+    show(byId("library-state"), "This series holds no episodes yet. Add one from a file.");
+  }
+}
+
+// Shows what is known of `season`, or nothing, if it is null.
+function showSeason(season) {
+  const poster = byId("season-poster");
+  const details = season && season.details;
+  byId("season").hidden = season === null;
+
+  if (season === null) {
+    return;
+  }
+
+  byId("season-name").textContent = season.name() || season.label();
+  byId("edit-season").disabled = details === null;
+  show(byId("season-facts"), details && isShown(details.year) ? String(details.year) : "");
+  show(byId("season-description"), details === null ? "What is known of this season could not be read."
+    : (isText(details.description) ? details.description : ""));
+  poster.replaceChildren(...(details && isText(details.poster) ? [posterImage(state.series.url(`${season.folder}/${details.poster}`))] : []));
+  poster.hidden = poster.childElementCount === 0;
+}
+
+// Opens the filter of the episodes listed, emptied of any kept before, so
+// that the seasons are shown until words are typed, and Enter alone keeps none.
+function openFilter() {
+  const field = byId("episode-filter");
+
+  if (byId("library").hidden) {
+    return;
+  }
+
+  field.value = "";
+  field.hidden = false;
+  renderEpisodes();
+  field.focus();
+}
+
+// Keeps the filter as typed, out of the way, with focus on the first episode
+// it shows, or, if it shows none, on opening it again.
+function keepFilter() {
+  byId("episode-filter").hidden = true;
+  (byId("episodes").querySelector("button.pick") || byId("filter-episodes")).focus();
+}
+
+function episodeItem(series, path, withSeason) {
+  const info = series.info(path);
+  const item = make("li");
+  const pick = make("button", null, "pick");
+  pick.type = "button";
+  pick.dataset.path = path;
+  pick.setAttribute("aria-pressed", String(path === state.selected));
+  pick.append(posterImage(info && isText(info.poster) ? series.url(`${path}/${info.poster}`) : null),
+    caption(series, path, withSeason));
+  pick.addEventListener("click", () => select(path));
+  item.append(pick);
+  return item;
+}
+
+// Gives focus to the episode at `path` of those listed, or to the first
+// listed, if it lists no such episode, or, if it lists none, to the season
+// chosen, or to adding one.
+function focusEpisode(path) {
+  const picks = [...byId("episodes").querySelectorAll("button.pick")];
+  const seasons = byId("seasons").hidden ? null : byId("seasons").querySelector("[aria-pressed=true]");
+  const pick = picks.find((each) => each.dataset.path === path) || picks[0] || seasons
+    || byId("library").querySelector(".icons button.signed-in-only:not([hidden])");
+
+  if (pick) {
+    pick.focus();
+  }
+}
+
+// The button of `buttons` in the row above `from`, or below it if `below`,
+// nearest it across; or null, if there is no such row.
+function across(buttons, from, below) {
+  const origin = from.getBoundingClientRect();
+  const middle = (rect) => rect.left + rect.width / 2;
+  const beyond = buttons.map((button) => ({ button, rect: button.getBoundingClientRect() }))
+    .filter(({ rect }) => (below ? rect.top >= origin.bottom : rect.bottom <= origin.top));
+  const tops = beyond.map(({ rect }) => rect.top);
+  const row = below ? Math.min(...tops) : Math.max(...tops);
+  const distance = ({ rect }) => Math.abs(middle(rect) - middle(origin));
+  const nearest = beyond.filter(({ rect }) => Math.abs(rect.top - row) < 1)
+    .sort((one, other) => distance(one) - distance(other))[0];
+  return nearest ? nearest.button : null;
+}
+
+// Moves focus through the buttons shown of `list` that `selector` matches,
+// from the keyboard, and only from one of them: the arrow keys to the one
+// beside, above, or below, as they are laid out, and Home and End to the
+// first and the last.
+function arrowKeys(list, selector = "button") {
+  list.addEventListener("keydown", (event) => {
+    const buttons = [...list.querySelectorAll(selector)].filter((button) => button.getClientRects().length > 0);
+    const at = buttons.indexOf(event.target);
+    const moves = {
+      ArrowLeft: () => buttons[at - 1],
+      ArrowRight: () => buttons[at + 1],
+      ArrowUp: () => across(buttons, event.target, false),
+      ArrowDown: () => across(buttons, event.target, true),
+      Home: () => buttons[0],
+      End: () => buttons[buttons.length - 1],
+    };
+    const move = moves[event.key];
+
+    if (at < 0 || !move || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      return;
+    }
+
+    event.preventDefault();
+    const next = move();
+
+    if (next) {
+      next.focus();
+    }
+  });
+}
+
+function noPoster() {
+  const placeholder = make("span", "▶", "poster");
+  placeholder.setAttribute("aria-hidden", "true");
+  return placeholder;
+}
+
+// The picture at `url`, asked for again a few times if the node is still
+// fetching it; a placeholder if `url` is null.
+function posterImage(url) {
+  if (!url) {
+    return noPoster();
+  }
+
+  const image = make("img", null, "poster");
+  let tries = 1;
+  image.alt = "";
+  image.loading = "lazy";
+  image.addEventListener("error", () => {
+    if (tries >= POSTER_TRIES) {
+      image.replaceWith(noPoster());
+      return;
+    }
+
+    tries += 1;
+    setTimeout(() => { image.src = url; }, DEFAULT_RETRY_SECONDS * 1000);
+  });
+  image.src = url;
+  return image;
+}
+
+function facts(info) {
+  if (!info) {
+    return "What is known of this episode could not be read.";
+  }
+
+  return [dateText(info.aired), formatDuration(info.duration_seconds)].filter(isText).join(" · ");
+}
+
+// Which episode `info` is of which season, as "Season 1, episode 2".
+function placeText(info) {
+  const numbers = episodeNumbers(info);
+
+  if (!info || !isNumber(info.season) || numbers.length === 0) {
+    return "";
+  }
+
+  return `${seasonLabel(info.season)}, ${numbers.length === 1 ? "episode" : "episodes"} ${numbers.join(", ")}`;
+}
+
+// An episode's number and title, and its air date and duration, after its
+// season, if `withSeason`.
+function caption(series, path, withSeason) {
+  const info = series.info(path);
+  const numbers = episodeNumbers(info);
+  const title = numbers.length ? `${numbers.join(", ")}. ${series.title(path)}` : series.title(path);
+  const season = series.season(path.split("/")[0]);
+  const note = withSeason ? [season.label(), facts(info)].filter(isText).join(" · ") : facts(info);
+  const text = make("span", null, "caption");
+  text.append(make("strong", title), make("span", note, "note"));
+  return text;
+}
+
+// The episode playing.
+
+// Chooses the episode at `path`. One `playedOn` from the episode before,
+// as it ended, is full screen only if that one was.
+function select(path, { playedOn = false } = {}) {
+  const series = state.series;
+  const info = series.info(path);
+  const video = byId("video");
+  const source = info && isText(info.video) ? `${path}/${info.video}` : "";
+  const folder = path.split("/")[0];
+  stopEditing();
+  state.selected = path;
   show(byId("episode-result"), "");
 
+  // The same episode of a newer version of the series plays on where it was.
   if (video.dataset.source !== source) {
     video.dataset.source = source;
     byId("video-trouble").hidden = true;
+
     if (source) {
-      video.src = series.url(seasonFolder, epFolder, info.video);
+      video.src = series.url(source);
+      state.leftFullscreen = playedOn && !isFullscreen();
     } else {
       video.removeAttribute("src");
       video.load();
     }
   }
 
+  // Left, the episode is shown in its season.
+  if (folder !== state.season) {
+    chooseSeason(folder);
+  }
+
+  // In an episode, the series' episodes are not shown, and focus, if it was
+  // on one of them, goes to the video.
   byId("player-section").hidden = false;
   byId("library").hidden = true;
-  
-  const epNum = Array.isArray(info.episodes) ? info.episodes[0] : 1;
-  byId("episode-title").textContent = `S${season.seasonJson.number}E${epNum} — ${info.title || epFolder}`;
-  byId("episode-facts").textContent = [info.aired, formatDuration(info.duration_seconds)].filter(isShown).join(" · ");
+  showDetails();
+
+  if (focusLost()) {
+    video.focus({ preventScroll: true });
+  }
+
+  byId("player-section").scrollIntoView({ block: "start", behavior: "smooth" });
+}
+
+function showDetails() {
+  const series = state.series;
+  const path = state.selected;
+  const info = series.info(path);
+  const video = byId("video");
+  byId("episode-title").textContent = series.title(path);
+  byId("episode-place").textContent = placeText(info);
+  byId("episode-facts").textContent = facts(info);
   byId("episode-description").textContent = info && isText(info.description) ? info.description : "";
-  
+
   if (info && isText(info.poster)) {
-    video.poster = series.url(seasonFolder, epFolder, info.poster);
+    video.poster = series.url(`${path}/${info.poster}`);
   } else {
     video.removeAttribute("poster");
   }
 
-  video.play().catch(() => {});
+  for (const pick of byId("episodes").querySelectorAll("button.pick")) {
+    pick.setAttribute("aria-pressed", String(pick.dataset.path === path));
+  }
+
+  refreshControls();
 }
 
-// File importing & browser modal
-async function openFileBrowser() {
-  byId("file-dialog").showModal();
-  await browseFolders([]);
+// Enables only the changes that can be made to the episode chosen.
+function refreshControls() {
+  const series = state.series;
+  byId("edit-episode").disabled = !series || state.selected === null || !series.info(state.selected);
 }
 
-async function browseFolders(segments) {
+function isFullscreen() {
+  return Boolean(document.fullscreenElement || byId("video").webkitDisplayingFullscreen);
+}
+
+// An episode plays fullscreen, unless the person has left fullscreen while it played.
+function playFullscreen() {
+  const video = byId("video");
+
+  if (state.leftFullscreen || isFullscreen()) {
+    return;
+  }
+
+  enterFullscreen(video);
+}
+
+// Shows `video` full screen, as this browser can.
+function enterFullscreen(video) {
+  if (video.requestFullscreen) {
+    video.requestFullscreen().catch((error) => console.warn(`The episode was not shown full screen: ${error.message}`));
+  } else if (video.webkitEnterFullscreen) {
+    video.webkitEnterFullscreen();
+  }
+}
+
+// Says that leaving full screen failed, as `error` says.
+function warnStillFullscreen(error) {
+  console.warn(`The episode is still shown full screen: ${error.message}`);
+}
+
+function toggleFullscreen() {
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(warnStillFullscreen);
+  } else if (state.selected !== null) {
+    enterFullscreen(byId("video"));
+  }
+}
+
+// Plays the episode chosen, or pauses it.
+function playOrPause() {
+  const video = byId("video");
+
+  if (!video.getAttribute("src")) {
+    return;
+  }
+
+  if (video.paused) {
+    video.play().catch((error) => console.warn(`The episode did not play: ${error.message}`));
+  } else {
+    video.pause();
+  }
+}
+
+// Leaves the episode chosen, stopped and out of full screen, for its season,
+// with focus back on it there, to choose another. Chosen again, it plays from
+// its start.
+function leaveEpisode() {
+  const path = state.selected;
+
+  if (path === null) {
+    return;
+  }
+
+  closePlayer();
+
+  if (!document.fullscreenElement) {
+    focusEpisode(path);
+    return;
+  }
+
+  // Only out of full screen can focus go to the episode in its season.
+  document.addEventListener("fullscreenchange", () => focusEpisode(path), { once: true });
+  document.exitFullscreen().catch(warnStillFullscreen);
+}
+
+// Chooses the episode `delta` from the one chosen, across seasons, of those
+// the filter shows, or, if none is chosen, from the one with focus in the
+// list, or the first or last listed; and plays it if the one chosen was
+// playing.
+function stepEpisode(delta) {
+  const series = state.series;
+  const video = byId("video");
+
+  if (!series) {
+    return;
+  }
+
+  const words = wordsOf(byId("episode-filter").value);
+  const order = words.length ? series.matching(words) : series.paths();
+  const listed = [...byId("episodes").querySelectorAll("button.pick")].map((pick) => pick.dataset.path);
+  const focused = byId("episodes").contains(document.activeElement);
+  const from = state.selected === null && focused ? document.activeElement.dataset.path : state.selected;
+  const at = order.indexOf(from);
+  const path = at < 0 ? listed[delta > 0 ? 0 : listed.length - 1] : order[at + delta];
+  const playing = !video.paused;
+
+  if (path === undefined) {
+    return;
+  }
+
+  select(path);
+
+  if (playing) {
+    playOrPause();
+  }
+}
+
+// As an episode ends, plays the next held at once: the next of its season, or
+// the first of the next season held. After the last, the page stays on it.
+function playNext() {
+  const series = state.series;
+
+  if (!series || state.selected === null) {
+    return;
+  }
+
+  const order = series.paths();
+  const path = order[order.indexOf(state.selected) + 1];
+
+  if (path === undefined) {
+    return;
+  }
+
+  select(path, { playedOn: true });
+  byId("video").play().catch((error) => console.warn(`The next episode did not play: ${error.message}`));
+}
+
+// Chooses the season `delta` from the one chosen in the series, with focus
+// on its first episode: while the series, not an episode, is shown, and not
+// the filter's matches.
+function stepSeason(delta) {
+  const series = state.series;
+
+  if (!series || byId("library").hidden || byId("seasons").hidden) {
+    return;
+  }
+
+  const at = series.seasons.findIndex((season) => season.folder === state.season);
+  const season = series.seasons[at + delta];
+
+  if (season) {
+    chooseSeason(season.folder);
+    focusEpisode(null);
+  }
+}
+
+function leftFullscreen() {
+  if (!document.fullscreenElement) {
+    state.leftFullscreen = true;
+  }
+}
+
+// What the browser draws on the video to control it keeps every key pressed
+// on it from the page, so that the keys above do nothing there. Focus is kept
+// on the video itself, then: Tab goes past those controls, to what is next on
+// the page, and full screen, where all else is hidden behind the episode,
+// stays on the video.
+const TABBABLE = "a[href], button, input, select, textarea, summary, video[controls], [tabindex]";
+
+function tabPastControls(event) {
+  const video = byId("video");
+
+  if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) {
+    return;
+  }
+
+  const stops = [...document.querySelectorAll(TABBABLE)].filter((each) => each === video
+    || (each.tabIndex >= 0 && !each.disabled && each.getClientRects().length > 0));
+  const next = document.fullscreenElement ? video : stops[stops.indexOf(video) + (event.shiftKey ? -1 : 1)];
+
+  if (next) {
+    event.preventDefault();
+    next.focus();
+  }
+}
+
+// Focus that came to the video, or that its controls kept as they played or
+// paused the episode, or showed it full screen or not, goes from them to the
+// video itself.
+function focusPastControls() {
+  const video = byId("video");
+
+  if (document.activeElement === video) {
+    video.focus();
+  }
+}
+
+function videoTrouble() {
+  const video = byId("video");
+
+  if (!video.getAttribute("src")) {
+    return;
+  }
+
+  const said = video.error && video.error.message ? `: ${video.error.message}` : ".";
+  byId("video-state").textContent = `This video could not be played${said} `
+    + "If the node was still fetching it, try again.";
+  byId("video-trouble").hidden = false;
+}
+
+// Editing what is known of an episode.
+
+function startEditing() {
+  const series = state.series;
+  const path = state.selected;
+  const info = series.info(path);
+
+  if (!info) {
+    return;
+  }
+
+  const preview = byId("poster-preview");
+  byId("edit-title").value = isText(info.title) ? info.title : "";
+  byId("edit-season").value = isNumber(info.season) ? String(info.season) : "";
+  byId("edit-episodes").value = episodeNumbers(info).join(", ");
+  byId("edit-aired").value = isDay(info.aired) ? info.aired : "";
+  byId("edit-duration").value = formatDuration(info.duration_seconds);
+  byId("edit-description").value = isText(info.description) ? info.description : "";
+  forgetPoster();
+
+  if (isText(info.poster)) {
+    preview.src = series.url(`${path}/${info.poster}`);
+    preview.hidden = false;
+  } else {
+    preview.removeAttribute("src");
+    preview.hidden = true;
+  }
+
+  show(byId("poster-result"), "");
+  show(byId("editor-result"), "");
+  byId("details").hidden = true;
+  byId("editor").hidden = false;
+  fillDuration();
+  byId("edit-title").focus();
+}
+
+function forgetPoster() {
+  if (state.poster) {
+    URL.revokeObjectURL(state.poster.url);
+  }
+
+  state.poster = null;
+}
+
+function stopEditing() {
+  forgetPoster();
+  byId("editor").hidden = true;
+  byId("details").hidden = false;
+}
+
+// The duration, from the video, unless the person has given one.
+function fillDuration() {
+  const video = byId("video");
+  const field = byId("edit-duration");
+
+  if (!byId("editor").hidden && field.value === "" && Number.isFinite(video.duration)
+      && video.duration > 0) {
+    field.value = formatDuration(video.duration);
+  }
+}
+
+// What is known of the episode, as the form now says, kept with whatever
+// else its info.json held.
+function editedInfo(info) {
+  const season = byId("edit-season").value.trim();
+  const episodes = byId("edit-episodes").value.trim();
+  const aired = byId("edit-aired").value;
+  const duration = parseDuration(byId("edit-duration").value.trim());
+
+  if (!/^\d{1,4}$/.test(season)) {
+    throw new Error("A season is a number, such as 1, or 0 for the specials.");
+  }
+
+  if (!/^\d{1,4}(?:\s*,\s*\d{1,4})*$/.test(episodes)) {
+    throw new Error("An episode is a number, such as 2, or more than one, such as 1, 2, for a file holding each.");
+  }
+
+  if (aired && !isDay(aired)) {
+    throw new Error("An air date is a day, such as 2005-03-26.");
+  }
+
+  if (Number.isNaN(duration)) {
+    throw new Error("A duration is in seconds, or as hours, minutes, and seconds, such as 47:30.");
+  }
+
+  return {
+    ...info,
+    title: byId("edit-title").value.trim() || undefined,
+    season: Number(season),
+    episodes: [...new Set(episodes.split(",").map(Number))].sort((one, other) => one - other),
+    aired: aired || undefined,
+    description: byId("edit-description").value.trim() || undefined,
+    duration_seconds: duration === null ? undefined : duration,
+  };
+}
+
+function base64Of(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",", 2)[1]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+// A JPEG of the frame the video shows.
+async function takePoster() {
+  const video = byId("video");
+
+  if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) {
+    throw new Error("The video shows no picture yet. Play it, or seek to a frame, first.");
+  }
+
+  const scale = Math.min(1, POSTER_MAX_WIDTH / video.videoWidth);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(video.videoWidth * scale);
+  canvas.height = Math.round(video.videoHeight * scale);
+  canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", POSTER_QUALITY));
+
+  if (!blob) {
+    throw new Error("This browser could not make a picture of the frame.");
+  }
+
+  forgetPoster();
+  state.poster = { base64: await base64Of(blob), url: URL.createObjectURL(blob) };
+  byId("poster-preview").src = state.poster.url;
+  byId("poster-preview").hidden = false;
+  return ["The still is taken. Save to keep it.", false];
+}
+
+// Keeps what is known of the episode chosen, as edited. One whose numbers
+// changed moves: to its place in its season, or into the season it now
+// names, which is made if none is held, the season it left removed if it
+// holds no other.
+async function saveEdit() {
+  const from = state.selected;
+  const poster = state.poster;
+  const edited = editedInfo(state.series.info(from));
+
+  await serially(async () => {
+    const series = state.series;
+    const info = { ...edited };
+    const numbers = episodeNumbers(info);
+    const held = series.holding(info.season, numbers, from);
+    const to = `${seasonFolder(info.season)}/${from.split("/")[1]}`;
+    const add = {};
+    let seasons = series.seasons;
+    let remove = [];
+
+    if (!series.holds(from)) {
+      throw new Error("This episode is no longer in the series.");
+    }
+
+    if (held) {
+      throw new Error(`“${series.name}” already holds ${episodeText(info.season, numbers)}: “${series.title(held)}”.`);
+    }
+
+    if (to !== from) {
+      ({ seasons, remove } = seasonsWithout(seasons, from));
+      add[to] = { from: series.bundle, path: from };
+    }
+
+    const made = seasons.some((season) => season.folder === seasonFolder(info.season))
+      ? null : await seasonFromTmdb(series, info.season);
+    seasons = seasonsWith(seasons, add, to, info, made);
+
+    if (poster) {
+      info.poster = POSTER_FILE;
+      add[`${to}/${POSTER_FILE}`] = { base64: poster.base64 };
+    }
+
+    add[`${to}/${INFO_FILE}`] = { text: jsonText(INFO_KEYS, info) };
+    await changeSeries(series, { add, remove, seasons, moved: [from, to] });
+  });
+
+  stopEditing();
+  byId("edit-episode").focus();
+  return ["Saved.", false];
+}
+
+// Editing what is known of the series, and of a season.
+
+function openSeriesEdit() {
+  const details = state.series.details;
+  byId("series-form").reset();
+  byId("series-heading").textContent = `Edit “${state.series.name}”`;
+  byId("series-year").value = isShown(details.year) ? String(details.year) : "";
+  byId("series-rating").value = isShown(details.rating) ? String(details.rating) : "";
+  byId("series-cast-field").value = Array.isArray(details.cast) ? details.cast.filter(isText).join("\n") : "";
+  byId("series-description-field").value = isText(details.description) ? details.description : "";
+  show(byId("series-result"), "");
+  byId("series-dialog").showModal();
+}
+
+// A year typed into `field`: undefined for none.
+function typedYear(field) {
+  const year = byId(field).value.trim();
+
+  if (year && !/^\d{1,4}$/.test(year)) {
+    throw new Error("A year is a number, such as 2005.");
+  }
+
+  return year ? Number(year) : undefined;
+}
+
+async function saveSeries() {
+  const cast = byId("series-cast-field").value.split("\n").map((name) => name.trim()).filter(isText);
+  const changes = {
+    year: typedYear("series-year"),
+    rating: byId("series-rating").value.trim() || undefined,
+    cast: cast.length ? cast : undefined,
+    description: byId("series-description-field").value.trim() || undefined,
+  };
+
+  await serially(async () => {
+    const series = state.series;
+    await changeSeries(series, { details: { ...series.details, ...changes } });
+  });
+
+  byId("series-dialog").close();
+  return null;
+}
+
+// The folder of the season the dialog editing a season is open on.
+let editingSeason = null;
+
+function openSeasonEdit() {
+  const season = state.series.season(state.season);
+
+  if (!season || season.details === null) {
+    return;
+  }
+
+  editingSeason = season.folder;
+  byId("season-form").reset();
+  byId("season-heading").textContent = `Edit ${season.label()}`;
+  byId("season-name-field").value = season.name();
+  byId("season-year").value = isShown(season.details.year) ? String(season.details.year) : "";
+  byId("season-description-field").value = isText(season.details.description) ? season.details.description : "";
+  show(byId("season-result"), "");
+  byId("season-dialog").showModal();
+}
+
+async function saveSeason() {
+  const folder = editingSeason;
+  const changes = {
+    name: byId("season-name-field").value.trim() || undefined,
+    year: typedYear("season-year"),
+    description: byId("season-description-field").value.trim() || undefined,
+  };
+
+  await serially(async () => {
+    const series = state.series;
+    const held = series.season(folder);
+
+    if (!held || held.details === null) {
+      throw new Error("That season is no longer in the series.");
+    }
+
+    const season = held.with({ ...held.details, ...changes }, held.episodes);
+    await changeSeries(series, { seasons: series.seasons.map((each) => (each === held ? season : each)) });
+  });
+
+  byId("season-dialog").close();
+  return null;
+}
+
+// Removing an episode.
+
+// Removes the episode chosen, and its season, if that holds no other.
+async function removeEpisode() {
+  const path = state.selected;
+  const title = state.series.title(path);
+
+  if (!window.confirm(`Remove “${title}” from “${state.series.name}”?`)) {
+    return null;
+  }
+
+  await serially(async () => {
+    const series = state.series;
+
+    if (series.holds(path)) {
+      await changeSeries(series, seasonsWithout(series.seasons, path));
+    }
+  });
+
+  show(byId("library-result"), `Removed “${title}”.`);
+  return null;
+}
+
+// Looking up what is known of a series, a season, and an episode.
+
+// `title`, each word capitalized, if it is all of one case, as a file's name
+// often is.
+function cased(title) {
+  if (title !== title.toLowerCase() && title !== title.toUpperCase()) {
+    return title;
+  }
+
+  return title.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (word, before, letter) => before + letter.toUpperCase());
+}
+
+// The season and episode numbers a video file's name gives, and the title
+// that follows them, if any: "Show.S01E02.Pilot.720p.mkv" gives episode 2 of
+// season 1, “Pilot”. A file whose name gives none, in a folder named for its
+// season, "Season 1/02 - Pilot.mkv" say, is numbered by the first number in
+// its name.
+class EpisodeName {
+  constructor(season, episodes, title) {
+    this.season = season;
+    this.episodes = episodes;
+    // The title, or undefined if the name gives none.
+    this.title = title;
+  }
+
+  // What the file at `segments`, the folders it is in and then its name,
+  // gives; null if neither its name nor its folder's numbers it.
+  static parse(segments) {
+    const name = segments[segments.length - 1];
+    const bare = name.replace(/\.[^.]*$/, "") || name;
+
+    for (const mark of EPISODE_MARKS) {
+      const found = mark.exec(bare);
+
+      if (found) {
+        const rest = bare.slice(found.index + found[0].length);
+        return new EpisodeName(Number(found[1]), [Number(found[2])], EpisodeName.title(rest));
+      }
+    }
+
+    const folder = segments.length > 1 ? segments[segments.length - 2] : "";
+    const numbered = SEASON_FOLDER.exec(folder);
+    const season = SPECIALS_FOLDER.test(folder) ? SPECIALS : (numbered ? Number(numbered[1]) : undefined);
+    const words = EpisodeName.words(bare);
+    const at = words.findIndex((word) => EPISODE_WORD.test(word));
+
+    if (season === undefined || at < 0) {
+      return null;
+    }
+
+    const episode = Number(EPISODE_WORD.exec(words[at])[1]);
+    return new EpisodeName(season, [episode], EpisodeName.title(words.slice(at + 1).join(" ")));
+  }
+
+  static words(text) {
+    return text.replace(/[_.]/g, " ").split(/\s+/).filter(isText);
+  }
+
+  // The title in `rest`, what follows the numbers in a file's name, cleaned
+  // of what a release's name adds; undefined if it gives none.
+  static title(rest) {
+    const words = EpisodeName.words(rest);
+    const cut = words.findIndex((word) => NOT_TITLE.test(word));
+    const title = words.slice(0, cut < 0 ? words.length : cut).join(" ").replace(/^[\s,:;–—-]+|[\s,:;–—-]+$/gu, "");
+    return title ? cased(title) : undefined;
+  }
+}
+
+// Looking up at TMDB what is known of a series, its seasons, and their
+// episodes, with the key whoever is signed in keeps for it at their drop, the
+// movie application's, or none, "".
+class Lookup {
+  constructor(key, versions = []) {
+    this.key = key;
+    // The ids of the versions at the drop read, which the next replaces.
+    this.versions = versions;
+  }
+
+  static target() {
+    return `${TMDB_PREFIX}${state.owner.id}`;
+  }
+
+  // The key the newest version at the drop holds, of those signed by whoever
+  // is signed in, and of two placed in the same moment, the one whose id
+  // comes first: none, if there are none.
+  static async read() {
+    const ids = await foundAt(Lookup.target());
+    const versions = await Promise.all(ids.map((id) => openVersion(id)));
+    const valid = ids.filter((id, index) => isObject(versions[index]) &&
+      typeof versions[index].key === "string" && isText(versions[index].changed));
+    let newest = null;
+
+    for (const id of valid) {
+      const held = versions[ids.indexOf(id)];
+
+      if (!newest || held.changed > newest.changed || (held.changed === newest.changed && id < newest.id)) {
+        newest = { ...held, id };
+      }
+    }
+
+    return new Lookup(newest ? newest.key : "", valid);
+  }
+
+  // Keeps `key`, or none, if it is "", as the newest version at the drop,
+  // and shuns the versions read, which it replaces.
+  async keep(key) {
+    const placed = await placeVersion(Lookup.target(), { key, changed: new Date().toISOString() });
+
+    for (const id of this.versions) {
+      const shunned = await call("DELETE", `${DATA}${id}`);
+
+      if (!shunned.ok) {
+        console.warn(`The replaced version ${id} was not shunned: ${new Refusal(shunned).message}`);
+      }
+    }
+
+    return new Lookup(key, [placed]);
+  }
+
+  // TMDB's answer to a GET of `path`, asked with `query`, as JSON.
+  async ask(path, query = {}) {
+    const url = new URL(`${TMDB_API}${path}`);
+    const headers = {};
+
+    for (const [name, value] of Object.entries(query)) {
+      url.searchParams.set(name, String(value));
+    }
+
+    if (this.key.startsWith(TOKEN_START)) {
+      headers.Authorization = `Bearer ${this.key}`;
+    } else {
+      url.searchParams.set("api_key", this.key);
+    }
+
+    let response;
+
+    try {
+      response = await fetch(url, { headers, referrerPolicy: "no-referrer" });
+    } catch (error) {
+      throw new Error(`TMDB could not be reached: ${error.message}.`);
+    }
+
+    const value = await response.json().catch(() => null);
+
+    if (!response.ok || !isObject(value)) {
+      const said = isObject(value) && isText(value.status_message) ? `: ${value.status_message}` : ".";
+      throw new Error(`TMDB answered ${response.status}${said}`);
+    }
+
+    return value;
+  }
+
+  // The series TMDB knows of the name `name`, each with its id, its name, the
+  // year it first aired, its countries, and the first sentence of its
+  // overview: of the year the name ends in, if it ends in one that TMDB knows
+  // such a series of, or else of the whole name.
+  async search(name) {
+    const dated = NAMED_YEAR.exec(name);
+    const searches = dated && dated[1]
+      ? [{ query: dated[1], first_air_date_year: dated[2] }, { query: name }] : [{ query: name }];
+
+    for (const search of searches) {
+      const found = await this.ask("/search/tv", search);
+      const results = Array.isArray(found.results) ? found.results : [];
+      const matches = results.filter((each) => isObject(each) && Number.isInteger(each.id) && isText(each.name));
+
+      if (matches.length) {
+        return matches.map((each) => ({
+          id: each.id,
+          name: each.name,
+          year: yearOf(each.first_air_date),
+          countries: Array.isArray(each.origin_country) ? each.origin_country.filter(isText) : [],
+          sentence: firstSentence(each.overview),
+        }));
+      }
+    }
+
+    return [];
+  }
+
+  // What TMDB knows of the series `id`, as its series.json holds it, with its
+  // backdrop, as base64, or null.
+  async series(id) {
+    const series = await this.ask(`/tv/${id}`, { append_to_response: "aggregate_credits,content_ratings" });
+    const credits = isObject(series.aggregate_credits) && Array.isArray(series.aggregate_credits.cast)
+      ? series.aggregate_credits.cast : [];
+    const cast = credits.map((person) => (isObject(person) ? person.name : null)).filter(isText).slice(0, CAST_NAMED);
+    const details = {
+      name: isText(series.name) ? series.name : undefined,
+      tmdb_id: id,
+      year: yearOf(series.first_air_date),
+      rating: Lookup.rating(series),
+      cast: cast.length ? cast : undefined,
+      description: isText(series.overview) ? series.overview : undefined,
+    };
+    const poster = isText(series.backdrop_path) ? await Lookup.picture(STILL_SIZE, series.backdrop_path) : null;
+    return { details, poster };
+  }
+
+  // The rating `series` is given in RATING_COUNTRY, such as TV-14; undefined
+  // if TMDB knows none.
+  static rating(series) {
+    const ratings = isObject(series.content_ratings) && Array.isArray(series.content_ratings.results)
+      ? series.content_ratings.results : [];
+    const rated = ratings.find((each) => isObject(each) && each.iso_3166_1 === RATING_COUNTRY && isText(each.rating));
+    return rated ? rated.rating : undefined;
+  }
+
+  // What TMDB knows of season `number` of the series `id`: the season, as its
+  // season.json holds it, with its poster, as base64, if `withPoster`, or
+  // null, and each of its episodes, by its number.
+  async season(id, number, withPoster) {
+    const season = await this.ask(`/tv/${id}/season/${number}`);
+    const episodes = new Map();
+
+    for (const episode of Array.isArray(season.episodes) ? season.episodes : []) {
+      if (isObject(episode) && isNumber(episode.episode_number)) {
+        episodes.set(episode.episode_number, episode);
+      }
+    }
+
+    const details = {
+      name: isText(season.name) ? season.name : undefined,
+      year: yearOf(season.air_date),
+      description: isText(season.overview) ? season.overview : undefined,
+    };
+    const poster = withPoster && isText(season.poster_path) ? await Lookup.picture(POSTER_SIZE, season.poster_path) : null;
+    return { details, poster, episodes };
+  }
+
+  // What TMDB knows of the episodes `numbers` of `season`, as their info.json
+  // holds it, with the first's still, as base64, or null; null if it knows
+  // none of them.
+  static async episode(season, numbers) {
+    const found = numbers.map((number) => season.episodes.get(number)).filter(Boolean);
+
+    if (found.length === 0) {
+      return null;
+    }
+
+    const [first] = found;
+    const titles = found.map((each) => each.name).filter(isText);
+    const runtimes = found.map((each) => each.runtime);
+    const info = {
+      title: titles.length ? titles.join(" / ") : undefined,
+      aired: isDay(first.air_date) ? first.air_date : undefined,
+      description: isText(first.overview) ? first.overview : undefined,
+      duration_seconds: runtimes.every((runtime) => Number.isInteger(runtime) && runtime > 0)
+        ? runtimes.reduce((total, runtime) => total + runtime, 0) * 60 : undefined,
+    };
+    const still = isText(first.still_path) ? await Lookup.picture(STILL_SIZE, first.still_path) : null;
+    return { info: defined(info), still };
+  }
+
+  // The picture at TMDB's `path` for it, `size` wide, as base64; null if it
+  // cannot be had.
+  static async picture(size, path) {
+    try {
+      const response = await fetch(`${TMDB_IMAGES}/${size}${path}`, { referrerPolicy: "no-referrer" });
+      const blob = response.ok ? await response.blob() : null;
+      return blob && blob.type.startsWith("image/") ? await base64Of(blob) : null;
+    } catch (error) {
+      console.warn(`The picture at TMDB could not be had: ${error.message}`);
+      return null;
+    }
+  }
+}
+
+// The first sentence of `text`, or all of it, if it has no end; "" for none.
+function firstSentence(text) {
+  if (!isText(text)) {
+    return "";
+  }
+
+  const found = /^.*?[.!?](?=\s|$)/su.exec(text.trim());
+  return found ? found[0] : text.trim();
+}
+
+// What TMDB gives of season `number` of `series`, to make the season with: if
+// the series has a TMDB id, and whoever is signed in keeps a key; or else
+// null. It never fails.
+async function seasonFromTmdb(series, number) {
+  const id = series.tmdbId();
+
+  if (id === undefined) {
+    return null;
+  }
+
+  try {
+    const lookup = await Lookup.read();
+    return lookup.key ? await lookup.season(id, number, true) : null;
+  } catch (error) {
+    console.warn(`${seasonLabel(number)} of “${series.name}” was not looked up at TMDB: ${error.message}`);
+    return null;
+  }
+}
+
+// What is known of the episode in the video file `video` of `series`,
+// numbered as `named` says, as its info.json holds it, with its still, as
+// base64, or null; what TMDB gives of its season, to make it with if
+// `newSeason`, or null; and why it was not looked up, or "". It is looked up
+// at TMDB if the series has a TMDB id and whoever is signed in keeps a key,
+// or else known as the file's name gives it. It never fails.
+async function describeEpisode(series, named, video, newSeason) {
+  const info = {
+    title: named.title,
+    series: series.name,
+    series_tmdb_id: series.tmdbId(),
+    season: named.season,
+    episodes: named.episodes,
+    video,
+  };
+  const id = series.tmdbId();
+  const known = { info, still: null, made: null, problem: "" };
+
+  if (id === undefined) {
+    return known;
+  }
+
+  try {
+    const lookup = await Lookup.read();
+
+    if (!lookup.key) {
+      return known;
+    }
+
+    const season = await lookup.season(id, named.season, newSeason);
+    const episode = await Lookup.episode(season, named.episodes);
+
+    if (!episode) {
+      const problem = `TMDB knows no ${episodeText(named.season, named.episodes)} of “${series.name}”, so it is named for its file.`;
+      return { ...known, made: season, problem };
+    }
+
+    const described = { ...info, ...episode.info };
+
+    if (episode.still) {
+      described.poster = POSTER_FILE;
+    }
+
+    return { info: described, still: episode.still, made: season, problem: "" };
+  } catch (error) {
+    console.warn(`“${video}” was not looked up at TMDB: ${error.message}`);
+    return { ...known, problem: `${error.message} It is named for its file.` };
+  }
+}
+
+// What whoever is signed in keeps for looking things up at TMDB, as a dialog
+// last read it: null while it is read, or if it could not be. And the note
+// that says, in the dialog open, what is looked up, and the function saying
+// it of a Lookup.
+let keptLookup = null;
+let lookupNote = null;
+
+// Says, in `note`, what `says` says of looking up at TMDB, and, once that is
+// read, lets `button` change the key.
+async function showLookup(note, button, says) {
+  keptLookup = null;
+  lookupNote = { note, says };
+  button.disabled = true;
+  note.textContent = "";
+
+  try {
+    keptLookup = await Lookup.read();
+    note.textContent = says(keptLookup);
+    button.disabled = false;
+  } catch (error) {
+    note.textContent = `Whether anything is looked up at TMDB could not be read: ${error.message}`;
+  }
+}
+
+// What the dialog making a series says of looking it up, with what makes it
+// named for what is done next.
+function newNote(lookup) {
+  byId("new-go").textContent = lookup.key ? "Look up" : "Make";
+  return lookup.key
+    ? "The series of the name given are looked up at TMDB, and you choose which it is."
+    : "Give a TMDB key, and the series of the name given are looked up there, for you to choose which it is. Without one, a series has only its name.";
+}
+
+// What the dialog adding an episode from a file says of looking it up.
+function fileNote(lookup) {
+  if (!lookup.key) {
+    return "Give a TMDB key, and what is known of each episode, and of its season, is looked up there, by its numbers. Without one, each is named for its file.";
+  }
+
+  return state.series.tmdbId() === undefined
+    ? "This series was made with none of TMDB's, so its episodes are not looked up there. Each is named for its file."
+    : "What is known of each episode, and of its season, is looked up at TMDB, by its numbers.";
+}
+
+function openLookup() {
+  byId("lookup-form").reset();
+  byId("lookup-field").value = keptLookup.key;
+  show(byId("lookup-result"), "");
+  byId("lookup-dialog").showModal();
+}
+
+// Keeps the key given for looking things up, once TMDB takes it, or none, if
+// none is given.
+async function keepLookup() {
+  const key = byId("lookup-field").value.trim();
+
+  if (key !== keptLookup.key) {
+    if (key) {
+      await new Lookup(key).ask("/authentication");
+    }
+
+    keptLookup = await keptLookup.keep(key);
+  }
+
+  byId("lookup-dialog").close();
+  lookupNote.note.textContent = lookupNote.says(keptLookup);
+  return null;
+}
+
+// Making a series.
+
+// The series being made: the name given, the Lookup that found TMDB's series
+// of it, and, once one is chosen, what TMDB gives of it, and what to suggest
+// naming it if a series of its name is held already.
+let making = null;
+
+function openNew() {
+  making = null;
+  byId("new-form").reset();
+  byId("new-form").hidden = false;
+  byId("new-matches").hidden = true;
+  byId("apart-form").hidden = true;
+  show(byId("new-result"), "");
+  byId("new-dialog").showModal();
+  showLookup(byId("new-lookup-note"), byId("new-lookup-key"), newNote);
+}
+
+// Looks up the series of the name given at TMDB, for the person to choose
+// which it is; or makes it with only that name, if no key is kept.
+async function findSeries() {
+  const name = byId("new-name").value.trim();
+
+  if (!name) {
+    throw new Error("Give the series a name.");
+  }
+
+  const lookup = keptLookup || await Lookup.read();
+  making = { name, lookup, found: null, hint: undefined };
+
+  if (!lookup.key) {
+    await makeNamed(name);
+    return null;
+  }
+
+  try {
+    showMatches(await lookup.search(name), "");
+  } catch (error) {
+    showMatches([], error.message);
+  }
+
+  return null;
+}
+
+// Lists `matches`, TMDB's series of the name given, to choose from, or says
+// that there are none, or that TMDB could not be asked, as `problem` says.
+function showMatches(matches, problem) {
+  const name = making.name;
+  byId("new-form").hidden = true;
+  byId("new-matches").hidden = false;
+  show(byId("new-choice-result"), "");
+
+  if (problem) {
+    byId("new-matches-note").textContent = `${problem} Make “${name}” with only its name, or cancel and try again.`;
+  } else if (matches.length) {
+    byId("new-matches-note").textContent = `The series TMDB knows of “${name}”. Choose which it is, or none, to make it with only the name given.`;
+  } else {
+    byId("new-matches-note").textContent = `TMDB knows no series called “${name}”. Make it with only that name, or cancel and give another.`;
+  }
+
+  byId("new-choices").replaceChildren(...matches.map((match) => matchRow(match)));
+  byId("new-choices").hidden = matches.length === 0;
+  byId("new-none").textContent = matches.length ? "None of these" : "Make it with only its name";
+  (byId("new-choices").querySelector("button") || byId("new-none")).focus();
+}
+
+function matchRow(match) {
+  const item = make("li");
+  const control = make("button");
+  const named = make("span");
+  control.type = "button";
+  named.append(make("strong", match.name), make("span", match.year ? ` (${match.year})` : ""));
+
+  if (match.sentence) {
+    named.append(make("span", match.sentence, "sentence"));
+  }
+
+  control.append(named, make("span", match.countries.join(", "), "note"));
+  control.addEventListener("click", () => perform(control, byId("new-choice-result"), () => chooseMatch(match)));
+  item.append(control);
+  return item;
+}
+
+// Makes the series TMDB knows as `match`, under TMDB's name for it.
+async function chooseMatch(match) {
+  making.found = await making.lookup.series(match.id);
+  making.hint = match.countries[0] || match.year;
+  await makeNamed(making.found.details.name || match.name);
+  return null;
+}
+
+// Makes the series `name`, with what TMDB gave of it, if anything, or opens
+// the one of that name held, ignoring case: unless the two have TMDB ids, and
+// different ones, when the person is asked to name the new one apart.
+async function makeNamed(name) {
+  const found = making.found;
+  const entry = (await Kept.read()).find(name);
+
+  if (entry) {
+    const held = await Series.read(entry.bundle, entry.name);
+    const id = found ? found.details.tmdb_id : undefined;
+
+    if (id !== undefined && held.tmdbId() !== undefined && held.tmdbId() !== id) {
+      askApart(name, held);
+      return;
+    }
+
+    byId("new-dialog").close();
+    showSeries(held);
+    show(byId("library-result"), `You keep “${held.name}” already, so it is open.`);
+    return;
+  }
+
+  const series = await serially(() => makeSeries(name, found));
+  byId("new-dialog").close();
+  showSeries(series);
+}
+
+// Asks for a name for the series chosen apart from `held`'s, its name too,
+// which is another series at TMDB.
+function askApart(name, held) {
+  byId("new-form").hidden = true;
+  byId("new-matches").hidden = true;
+  byId("apart-form").hidden = false;
+  byId("apart-note").textContent = `You keep a series named “${held.name}” already, which is another series at TMDB. Give this one a name of its own.`;
+  byId("apart-name").value = making.hint ? `${name} (${making.hint})` : name;
+  show(byId("apart-result"), "");
+  byId("apart-name").select();
+  byId("apart-name").focus();
+}
+
+// Adding an episode from a file in the folders the node offers.
+
+function crumb(text, segments) {
+  const control = make("button", text, "secondary small");
+  control.type = "button";
+  control.addEventListener("click", () => browse(segments));
+  return control;
+}
+
+function entryRow(text, detail, action) {
+  const item = make("li");
+  const control = make("button");
+  control.type = "button";
+  control.append(make("span", text), make("span", detail, "note"));
+  control.addEventListener("click", action);
+  item.append(control);
+  return item;
+}
+
+async function browse(segments) {
   const list = byId("folder-entries");
   const status = byId("folder-state");
-  const crumbs = [makeCrumb("Folders", [])];
+  const crumbs = [crumb("Folders", [])];
 
   segments.forEach((segment, index) => {
-    crumbs.push(make("span", "›", "note"), makeCrumb(segment, segments.slice(0, index + 1)));
+    crumbs.push(make("span", "›", "note"), crumb(segment, segments.slice(0, index + 1)));
   });
 
   byId("folder-path").replaceChildren(...crumbs);
+  crumbs[crumbs.length - 1].focus();
   list.replaceChildren();
   list.hidden = true;
   show(status, "Asking the node…");
-
   const path = segments.length ? `${DIRECTORY}/${encodedPath(segments.join("/"))}` : DIRECTORY;
   let result;
+
   try {
     result = await call("GET", path);
   } catch (error) {
@@ -914,227 +3136,495 @@ async function browseFolders(segments) {
     return;
   }
 
-  const entries = Object.entries(result.value.entries).filter(([, e]) => isObject(e))
-    .sort(([a], [b]) => a.localeCompare(b));
-  const folders = entries.filter(([, e]) => e.type === "directory");
-  const videos = entries.filter(([, e]) => e.type === "file" && isText(e.content_type) && e.content_type.startsWith("video/"));
+  const entries = Object.entries(result.value.entries).filter(([, entry]) => isObject(entry))
+    .sort(([one], [other]) => one.localeCompare(other));
+  const folders = entries.filter(([, entry]) => entry.type === "directory");
+  const videos = entries.filter(([, entry]) => entry.type === "file"
+    && isText(entry.content_type) && entry.content_type.startsWith("video/"));
+  const others = entries.length - folders.length - videos.length;
 
   list.replaceChildren(
-    ...folders.map(([name]) => entryRow(`${name}/`, "", () => browseFolders([...segments, name]))),
+    ...folders.map(([name]) => entryRow(`${name}/`, "", () => browse([...segments, name]))),
     ...videos.map(([name, entry]) => entryRow(name, formatSize(entry.size), () => {
       byId("file-dialog").close();
-      startEpisodeImport([...segments, name].join("/"), name);
+      chooseFile([...segments, name]);
     })),
   );
   list.hidden = folders.length + videos.length === 0;
-  show(status, "");
-}
 
-function makeCrumb(text, segments) {
-  const btn = make("button", text, "secondary small");
-  btn.type = "button";
-  btn.addEventListener("click", () => browseFolders(segments));
-  return btn;
-}
-
-function entryRow(text, detail, action) {
-  const item = make("li");
-  const btn = make("button");
-  btn.type = "button";
-  btn.append(make("span", text), make("span", detail, "note"));
-  btn.addEventListener("click", action);
-  item.append(btn);
-  return item;
-}
-
-function formatSize(bytes) {
-  if (typeof bytes !== "number") return "";
-  for (const [unit, size] of [["GB", 1e9], ["MB", 1e6], ["kB", 1e3]]) {
-    if (bytes >= size) return `${(bytes / size).toFixed(1)} ${unit}`;
+  if (list.firstElementChild) {
+    list.querySelector("button").focus();
   }
-  return `${bytes} B`;
-}
 
-function parseEpisodeNumbers(name) {
-  const match = /(?:s(\d+)\s*e(\d+))|(?:(\d+)x(\d+))/i.exec(name);
-  if (match) {
-    const season = Number(match[1] || match[3]);
-    const episode = Number(match[2] || match[4]);
-    return { season, episodes: [episode] };
+  if (segments.length === 0 && entries.length === 0) {
+    show(status, "This node offers no folders. Its operator chooses them, in local.folders.");
+  } else if (folders.length + videos.length === 0) {
+    show(status, "This folder holds no videos.");
+  } else {
+    show(status, others ? `${plural(others, "other file", "other files")} here, not videos.` : "");
   }
-  return { season: 1, episodes: [1] };
 }
 
-async function startEpisodeImport(path, fileName) {
-  const item = make("li");
-  const label = make("span", `Importing “${fileName}”`);
-  const bar = make("progress");
-  const note = make("span", "", "note");
-  item.append(label, bar, note);
-  byId("activity").append(item);
+// The file chosen whose numbers the dialog asking for them is open on: the
+// folders it is in, then its name.
+let numbering = null;
 
-  const started = await call("POST", IMPORTS, { body: { path } });
-  if (started.status !== 202 || !isObject(started.value) || !isText(started.value.import_id)) {
-    label.textContent = `Import failed for “${fileName}”`;
-    label.className = "error";
-    bar.remove();
-    note.remove();
+// Adds the file at `segments`, numbered as its name gives, or, if it gives
+// none, as the person says.
+function chooseFile(segments) {
+  const named = EpisodeName.parse(segments);
+
+  if (named) {
+    startImport(segments, named);
     return;
   }
 
-  const importId = started.value.import_id;
-  let fileBundle = null;
+  numbering = segments;
+  byId("numbers-form").reset();
+  byId("numbers-heading").textContent = `Which episode is “${segments[segments.length - 1]}”?`;
+  show(byId("numbers-result"), "");
+  byId("numbers-dialog").showModal();
+}
 
+async function numberFile() {
+  const season = byId("numbers-season").value.trim();
+  const episode = byId("numbers-episode").value.trim();
+  const name = numbering[numbering.length - 1];
+
+  if (!/^\d{1,4}$/.test(season) || !/^\d{1,4}$/.test(episode)) {
+    throw new Error("A season and an episode are each a number, such as 1 and 2. The specials are season 0.");
+  }
+
+  byId("numbers-dialog").close();
+  startImport(numbering, new EpisodeName(Number(season), [Number(episode)], EpisodeName.title(name.replace(/\.[^.]*$/, ""))));
+  return null;
+}
+
+// What the node says of an import, until it is done: the file bundle it stored.
+async function followImport(importId, progress) {
   for (;;) {
-    const res = await call("GET", IMPORTS);
-    if (res.ok && isObject(res.value?.imports?.[importId])) {
-      const rec = res.value.imports[importId];
-      if (rec.status === "done") {
-        fileBundle = rec.file;
-        break;
-      }
-      if (rec.status === "failed") {
-        label.textContent = `Import failed: ${rec.error || "Unknown"}`;
-        label.className = "error";
-        bar.remove();
-        note.remove();
-        return;
-      }
-      if (rec.size) {
-        bar.max = rec.size;
-        bar.value = rec.bytes_read || 0;
-      }
+    const result = await call("GET", IMPORTS);
+
+    if (result.status === 503) {
+      await sleep(retryAfter(result.headers));
+      continue;
     }
-    await sleep(1);
+
+    if (!result.ok) {
+      throw new Refusal(result);
+    }
+
+    const imports = isObject(result.value) && isObject(result.value.imports) ? result.value.imports : {};
+    const record = imports[importId];
+
+    if (isObject(record)) {
+      if (record.status === "done" && isText(record.file)) {
+        return record.file;
+      }
+
+      if (record.status === "failed") {
+        throw new Error(record.error || "The node did not say why the import failed.");
+      }
+
+      progress(record);
+    }
+
+    await sleep(IMPORT_POLL_SECONDS);
+  }
+}
+
+// Imports the file at `path`, named `name`, makes an episode of it, numbered
+// as `named` says, with what is known of it looked up while the file is
+// imported, and adds that to `series`, or its newest version. Returns the
+// episode's path, and why it was not looked up, or "".
+async function importEpisode(path, name, named, series, progress) {
+  const started = await call("POST", IMPORTS, { body: { path } });
+
+  if (started.status !== 202 || !isObject(started.value) || !isText(started.value.import_id)) {
+    throw new Refusal(started);
   }
 
-  item.remove();
-  // Add episode to current series
-  const parsed = parseEpisodeNumbers(fileName);
-  const seasonFolder = `S${String(parsed.season).padStart(2, "0")}`;
-  const epFolder = fileBundle.split("/")[1].slice(0, 16);
+  const described = describeEpisode(series, named, name, !series.season(seasonFolder(named.season)));
+  const file = await followImport(started.value.import_id, progress);
+  const { info, still, made, problem } = await described;
+  const add = { [name]: { file }, [INFO_FILE]: { text: jsonText(INFO_KEYS, info) } };
 
-  const info = {
-    title: fileName.replace(/\.[^/.]+$/, ""),
-    season: parsed.season,
-    episodes: parsed.episodes,
-    aired: new Date().toISOString().slice(0, 10),
-    video: fileName,
-  };
+  if (still) {
+    add[POSTER_FILE] = { base64: still };
+  }
 
-  const add = {
-    [`${seasonFolder}/${epFolder}/${fileName}`]: { file: fileBundle },
-    [`${seasonFolder}/${epFolder}/info.json`]: { text: JSON.stringify(info, null, 2) },
-  };
+  const episode = await makeBundle({ add });
+  const added = await serially(async () => addEpisode(await newest(series.name), episode, info, made));
+  return { path: added, problem };
+}
 
-  // Ensure season.json exists
+// Asks before the page is left while an episode is imported, since leaving it
+// leaves that episode out of its series. It is listened for only while one
+// is, as some browsers do not keep a page that listens for it to go back to.
+function warnOfLeaving(event) {
+  event.preventDefault();
+  // Chrome and Edge before 119 ask only when this is set.
+  event.returnValue = true;
+}
+
+// Imports the file at `segments`, numbered as `named` says, into the series
+// open, unless it holds an episode of those numbers already.
+function startImport(segments, named) {
   const series = state.series;
-  let seasonData = series.seasonsMap.get(seasonFolder);
-  if (!seasonData) {
-    const seasonJson = { number: parsed.season, name: `Season ${parsed.season}`, order: [epFolder] };
-    add[`${seasonFolder}/season.json`] = { text: JSON.stringify(seasonJson, null, 2) };
-    series.seasonsMap.set(seasonFolder, { seasonJson, episodes: new Map([[epFolder, info]]), order: [epFolder] });
-    series.data.seasons = [...(series.data.seasons || []), seasonFolder];
-    add["series.json"] = { text: JSON.stringify(series.data, null, 2) };
-  } else {
-    seasonData.order.push(epFolder);
-    seasonData.episodes.set(epFolder, info);
-    add[`${seasonFolder}/season.json`] = {
-      text: JSON.stringify({ ...seasonData.seasonJson, order: seasonData.order }, null, 2),
-    };
+  const name = segments[segments.length - 1];
+  const item = make("li");
+  const label = make("span", `Importing “${name}”, ${episodeText(named.season, named.episodes)}`);
+  const bar = make("progress");
+  const note = make("span", "", "note");
+
+  if (series.holding(named.season, named.episodes)) {
+    show(byId("library-result"), `“${series.name}” already holds ${episodeText(named.season, named.episodes)}, so “${name}” was not added.`, true);
+    return;
   }
 
-  const newBundle = await makeBundle({ base: series.bundle, add });
-  const updatedSeries = await Series.read(newBundle, series.name);
-  state.series = updatedSeries;
-  
-  // Update person's kept list
-  const kept = await SeriesKept.read();
-  const newList = kept.list.map((s) => s.name === updatedSeries.name ? updatedSeries.entry() : s);
-  if (!newList.some((s) => s.name === updatedSeries.name)) newList.push(updatedSeries.entry());
-  await placeSeriesVersion(newList);
+  bar.setAttribute("aria-label", `How much of “${name}” is imported`);
+  item.append(label, bar, note);
+  byId("activity").append(item);
 
-  showLibrary();
+  const progress = (record) => {
+    if (typeof record.size === "number" && record.size > 0 && typeof record.bytes_read === "number") {
+      bar.max = record.size;
+      bar.value = record.bytes_read;
+      note.textContent = `${formatSize(record.bytes_read)} of ${formatSize(record.size)}`;
+    } else {
+      note.textContent = record.status === "waiting" ? "Waiting its turn." : "";
+    }
+  };
+
+  const ended = (text, isError) => {
+    const dismiss = make("button", "Dismiss", "secondary small");
+    dismiss.type = "button";
+    dismiss.addEventListener("click", () => item.remove());
+    label.textContent = text;
+    label.className = isError ? "error" : "";
+    bar.remove();
+    note.remove();
+    item.append(dismiss);
+  };
+
+  if (state.imports++ === 0) {
+    window.addEventListener("beforeunload", warnOfLeaving);
+  }
+
+  // The episode added is not opened: the page stays where it is, on the
+  // series or the episode chosen, until the person chooses one. Why it was
+  // not looked up, if it was not, stays in the activity list until dismissed.
+  importEpisode(segments.join("/"), name, named, series, progress).finally(() => {
+    if (--state.imports === 0) {
+      window.removeEventListener("beforeunload", warnOfLeaving);
+    }
+  }).then(({ problem }) => {
+    if (problem) {
+      ended(`“${name}” was added. ${problem}`, false);
+    } else {
+      item.remove();
+    }
+  }, (error) => ended(`“${name}” was not added: ${error.message}`, true));
+}
+
+// Runs `action` with `control` disabled, and says what it returned in
+// `message`. An action returns [text, isError], or nothing to say nothing.
+async function perform(control, message, action) {
+  const focused = document.activeElement === control;
+  control.disabled = true;
+
+  try {
+    const outcome = await action();
+
+    if (outcome) {
+      show(message, ...outcome);
+    } else {
+      show(message, "");
+    }
+  } catch (error) {
+    show(message, error.message, true);
+
+    // The episode it was said of is gone, and with it, where it was said.
+    if (message.parentElement.closest("[hidden]")) {
+      show(byId("library-result"), error.message, true);
+    }
+  } finally {
+    control.disabled = false;
+    refreshControls();
+
+    if (focused) {
+      regainFocus(control);
+    }
+  }
+}
+
+// Whether nothing on the page has focus: the page itself has it, or what
+// had it is no longer shown.
+function focusLost() {
+  const active = document.activeElement;
+  return !active || active === document.body || active.getClientRects().length === 0;
+}
+
+// Gives focus back to `control`, which lost it as it was disabled, unless
+// something else has taken it: or, if `control` cannot take it, to the video
+// of the episode chosen, or, if none is, to the series' first episode listed.
+// If `control` opened a dialog, once the dialog closes.
+function regainFocus(control) {
+  const opened = [...document.querySelectorAll("dialog[open]")].find((dialog) => !dialog.contains(control));
+
+  if (opened) {
+    opened.addEventListener("close", () => regainFocus(control), { once: true });
+    return;
+  }
+
+  if (!focusLost()) {
+    return;
+  }
+
+  control.focus();
+
+  if (document.activeElement !== control && state.selected !== null) {
+    byId("video").focus();
+  } else if (document.activeElement !== control && state.series) {
+    focusEpisode(null);
+  }
+}
+
+function onClick(id, message, action) {
+  const control = byId(id);
+  control.addEventListener("click", () => perform(control, byId(message), action));
+}
+
+function onSubmit(id, message, action) {
+  const form = byId(id);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    perform(form.querySelector("button[type=submit]"), byId(message), action);
+  });
+}
+
+async function askClient() {
+  try {
+    const result = await call("GET", CLIENT);
+    return result.ok && isObject(result.value) && result.value.local === true;
+  } catch (error) {
+    console.warn(error.message);
+    return false;
+  }
+}
+
+// Who is signed in, as the node says (HttpApi 11.4); null if no one is, or
+// this client cannot say. Only a local client is signed in.
+async function askSession() {
+  try {
+    const result = await call("GET", SESSION);
+    const signed = result.ok && isObject(result.value) && isText(result.value.id) && CONTENT_ID.test(result.value.id);
+    return signed ? result.value : null;
+  } catch (error) {
+    console.warn(error.message);
+    return null;
+  }
 }
 
 async function start() {
-  state.local = await (async () => {
-    try { const r = await call("GET", CLIENT); return r.ok && r.value?.local === true; } catch (e) { return false; }
-  })();
-  state.owner = state.local ? await (async () => {
-    try { const r = await call("GET", SESSION); return r.ok && isText(r.value?.id) ? r.value : null; } catch (e) { return false; }
-  })() : null;
+  state.local = await askClient();
+  state.owner = state.local ? await askSession() : null;
 
-  for (const el of document.querySelectorAll(".signed-in-only")) {
-    el.hidden = !state.owner;
+  // Only whoever is signed in keeps series; for everyone else there are none.
+  for (const element of document.querySelectorAll(".signed-in-only")) {
+    element.hidden = !state.owner;
   }
 
-  byId("client-note").textContent = state.owner ? "" : (state.local ? "Sign in on the home page to manage series." : "Playback only on remote clients.");
-  byId("choose-series").hidden = false;
+  if (state.owner) {
+    byId("client-note").hidden = true;
+    byId("choose-series").hidden = false;
+  } else {
+    byId("client-note").textContent = state.local
+      ? "This browser is on the node's own machine, but no one is signed in, so it keeps no series. Sign in on the home page to keep series of your own."
+      : "This browser is not on the node's own machine, so no one is signed in on it, and it keeps no series. A person signs in on the home page, on the node's own machine.";
+  }
 
-  const remembered = recallSeries();
+  const remembered = state.owner ? recall() : null;
+
   if (!remembered) {
     await showChooser();
     return;
   }
 
-  let kept;
-  try {
-    kept = await SeriesKept.read();
-  } catch (e) {}
+  // A series remembered is opened at the newest version kept. One no longer
+  // kept, as when the browser remembers it of someone else, is forgotten
+  // rather than waited on.
+  let entry = remembered;
 
-  const entry = kept?.find(remembered.name) || remembered;
   try {
-    state.series = await Series.read(entry.bundle, entry.name);
-    showLibrary();
-  } catch (e) {
+    entry = (await Kept.read()).find(remembered.name);
+  } catch (error) {
+    console.warn(`Your series could not be read: ${error.message}`);
+  }
+
+  if (!entry) {
+    forget();
     await showChooser();
+    return;
+  }
+
+  try {
+    await openSeries(entry);
+  } catch (error) {
+    await showChooser();
+    show(byId("chooser-state"), `“${remembered.name}” could not be read: ${error.message}`, true);
   }
 }
 
-// Event Bindings
-for (const btn of document.querySelectorAll("[data-close]")) {
-  btn.addEventListener("click", () => btn.closest("dialog").close());
+const video = byId("video");
+video.addEventListener("loadedmetadata", fillDuration);
+video.addEventListener("error", videoTrouble);
+video.addEventListener("play", playFullscreen);
+video.addEventListener("ended", playNext);
+video.addEventListener("fullscreenchange", leftFullscreen);
+video.addEventListener("webkitendfullscreen", leftFullscreen);
+video.addEventListener("loadeddata", () => { byId("video-trouble").hidden = true; });
+video.addEventListener("keydown", tabPastControls);
+
+for (const type of ["focus", "play", "pause", "fullscreenchange"]) {
+  video.addEventListener(type, focusPastControls);
+}
+
+byId("video-again").addEventListener("click", () => {
+  byId("video-trouble").hidden = true;
+  video.load();
+  video.focus();
+});
+
+// Full screen, the keys go to the video, not to a control hidden behind it.
+video.addEventListener("fullscreenchange", () => {
+  if (document.fullscreenElement === video) {
+    video.focus();
+  }
+});
+
+// Keys, as video players have, anywhere but in a field, and while no dialog
+// is open. Each is heard before the element with focus hears it, so that a
+// video's own controls do not act on it too.
+const SHORTCUTS = {
+  g: playOrPause,
+  f: toggleFullscreen,
+  s: leaveEpisode,
+  x: leaveEpisode,
+  n: () => stepEpisode(1),
+  p: () => stepEpisode(-1),
+  "[": () => stepSeason(-1),
+  "]": () => stepSeason(1),
+  c: showChooser,
+  "`": openFilter,
+  "?": () => byId("keys-dialog").showModal(),
+  "/": () => byId("keys-dialog").showModal(),
+};
+
+window.addEventListener("keydown", (event) => {
+  const target = event.target instanceof Element ? event.target : document.body;
+  const ignored = event.altKey || event.ctrlKey || event.metaKey || event.isComposing || event.repeat
+    || document.querySelector("dialog[open]") || target.closest("input, select, textarea");
+
+  if (ignored) {
+    return;
+  }
+
+  // Space presses a button or link that has focus, and scrolls when no episode is chosen.
+  const pressed = target.closest("button, a[href], summary") || state.selected === null;
+  const key = event.key === " " ? (pressed ? "" : "g") : String(event.key).toLowerCase();
+
+  if (!Object.hasOwn(SHORTCUTS, key)) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  SHORTCUTS[key]();
+}, true);
+
+// The keyboard's media keys, as the browser passes them on. Play and pause
+// it handles itself.
+const MEDIA_KEYS = { stop: leaveEpisode, previoustrack: () => stepEpisode(-1), nexttrack: () => stepEpisode(1) };
+
+for (const [action, handler] of Object.entries(MEDIA_KEYS)) {
+  try {
+    navigator.mediaSession.setActionHandler(action, handler);
+  } catch (error) {
+    console.warn(`This browser passes on no ${action} key: ${error.message}`);
+  }
+}
+
+arrowKeys(byId("episodes"), "button.pick");
+arrowKeys(byId("seasons"));
+arrowKeys(byId("chooser-list"), "button.pick");
+arrowKeys(byId("folder-entries"));
+arrowKeys(byId("new-choices"));
+
+for (const control of document.querySelectorAll("[data-close]")) {
+  control.addEventListener("click", () => control.closest("dialog").close());
 }
 
 byId("choose-series").addEventListener("click", showChooser);
-byId("add-file").addEventListener("click", openFileBrowser);
-byId("new-series").addEventListener("click", () => {
-  byId("new-form").reset();
-  show(byId("new-result"), "");
-  byId("new-dialog").showModal();
-});
-byId("close-episode").addEventListener("click", closePlayer);
 byId("show-keys").addEventListener("click", () => byId("keys-dialog").showModal());
+byId("new-series").addEventListener("click", openNew);
+byId("new-lookup-key").addEventListener("click", openLookup);
+byId("add-file").addEventListener("click", () => {
+  byId("file-dialog").showModal();
+  browse([]);
+  showLookup(byId("lookup-note"), byId("lookup-key"), fileNote);
+});
+byId("lookup-key").addEventListener("click", openLookup);
+byId("edit-series").addEventListener("click", openSeriesEdit);
+byId("edit-season").addEventListener("click", openSeasonEdit);
+byId("filter-episodes").addEventListener("click", openFilter);
+byId("episode-filter").addEventListener("input", renderEpisodes);
 
-onSubmit("new-form", "new-result", async () => {
-  const name = byId("new-name").value.trim();
-  if (!name) throw new Error("Give the series a name.");
-  
-  const seriesJson = { name, seasons: [] };
-  const bundle = await makeBundle({ encrypted: true, add: { "series.json": { text: JSON.stringify(seriesJson, null, 2) } } });
-  const entry = { name, bundle, changed: new Date().toISOString() };
-  
-  const kept = await SeriesKept.read();
-  await placeSeriesVersion([...kept.list, entry]);
-  
-  byId("new-dialog").close();
-  state.series = await Series.read(bundle, name);
-  rememberSeries(entry);
-  showLibrary();
+// Enter keeps the filter as typed, and Escape empties it, showing the seasons.
+byId("episode-filter").addEventListener("keydown", (event) => {
+  if (event.isComposing || (event.key !== "Enter" && event.key !== "Escape")) {
+    return;
+  }
+
+  event.preventDefault();
+
+  if (event.key === "Escape") {
+    event.target.value = "";
+    renderEpisodes();
+  }
+
+  keepFilter();
+});
+byId("edit-episode").addEventListener("click", startEditing);
+byId("close-episode").addEventListener("click", leaveEpisode);
+byId("cancel-edit").addEventListener("click", () => {
+  stopEditing();
+  byId("edit-episode").focus();
+});
+
+onSubmit("new-form", "new-result", findSeries);
+onClick("new-none", "new-choice-result", async () => {
+  making.found = null;
+  await makeNamed(making.name);
   return null;
 });
+onSubmit("apart-form", "apart-result", async () => {
+  const name = byId("apart-name").value.trim();
 
-function onSubmit(formId, resultId, action) {
-  byId(formId).addEventListener("submit", async (e) => {
-    e.preventDefault();
-    try {
-      await action();
-    } catch (err) {
-      show(byId(resultId), err.message, true);
-    }
-  });
-}
+  if (!name) {
+    throw new Error("Give the series a name.");
+  }
+
+  await makeNamed(name);
+  return null;
+});
+onSubmit("numbers-form", "numbers-result", numberFile);
+onSubmit("lookup-form", "lookup-result", keepLookup);
+onSubmit("editor", "editor-result", saveEdit);
+onSubmit("series-form", "series-result", saveSeries);
+onSubmit("season-form", "season-result", saveSeason);
+onClick("take-poster", "poster-result", takePoster);
+onClick("remove-episode", "episode-result", removeEpisode);
 
 start();
 </script>

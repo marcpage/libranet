@@ -52,6 +52,7 @@ see [Project Status](#project-status).
   - [What You Can Do With It](#what-you-can-do-with-it)
     - [Back up your files](#back-up-your-files)
     - [Watch movies](#watch-movies)
+    - [Watch TV](#watch-tv)
     - [Use and share applications](#use-and-share-applications)
   - [How It Works](#how-it-works)
   - [Getting Started](#getting-started)
@@ -157,6 +158,24 @@ The films themselves are not. A browser on another computer can play the
 collections your node keeps, but cannot change them, and anyone who can reach
 your node can see those collections' ids.
 
+### Watch TV
+
+Every node also ships a TV application, at `/tv/` on the node, which looks
+and works as the movie library does, but keeps series. Signed in, in a
+browser on the node's own computer, make a series by its name, and choose
+which of TMDB's series of that name it is, with the movie library's TMDB
+key: its year, rating, cast, a description, and a backdrop come from there.
+Then add its episodes from video files. Each goes into its season by the
+numbers its file's name gives, as `S01E02` or `1x02`, or a number in its
+name in a folder named for its season, and is looked up at TMDB with its
+season. Only the episodes you add are shown, in season and episode order,
+with a button for each season.
+
+When an episode ends, the next plays at once, on into the next season. The
+keys are the movie library's, with `[` and `]` for the season before and
+the next. Your series are kept for you alone, as your collections are, so
+the TV application keeps none for a browser no one is signed in on.
+
 ### Use and share applications
 
 Any collection of web pages can be served as an application. Give your node
@@ -230,7 +249,8 @@ uv run libranet
 
 Then open `http://127.0.0.1:8080/` in a browser. That is your node's front
 page, which says who the node is and links to its applications: the movie
-library at `http://127.0.0.1:8080/movie/`, the user directory at
+library at `http://127.0.0.1:8080/movie/`, TV at
+`http://127.0.0.1:8080/tv/`, the user directory at
 `http://127.0.0.1:8080/directory/`, mail at `http://127.0.0.1:8080/mail/`,
 the nodes it knows at `http://127.0.0.1:8080/nodes/`, the Karma chain it
 follows at `http://127.0.0.1:8080/karma/`, and the administration page,
@@ -340,7 +360,7 @@ you say so on `/config`.
 | [Phase 7 Plan](docs/implementation/Phase%207.md) | Enhancements: steps 16, 50, 57, and 95, planned |
 | [Phase 8 Plan](docs/implementation/Phase%208.md) | A seed node: step 84, planned |
 | [Movie App Plan](docs/implementation/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 83, 85–88, and 115, all built |
-| [TV App Plan](docs/implementation/TV%20App.md) | The TV application: steps 144–148, planned |
+| [TV App Plan](docs/implementation/TV%20App.md) | The TV application: steps 144–148, step 144 built |
 | [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |
 | [File Layout](docs/implementation/File%20Layout.md) | Every file a node reads or writes, and the settings that move them |
 | [Database Schema](docs/implementation/Database%20Schema.md) | The statistics database's tables, and what reads and writes them |

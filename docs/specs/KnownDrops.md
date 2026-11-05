@@ -26,6 +26,8 @@ is placed at its target, and links to the documents that define it.
 | [`mail state:{id}:{year}/{month}`](#38-read-and-hidden-marks) | The versions of what a person read and hid of a month's mail | The mail application | The person | For the person | In use |
 | [`movie collections:{id}`](#312-movie-collections) | The versions of a person's list of movie collections | The movie application | The person | For the person | In use |
 | [`movie offline:{id}`](#313-movies-kept-offline) | A version for each collection a person keeps offline | The movie application | The person | For the person | In use |
+| [`movie tmdb:{id}`](#314-tmdb-keys) | The versions of the key a person looks things up at TMDB with | The movie and TV applications | The person | For the person | In use |
+| [`tv series:{id}`](#315-tv-series) | The versions of a person's list of TV series | The TV application | The person | For the person | In use |
 | [`node:{id}`](#39-what-a-node-says-of-itself) | The versions of what a node says of itself | The node | The node | No | In use |
 | [`karma transaction:{validation}`](#310-karma-transaction-blocks) | Karma's transaction blocks, and transactions put up for them | Anyone | Its builder; each transaction by its sender | No | In use |
 | [`karma validation:{validation}`](#311-karma-validation-blocks) | Karma's validation blocks | Anyone | Its builder; each stake by its staker | No | In use |
@@ -44,6 +46,8 @@ flowchart TB
         pid --> ptrust["trust:{id}<br/>trust list"]
         pid --> mail["mail:{id}:…<br/>mail sent:{id}:…<br/>mail address book:{id}<br/>mail state:{id}:…<br/>their mail (§3.5 to §3.8)"]
         pid --> movie["movie collections:{id}<br/>movie offline:{id}<br/>their movies (§3.12, §3.13)"]
+        pid --> tmdb["movie tmdb:{id}<br/>their TMDB key (§3.14)"]
+        pid --> tv["tv series:{id}<br/>their TV series (§3.15)"]
     end
     subgraph node["A node"]
         direction LR
@@ -505,3 +509,51 @@ node's search leaves out what it has shunned, archived or not.
   [HTTP API §12.4](HttpApi.md#124-keeping-content-offline) for the
   archives;
   [App Developer Guide §6.19](../operations/App%20Developer%20Guide.md#619-keeping-content-offline).
+
+### 3.14 TMDB Keys
+
+**Target:** `movie tmdb:{id}`
+
+The key a person looks things up at TMDB, The Movie Database, with: what
+is known of a movie added from a file, and of a TV series, its seasons, and
+its episodes. It is kept in versions, the newest of which holds it, so
+that it follows the person from node to node. The movie application placed
+it first, and the TV application reads and keeps it at the same drop, so
+that a key given in either serves both.
+
+- **Placed by** the movie application and the TV application, with
+  `POST /data/signed`, given `encrypt: {for: id}`, whenever the person
+  changes the key.
+- **Signed** by the person, then **encrypted** for the person.
+- **Bits:** placed matching at least 24, searched for 1 second.
+- **Reading:** a reader passes over every version that does not open for
+  the person, that they did not sign, or that does not hold a `key` and
+  when it `changed`. The newest version left holds the key, and of two
+  changed in the same moment, the one whose drop's id comes first. An
+  empty key is none. Each change places a version, and shuns the versions
+  read, which it replaces.
+- **Defined in:** the movie application's page (#588), and
+  [TV App](../implementation/TV%20App.md) Step 144.
+
+### 3.15 TV Series
+
+**Target:** `tv series:{id}`
+
+A person's list of TV series names each series, with its newest bundle and
+when it last changed. It is kept in versions, so that it follows the
+person from node to node, and versions made apart, on two nodes say, are
+merged as they are read. The node keeps no list of series for a client no
+one is signed in on.
+
+- **Placed by** the TV application, with `POST /data/signed`, given
+  `encrypt: {for: id}`, whenever the person's list of series changes.
+- **Signed** by the person, then **encrypted** for the person.
+- **Bits:** placed matching at least 24, searched for 1 second.
+- **Reading:** a reader passes over every version that does not open for
+  the person, or that they did not sign. It merges every version left:
+  each series, found by its name ignoring case, at the version that
+  changed it last, and of two changed in the same second, the one whose
+  drop's id comes first. Each change places a version holding the merged
+  list, and shuns the versions read, which it replaces, as for movie
+  collections (§3.12).
+- **Defined in:** [TV App](../implementation/TV%20App.md) Step 144.
