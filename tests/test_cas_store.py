@@ -1,10 +1,11 @@
 """Tests for the filesystem CAS store."""
 
 from __future__ import annotations
-from logging import WARNING
+from logging import DEBUG, WARNING
 from pathlib import Path
+from typing import Iterator
 
-from pytest import LogCaptureFixture, fixture, raises
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
@@ -202,6 +203,36 @@ def test_iter_prefix_logs_a_directory_named_as_content_as_a_warning(
     assert record.levelno == WARNING
     assert record.getMessage() == (
         f"Skipping {store.path_for(content_id)}, named as CAS content but not a file"
+    )
+
+
+def test_iter_prefix_logs_content_deleted_while_listed_only_for_debugging(
+    tmp_path: Path, caplog: LogCaptureFixture, monkeypatch: MonkeyPatch
+) -> None:
+    caplog.set_level(DEBUG)
+    store = make_store(tmp_path, 2)
+    kept = ContentId.for_data(b"kept", "sha256")
+    deleted = ContentId("sha256", f"{kept.hash[:2]}{'0' * 62}")
+    store.write(kept, b"kept")
+    store.write(deleted, b"deleted")
+    prefix_dir = store.path_for(kept).parent
+    listing = Path.iterdir
+
+    def deleting_once_listed(directory: Path) -> Iterator[Path]:
+        entries = list(listing(directory))
+
+        if directory == prefix_dir:
+            store.delete(deleted)
+
+        return iter(entries)
+
+    monkeypatch.setattr(Path, "iterdir", deleting_once_listed)
+
+    assert list(store.iter_prefix("sha256", kept.hash[:2])) == [kept]
+    (record,) = caplog.records
+    assert record.levelno == DEBUG
+    assert record.getMessage() == (
+        f"Skipping {store.path_for(deleted)}, deleted while its directory was read"
     )
 
 
