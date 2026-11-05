@@ -440,7 +440,11 @@ Step 124). Reading a target publishes `data.search_requested`, and each miss
 `data.not_found`. The reader keeps what peers name, in `data.search_answered`,
 at a target it reads, and asks at once for what it lacks; it stops waiting for
 content as `data.stored` names it, and gives up on what has not come within
-`karma.fetch_wait_seconds` as the module idles. It follows the chain
+`karma.fetch_wait_seconds` as the module idles. What it finds at a target it
+asks for once while it reads the target: no node holds a block every node that
+held it shunned, which searches may name still, and asking on each read would
+have every node ask its peers for it, for as long as the target is read. It
+follows the chain
 (`ChainFollower`, `karma/following.py`, Phase 6 Step 126): from the heaviest
 correct root at the root's targets, while it follows none, and then a
 generation at a time, the best correct validation block at its head's targets.

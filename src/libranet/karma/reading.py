@@ -33,10 +33,16 @@ fetcher retrieves it::
 
 It is waited for until it is stored (:meth:`TargetReader.stored`), for up to
 ``karma.fetch_wait_seconds``, and then given up on
-(:meth:`TargetReader.given_up`), to be asked for again the next time it is
-needed. So is anything else a check finds lacking: a signer's key, or a block
-of the chain the node no longer holds (§2). Content the node shuns is never
-read, nor asked for.
+(:meth:`TargetReader.given_up`). What is found at a target is asked for once
+while the target is read, not by each read that lacks it: what no peer sent
+while it was waited for, none may hold, as none holds a block superseded and
+shunned by every node that held it (§3.7), which peers' searches may name
+still. Were it asked for again, each node lacking it would ask its peers for
+it in turn, for as long as the target is read. The node's seek list names it
+for a while yet, for a peer that holds it to push, and it is read once it is
+stored. Anything else a check finds lacking, a signer's key, or a block of the
+chain the node no longer holds (§2), is asked for again the next time it is
+needed. Content the node shuns is never read, nor asked for.
 
 A block held is read decompressed, if it is held compressed (HttpApi §8),
 and measured compressed, as whether it is full is (§5.4): the copy held, if
@@ -268,13 +274,14 @@ class TargetReader:
         ``answer_seconds`` pass without
         a read of it. What is found but not held is asked for, as is the key
         of each signer a block held names that is not held, and each is
-        waited for (:meth:`awaits`). Anything held that is not what it is
-        held as is passed over, and logged. What is ``known``, that the caller
-        has done with, is neither read nor asked for, whether or not it is
-        held still. What is ``kept``, read before, and kept by the caller
-        while it is held, is not read again either: while it is held it is
-        said to be requested, as a read says, and once it is not it is asked
-        for, and waited for, as anything found and not held is.
+        waited for (:meth:`awaits`), but what a read lacked before, while the
+        target was read, is not asked for again. Anything held that is not
+        what it is held as is passed over, and logged. What is ``known``, that
+        the caller has done with, is neither read nor asked for, whether or
+        not it is held still. What is ``kept``, read before, and kept by the
+        caller while it is held, is not read again either: while it is held
+        it is said to be requested, as a read says, and once it is not it is
+        asked for, and waited for, as anything found and not held is.
         """
         prefix: str = target.hex
         answers: _Answers = self._reading(prefix)
@@ -309,7 +316,12 @@ class TargetReader:
 
             yield self._block(block_id, data, held_bytes, kind)
 
-        self.fetch(lacking)
+        # Only what no read lacked before, while the target was read: what was
+        # asked for then, and did not come, no peer may hold, as no node holds a
+        # block superseded and shunned (§3.7), which searches may name still.
+        # Asking again would have every node lacking it ask its peers in turn,
+        # each answering 503, for as long as the target is read.
+        self.fetch([block_id for block_id in lacking if block_id not in answers.lacking])
         # One known is kept as it was: another caller may be waiting for it, and
         # its wait is not to start over.
         answers.lacking = {
@@ -487,7 +499,8 @@ class TargetReader:
     def given_up(self) -> list[ContentId]:
         """What was asked for and is not stored ``wait_seconds`` on, no longer waited for.
 
-        Each is logged, and is asked for again the next time it is needed.
+        Each is logged, and is asked for again the next time it is needed, but
+        at a target still read, where it is not (:meth:`read_each`).
         """
         now = self._clock()
         late = sorted(content_id for content_id, until in self._waiting.items() if now >= until)

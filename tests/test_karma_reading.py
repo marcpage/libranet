@@ -469,7 +469,7 @@ def test_a_block_found_at_a_target_but_lacked_is_awaited_as_long_as_one_is_waite
 
     clock.now += 1
     reader.given_up()
-    # Asked for again, but awaited no longer.
+    # Neither asked for again, nor awaited.
     reader.read(FIRST.validation, ValidationBlock)
 
     assert not reader.awaits(FIRST.validation)
@@ -679,6 +679,54 @@ def test_what_peers_name_at_a_target_is_kept_while_it_is_read(
     reader.read(FIRST.validation, ValidationBlock)
 
     assert recorder.asked_for() == [block_id, block_id]
+
+
+def test_a_block_lacked_at_a_target_is_not_asked_for_again_while_the_target_is_read(
+    reader: TargetReader, recorder: Recorder, clock: Clock, staking: bytes
+) -> None:
+    block_id = id_of(staking)
+    reader.read(FIRST.validation, ValidationBlock)
+    reader.answered(FIRST.validation.hex, [block_id])
+    reader.read(FIRST.validation, ValidationBlock)
+    clock.now += WAIT_SECONDS
+    reader.given_up()
+    reader.read(FIRST.validation, ValidationBlock)
+    clock.now += ANSWER_SECONDS - 1
+    reader.given_up()
+    reader.read(FIRST.validation, ValidationBlock)
+
+    assert recorder.asked_for() == [block_id]
+    assert reader.waiting == frozenset()
+    assert not reader.awaits(FIRST.validation)
+
+
+def test_a_block_lacked_at_a_target_then_held_and_let_go_is_asked_for_again(
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    clock: Clock,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    staking: bytes,
+) -> None:
+    block_id = id_of(staking)
+    hold_keys(truth, alice, bob)
+    reader.read(FIRST.validation, ValidationBlock)
+    reader.answered(FIRST.validation.hex, [block_id])
+    reader.read(FIRST.validation, ValidationBlock)
+    clock.now += WAIT_SECONDS
+    reader.given_up()
+    truth.write(block_id, staking)
+
+    assert [block.block_id for block in reader.read(FIRST.validation, ValidationBlock)] == [
+        block_id
+    ]
+
+    truth.delete(block_id)
+    reader.read(FIRST.validation, ValidationBlock)
+
+    assert recorder.asked_for() == [block_id, block_id]
+    assert reader.awaits(FIRST.validation)
 
 
 def test_an_answer_for_a_target_not_being_read_is_passed_over(

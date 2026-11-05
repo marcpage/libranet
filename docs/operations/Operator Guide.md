@@ -583,7 +583,11 @@ there, so that searches carry less of the same data: one holding fewer of
 them, or as many with a drop sharing fewer bits with the target. It never
 shuns one that a validation block names, nor one that is full.
 `libranet-karma.log` names each it shuns, and the block that holds its
-transactions.
+transactions. Peers' searches may still name a block every node shunned,
+though none holds it, so a block found at a target that does not come within
+`karma.fetch_wait_seconds` the node does not ask for again while it reads
+that target. Were it asked for again, the nodes would ask each other for it,
+each answering `503`, for as long as the generation lasted.
 
 A block is full once it is over 8 KiB, compressed, for each identity holding
 Karma, up to 128 KiB under 1 MiB once 112 hold any. So block 1, on a new
