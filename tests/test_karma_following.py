@@ -1,6 +1,7 @@
 """Tests for following the chain, a generation at a time (KarmaLedger §3.2, §3.3, §7.5)."""
 
 # pylint: disable=too-many-lines
+
 from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
