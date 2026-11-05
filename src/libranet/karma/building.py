@@ -38,12 +38,12 @@ Each block is read once, and checked once, as the chain followed checks it
 before the next is read, as many full blocks may come, each far larger read
 than held: each transaction is kept by its hash, with its signature checked,
 and the hashes the block holds by its id, and a block found correct or not,
-and not full, is not read or fetched again, even if eviction lets it go. So the blocks put up
-cost a node as they arrive, not as it builds. One full is not read again
-either, but counts only while it is held: it may be validated, and if it is
-lost, it is to be built again. While it is held, it is said to be in use, as a
-read says, and once it is not, it is asked for again, should it be found there
-still.
+and not full, is not read or fetched again, even if eviction lets it go. So the
+blocks put up cost a node as they arrive, not as it builds. One full is not
+read again either, but counts only while it is held: it may be validated, and
+if it is lost, it is to be built again. While it is held, it is said to be in
+use, as a read says, and once it is not, it is asked for again, should it be
+found there still.
 
 Nothing is built while one block held at the head's transaction target,
 correct but perhaps for not being full, holds every transaction that would
