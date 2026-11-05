@@ -1,7 +1,7 @@
 """Tests for the filesystem CAS store."""
 
 from __future__ import annotations
-from logging import WARNING
+from logging import DEBUG, WARNING
 from pathlib import Path
 from typing import Iterator
 
@@ -206,9 +206,10 @@ def test_iter_prefix_logs_a_directory_named_as_content_as_a_warning(
     )
 
 
-def test_iter_prefix_skips_content_deleted_while_listed_without_logging(
+def test_iter_prefix_logs_content_deleted_while_listed_only_for_debugging(
     tmp_path: Path, caplog: LogCaptureFixture, monkeypatch: MonkeyPatch
 ) -> None:
+    caplog.set_level(DEBUG)
     store = make_store(tmp_path, 2)
     kept = ContentId.for_data(b"kept", "sha256")
     deleted = ContentId("sha256", f"{kept.hash[:2]}{'0' * 62}")
@@ -228,7 +229,11 @@ def test_iter_prefix_skips_content_deleted_while_listed_without_logging(
     monkeypatch.setattr(Path, "iterdir", deleting_once_listed)
 
     assert list(store.iter_prefix("sha256", kept.hash[:2])) == [kept]
-    assert not caplog.records
+    (record,) = caplog.records
+    assert record.levelno == DEBUG
+    assert record.getMessage() == (
+        f"Skipping {store.path_for(deleted)}, deleted while its directory was read"
+    )
 
 
 def test_iter_prefix_logs_prefix_directories_of_another_length_once_as_a_warning(

@@ -136,9 +136,9 @@ class CasStore:
         store did not write, such as a prefix directory of another length, a
         name that is not a lower-case hash, or a directory where a file
         belongs, is logged and skipped. Content deleted while the scan reads
-        its directory is skipped without being logged. Directories that are
-        not prefix directories are logged once for the scan, however many
-        there are.
+        its directory is skipped, and logged only at debug level. Directories
+        that are not prefix directories are logged once for the scan, however
+        many there are.
         """
         algorithm_dir = self._root / DATA_SEGMENT / algorithm
 
@@ -178,7 +178,9 @@ class CasStore:
                     continue
 
                 except FileNotFoundError:
-                    # Not logged: it was deleted while the directory was read.
+                    # Not a warning: content is deleted, such as when it is
+                    # shunned, while it is being scanned for.
+                    _LOGGER.debug("Skipping %s, deleted while its directory was read", entry)
                     continue
 
                 if not S_ISREG(status.st_mode):
