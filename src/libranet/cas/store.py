@@ -135,8 +135,10 @@ class CasStore:
         subdirectories that can match are scanned. What is there that this
         store did not write, such as a prefix directory of another length, a
         name that is not a lower-case hash, or a directory where a file
-        belongs, is logged and skipped. Directories that are not prefix
-        directories are logged once for the scan, however many there are.
+        belongs, is logged and skipped. Content deleted while the scan reads
+        its directory is skipped without being logged. Directories that are
+        not prefix directories are logged once for the scan, however many
+        there are.
         """
         algorithm_dir = self._root / DATA_SEGMENT / algorithm
 
@@ -169,12 +171,17 @@ class CasStore:
 
                 try:
                     content_id = ContentId.from_stored_name(algorithm, entry.name)
+                    status = entry.stat()
 
                 except InvalidContentIdError as error:
                     _LOGGER.warning("Skipping %s, not named as CAS content: %s", entry, error)
                     continue
 
-                if not entry.is_file():
+                except FileNotFoundError:
+                    # Not logged: it was deleted while the directory was read.
+                    continue
+
+                if not S_ISREG(status.st_mode):
                     _LOGGER.warning("Skipping %s, named as CAS content but not a file", entry)
                     continue
 
