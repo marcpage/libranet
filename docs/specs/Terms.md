@@ -633,10 +633,11 @@ content can confirm the network holds it, but no one else can read it.
 
 A Karma transaction block is correct when it is signed and full, shaped and
 placed as specified, holds only valid transactions, and states its payout,
-balances, weight, and reach truly. A block that is not scores zero. A
-validation block is correct when it is signed and placed as specified, its
-stakes all name one correct, full transaction block of its generation and are
-covered, its runner-up is allowed, and it fits in 1 MiB compressed.
+balances, weight, stake baseline, age limit, and reach truly. A block that is
+not scores zero. A validation block is correct when it is signed and placed as
+specified, its stakes all name one correct, full transaction block of its
+generation and are covered, its runner-up is allowed, and it fits in 1 MiB
+compressed.
 
 - **Sources:** [Karma Ledger §5.5](KarmaLedger.md#55-scoring),
   [§6.5](KarmaLedger.md#65-correct-and-best).
@@ -1100,8 +1101,8 @@ before its clock and 30 seconds after it.
 ### Full (Karma Block)
 
 A Karma block whose drop, zlib-compressed, is no larger than 1 MiB and larger
-than 1 MiB less 128 KiB. Only full transaction blocks are validated, the root's
-aside.
+than 1 MiB less 128 KiB, or than 8 KiB for each identity holding Kismet, if
+that is less. Only full transaction blocks are validated, the root's aside.
 
 - **Sources:** [Karma Ledger §5.4](KarmaLedger.md#54-full).
 - **See also:** [Correct (Karma Block)](#correct-karma-block),
@@ -2826,8 +2827,9 @@ it.
 The block of a Karma generation that records its transactions and the balances
 they leave, signed by its builder and made a drop at
 `karma transaction:{validation}`. It states its generation, the winning
-validation block before it, the weight of the chain before it, its reach, its
-transactions, the payout among them, and balances.
+validation block before it, the weight of the chain before it, its stake
+baseline, its age limit, its reach, its transactions, the payout among them,
+and balances.
 
 - **Sources:** [Karma Ledger §5](KarmaLedger.md#5-transaction-blocks),
   [Known Drops §3.10](KnownDrops.md#310-karma-transaction-blocks).
@@ -2968,15 +2970,15 @@ A collection of signed stakes on one full transaction block of a generation,
 signed by its builder and made a drop at `karma validation:{validation}`. It
 names a runner-up, and lists the hashes of transactions its builder has seen.
 Of a generation's correct validation blocks, the best adds the most weight to
-its chain: its work, times the effective stake it holds. The one the heaviest
-chain goes through wins, and its id names the next generation's targets.
+its chain: its work, times its counted stake. The one the heaviest chain goes
+through wins, and its id names the next generation's targets.
 
 - **Sources:** [Karma §17](Karma.md#17-validation),
   [Karma Ledger §6](KarmaLedger.md#6-validation-blocks),
   [Known Drops §3.11](KnownDrops.md#311-karma-validation-blocks).
 - **See also:** [Candidate Validation Block](#candidate-validation-block),
-  [Effective Stake](#effective-stake), [Head (Karma)](#head-karma),
-  [Runner-Up](#runner-up), [Stake](#stake),
+  [Counted Stake](#counted-stake), [Effective Stake](#effective-stake),
+  [Head (Karma)](#head-karma), [Runner-Up](#runner-up), [Stake](#stake),
   [Transaction Block](#transaction-block), [Witnessed](#witnessed).
 
 ### Validation Cartel
@@ -3042,14 +3044,14 @@ node can see; blocks on it go by eviction.
 
 The work in a Karma chain, weighted by the stake behind it: the sum, over every
 generation, of 2^b for the transaction block's drop and 2^b times the validation
-block's total effective stake for its drop, b being the leading bits each
-drop's id shares with its target hash, counted to at most 27. Each
-transaction block states, as `weight`, the weight of the chain before it.
+block's counted stake for its drop, b being the leading bits each drop's id
+shares with its target hash, counted to at most 27. Each transaction block
+states, as `weight`, the weight of the chain before it.
 
 - **Sources:** [Karma Ledger §3.3](KarmaLedger.md#33-the-heaviest-chain),
   [§5.1](KarmaLedger.md#51-contents).
-- **See also:** [Chain](#chain), [Heaviest Chain](#heaviest-chain),
-  [Proof of Work](#proof-of-work).
+- **See also:** [Chain](#chain), [Counted Stake](#counted-stake),
+  [Heaviest Chain](#heaviest-chain), [Proof of Work](#proof-of-work).
 
 ### Whole-File Hash
 
