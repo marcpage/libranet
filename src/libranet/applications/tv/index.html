@@ -205,7 +205,7 @@
   .caption { display: block; padding: 0.4rem 0.15rem 0; }
   .caption strong, .caption .note { display: block; overflow-wrap: anywhere; }
 
-  /* Lists of choices: folders, and the series TMDB knows of a name. */
+  /* Lists of choices: folders, the series TMDB knows of a name, and seasons to share or import. */
   .entries {
     list-style: none;
     margin: 0;
@@ -295,6 +295,7 @@
     <ul class="cards" id="chooser-list"></ul>
     <div class="toolbar signed-in-only" hidden>
       <button type="button" id="new-series">New series</button>
+      <button type="button" class="secondary" id="import-series">Import a series</button>
     </div>
   </section>
 
@@ -316,6 +317,9 @@
             <div class="icons">
               <button type="button" class="icon signed-in-only" id="edit-episode" title="Edit" aria-label="Edit" hidden>
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
+              </button>
+              <button type="button" class="icon signed-in-only" id="share-episode" title="Share" aria-label="Share" hidden>
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V3 M8 7l4-4 4 4 M9 10H5v11h14V10h-4"/></svg>
               </button>
               <button type="button" class="icon danger signed-in-only" id="remove-episode" title="Remove" aria-label="Remove" hidden>
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16 M9 7V4h6v3 M6 7l1 14h10l1-14 M10 11v6 M14 11v6"/></svg>
@@ -368,6 +372,12 @@
       <div class="icons">
         <button type="button" class="icon signed-in-only" id="add-file" title="Add from a file" aria-label="Add from a file" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 4H5v17h12v-8 M18 3v6 M15 6h6 M8 13h6 M8 17h6"/></svg>
+        </button>
+        <button type="button" class="icon signed-in-only" id="add-id" title="Add by id" aria-label="Add by id" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 8v8 M8 12h8"/></svg>
+        </button>
+        <button type="button" class="icon signed-in-only" id="share-series" title="Share" aria-label="Share" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V3 M8 7l4-4 4 4 M9 10H5v11h14V10h-4"/></svg>
         </button>
         <button type="button" class="icon signed-in-only" id="edit-series" title="Edit" aria-label="Edit" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
@@ -561,6 +571,94 @@
     <div class="buttons">
       <button type="button" class="secondary" data-close>Cancel</button>
       <button type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="id-dialog" aria-labelledby="id-heading">
+  <form id="id-form">
+    <h3 id="id-heading">Add an episode by its id</h3>
+    <p class="hint">The id an episode was shared by. It is added to this series, in its season, by
+    its numbers.</p>
+    <div class="fields">
+      <label class="wide">Episode id
+        <input id="episode-id" required autocomplete="off" spellcheck="false" placeholder="sha256/…">
+      </label>
+    </div>
+    <p class="result" id="id-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Add</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="share-dialog" aria-labelledby="share-heading">
+  <h3 id="share-heading">Share this series</h3>
+  <p class="hint">Whoever is given this id can play the whole series as it is now, and import it on
+  their own node. No one else can read it.</p>
+  <p><code class="id" id="share-whole"></code></p>
+  <div class="toolbar"><button type="button" class="secondary small" data-copy="share-whole">Copy</button></div>
+  <h4>Part of it</h4>
+  <p class="hint">Choose the seasons to share, each with every episode it holds, and an id is made
+  for them alone. Imported into a series of the same name, they are added to it, so that each new
+  season can be shared as it comes.</p>
+  <ul class="entries" id="share-choices"></ul>
+  <div class="toolbar">
+    <button type="button" id="share-part">Make an id</button>
+  </div>
+  <p class="result" id="share-state" role="status" hidden></p>
+  <div id="share-made" hidden>
+    <p><code class="id" id="share-part-id"></code></p>
+    <div class="toolbar"><button type="button" class="secondary small" data-copy="share-part-id">Copy</button></div>
+  </div>
+  <div class="buttons">
+    <button type="button" class="secondary" data-close>Done</button>
+  </div>
+</dialog>
+
+<dialog id="shared-dialog" aria-labelledby="shared-heading">
+  <h3 id="shared-heading"></h3>
+  <p class="hint">Whoever is given this id can play this episode, and add it to a series of their
+  own, in its season.</p>
+  <p><code class="id" id="shared-id"></code></p>
+  <div class="toolbar"><button type="button" class="secondary small" data-copy="shared-id">Copy</button></div>
+  <div class="buttons">
+    <button type="button" class="secondary" data-close>Done</button>
+  </div>
+</dialog>
+
+<dialog id="import-dialog" aria-labelledby="import-heading">
+  <h3 id="import-heading">Import a series</h3>
+  <form id="import-read">
+    <p class="hint">The id a series, or seasons of one, was shared by. Its seasons are added to the
+    series of its name you keep, or else make a new series of yours.</p>
+    <div class="fields">
+      <label class="wide">Series id
+        <input id="import-id" required autocomplete="off" spellcheck="false" placeholder="sha256/…">
+      </label>
+      <button type="submit">Read</button>
+    </div>
+    <p class="result" id="import-read-result" role="status" hidden></p>
+  </form>
+  <div id="import-choose" hidden>
+    <p class="hint" id="import-summary"></p>
+    <ul class="entries" id="import-choices"></ul>
+    <p class="result" id="import-state" role="status" hidden></p>
+  </div>
+  <div class="buttons" id="import-buttons">
+    <button type="button" class="secondary" data-close>Close</button>
+    <button type="button" id="import-go" hidden>Import</button>
+  </div>
+  <form id="import-apart" hidden>
+    <p class="hint" id="import-apart-note"></p>
+    <div class="fields">
+      <label class="wide">Name <input id="import-apart-name" required autocomplete="off"></label>
+    </div>
+    <p class="result" id="import-apart-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Import</button>
     </div>
   </form>
 </dialog>
@@ -955,6 +1053,19 @@ async function readEntry(bundle, path) {
   }
 
   return result.value;
+}
+
+// The id a person pasted: alone, or in a link reading into its bundle.
+function parseId(text) {
+  let id = text.trim();
+  const at = id.indexOf(DATA);
+
+  if (at >= 0) {
+    id = id.slice(at + DATA.length);
+  }
+
+  id = id.replace(/\/+$/, "");
+  return CONTENT_ID.test(id) ? id : null;
 }
 
 // The folder an episode is added to a season in, named by its bundle's hash.
@@ -1826,7 +1937,7 @@ function renderEpisodes() {
   } else if (count > 0) {
     show(byId("library-state"), "");
   } else {
-    show(byId("library-state"), "This series holds no episodes yet. Add one from a file.");
+    show(byId("library-state"), "This series holds no episodes yet. Add one from a file, or by its id.");
   }
 }
 
@@ -2570,6 +2681,350 @@ async function removeEpisode() {
 
   show(byId("library-result"), `Removed “${title}”.`);
   return null;
+}
+
+// Sharing an episode, and a series, whole or by its seasons.
+
+// A plain bundle of what the episode's folder holds: the episode's own bundle
+// again, unless it was edited.
+async function shareEpisode() {
+  const series = state.series;
+  const path = state.selected;
+  const listing = await readEntry(series.bundle, path);
+  const names = isObject(listing) && isObject(listing.entries) ? Object.keys(listing.entries) : [];
+
+  if (names.length === 0) {
+    throw new Error("This episode's folder holds nothing to share.");
+  }
+
+  const add = {};
+
+  for (const name of names) {
+    add[name] = { from: series.bundle, path: `${path}/${name}` };
+  }
+
+  const episode = await makeBundle({ add });
+  byId("shared-heading").textContent = `Share “${series.title(path)}”`;
+  byId("shared-id").textContent = episode;
+  byId("shared-dialog").showModal();
+  return null;
+}
+
+// A choice of `value`, named `text`, chosen to start with if `checked`, and
+// not to be chosen at all if `disabled`.
+function checkbox(value, text, checked, disabled = false) {
+  const item = make("li");
+  const label = make("label", null, "check");
+  const box = make("input");
+  box.type = "checkbox";
+  box.value = value;
+  box.checked = checked && !disabled;
+  box.disabled = disabled;
+  label.append(box, make("span", text));
+  item.append(label);
+  return item;
+}
+
+function checked(listId) {
+  return [...byId(listId).querySelectorAll("input[type=checkbox]:checked")].map((box) => box.value);
+}
+
+// A season as it is chosen, to share or to import: its label, and how many
+// episodes it holds.
+function seasonChoice(season) {
+  return season.details === null
+    ? `${season.label()}: what it holds could not be read`
+    : `${season.label()} · ${plural(season.episodes.size, "episode", "episodes")}`;
+}
+
+function openShare() {
+  const series = state.series;
+  byId("share-heading").textContent = `Share “${series.name}”`;
+  byId("share-whole").textContent = series.bundle;
+  byId("share-choices").replaceChildren(
+    ...series.seasons.map((season) => checkbox(season.folder, seasonChoice(season), false, season.details === null)),
+  );
+  byId("share-choices").hidden = series.seasons.length === 0;
+  byId("share-made").hidden = true;
+  show(byId("share-state"), series.seasons.length ? "" : "This series holds no seasons yet.");
+  byId("share-dialog").showModal();
+}
+
+// An encrypted series bundle of the seasons chosen, each whole, with the
+// series' series.json, listing only those seasons, and its backdrop.
+async function sharePart() {
+  const series = state.series;
+  const folders = checked("share-choices");
+  const seasons = series.seasons.filter((season) => folders.includes(season.folder));
+
+  if (seasons.length === 0) {
+    throw new Error("Choose at least one season.");
+  }
+
+  const add = { [SERIES_FILE]: { text: series.text(series.details, seasons) } };
+
+  if (isText(series.details.poster)) {
+    add[series.details.poster] = { from: series.bundle, path: series.details.poster };
+  }
+
+  for (const season of seasons) {
+    add[season.folder] = { from: series.bundle, path: season.folder };
+  }
+
+  byId("share-made").hidden = true;
+  byId("share-part-id").textContent = await makeBundle({ encrypted: true, add });
+  byId("share-made").hidden = false;
+  const episodes = seasons.reduce((total, season) => total + season.episodes.size, 0);
+  return [`An id for ${plural(seasons.length, "season", "seasons")} of “${series.name}”, holding ${plural(episodes, "episode", "episodes")}:`, false];
+}
+
+// Whether TMDB ids `one` and `other`, each undefined for a series made with
+// none, are of two series: as two of the same name may be, The Office of the
+// UK and of the US.
+function otherAtTmdb(one, other) {
+  return one !== undefined && other !== undefined && one !== other;
+}
+
+// Adding an episode by its id.
+
+// Adds the episode whose id is given to the series open, in its season, made
+// if none is held, at its numbers, as one added from a file is.
+async function addById() {
+  const episode = parseId(byId("episode-id").value);
+
+  if (!episode) {
+    throw new Error("That is not a content id, such as sha256/….");
+  }
+
+  let info;
+
+  try {
+    info = await readEntry(episode, INFO_FILE);
+  } catch (error) {
+    if (error.status === 404) {
+      throw new Error(`That bundle holds no ${INFO_FILE}, so it is not an episode. A series' id is imported from Series.`);
+    }
+
+    throw error;
+  }
+
+  if (!isObject(info)) {
+    throw new Error(`That episode's ${INFO_FILE} is not what this page reads.`);
+  }
+
+  // Movies and series are kept apart: a movie's info.json gives no season.
+  if (!Object.hasOwn(info, "season")) {
+    throw new Error(`That bundle's ${INFO_FILE} gives no season, so it is a movie. A movie is added to a collection in the movie application.`);
+  }
+
+  if (!isNumber(info.season) || episodeNumbers(info).length === 0) {
+    throw new Error(`That episode's ${INFO_FILE} gives no season and episode numbers this page reads.`);
+  }
+
+  const target = state.series.name;
+  const path = await serially(async () => {
+    const series = await newest(target);
+    const its = Number.isInteger(info.series_tmdb_id) ? info.series_tmdb_id : undefined;
+
+    if (otherAtTmdb(series.tmdbId(), its)) {
+      const named = isText(info.series) && !sameName(info.series, series.name) ? `“${info.series}”, ` : "";
+      throw new Error(`That episode is of ${named}another series at TMDB than “${series.name}”, so it was not added.`);
+    }
+
+    const made = series.season(seasonFolder(info.season)) ? null : await seasonFromTmdb(series, info.season);
+    return addEpisode(series, episode, info, made);
+  });
+  byId("id-dialog").close();
+  select(path);
+  return null;
+}
+
+// Importing a series by its id.
+
+// What is imported: the series read, a Series, and the folders of the seasons
+// chosen of it, once they are.
+let importing = null;
+
+function openImport() {
+  importing = null;
+  byId("import-read").reset();
+  byId("import-read").hidden = false;
+  byId("import-choose").hidden = true;
+  byId("import-buttons").hidden = false;
+  byId("import-go").hidden = true;
+  byId("import-apart").hidden = true;
+  show(byId("import-read-result"), "");
+  byId("import-dialog").showModal();
+}
+
+// Whether `season`, of a series read to import, can be taken: what is known
+// of it was read, and its folder is the one its number names, by which it is
+// merged into a season held.
+function importable(season) {
+  return season.details !== null && isNumber(season.number) && season.folder === seasonFolder(season.number);
+}
+
+// Reads the series whose id is given, and lists its seasons, each chosen to
+// start with, for the person to leave out any.
+async function readImport() {
+  const bundle = parseId(byId("import-id").value);
+  byId("import-choose").hidden = true;
+  byId("import-go").hidden = true;
+
+  if (!bundle) {
+    throw new Error("That is not a content id, such as sha256/….");
+  }
+
+  let source;
+
+  try {
+    source = await Series.read(bundle);
+  } catch (error) {
+    if (error.status === 404) {
+      throw new Error(`That bundle holds no ${SERIES_FILE}, so it is not a series. An episode's id is added to a series with Add by id, and a collection's is imported in the movie application.`);
+    }
+
+    throw error;
+  }
+
+  const entry = (await Kept.read()).find(source.name);
+  const held = entry ? await readEntry(entry.bundle, SERIES_FILE).catch(() => null) : null;
+  const heldId = isObject(held) && Number.isInteger(held.tmdb_id) ? held.tmdb_id : undefined;
+  const holds = `“${source.name}” holds ${plural(source.seasons.length, "season", "seasons")}, ${plural(source.count(), "episode", "episodes")}.`;
+  let into = "Those chosen make a new series of yours, of its name.";
+
+  if (entry && otherAtTmdb(heldId, source.tmdbId())) {
+    into = `You keep a series named “${entry.name}” already, which is another series at TMDB, so you are asked to name this one apart.`;
+  } else if (entry) {
+    into = `Those chosen are added to “${entry.name}”, which you keep: each season it does not hold, whole, and of each it holds, the episodes it does not.`;
+  }
+
+  importing = { source, folders: [] };
+  byId("import-summary").textContent = source.seasons.length ? `${holds} Choose which seasons to take. ${into}` : `“${source.name}” holds no seasons.`;
+  byId("import-choices").replaceChildren(
+    ...source.seasons.map((season) => checkbox(season.folder, seasonChoice(season), true, !importable(season))),
+  );
+  byId("import-choices").hidden = source.seasons.length === 0;
+  show(byId("import-state"), "");
+  byId("import-choose").hidden = false;
+  byId("import-go").hidden = source.seasons.length === 0;
+  return null;
+}
+
+// Makes a series named `name` of `seasons` of the series `source`, each
+// whole, with what its series.json holds, and its backdrop, and keeps it.
+async function makeImported(name, source, seasons) {
+  const details = { ...source.details, name, seasons: seasons.map((season) => season.folder) };
+  const add = { [SERIES_FILE]: { text: source.text(details, seasons) } };
+
+  if (isText(details.poster)) {
+    add[details.poster] = { from: source.bundle, path: details.poster };
+  }
+
+  for (const season of seasons) {
+    add[season.folder] = { from: source.bundle, path: season.folder };
+  }
+
+  const bundle = await makeBundle({ encrypted: true, add });
+  const series = new Series(name, bundle, details, seasons);
+  await keepVersion(null, series);
+  return series;
+}
+
+// Adds to `into` what it does not hold of `seasons` of the series `source`:
+// each season it does not hold, whole, and of each it holds, every episode
+// whose numbers it does not hold. It keeps its own series.json, but for the
+// seasons it gains, and each season held its own season.json, but for the
+// episodes it gains. An episode held is never replaced. Returns the series
+// made, and what it says of the episodes chosen that were not taken.
+async function mergeSeasons(into, source, seasons) {
+  const add = {};
+  let merged = into;
+  let held = 0;
+  let unread = 0;
+
+  for (const season of seasons) {
+    const own = merged.season(season.folder);
+
+    if (!own) {
+      add[season.folder] = { from: source.bundle, path: season.folder };
+      merged = merged.with(merged.bundle, merged.details, inSeasonOrder([...merged.seasons, season]));
+      continue;
+    }
+
+    for (const [episode, info] of season.episodes) {
+      const path = `${season.folder}/${episode}`;
+
+      if (!info) {
+        unread += 1;
+      } else if (merged.holds(path) || merged.holding(season.number, episodeNumbers(info))) {
+        held += 1;
+      } else {
+        add[path] = { from: source.bundle, path };
+        merged = merged.with(merged.bundle, merged.details, seasonsWith(merged.seasons, add, path, info, null));
+      }
+    }
+  }
+
+  const notes = [];
+
+  if (held) {
+    notes.push(`${plural(held, "episode", "episodes")} chosen ${held === 1 ? "was" : "were"} held already.`);
+  }
+
+  if (unread) {
+    notes.push(`${plural(unread, "episode", "episodes")} chosen could not be read, so ${unread === 1 ? "was" : "were"} not taken.`);
+  }
+
+  if (merged.count() === into.count()) {
+    throw new Error([`Nothing chosen was added to “${into.name}”.`, ...notes].join(" "));
+  }
+
+  return { series: await changeSeries(into, { add, seasons: merged.seasons }), note: notes.join(" ") };
+}
+
+// Imports the seasons chosen of the series read: into the series named
+// `name` held, or as a new series of that name, if none is. One of that name
+// that is another series at TMDB is not merged: the person is asked to name
+// the one imported apart.
+async function importChosen(name) {
+  const { source, folders } = importing;
+  const seasons = inSeasonOrder(source.seasons.filter((season) => folders.includes(season.folder)));
+  const outcome = await serially(async () => {
+    const entry = (await Kept.read()).find(name);
+
+    if (!entry) {
+      return { series: await makeImported(name, source, seasons), note: "" };
+    }
+
+    const into = await newest(entry.name);
+    return otherAtTmdb(into.tmdbId(), source.tmdbId()) ? { apart: into } : mergeSeasons(into, source, seasons);
+  });
+
+  if (outcome.apart) {
+    askImportApart(name, outcome.apart);
+    return null;
+  }
+
+  byId("import-dialog").close();
+  showSeries(outcome.series);
+  show(byId("library-result"), outcome.note);
+  return null;
+}
+
+// Asks for a name for the series imported apart from `held`'s, which is the
+// name it was to be imported under, `name`, and another series at TMDB.
+function askImportApart(name, held) {
+  const year = importing.source.details.year;
+  byId("import-read").hidden = true;
+  byId("import-choose").hidden = true;
+  byId("import-buttons").hidden = true;
+  byId("import-apart").hidden = false;
+  byId("import-apart-note").textContent = `You keep a series named “${held.name}” already, which is another series at TMDB. Give the one imported a name of its own.`;
+  byId("import-apart-name").value = isShown(year) && name === importing.source.name ? `${name} (${year})` : name;
+  show(byId("import-apart-result"), "");
+  byId("import-apart-name").select();
+  byId("import-apart-name").focus();
 }
 
 // Looking up what is known of a series, a season, and an episode.
@@ -3916,9 +4371,32 @@ for (const control of document.querySelectorAll("[data-close]")) {
   control.addEventListener("click", () => control.closest("dialog").close());
 }
 
+for (const control of document.querySelectorAll("[data-copy]")) {
+  control.addEventListener("click", async () => {
+    const text = byId(control.dataset.copy).textContent;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      control.textContent = "Copied";
+    } catch (error) {
+      window.getSelection().selectAllChildren(byId(control.dataset.copy));
+      control.textContent = "Selected: copy it";
+    }
+
+    setTimeout(() => { control.textContent = "Copy"; }, 2000);
+  });
+}
+
 byId("choose-series").addEventListener("click", showChooser);
 byId("show-keys").addEventListener("click", () => byId("keys-dialog").showModal());
 byId("new-series").addEventListener("click", openNew);
+byId("import-series").addEventListener("click", openImport);
+byId("add-id").addEventListener("click", () => {
+  byId("id-form").reset();
+  show(byId("id-result"), "");
+  byId("id-dialog").showModal();
+});
+byId("share-series").addEventListener("click", openShare);
 byId("new-lookup-key").addEventListener("click", openLookup);
 byId("add-file").addEventListener("click", () => {
   showFolders();
@@ -3981,7 +4459,29 @@ onSubmit("lookup-form", "lookup-result", keepLookup);
 onSubmit("editor", "editor-result", saveEdit);
 onSubmit("series-form", "series-result", saveSeries);
 onSubmit("season-form", "season-result", saveSeason);
+onSubmit("id-form", "id-result", addById);
+onSubmit("import-read", "import-read-result", readImport);
+onClick("import-go", "import-state", async () => {
+  importing.folders = checked("import-choices");
+
+  if (importing.folders.length === 0) {
+    throw new Error("Choose at least one season.");
+  }
+
+  return importChosen(importing.source.name);
+});
+onSubmit("import-apart", "import-apart-result", async () => {
+  const name = byId("import-apart-name").value.trim();
+
+  if (!name) {
+    throw new Error("Give the series a name.");
+  }
+
+  return importChosen(name);
+});
+onClick("share-part", "share-state", sharePart);
 onClick("take-poster", "poster-result", takePoster);
+onClick("share-episode", "episode-result", shareEpisode);
 onClick("remove-episode", "episode-result", removeEpisode);
 
 start();

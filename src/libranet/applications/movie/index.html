@@ -2866,6 +2866,11 @@ async function addById() {
     throw new Error(`That movie's ${INFO_FILE} is not what this page reads.`);
   }
 
+  // Movies and series are kept apart: an episode's info.json gives its season.
+  if (Object.hasOwn(info, "season")) {
+    throw new Error(`That bundle's ${INFO_FILE} gives a season, so it is an episode. An episode is added to a series in the TV application.`);
+  }
+
   const target = state.playlist.name;
   const folder = await serially(async () => addMovie(await newest(target), movie, info));
   byId("id-dialog").close();
