@@ -87,6 +87,7 @@ from libranet.karma.validating import ValidationBlockCheck, ValidationScore, bal
 from libranet.karma.weight import (
     COUNTED_BITS,
     NO_STAKE_BASELINE,
+    STAKE_BASELINE_FALL_GENERATIONS,
     STAKE_BASELINE_GENERATIONS,
     STAKE_BASELINE_MULTIPLE,
     ChainWeight,
@@ -106,6 +107,7 @@ __all__ = [
     "MisplacedBlockError",
     "NEW_KISMET_DECREASE",
     "NO_STAKE_BASELINE",
+    "STAKE_BASELINE_FALL_GENERATIONS",
     "STAKE_BASELINE_GENERATIONS",
     "STAKE_BASELINE_MULTIPLE",
     "STAKES_PER_BLOCK",

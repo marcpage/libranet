@@ -137,6 +137,11 @@ STAKE_BASELINE_MULTIPLE: Final = 2
 #: The most generations the stake baseline is a running average over (§3.3).
 STAKE_BASELINE_GENERATIONS: Final = 1_000
 
+#: The fewest generations the stake baseline's window spans as it falls, so
+#: that no one winning validation block holding little stake lowers it by
+#: more than a part in that many (§3.3).
+STAKE_BASELINE_FALL_GENERATIONS: Final = 4
+
 # How many times faster than the generations since the root the stake
 # baseline's window grows, until it is STAKE_BASELINE_GENERATIONS long, so
 # that it keeps up with a new chain, whose stake grows as its Kismet does.
@@ -196,10 +201,13 @@ class StakeBaseline:
         ``total`` is that block's total effective stake, and this its
         baseline. What it counts moves the baseline toward it by one part in
         the window, ``generation`` divided by 4, plus 1, up to
-        :data:`STAKE_BASELINE_GENERATIONS`, rounded down; while the baseline
-        is 0, it is what that block counts. So it rises no more than a part
-        in the window a generation, as what a block counts is no more than
-        twice it, and the most ``total`` can be bounds it.
+        :data:`STAKE_BASELINE_GENERATIONS`, rounded down, and at least
+        :data:`STAKE_BASELINE_FALL_GENERATIONS` as it falls; while the
+        baseline is 0, it is what that block counts. So it rises no more than
+        a part in the window a generation, as what a block counts is no more
+        than twice it, and the most ``total`` can be bounds it; and one block
+        holding little stake, won while the window is short, lowers it by no
+        more than a quarter.
         """
         counted = self.counted(total)
 
@@ -207,6 +215,10 @@ class StakeBaseline:
             return StakeBaseline(counted)
 
         window = min(STAKE_BASELINE_GENERATIONS, generation // _WINDOW_DIVISOR + 1)
+
+        if counted < self.stake:
+            window = max(window, STAKE_BASELINE_FALL_GENERATIONS)
+
         return StakeBaseline(self.stake + (counted - self.stake) // window)
 
 

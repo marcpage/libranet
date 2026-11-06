@@ -595,7 +595,7 @@ def test_of_two_as_heavy_of_as_much_stake_the_one_whose_id_sorts_first_is_kept(
     assert not changes.look()
 
 
-def test_of_two_as_heavy_the_one_of_more_bits_in_its_validation_block_is_followed(
+def test_of_two_as_heavy_the_one_of_more_stake_in_its_validation_block_is_followed(
     follower: ChainFollower,
     changes: HeadChanges,
     history: ChainHistory,
@@ -606,13 +606,13 @@ def test_of_two_as_heavy_the_one_of_more_bits_in_its_validation_block_is_followe
     carol: NodeIdentity,
 ) -> None:
     targets = root.targets
-    # Alice won the root, so her stake is a generation old: 2^9 times 10 is 2^10 times 5.
-    fewer_on = signed_at(targets.transaction, bob, root.block_after(), 9)
-    fewer = validating(targets.validation, alice, fewer_on, bits=9, kismet=10)
-    following(follower, truth, Chain((*root.generations, Generation(fewer_on, fewer))))
+    # Alice won the root, so her stake is a generation old: 2^10 times 5 is 2^9 times 10.
+    less_on = signed_at(targets.transaction, bob, root.block_after(), 9)
+    less = validating(targets.validation, alice, less_on, bits=10, kismet=5)
+    following(follower, truth, Chain((*root.generations, Generation(less_on, less))))
     weight = history.generation(1).weight
     more_on = signed_at(targets.transaction, carol, root.block_after(), 9)
-    more = validating(targets.validation, alice, more_on, bits=10, kismet=5)
+    more = validating(targets.validation, alice, more_on, bits=9, kismet=10)
     hold(truth, more_on, more)
 
     assert changes.look()
@@ -672,10 +672,10 @@ def test_a_block_followed_that_a_tie_needs_is_asked_for_and_the_tie_goes_on_once
     alice: NodeIdentity,
     bob: NodeIdentity,
 ) -> None:
-    # As heavy, 2^9 times 4 tenths being 2^10 times 2, and better, sharing more bits.
-    first = root.then(bob, alice, bits=9, kismet=4)
+    # As heavy, 2^9 times 4 tenths being 2^10 times 2, and better, holding more stake.
+    first = root.then(bob, alice, bits=10, kismet=2)
     following(follower, truth, first)
-    better = sibling(root, first, alice, alice, 2, bits=10)
+    better = sibling(root, first, alice, alice, 4, bits=9)
     hold(truth, better)
     truth.delete(first.head)
     changes.told(PEER, id_of(better))

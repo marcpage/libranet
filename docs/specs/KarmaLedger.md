@@ -167,11 +167,16 @@ The stake baseline is a running average of what the chain's recent winning
 validation blocks counted. Transaction block g states B_g, the baseline of
 the validation blocks staking on it. B_0, the root's, and B_1 are 0, and
 after them B_(g+1) = B_g + ⌊(C_g − B_g) ÷ n_g⌋, where C_g is what winning
-validation block g counted against B_g, and n_g = min(1000, ⌊g ÷ 4⌋ + 1), so
-that B_2 is C_1. The window n_g starts short, so that the baseline keeps up
-with a new chain, whose stake grows as its Kismet does, and grows to 1,000
-generations. Since C_g is at most 2 × B_g, the baseline rises by no more
-than a part in n_g a generation. An honest block's total effective stake is
+validation block g counted against B_g, and n_g = min(1000, ⌊g ÷ 4⌋ + 1)
+where C_g is at least B_g, so that B_2 is C_1, and max(4, n_g) where C_g is
+less. The window n_g starts short, so that the baseline keeps up with a new
+chain, whose stake grows as its Kismet does, and grows to 1,000 generations.
+Since C_g is at most 2 × B_g, the baseline rises by no more than a part in
+n_g a generation. It falls by no more than a quarter, so that one winning
+block holding little stake, as one that a large holder's stake missed, cannot
+lower the baseline at once to a small part of what honest blocks hold, after
+which their stake counts no more than its, and bits alone decide between
+them. An honest block's total effective stake is
 about the same from one generation to the next once many stake, since the
 age a generation's winners spend is about what every staker's stake gains in
 a generation (§6.6), so the limit seldom touches one. It is there for stake
@@ -1018,16 +1023,22 @@ Of a generation's correct validation blocks, the best is, in order (Karma
   counted stake, its total effective stake, the sum, over its stakes, of
   each stake's Kismet times its staker's age (§6.6), up to twice the stake
   baseline;
-- of those, the one sharing the most bits with its target hash, those past
-  the 27 a weight counts among them;
 - of those, the one holding the greatest total effective stake, counted
   whole, so that of blocks counting all the baseline allows, builders still
-  prefer the one holding the most; and
+  prefer the one holding the most;
+- of those, the one sharing the most bits with its target hash, those past
+  the 27 a weight counts among them; and
 - of those, the one whose id sorts first, as of two chains as heavy
   (§3.3).
 
 So the best is the one the heaviest chain goes through. A builder builds the
-next generation on the best it has seen (§3.2).
+next generation on the best it has seen (§3.2). Stake ranks before bits, so
+that of blocks adding as much weight, as those counting all the baseline
+allows and sharing 27 bits or more do, the one gathering the most stake
+wins, not the one whose builder searched longest. Were bits ranked first, a
+builder searching on a graphics card would win every such tie, and one whose
+own stake reached the most the baseline allows would gain nothing by taking
+others' stakes into its block, only share its reward with them (§6.6).
 
 ### 6.6 The Reward
 
@@ -1296,7 +1307,7 @@ Not yet specified:
 - Whether a node follows the part of a heavier chain that checks, when a
   later block in it does not (§3.5.3).
 - What the age limit's factor of 100, the 5,000 stakes taken to fit in a
-  validation block, and the stake baseline's multiple of 2 and window of
-  1,000 generations should be once a large network is measured (§3.3,
-  §6.6). They were chosen from a model of 50,000 stakers, 1,000 to a
-  block, rather than from a network's own figures.
+  validation block, and the stake baseline's multiple of 2, window of 1,000
+  generations, and fall of a quarter at most should be once a large network
+  is measured (§3.3, §6.6). They were chosen from a model of 50,000 stakers,
+  1,000 to a block, rather than from a network's own figures.

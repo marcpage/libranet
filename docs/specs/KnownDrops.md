@@ -434,13 +434,15 @@ each generation, and the one the heaviest chain goes through wins.
 - **Placed by** anyone, and may be built from others' stakes.
 - **Signed** by its builder, its list of witnesses with it, and each stake
   in it by its staker. **Not encrypted.**
-- **Bits:** as many as its builder mines. The best block of a generation
-  matches the most bits, and the bits are part of the chain's weight.
+- **Bits:** as many as its builder mines. The bits, up to 27, and the
+  stake it holds make up its part of the chain's weight.
   Each, the root's among them, is placed matching at least as many as the
   node's search returns, 24 by default.
 - **Reading:** a reader passes over a block that is not correct, ranks the
-  rest by bits, then by effective stake, then by id, and builds the next
-  generation on the best. The winner's stakers share the generation's
+  rest by the weight each adds to its chain, then by effective stake, then
+  by bits, then by id
+  ([Karma Ledger §6.5](KarmaLedger.md#65-correct-and-best)), and builds the
+  next generation on the best. The winner's stakers share the generation's
   reward, and the runner-up's stakers lose their stakes in it, unless they
   also staked in the winner. A validation block is shunned only when it is
   no block of the ledger, unsigned or stating its `generation` falsely,
