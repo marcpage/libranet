@@ -765,31 +765,41 @@ validation competition.
 All stakes belonging to a given participant in a particular generation have the
 same weighting.
 
-For example, conceptually:
+A stake weighs its Kismet times its creator's age: the generations since it
+last won, up to an age limit. Conceptually:
 
 ```text
 Recently won:
-    10% effective weight
+    1 generation of age
 
 One generation since winning:
-    20%
+    2
 
 Two generations:
-    30%
+    3
 
 ...
 
-Long enough since winning:
-    100%
+The age limit:
+    as many generations as a staker holding a hundredth of the
+    average stake may have to wait for its turn
 ```
 
-The precise weighting curve remains a protocol parameter.
+The age limit is a protocol parameter, which grows with how many hold Karma
+for each stake a validation block can hold.
 
 The important principle is:
 
 > **Winning reduces the effective weight of the winner's future stakes.**
 
-Continued participation without winning gradually restores effective weight.
+Continued participation without winning gradually restores effective weight,
+and the share a participant wins when it does pays for every generation it
+waited. So what each participant earns follows its stake, however seldom it
+wins, rather than the largest stakes winning every generation.
+
+Karma a participant receives counts as if it had just won, so no participant
+gains weight by moving its Karma to a new identity: a newcomer waits, and is
+paid for the wait when it wins.
 
 ---
 
@@ -798,7 +808,8 @@ Continued participation without winning gradually restores effective weight.
 This mechanism deliberately creates asymmetric risk.
 
 Suppose a validator recently won and its stakes currently receive only 10%
-effective weight.
+effective weight: one generation of age, against the ten of a stake that has
+waited ten generations.
 
 The validator might stake:
 

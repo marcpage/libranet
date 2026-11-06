@@ -135,18 +135,40 @@ the heaviest chain goes through.
 A chain is a root and the generations built on it, each a transaction
 block and the validation block that validates it. Its **weight** is the sum,
 over every generation, of 2^b for the transaction block's drop, and 2^b
-times S for the validation block's, where b is the number of leading bits
-the drop's id shares with its target hash, and S is the validation block's
-total effective stake, in tenths of a Kismet (§6.6), counted as 1 where it is
-0, as only the root's is (§7.3). A drop matching b bits takes about 2^b
-hashes to find, so the weight is the work it took to build the chain, each
-validation block's work weighted by the stake behind it: a block holding
-twice the stake weighs as one sharing a bit more. So a block that gathers
-many stakers' stakes outweighs a luckier one holding only its builder's, and
-its reward is shared among them all (§6.6). Summing bits instead would let
-two 15-bit drops weigh as much as one 30-bit drop, which took 32,768 times
-the work of either. Stake counts, not stakers, since an identity costs
-nothing to make (§8).
+times C for the validation block's, where b is the number of leading bits
+the drop's id shares with its target hash, and C is the validation block's
+**counted stake**: its total effective stake, in Kismet × generations
+(§6.6), but no more than twice the **stake baseline** B its transaction
+block states, C = min(S, 2 × B), and all of S while B is 0; C is counted as
+1 where it is 0, as only the root's is (§7.3). A drop matching b bits takes
+about 2^b hashes to find, so the weight is the work it took to build the
+chain, each validation block's work weighted by the stake behind it: a block
+holding twice the stake weighs as one sharing a bit more. So a block that
+gathers many stakers' stakes outweighs a luckier one holding only its
+builder's, and its reward is shared among them all (§6.6). Summing bits
+instead would let two 15-bit drops weigh as much as one 30-bit drop, which
+took 32,768 times the work of either. Stake counts, not stakers, since an
+identity costs nothing to make (§8).
+
+The stake baseline is a running average of what the chain's recent winning
+validation blocks counted. Transaction block g states B_g, the baseline of
+the validation blocks staking on it. B_0, the root's, and B_1 are 0, and
+after them B_(g+1) = B_g + ⌊(C_g − B_g) ÷ n_g⌋, where C_g is what winning
+validation block g counted against B_g, and n_g = min(1000, ⌊g ÷ 4⌋ + 1), so
+that B_2 is C_1. The window n_g starts short, so that the baseline keeps up
+with a new chain, whose stake grows as its Kismet does, and grows to 1,000
+generations. Since C_g is at most 2 × B_g, the baseline rises by no more
+than a part in n_g a generation. An honest block's total effective stake is
+about the same from one generation to the next once many stake, since the
+age a generation's winners spend is about what every staker's stake gains in
+a generation (§6.6), so the limit seldom touches one. It is there for stake
+that is not staked: Kismet held back for many generations gains the age that
+would have won it its share, and staked at once would outweigh many honest
+blocks, standing in for the work it lacks. Counted against the baseline, a
+block of saved-up stake weighs no more than two honest blocks of the same
+work, so saved-up stake cannot replace work: a rival needs at least half the
+work of the blocks it would replace, however long it saved (§8). The pot is
+still shared by the whole of each stake's effective stake (§6.6).
 
 The **heaviest chain** is the one of greatest weight. Of two as heavy, it is
 the one whose winning validation block is the best (§6.5) at the first
@@ -158,9 +180,9 @@ chain it knows. A node that follows a chain leaves it only for one heavier, or
 as heavy and better by this order (§3.5.3), so that nodes that saw the same
 blocks in another order come to follow one chain.
 
-In the example below, each validation block holds an effective stake of 1:
-1 Kismet staked by one who won the generation before, so that each drop
-weighs its work alone.
+In the example below, each validation block counts a stake of 1: 1 Kismet
+staked by one who won the generation before, so that each drop weighs its
+work alone.
 
 ```mermaid
 flowchart RL
@@ -177,7 +199,9 @@ Each transaction block states the weight of the chain before it (§5.1), and
 a reader checks it against the block before. So a reader sees how heavy a
 chain claims to be from a single block, before it fetches the rest. Until it
 reads the balances of a validation block's stakers, it knows only the most
-that block can add: its work times its stakes, each staker weighing whole.
+that block can add: its work times its stakes, each staker at the age limit
+its transaction block states (§6.6), counted against that block's stake
+baseline.
 
 A chain is never final. A block becomes harder to replace as weight is
 built after it, and a rival holding more work from any point back replaces
@@ -222,19 +246,22 @@ target, it goes through these steps in order:
 
 1. **Read the claim.** It reads that head and the transaction block it
    validates, whose `weight` says how heavy the chain behind it claims to
-   be. With the most the two add, each of the head's stakers weighing whole
-   (§3.3), that is the most the new chain can weigh. If even that is lighter
-   than its own head, the node stops evaluating the new head.
+   be. With the most the two add, each of the head's stakers at the age
+   limit, counted against the stake baseline (§3.3), that is the most the
+   new chain can weigh. If even that is lighter than its own head, the node
+   stops evaluating the new head.
 2. **Walk back.** It walks the new head's generations back, from each
    validation block to the transaction block its stakes name, and from that
    block's `previous` to the validation block before. It stops at the first
    validation block in its genealogy, the **common ancestor**. At each step
    it checks that the transaction block's `weight` is no more than the one
-   before's plus the most the two drops between can add, each staker
-   weighing whole, and, at the common ancestor, that it is the ancestor's
-   weight, so that a false weight is caught where it first fails. It also
-   validates the generation. Each `weight` is checked exactly as the new
-   branch is checked (step 4).
+   before's plus the most the two drops between can add, each staker at the
+   age limit, and its `stake_baseline` no more than the most the one before's
+   can rise to, with that most stake (§3.3); and, at the common ancestor,
+   that each is the ancestor's, so that a false weight or baseline is caught
+   where it first fails. It also validates the generation. Each `weight` and
+   `stake_baseline` is checked exactly as the new branch is checked (step
+   4).
 3. **Collect the old branch.** It collects every transaction, payouts left
    out, in its own chain's transaction blocks after the common ancestor,
    through its own head.
@@ -249,9 +276,9 @@ target, it goes through these steps in order:
    its peers its new head
    (§3.5.2). Otherwise it keeps its own head. A block found to state
    something false distrusts its builder (§3.8), and one that is no block
-   of the ledger, unsigned or false in its `weight` or `generation`, is
-   shunned (§3.7). A block that is only incorrect, such as one not full,
-   is neither.
+   of the ledger, unsigned or false in its `weight`, `stake_baseline`, or
+   `generation`, is shunned (§3.7). A block that is only incorrect, such as
+   one not full, is neither.
 6. **Carry the rest over.** It puts each collected transaction into the
    transaction block it builds at the new head's target. One whose sender's
    balance the new chain does not cover, as when the new chain has spent
@@ -287,7 +314,7 @@ heavier one lacks (§3.5.3).
 ### 3.7 Shunning What Is Superseded
 
 A block that is not signed, whose signature fails, or fails validation of
-weight or generation, is no block of the
+weight, stake baseline, or generation, is no block of the
 ledger, and a node SHOULD shun it (§3.8). Otherwise, a node MUST NOT shun
 a validation block, since any one may lead to another chain. It MUST NOT
 shun a transaction block that a validation block names. Validation blocks
@@ -340,8 +367,9 @@ itself, and the chain its `previous` names, prove wrong:
   names itself, a block at another target, or one validating the same
   transaction block; or a transaction block at the root's target does not
   have the root's shape (§7.2).
-- **Against the chain:** its `weight`, payout, or `reach` is wrong, or a
-  stated balance's `kismet` or `last_won` is wrong (§5.3), or a sender or
+- **Against the chain:** its `weight`, `stake_baseline`, `age_limit`,
+  payout, or `reach` is wrong, or a stated balance's `kismet` or `last_won`
+  is wrong (§5.3), or a sender or
   recipient is left unstated; a transaction overspends its sender, or its
   key is already in the chain within the history the node holds; a
   validation block lists a witness that an earlier winning validation block
@@ -608,6 +636,8 @@ JSON object
 {"generation": 42,
  "previous": "sha256/…",
  "weight": "1288490188800",
+ "stake_baseline": "52000000000000000",
+ "age_limit": 10,
  "reach": 3,
  "transactions": [],
  "balances": {"sha256/0a1b…": {"kismet": "1250000", "last_won": 40}}}
@@ -624,8 +654,17 @@ JSON object
   is a string of decimal digits, as an amount is (§4.1), since one drop
   alone may add more than 2^256, and it is `"0"` in the root. A block's
   `weight` is that of transaction block g − 1, plus 2^b for that block's
-  drop, and 2^b times validation block g − 1's total effective stake for
-  that one's.
+  drop, and 2^b times what validation block g − 1 counts for that one's
+  (§3.3).
+- **`stake_baseline`** is B_g, what the total effective stake of a
+  validation block staking on this block counts against in the chain's
+  weight (§3.3): B_(g−1) moved toward what validation block g − 1 counted.
+  It is a string of decimal digits, as `weight` is, and `"0"` in the root
+  and in block 1.
+- **`age_limit`** is the most generations of a staker's age that count in
+  the validation blocks staking on this block (§6.6), set by how many
+  identities hold Kismet after it: max(10, ⌊100 × holders ÷ 5000⌋). It is
+  10 in the root.
 - **`reach`** is how many blocks back a reader goes to find every identity
   holding Kismet (§5.3).
 - **`transactions`** are the block's transactions, as objects, sorted by
@@ -665,7 +704,9 @@ is the JSON object
 - **`to`** maps each staker of the winning validation block g − 1 to their
   share of the pot, in proportion to their effective stake and rounded
   down, and that block's builder to what rounding leaves over, as §6.6
-  says, summed by identity. One paid 0 is left out.
+  says, summed by identity. One paid 0 is left out. A staker it pays has
+  won generation g − 1; the builder, if it has no stake in that block, only
+  receives what it is paid (§5.3).
 - **`generation`** is g.
 
 The amounts in `to` total those in `from`. Each identity's amount in
@@ -682,8 +723,13 @@ the age a block is scored by (§5.5).
 ### 5.3 Balances and Reach
 
 A **balance** is the JSON object `{"kismet": amount, "last_won":
-generation}`: the Kismet an identity holds, and the generation of the last
-validation block whose reward paid it (§6.6), or `null` if none has.
+generation}`: the Kismet an identity holds, and the effective generation it
+last won: the generation of the last validation block whose reward paid it
+a share as a staker (§6.6), moved later by the Kismet it has received since,
+by amount, as below. A balance holding no Kismet has a `last_won` of `null`,
+and only such a balance does, so an identity that sends all it holds loses
+its `last_won`, and one that holds nothing takes the `last_won` of what it
+next receives.
 
 A block's `balances` states, as of the end of the block, the balance of
 every sender and every recipient of its transactions, the payout's among
@@ -696,15 +742,13 @@ with balances anyone can work out, in place of transactions. A balance of
 nowhere holds nothing.
 
 An identity's balance as block g leaves it is the one stated in the latest
-of blocks g − n through g that states it, n being the greater of block g's
-`reach` (below) and 10, since every block states each balance it changes.
-The reach takes in every identity holding Kismet, and ten blocks every
-`last_won` that still lowers a stake's weight (§6.6). One stated in none of
-them holds `{"kismet": "0", "last_won": null}`, even if an earlier block
-states it holding 0 with a `last_won`: that `last_won` is more than ten
-generations old, and weighs a stake as `null` does, so no reader looks
-further back. The balances block g's transactions are checked against are
-those transaction block g − 1 leaves, with block g's payout applied.
+of blocks g − r through g that states it, r being block g's `reach`
+(below), since every block states each balance it changes. The reach takes
+in every identity holding Kismet, and one stated in none of those blocks
+holds `{"kismet": "0", "last_won": null}`: an identity holding nothing has
+no `last_won`, so no reader looks further back. The balances block g's
+transactions are checked against are those transaction block g − 1 leaves,
+with block g's payout applied.
 
 A reader checks every balance a block states, both its `kismet` and its
 `last_won`, whether the block must state it or states it only to shorten
@@ -716,9 +760,24 @@ identity's balance before the block, the latest stated before it or else
   identity, the payout's among them, less all the payout's `from` takes
   from it (§5.2), and less all it sends as a sender, its fees aside, which
   the next block's payout takes; and
-- its `last_won` is g − 1 if the payout pays the identity any of the reward
-  of validation block g − 1 (§6.6), as a staker or as its builder, and
-  otherwise is the `last_won` it had before the block.
+- its `last_won` is g − 1 if the payout pays the identity a share of the
+  reward of validation block g − 1 as a staker in it (§6.6). Otherwise,
+  what the identity receives in the block, R, the builder's leftover and
+  the block's transactions alike, moves its `last_won` L toward g − 1, by
+  amount, from what it keeps, K, all it holds less all it sends and all
+  the payout takes: ⌈(K × L + R × (g − 1)) ÷ (K + R)⌉, rounded up, so that
+  rounding never makes what it holds older. One keeping nothing takes
+  g − 1. One receiving nothing keeps its `last_won`, or has `null` if it
+  is left holding nothing.
+
+So Kismet received in block g counts as if it were won in generation g − 1,
+and is a generation old in validation block g. Sending moves no `last_won`,
+and receiving moves it only toward g − 1, so a transfer never adds to the
+age, and so to the effective stake (§6.6), of anyone: Kismet moved to an
+identity that has never won, or to one of its sender's own, gains nothing,
+and loses its sender's age unless sent just after a win. The order of a
+block's transactions changes no `last_won`, as what is kept is weighed
+after all that is sent.
 
 A `last_won` weighs an identity's stakes (§6.6), so one stated wrongly
 shifts the pot as surely as a wrong `kismet` shifts Kismet.
@@ -727,8 +786,8 @@ A block's **`reach`** is the least r such that every identity holding more
 than 0 Kismet is stated in one of blocks g − r through g. A block that
 states every holder has reach 0. A reader checks `reach`, and a block whose
 `reach` is wrong is incorrect. A node needs whole transaction blocks back
-only as far as the reach of the heaviest chain's latest, or ten blocks if
-that is further, to know any balance.
+only as far as the reach of the heaviest chain's latest to know any
+balance.
 
 ### 5.4 Full
 
@@ -794,7 +853,8 @@ they are.
 A transaction is put up for a generation as a transaction block of its own,
 at the generation's transaction target, signed by whoever puts it up. It
 holds that transaction and the payout, and states its `weight`, its
-balances, and its `reach` truly (§3.8). Builders combine the blocks at a
+`stake_baseline`, its `age_limit`, its balances, and its `reach` truly
+(§3.8). Builders combine the blocks at a
 generation's targets, false starts among them (§3.4), into larger ones, for
 a better score. A builder need not place a combined block until it would be
 full: only a full block is validated (§5.4), and a search finds the blocks
@@ -941,11 +1001,14 @@ Of a generation's correct validation blocks, the best is, in order (Karma
 §19):
 
 - the one adding the most weight to its chain (§3.3): 2^b for the
-  transaction block it validates, and 2^b for its own drop times its total
-  effective stake, the sum, over its stakes, of each stake's Kismet times
-  its staker's weight (§6.6);
+  transaction block it validates, and 2^b for its own drop times its
+  counted stake, its total effective stake, the sum, over its stakes, of
+  each stake's Kismet times its staker's age (§6.6), up to twice the stake
+  baseline;
 - of those, the one sharing the most bits with its target hash;
-- of those, the one holding the greatest total effective stake; and
+- of those, the one holding the greatest total effective stake, counted
+  whole, so that of blocks counting all the baseline allows, builders still
+  prefer the one holding the most; and
 - of those, the one whose id sorts first, as of two chains as heavy
   (§3.3).
 
@@ -966,15 +1029,31 @@ transaction block g + 1 (§5.2). The reward, its **pot**, is:
   runner-up are not taken.
 
 The pot is shared among the winning block's stakers by **effective stake**:
-each stake's Kismet times its staker's weight. The weight is a tenth for
-each generation since the staker last won, up to the whole,
-min(g − `last_won`, 10) / 10, taking `last_won` from the balances
-transaction block g leaves (§5.3), and a staker whose `last_won` is `null`
-has the whole (Karma §23). So a staker that won generation g − 1 weighs a
-tenth, one that won g − 2 two tenths, and one that last won ten or more
-generations back as much as one that never has. All of one staker's stakes
-in a generation weigh alike, and an effective stake is a whole number of
-tenths of a Kismet, with no fraction to round.
+each stake's Kismet times its staker's **stake age**, the generations since
+its `last_won`, up to the **age limit** A that transaction block g states,
+min(g − `last_won`, A), taking `last_won` from the balances transaction
+block g leaves (§5.3). So a staker that won generation g − 1, or that
+received all it holds in block g, has age 1, one that won g − 2 age 2, and
+so on to A. A staker holding nothing, whose `last_won` is `null`, has age
+0, as the root's creator does (§7.3); every other stake is of Kismet at
+least a generation old. All of one staker's stakes in a generation count
+alike, and an effective stake is a whole number of Kismet × generations,
+with no fraction to round. A transfer never adds to anyone's age (§5.3), so
+an identity that has never won starts with none, and moving Kismet to a new
+identity gains nothing (Karma §23).
+
+The age limit is max(10, ⌊100 × H ÷ 5000⌋), H being how many identities
+hold Kismet after transaction block g, about 5,000 being how many stakes a
+validation block holds (KarmaScaling §2). While every stake fits, every
+staker wins each generation it stakes, and the limit is 10. Once more stake
+than fit, a builder takes the stakes of most effective stake (KarmaScaling
+§6.4), and a staker's age grows each generation it does not win, until its
+effective stake is among those taken. Its share then pays for every
+generation it waited, so that what each staker earns follows its stake,
+however seldom it wins, as long as it can wait as long as that takes. The
+limit lets a staker holding a hundredth of the average stake wait that long.
+It also bounds how much age Kismet held back from staking saves up, and the
+stake baseline bounds what that counts in the chain's weight (§3.3, §8).
 
 Each staker's **share** is the pot times their effective stake, over the
 total of the block's effective stakes, rounded down to whole Kismet. The
@@ -982,9 +1061,9 @@ Kismet left over, fewer than the block has stakers, go to the block's
 builder, its signer, whether or not it is a staker, so that the payout's
 `to` totals the pot exactly, and every node divides it alike. When the
 block's effective stakes total 0, the pot is divided equally among its
-stakers, what is left over going to the builder too. The root's reward
-(§7.4), whose one stake is `"0"`, is shared by this rule rather than as an
-exception to it.
+stakers, what is left over going to the builder too. Only the root's reward
+(§7.4), whose one stake is `"0"`, totals 0, and is shared by this rule
+rather than as an exception to it.
 
 The payout's `from` takes the pot from those it comes from, each sender's
 fees and each runner-up staker's stakes taken summed by identity, and its
@@ -993,9 +1072,11 @@ fees and each runner-up staker's stakes taken summed by identity, and its
 not paid what is left over, is not in `to`, and keeps the `last_won` it
 had. `from` leaves out a sender whose transactions are all free, a
 runner-up staker whose stakes taken are `"0"`, and the new Karma of a
-generation that issues none (§2). Each identity `to` pays, the builder
-among them, has `last_won` g in block g + 1's balances, since each has won
-generation g.
+generation that issues none (§2). Each staker `to` pays has `last_won` g in
+block g + 1's balances, since each has won generation g. The builder, if it
+has no stake in the block, receives what is left over, which moves its
+`last_won` toward g as any Kismet received does (§5.3), so that building a
+block does not cost its builder the age it has saved up.
 
 ```mermaid
 flowchart TD
@@ -1004,11 +1085,11 @@ flowchart TD
         fees["Fees of transaction block g"]
         ru["Runner-up stakes, less those of<br/>stakers who also staked in the winner"]
     end
-    pot -->|"paid by the payout of<br/>transaction block g + 1"| split{"Shared by effective stake:<br/>Kismet × min(g − last_won, 10) / 10"}
+    pot -->|"paid by the payout of<br/>transaction block g + 1"| split{"Shared by effective stake:<br/>Kismet × min(g − last_won, age limit)"}
     split -->|"each share rounded down"| stakers["Each staker of the<br/>winning block"]
     split -->|"what rounding leaves"| builder["The winning block's builder"]
     stakers --> won["last_won becomes g"]
-    builder --> won
+    builder --> received["last_won moves toward g,<br/>by what it is paid"]
 ```
 
 ## 7. The Root
@@ -1024,8 +1105,9 @@ only transaction that may move 0 Kismet (§4.4).
 ### 7.2 Transaction Block 0
 
 Transaction block 0 is signed by the root's creator and placed at
-`karma transaction:0`. Its `previous` is `null`, its `weight` is `"0"`, its
-`reach` is 0, and it holds no payout. Its `transactions` is the root
+`karma transaction:0`. Its `previous` is `null`, its `weight` and its
+`stake_baseline` are `"0"`, its `age_limit` is 10, its `reach` is 0, and it
+holds no payout. Its `transactions` is the root
 transaction alone. Its `balances` states the creator, who both sent and
 received it: `{creator: {"kismet": "0", "last_won": null}}`. It need not be
 full (§5.4).
@@ -1046,10 +1128,13 @@ hashes as a node's search returns, as every block does (§2).
 
 The root's creator receives the whole of generation 0's reward, 20 Karma,
 in transaction block 1's payout, whose `from` is
-`{"null": "2000000000000000"}`, and block 1 states them with `last_won` 0.
-Validation block 0's one stake is `"0"`, so its effective stake totals 0,
-and the pot is divided equally among its stakers (§6.6), of whom the
-creator is the only one. The payout is applied first in block 1 (§5.2), so
+`{"null": "2000000000000000"}`, and block 1 states them with `last_won` 0,
+as the staker who won generation 0. Validation block 0's one stake is `"0"`,
+so its effective stake totals 0, and the pot is divided equally among its
+stakers (§6.6), of whom the creator is the only one. Block 1's
+`stake_baseline` is `"0"` too, since validation block 0 counted 0, so
+validation block 1 counts all its stake, and sets the baseline after it
+(§3.3). The payout is applied first in block 1 (§5.2), so
 the creator may spend it there, and may stake it in validation block 1.
 A node following the root builds a block 1 holding that payout alone,
 unless it holds a correct one already (§5.6), and reads the creator as
@@ -1119,9 +1204,22 @@ does not follow (§3.5.3).
   stake. Identities cost nothing to make, so counting stakers would let
   anyone outweigh honest blocks with stakes of next to nothing: what counts
   is the Kismet staked, and a stake of 0 is false outside the root (§6.2).
-  Kismet split among many identities weighs no more than held by one,
-  though a recent winner that moves its Kismet to an identity that has won
-  nothing escapes the tenth its stake would otherwise weigh (§6.6).
+  Kismet split among many identities weighs no more than held by one, and
+  moving it gains nothing: Kismet received is a generation old in the next
+  validation block, and its sender loses the age it had (§5.3, §6.6).
+- **Saved-up stake.** Kismet that is not staked keeps ageing, up to the
+  age limit (§6.6), so a holder who stakes nothing for long, and then all
+  it holds, would weigh many honest blocks, which carry only what each
+  generation's winners have saved since they last won. Of a holder of a
+  fraction f of all Kismet, staking at once, against honest nodes that
+  stake a share p of theirs, about f × A ÷ p honest blocks, A being the
+  age limit. Saved-up stake counts in the chain's weight only up to twice
+  the stake baseline (§3.3), so a block of it weighs no more than two honest
+  blocks of the same work, and a rival with less than half the honest work
+  cannot catch up, however long it saved: saved-up stake can stretch an
+  attack that has the work, for as long as A lets it save, but cannot
+  replace the work. The pot is still shared by the whole of each effective
+  stake, so a holder that waited is paid for its wait.
 - **Compression varies.** Whether a block is full decides which blocks are
   validated, the same bytes compress to sizes some 9% apart by which zlib
   and level compress them, and any node may compress a block again (HTTP
@@ -1173,3 +1271,8 @@ Not yet specified:
   beyond the distrust of builders (§3.8).
 - Whether a node follows the part of a heavier chain that checks, when a
   later block in it does not (§3.5.3).
+- What the age limit's factor of 100, the 5,000 stakes taken to fit in a
+  validation block, and the stake baseline's multiple of 2 and window of
+  1,000 generations should be once a large network is measured (§3.3,
+  §6.6). They were chosen from a model of 50,000 stakers, 1,000 to a
+  block, rather than from a network's own figures.

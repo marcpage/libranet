@@ -58,7 +58,10 @@ payments, however many nodes there are.
 A signed stake takes about 180 bytes in a validation block, so about 5,000
 fit, fewer as the block's witnesses take room, about 33 bytes each. No more
 than that many stakers can share one generation's reward
-([Karma Ledger §6.6](KarmaLedger.md#66-the-reward)).
+([Karma Ledger §6.6](KarmaLedger.md#66-the-reward)). More share the rewards
+of many generations: a staker's stake age grows each generation it does not
+win, up to an age limit that grows with how many hold Kismet, so it is
+taken once it is old enough, and paid then for the generations it waited.
 
 ## 3. What Nodes Ask of It
 
@@ -400,4 +403,5 @@ These are fixed by the protocol, so no node's choice changes them:
 - **Putting up again.** A transaction that waits is put up again at each
   generation's target (§4).
 - **About 5,000 stakers.** A validation block holds no more than fit in
-  1 MiB, so no more share one generation's reward (§2).
+  1 MiB, so no more share one generation's reward (§2), though stake age
+  lets more share them over many generations.

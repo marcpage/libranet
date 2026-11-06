@@ -500,7 +500,12 @@ of a head that may be heavier, it checks that chain back to where it leaves its
 own, and follows it if every block is correct; `libranet-karma.log` says so,
 naming the generation the two chains share. A chain's weight counts each
 validation block's work times the stake it holds, so a block gathering many
-stakes outweighs a luckier one holding only its builder's. Of two chains
+stakes outweighs a luckier one holding only its builder's. A stake counts for
+its Kismet times how many generations the staker has gone since it last won, up
+to an age limit, so a node that has not won for a while counts for more, and is
+paid for the wait when it does win; Kismet a node is paid counts as if it had
+just won. A block counts no more than twice its chain's recent stake in the
+chain's weight, so stake saved up cannot stand in for work. Of two chains
 exactly as heavy, it follows the better one: at the first generation where they
 differ, the one whose validation block shares more bits with its target, then
 holds more stake, then has the id that sorts first. So nodes that saw the same
@@ -511,7 +516,8 @@ soon after it reconnects. The transactions of the chain it leaves that the new
 one does not hold it keeps in `karma/carried.json`, to put into the blocks it
 builds, for `karma.carry_generations` after each was witnessed. A chain with a
 false block in it is not followed: the block's builder is distrusted, as above,
-and one stating its weight or generation falsely is shunned too.
+and one stating its weight, stake baseline, or generation falsely is shunned
+too.
 
 Each transaction the node is to put up, as its own payments are, and those a
 person makes through it will be, it checks against the chain it follows.

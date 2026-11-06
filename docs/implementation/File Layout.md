@@ -508,13 +508,15 @@ sha256/9f8e…
 
 `generations/{g}.json` is what a check of a later block reads of generation
 g: its validation block, the transaction block that validates, the chain's
-weight through the two, as decimal digits, the key of each of that block's
-transactions, its payout aside (KarmaLedger §4.2), and the hashes its
-validation block witnesses (§6.4). Every key and witness is kept, back to the
-root, since a transaction never expires (§4.4):
+weight through the two, and the stake baseline after them, which the next
+transaction block states (KarmaLedger §3.3), each as decimal digits, the key
+of each of that block's transactions, its payout aside (§4.2), and the hashes
+its validation block witnesses (§6.4). Every key and witness is kept, back to
+the root, since a transaction never expires (§4.4):
 
 ```json
 {"validation": "sha256/9f8e…", "transaction": "sha256/4c2d…", "weight": "1208",
+ "stake_baseline": "500",
  "keys": [{"from": "sha256/0a1b…", "created": "2026-10-21T14:03:22Z"}],
  "witnessed": ["7d3f…"]}
 ```
@@ -533,8 +535,8 @@ it names a head (Phase 6 Step 125). It reads the generations' files too
 
 `balances.json` is every balance the chain states at the head (KarmaLedger
 §5.3): the latest stated of each identity in the head's transaction block, or
-in those before it as far back as its reach, or ten blocks, whichever is
-further, with the payout of the block after applied, which pays the reward
+in those before it as far back as its reach, with the payout of the block
+after applied, which pays the reward
 of the head's validation block (KarmaLedger §2), and with the head it was
 read at, as `head.json` names it. Each of the
 head's members is `null`, and `balances` empty, while the module follows no
