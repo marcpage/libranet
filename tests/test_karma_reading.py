@@ -35,7 +35,7 @@ from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.ledger import AGE_LIMIT_FLOOR
 from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.protocol.karma_amounts import Kismet
@@ -182,7 +182,14 @@ def root_of(creator: NodeIdentity) -> TransactionBlock:
     transaction = Transaction(creator.node_id, {creator.node_id: Kismet(0)}, Kismet(0), 0, CREATED)
     created = SignedTransaction.of(creator.signed(transaction.text()))
     return TransactionBlock(
-        0, None, ChainWeight(0), 0, (created,), {creator.node_id: NO_BALANCE}, AGE_LIMIT_FLOOR
+        0,
+        None,
+        ChainWeight(0),
+        0,
+        (created,),
+        {creator.node_id: NO_BALANCE},
+        AGE_LIMIT_FLOOR,
+        StakeBaseline(0),
     )
 
 
@@ -192,7 +199,14 @@ def stating(generation: int, reach: int, balances: Mapping[ContentId, Balance]) 
         {None: Kismet(len(balances))}, {identity: Kismet(1) for identity in balances}, generation
     )
     return TransactionBlock(
-        generation, PREVIOUS, ChainWeight(0), reach, (payout,), balances, AGE_LIMIT_FLOOR
+        generation,
+        PREVIOUS,
+        ChainWeight(0),
+        reach,
+        (payout,),
+        balances,
+        AGE_LIMIT_FLOOR,
+        StakeBaseline(0),
     )
 
 
@@ -864,6 +878,7 @@ def history(storage: StorageConfig, truth: CasStore, alice: NodeIdentity) -> Cha
                 ChainWeight(generation),
                 (TransactionKey(alice.node_id, CREATED),) if generation == 1 else (),
                 (WITNESS,) if generation == 2 else (),
+                StakeBaseline(0),
             )
         )
 

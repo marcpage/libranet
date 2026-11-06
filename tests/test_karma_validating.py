@@ -1,5 +1,7 @@
 """Tests for checking a validation block, and choosing a generation's best (KarmaLedger §6.5)."""
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
@@ -23,7 +25,7 @@ from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.ledger import AGE_LIMIT_FLOOR, BalanceSheet, Reward, reach_of
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import NO_BALANCE, Balance
 from libranet.protocol.karma_stakes import SignedStake, Stake
@@ -69,9 +71,14 @@ VALIDATION_ID = matching(SECOND.validation, 6)
 RUNNER_UP_ID = matching(SECOND.validation, 4)
 
 # The weight of the chain before transaction block 2: 2^b over each drop.
-# Validation block 1's drop counts times its stake: Alice's 500 Kismet, weighing a
-# tenth, since she won the root.
+# Validation block 1's drop counts times its stake: Alice's 500 Kismet, a
+# generation old, since she won the root, and counted whole, as block 1's
+# stake baseline is 0.
 WEIGHT = ChainWeight(2**3 + 2**5 + 2**4 + 2**6 * 500)
+
+# The stake baseline transaction block 2 states: what validation block 1
+# counted, so that a validation block 2 counts at most 1,000 of its stake.
+BASELINE = StakeBaseline(500)
 
 
 @dataclass(frozen=True)
@@ -200,7 +207,9 @@ def block_on(chain: ChainInMemory, *transactions: SignedTransaction) -> Transact
     validated = chain.transaction(FIRST_ID).block
     reward = Reward(validation.block, validation.builder, validated, validated.balances)
     entries = by_hash(*transactions, reward.payout())
-    block = TransactionBlock(2, FIRST_VALIDATION_ID, WEIGHT, 0, entries, {}, AGE_LIMIT_FLOOR)
+    block = TransactionBlock(
+        2, FIRST_VALIDATION_ID, WEIGHT, 0, entries, {}, AGE_LIMIT_FLOOR, BASELINE
+    )
     stakers = {stake.staker for stake in validation.block.stakes}
     block = stating(block, chain.balances(block.named(), 1), stakers)
     return replace(block, reach=reach_of([block.balances, chain.stated(1)]))
@@ -295,7 +304,14 @@ def keys(alice: NodeIdentity, bob: NodeIdentity, carol: NodeIdentity) -> dict[Co
 def root(alice: NodeIdentity) -> TransactionBlock:
     created = paying(alice, {alice.node_id: 0}, generation=0)
     return TransactionBlock(
-        0, None, ChainWeight(0), 0, (created,), {alice.node_id: NO_BALANCE}, AGE_LIMIT_FLOOR
+        0,
+        None,
+        ChainWeight(0),
+        0,
+        (created,),
+        {alice.node_id: NO_BALANCE},
+        AGE_LIMIT_FLOOR,
+        StakeBaseline(0),
     )
 
 
@@ -326,6 +342,7 @@ def chain(
             by_hash(payout, sent),
             {},
             AGE_LIMIT_FLOOR,
+            StakeBaseline(0),
         ),
         {},
         {alice.node_id},
@@ -387,7 +404,9 @@ def test_a_correct_block_is_scored_by_the_weight_it_adds_its_bits_and_its_effect
     # Alice won generation 1, and Bob holds only what he was paid in block 2,
     # so each is a generation old: Kismet received is no older than that.
     stake = 1_000 * 1 + 100 * 1
-    assert check.score == ValidationScore(ChainWeight(2**7 + 2**6 * stake), 6, stake)
+    # Of that, it counts twice block 2's stake baseline in the chain's weight.
+    counted = 2 * BASELINE.stake
+    assert check.score == ValidationScore(ChainWeight(2**7 + 2**6 * counted), 6, stake)
 
 
 def test_a_drop_that_is_no_signed_block_is_unsigned(

@@ -16,7 +16,7 @@ from libranet.karma.claims import ClaimedChain, ClaimedGeneration, FalseStatemen
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
 from libranet.karma.reading import HeldChain, TargetReader
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.search import LocalSearch
 from tests.helpers import new_identity
@@ -107,6 +107,8 @@ def test_a_head_is_read_with_the_block_it_validates_as_they_claim(
 ) -> None:
     hold(truth, *claimed.drops(3))
     read = ClaimedGeneration.read(chain, claimed.head)
+    block = claimed.transaction(3)
+    staked = sum(stake.stake.kismet.count for stake in claimed.validation(3).stakes)
 
     assert read == ClaimedGeneration(
         claimed.head,
@@ -114,8 +116,10 @@ def test_a_head_is_read_with_the_block_it_validates_as_they_claim(
         id_of(claimed.generations[3].transaction),
         3,
         id_of(claimed.generations[2].validation),
-        claimed.transaction(3).weight,
+        block.weight,
         claimed.most(),
+        block.stake_baseline,
+        block.stake_baseline.after(block.age_limit * staked, 3),
     )
 
 
@@ -231,20 +235,49 @@ def test_each_generation_is_checked_against_the_validation_block_before() -> Non
         previous,
         ChainWeight(5),
         ChainWeight(9),
+        StakeBaseline(40),
+        StakeBaseline(44),
     )
     named = f"one more than that of {previous}"
+    baseline = StakeBaseline(40)
 
-    assert walked.false_on(1, ChainWeight(5)) is None
-    assert replace(walked, generation=3).false_on(1, ChainWeight(5)) == FalseStatement(
-        walked.transaction, f'A transaction block\'s "generation" must be 2, {named}, got 3'
+    assert walked.false_on(1, ChainWeight(5), baseline) is None
+    assert replace(walked, generation=3).false_on(1, ChainWeight(5), baseline) == (
+        FalseStatement(
+            walked.transaction, f'A transaction block\'s "generation" must be 2, {named}, got 3'
+        )
     )
-    assert replace(walked, validation_generation=4).false_on(1, ChainWeight(5)) == (
+    assert replace(walked, validation_generation=4).false_on(1, ChainWeight(5), baseline) == (
         FalseStatement(
             walked.validation, f'A validation block\'s "generation" must be 2, {named}, got 4'
         )
     )
-    assert walked.false_on(1, ChainWeight(6)) == FalseStatement(
+    assert walked.false_on(1, ChainWeight(6), baseline) == FalseStatement(
         walked.transaction, 'A transaction block\'s "weight" must be 6, got 5'
+    )
+    assert walked.false_on(1, ChainWeight(5), StakeBaseline(41)) == FalseStatement(
+        walked.transaction, 'A transaction block\'s "stake_baseline" must be 41, got 40'
+    )
+
+
+def test_a_stake_baseline_walked_back_is_checked_against_the_most_it_may_rise_to() -> None:
+    walked = ClaimedGeneration(
+        ContentId("sha256", "cc" * 32),
+        2,
+        ContentId("sha256", "bb" * 32),
+        2,
+        ContentId("sha256", "aa" * 32),
+        ChainWeight(5),
+        ChainWeight(9),
+        StakeBaseline(40),
+        StakeBaseline(44),
+    )
+
+    assert walked.false_on(1, ChainWeight(9), StakeBaseline(40), at_most=True) is None
+    assert walked.false_on(1, ChainWeight(9), StakeBaseline(39), at_most=True) == (
+        FalseStatement(
+            walked.transaction, 'A transaction block\'s "stake_baseline" must be at most 39, got 40'
+        )
     )
 
 
@@ -257,11 +290,16 @@ def test_a_root_is_built_on_none_at_generation_0_and_weight_0() -> None:
         None,
         ChainWeight(0),
         ChainWeight(9),
+        StakeBaseline(0),
+        StakeBaseline(0),
     )
 
-    assert walked.false_on(-1, ChainWeight(0)) is None
-    assert replace(walked, generation=1).false_on(-1, ChainWeight(0)) == FalseStatement(
-        walked.transaction, "A transaction block's \"generation\" must be 0, the root's, got 1"
+    assert walked.false_on(-1, ChainWeight(0), StakeBaseline(0)) is None
+    assert replace(walked, generation=1).false_on(-1, ChainWeight(0), StakeBaseline(0)) == (
+        FalseStatement(
+            walked.transaction,
+            "A transaction block's \"generation\" must be 0, the root's, got 1",
+        )
     )
 
 

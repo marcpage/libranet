@@ -79,6 +79,7 @@ class OwnBlock:
             tuple(sorted((payout, signed), key=lambda entry: entry.hash)),
             {},
             AGE_LIMIT_FLOOR,
+            before.stake_baseline,
         )
         sheet = BalanceSheet.of(
             block, chain.balances(block.named(), last), stakers=before.stakers()

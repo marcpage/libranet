@@ -20,7 +20,7 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import BlockBounds, BlockDrop, TransactionBlock, ValidationBlock
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.ledger import AGE_LIMIT_FLOOR, BalanceSheet, Reward, StakeAge, reach_of
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.protocol.karma_amounts import Kismet
@@ -173,7 +173,14 @@ class Chain:
         sent = Transaction(own, {own: Kismet(0)}, Kismet(0), 0, CREATED)
         signed = SignedTransaction.of(creator.signed(sent.text()))
         block = TransactionBlock(
-            0, None, ChainWeight(0), 0, (signed,), {own: NO_BALANCE}, AGE_LIMIT_FLOOR
+            0,
+            None,
+            ChainWeight(0),
+            0,
+            (signed,),
+            {own: NO_BALANCE},
+            AGE_LIMIT_FLOOR,
+            StakeBaseline(0),
         )
         transaction = signed_at(ROOT.transaction, creator, block, bits)
         validation = ValidationBlock(0, None, (staked(creator, id_of(transaction), 0),), ())
@@ -267,6 +274,7 @@ class Chain:
             tuple(sorted((reward.payout(), *signed), key=lambda entry: entry.hash)),
             {},
             AGE_LIMIT_FLOOR,
+            validated.stake_baseline.after(self.stake(), validated.generation),
         )
         before = {identity: latest.get(identity, NO_BALANCE) for identity in block.named()}
         after = BalanceSheet.of(block, before, stakers=stakers).after

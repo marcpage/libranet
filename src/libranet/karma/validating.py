@@ -24,8 +24,9 @@ node holds it, which its builder's copy, compressed otherwise, may not be
 (§5.4). The root's validation block is checked by its shape, and one at its
 target that is not the root's is passed over (§7.3). Of a generation's
 correct blocks, the best adds the most weight to the chain, its work times
-its total effective stake (§3.3), then shares the most bits with its target
-hash, then holds the greatest stake, then has the id that sorts first.
+what its total effective stake counts against the stake baseline (§3.3),
+then shares the most bits with its target hash, then holds the greatest
+stake, then has the id that sorts first.
 
 The chain is read through a :class:`~libranet.karma.checking.ChainView`, and
 the transaction blocks at the same generation's target are given as the
@@ -54,7 +55,7 @@ from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.ledger import Reward, StakeAge
 from libranet.karma.reading import HeldBlock
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import NO_STAKE_BASELINE, ChainWeight, StakeBaseline
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import Balance
 
@@ -99,16 +100,25 @@ class ValidationScore:
 
     @classmethod
     def of(
-        cls, validated_id: ContentId, named_for: ContentId | None, bits: int, stake: int
+        cls,
+        validated_id: ContentId,
+        named_for: ContentId | None,
+        bits: int,
+        stake: int,
+        *,
+        baseline: StakeBaseline = NO_STAKE_BASELINE,
     ) -> ValidationScore:
         """The score of a block sharing ``bits``, and holding ``stake``.
 
         It validates transaction block ``validated_id``, at the target named
-        for validation block ``named_for``, or the root's, if that is ``None``.
+        for validation block ``named_for``, or the root's, if that is ``None``,
+        which states ``baseline``, against which ``stake`` counts in the
+        weight it adds (§3.3).
         """
         target = GenerationTargets.built_on(named_for).transaction
         validated = ChainWeight.of_drop(validated_id, target)
-        return cls(validated + ChainWeight.of_staked(bits, stake), bits, stake)
+        counted = baseline.counted(stake)
+        return cls(validated + ChainWeight.of_staked(bits, counted), bits, stake)
 
 
 @dataclass(frozen=True)
@@ -646,7 +656,13 @@ class ValidationBlockCheck:
         return cls(
             checking.block_id,
             drop,
-            ValidationScore.of(validated_id, checking.named_for, bits, stake),
+            ValidationScore.of(
+                validated_id,
+                checking.named_for,
+                bits,
+                stake,
+                baseline=validated.drop.block.stake_baseline,
+            ),
         )
 
     @staticmethod

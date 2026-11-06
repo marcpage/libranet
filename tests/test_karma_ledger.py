@@ -10,7 +10,7 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import TransactionBlock, ValidationBlock
 from libranet.karma.generations import LAST_ISSUING_GENERATION, new_kismet
 from libranet.karma.ledger import AGE_LIMIT_FLOOR, BalanceSheet, Reward, StakeAge, reach_of
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import NO_BALANCE, Balance
 from libranet.protocol.karma_stakes import SignedStake, Stake
@@ -75,7 +75,14 @@ def block_of(
     ordered = tuple(sorted(transactions, key=lambda transaction: transaction.hash))
     previous = PREVIOUS if generation else None
     return TransactionBlock(
-        generation, previous, ChainWeight(0), 0, ordered, balances or {}, age_limit
+        generation,
+        previous,
+        ChainWeight(0),
+        0,
+        ordered,
+        balances or {},
+        age_limit,
+        StakeBaseline(0),
     )
 
 

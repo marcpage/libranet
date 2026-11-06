@@ -30,7 +30,7 @@ from libranet.karma.checking import (
 from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets, new_kismet
 from libranet.karma.ledger import AGE_LIMIT_FLOOR, BalanceSheet, Reward, reach_of
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import NO_BALANCE, Balance
 from libranet.protocol.karma_stakes import SignedStake, Stake
@@ -73,9 +73,14 @@ SECOND = GenerationTargets.after(FIRST_VALIDATION_ID)
 SECOND_ID = matching(SECOND.transaction, 7)
 
 # The weight of the chain before transaction block 2: 2^b over each drop, and
-# validation block 1's drop counts times its stake: Alice's 500 Kismet, weighing a
-# tenth, since she won the root.
+# validation block 1's drop counts times its stake: Alice's 500 Kismet, a
+# generation old, since she won the root, and counted whole, as block 1's
+# stake baseline is 0.
 WEIGHT = ChainWeight(2**3 + 2**5 + 2**4 + 2**6 * 500)
+
+# The stake baseline transaction block 2 states: what validation block 1
+# counted.
+BASELINE = StakeBaseline(500)
 
 
 @dataclass(frozen=True)
@@ -210,7 +215,14 @@ def block_on(
         transactions = (*transactions, reward_of(chain, generation))
 
     block = TransactionBlock(
-        generation, FIRST_VALIDATION_ID, WEIGHT, 0, by_hash(*transactions), {}, AGE_LIMIT_FLOOR
+        generation,
+        FIRST_VALIDATION_ID,
+        WEIGHT,
+        0,
+        by_hash(*transactions),
+        {},
+        AGE_LIMIT_FLOOR,
+        BASELINE,
     )
     block = stating(block, chain.balances(block.named(), 1), stakers_of(chain))
     return replace(block, reach=reach_of([block.balances, chain.stated(1)]))
@@ -266,7 +278,14 @@ def keys(alice: NodeIdentity, bob: NodeIdentity) -> dict[ContentId, bytes]:
 def root(alice: NodeIdentity) -> TransactionBlock:
     created = paying(alice, {alice.node_id: 0}, generation=0)
     return TransactionBlock(
-        0, None, ChainWeight(0), 0, (created,), {alice.node_id: NO_BALANCE}, AGE_LIMIT_FLOOR
+        0,
+        None,
+        ChainWeight(0),
+        0,
+        (created,),
+        {alice.node_id: NO_BALANCE},
+        AGE_LIMIT_FLOOR,
+        StakeBaseline(0),
     )
 
 
@@ -288,6 +307,7 @@ def chain(alice: NodeIdentity, bob: NodeIdentity, root: TransactionBlock) -> Cha
             by_hash(payout, sent),
             {},
             AGE_LIMIT_FLOOR,
+            StakeBaseline(0),
         ),
         {},
         {alice.node_id},
@@ -435,7 +455,16 @@ def test_what_a_block_states_falsely_by_itself_is_found_naming_its_builder(
             lambda block: replace(block, weight=ChainWeight(119)),
             f'"weight" must be {WEIGHT.value()}, got 119',
         ),
+        (
+            lambda block: replace(block, stake_baseline=StakeBaseline(501)),
+            '"stake_baseline" must be 500, got 501',
+        ),
         (lambda block: replace(block, reach=2), '"reach" must be 1, got 2'),
+        (
+            lambda block: replace(block, age_limit=AGE_LIMIT_FLOOR + 1),
+            # Alice, Dave, and Bob.
+            f'"age_limit" must be {AGE_LIMIT_FLOOR}, as 3 hold Kismet after it, got 11',
+        ),
     ],
 )
 def test_a_block_stating_falsely_what_it_is_built_on_distrusts_its_builder(
@@ -759,6 +788,7 @@ def test_the_roots_block_is_correct_by_its_shape_though_not_full(
             root, balances={identity: Balance(Kismet(1), 0) for identity in root.balances}
         ),
         lambda root: replace(root, age_limit=AGE_LIMIT_FLOOR + 1),
+        lambda root: replace(root, stake_baseline=StakeBaseline(1)),
     ],
 )
 def test_a_block_at_the_roots_target_not_shaped_as_the_root_is_false(

@@ -196,7 +196,8 @@ class CombinedBlock:
     ) -> TransactionBlock:
         """The block built on ``before`` holding ``entries``, stating no balances, and no reach.
 
-        Its age limit is the least, until :meth:`block` states it.
+        Its age limit is the least, until :meth:`block` states it, and its
+        stake baseline the one after ``before`` (§3.3).
         """
         return TransactionBlock(
             before.generation,
@@ -206,6 +207,7 @@ class CombinedBlock:
             tuple(sorted(entries, key=lambda entry: entry.hash)),
             {},
             AGE_LIMIT_FLOOR,
+            before.stake_baseline,
         )
 
     @staticmethod

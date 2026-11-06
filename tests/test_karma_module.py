@@ -39,7 +39,7 @@ from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.module import KarmaModule
 from libranet.karma.reading import HeldChain
 from libranet.karma.validating import ValidationBlockCheck
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.messaging.envelope import Message, event_of, make_message
 from libranet.messaging.events import EventType
 from libranet.messaging.node_trust import NodeTrust
@@ -331,7 +331,7 @@ def test_a_module_started_in_a_new_data_directory_follows_no_chain(
 def test_a_module_started_again_reads_the_history_it_kept(
     storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
 ) -> None:
-    root = ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), ())
+    root = ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), (), StakeBaseline(0))
     ChainHistory.open(storage.karma_dir).add(root)
     module = module_over(storage, queues)
 
@@ -573,7 +573,7 @@ def test_two_requests_make_one_root(
 def test_a_module_following_a_chain_makes_no_root(
     storage: StorageConfig, queues: ModuleQueues
 ) -> None:
-    followed = ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), ())
+    followed = ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), (), StakeBaseline(0))
     ChainHistory.open(storage.karma_dir).add(followed)
     module = rooting_module(storage, queues)
 
@@ -804,7 +804,7 @@ def test_the_head_followed_is_said_as_the_module_first_looks_and_not_again_while
 ) -> None:
     clock = Clock()
     ChainHistory.open(storage.karma_dir).add(
-        ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), ())
+        ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), (), StakeBaseline(0))
     )
     module = module_over(storage, queues, clock)
     module.on_start()
@@ -846,7 +846,7 @@ def test_a_head_a_peer_tells_of_is_weighed_as_the_module_next_idles(
     storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
 ) -> None:
     ChainHistory.open(storage.karma_dir).add(
-        ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), ())
+        ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), (), StakeBaseline(0))
     )
     module = module_over(storage, queues)
     module.on_start()
@@ -870,7 +870,7 @@ def test_a_head_a_peer_tells_of_that_is_followed_is_not_weighed(
     storage: StorageConfig, queues: ModuleQueues
 ) -> None:
     ChainHistory.open(storage.karma_dir).add(
-        ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), ())
+        ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), (), StakeBaseline(0))
     )
     module = module_over(storage, queues)
     module.on_start()

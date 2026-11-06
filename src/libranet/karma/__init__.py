@@ -84,7 +84,13 @@ from libranet.karma.reading import ChainGenerations, HeldBlock, HeldChain, Targe
 from libranet.karma.root import ChainRoot
 from libranet.karma.staking import HeadStakes, StakeCover, StakedBlock, ValidationBuilder
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore, balances_left
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import (
+    NO_STAKE_BASELINE,
+    STAKE_BASELINE_GENERATIONS,
+    STAKE_BASELINE_MULTIPLE,
+    ChainWeight,
+    StakeBaseline,
+)
 
 __all__ = [
     "AGE_LIMIT_FACTOR",
@@ -97,6 +103,9 @@ __all__ = [
     "MAX_BLOCK_BYTES",
     "MisplacedBlockError",
     "NEW_KISMET_DECREASE",
+    "NO_STAKE_BASELINE",
+    "STAKE_BASELINE_GENERATIONS",
+    "STAKE_BASELINE_MULTIPLE",
     "STAKES_PER_BLOCK",
     "BalanceSheet",
     "BlockBuilder",
@@ -134,6 +143,7 @@ __all__ = [
     "OwnBlock",
     "Reward",
     "StakeAge",
+    "StakeBaseline",
     "StakeCover",
     "StakedBlock",
     "TargetReader",
