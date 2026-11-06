@@ -2647,7 +2647,8 @@ runner-up exposure is still to be simulated.
 What a Karma validation block's total effective stake counts against in its
 chain's weight, as the transaction block it validates states: a running average
 of what the chain's recent winning validation blocks counted, over up to 1,000
-generations, and 0 in the root and generation 1.
+generations, falling by no more than a quarter a generation, and 0 in the root
+and generation 1.
 
 - **Sources:** [Karma Ledger §3.3](KarmaLedger.md#33-the-heaviest-chain),
   [§5.1](KarmaLedger.md#51-contents).

@@ -406,7 +406,9 @@ def test_a_correct_block_is_scored_by_the_weight_it_adds_its_bits_and_its_effect
     stake = 1_000 * 1 + 100 * 1
     # Of that, it counts twice block 2's stake baseline in the chain's weight.
     counted = 2 * BASELINE.stake
-    assert check.score == ValidationScore(ChainWeight(2**7 + 2**6 * counted), 6, stake)
+    assert check.score == ValidationScore(
+        weight=ChainWeight(2**7 + 2**6 * counted), stake=stake, bits=6
+    )
 
 
 def test_a_drop_that_is_no_signed_block_is_unsigned(
@@ -886,7 +888,7 @@ def test_the_roots_validation_block_is_correct_by_its_shape(
     )
 
     assert isinstance(check, ValidationBlockCheck)
-    assert check.score == ValidationScore(ChainWeight(2**3 + 2**5), 5, 0)
+    assert check.score == ValidationScore(weight=ChainWeight(2**3 + 2**5), stake=0, bits=5)
 
 
 @mark.parametrize(
@@ -966,26 +968,42 @@ def test_a_block_at_the_roots_target_validating_a_false_root_is_passed_over(
             (ValidationScore.of(SECOND_ID, FIRST_VALIDATION_ID, 24, 9), "0f"),
             (ValidationScore.of(SECOND_ID, FIRST_VALIDATION_ID, 32, 1), "01"),
         ),
-        # Of as much weight, bits past the counted still rank.
+        # Of as much weight and stake, bits past the counted still rank.
         (
             (ValidationScore.of(SECOND_ID, FIRST_VALIDATION_ID, 30, 1), "0f"),
             (ValidationScore.of(SECOND_ID, FIRST_VALIDATION_ID, 28, 1), "01"),
         ),
+        # Of as much weight, as two counting all the baseline allows and every
+        # bit a weight counts add, more stake ranks above more bits.
         (
-            (ValidationScore(ChainWeight(2**7 * 2), 7, 2), "0f"),
-            (ValidationScore(ChainWeight(2**6 * 4), 6, 4), "01"),
+            (
+                ValidationScore.of(SECOND_ID, FIRST_VALIDATION_ID, 28, 3_000, baseline=BASELINE),
+                "0f",
+            ),
+            (
+                ValidationScore.of(SECOND_ID, FIRST_VALIDATION_ID, 30, 1_500, baseline=BASELINE),
+                "01",
+            ),
         ),
         (
-            (ValidationScore(ChainWeight(2**8), 6, 2), "0f"),
-            (ValidationScore(ChainWeight(2**8), 6, 1), "01"),
+            (ValidationScore(weight=ChainWeight(2**6 * 4), stake=4, bits=6), "0f"),
+            (ValidationScore(weight=ChainWeight(2**7 * 2), stake=2, bits=7), "01"),
         ),
         (
-            (ValidationScore(ChainWeight(2**6), 6, 1), "01"),
-            (ValidationScore(ChainWeight(2**6), 6, 1), "0f"),
+            (ValidationScore(weight=ChainWeight(2**8), stake=2, bits=6), "0f"),
+            (ValidationScore(weight=ChainWeight(2**8), stake=1, bits=6), "01"),
+        ),
+        (
+            (ValidationScore(weight=ChainWeight(2**8), stake=1, bits=7), "0f"),
+            (ValidationScore(weight=ChainWeight(2**8), stake=1, bits=6), "01"),
+        ),
+        (
+            (ValidationScore(weight=ChainWeight(2**6), stake=1, bits=6), "01"),
+            (ValidationScore(weight=ChainWeight(2**6), stake=1, bits=6), "0f"),
         ),
     ],
 )
-def test_the_best_adds_the_most_weight_then_has_the_most_bits_then_stake_then_the_lowest_id(
+def test_the_best_adds_the_most_weight_then_has_the_most_stake_then_bits_then_the_lowest_id(
     bob: NodeIdentity,
     validation: ValidationBlock,
     better: tuple[ValidationScore, str],
@@ -1005,7 +1023,11 @@ def test_a_block_not_correct_is_never_the_best(
 ) -> None:
     drop = drop_of(bob, validation)
     passed_over = ranked(None, ContentId("sha256", "01" * 32), drop)
-    correct = ranked(ValidationScore(ChainWeight(1), 0, 0), ContentId("sha256", "0f" * 32), drop)
+    correct = ranked(
+        ValidationScore(weight=ChainWeight(1), stake=0, bits=0),
+        ContentId("sha256", "0f" * 32),
+        drop,
+    )
 
     assert ValidationBlockCheck.best([passed_over, correct]) is correct
     assert ValidationBlockCheck.best([passed_over]) is None
@@ -1013,7 +1035,8 @@ def test_a_block_not_correct_is_never_the_best(
 
 
 @mark.parametrize(
-    "score, incorrect", [(None, ""), (ValidationScore(ChainWeight(2**6), 6, 0), "Not full")]
+    "score, incorrect",
+    [(None, ""), (ValidationScore(weight=ChainWeight(2**6), stake=0, bits=6), "Not full")],
 )
 def test_a_checked_block_is_either_scored_or_not_correct(
     bob: NodeIdentity,

@@ -8,6 +8,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.karma.weight import (
     COUNTED_BITS,
+    STAKE_BASELINE_FALL_GENERATIONS,
     STAKE_BASELINE_GENERATIONS,
     STAKE_BASELINE_MULTIPLE,
     ChainWeight,
@@ -162,7 +163,10 @@ def test_the_baseline_after_one_of_0_is_what_its_block_counts() -> None:
         (3, 9_000, 2_000),
         # A window of 2: halfway there, rounded down.
         (4, 1_500, 1_250),
-        (4, 501, 750),
+        # Falling, a window of 4 at least: a quarter of the way there.
+        (2, 40, 760),
+        (2, 0, 750),
+        (4, 501, 875),
         # A window of 1,000, the most.
         (3_996, 1_100, 1_000),
         (3_996, 2_000, 1_001),
@@ -174,6 +178,13 @@ def test_the_baseline_moves_toward_what_each_block_counts_by_a_part_in_its_windo
     generation: int, total: int, after: int
 ) -> None:
     assert StakeBaseline(1_000).after(total, generation) == StakeBaseline(after)
+
+
+def test_one_block_holding_little_stake_lowers_a_young_baseline_by_no_more_than_a_quarter() -> None:
+    baseline = StakeBaseline(4 * 10**6)
+
+    for generation in range(2, 4 * STAKE_BASELINE_FALL_GENERATIONS):
+        assert baseline.after(1, generation).stake >= baseline.stake * 3 // 4
 
 
 def test_the_baseline_rises_no_more_than_a_part_in_its_window_a_generation() -> None:

@@ -440,13 +440,15 @@ each generation, and the one the heaviest chain goes through wins.
   most 27. Each, the root's among them, is placed matching at least as many
   as the node's search returns, 24 by default.
 - **Reading:** a reader passes over a block that is not correct, ranks the
-  rest by the weight each adds to its chain, then by bits, then by
-  effective stake, then by id, and builds the next generation on the best.
-  The winner's stakers share the generation's reward, and the runner-up's
-  stakers lose their stakes in it, unless they also staked in the winner.
-  A validation block is shunned only when it is no block of the ledger,
-  unsigned or found, as a head's chain is walked back, stating its
-  `generation` falsely, since any other may lead to another chain.
+  rest by the weight each adds to its chain, then by effective stake, then
+  by bits, then by id
+  ([Karma Ledger §6.5](KarmaLedger.md#65-correct-and-best)), and builds the
+  next generation on the best. The winner's stakers share the generation's
+  reward, and the runner-up's stakers lose their stakes in it, unless they
+  also staked in the winner. A validation block is shunned only when it is
+  no block of the ledger, unsigned or found, as a head's chain is walked
+  back, stating its `generation` falsely, since any other may lead to
+  another chain.
   A builder found to state something false is distrusted, and no builder
   puts a distrusted identity's stake in a block. A node's head, the winner
   whose id names the target for new transactions, is told to its peers

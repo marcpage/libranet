@@ -88,15 +88,18 @@ class ValidationScore:
     those its drop shares with its target hash, and ``stake`` its total
     effective stake, in Kismet × generations: the sum, over its stakes, of
     each one's Kismet times its staker's age, up to the age limit (§6.6). One score is above another
-    with more weight, of as much, with more bits, and of as many, with more
-    stake. Of two blocks scoring alike, the one whose id sorts first is the
+    with more weight, of as much, with more stake, and of as much, with more
+    bits. So of blocks adding as much weight, as those counting all the stake
+    baseline allows and sharing every bit a weight counts do, the one
+    gathering the most stake wins, not the one whose builder searched
+    longest. Of two blocks scoring alike, the one whose id sorts first is the
     better (:meth:`ValidationBlockCheck.best`), so the best is on the heaviest
     chain.
     """
 
     weight: ChainWeight
-    bits: int
     stake: int
+    bits: int
 
     @classmethod
     def of(
@@ -118,7 +121,7 @@ class ValidationScore:
         target = GenerationTargets.built_on(named_for).transaction
         validated = ChainWeight.of_drop(validated_id, target)
         counted = baseline.counted(stake)
-        return cls(validated + ChainWeight.of_staked(bits, counted), bits, stake)
+        return cls(weight=validated + ChainWeight.of_staked(bits, counted), stake=stake, bits=bits)
 
 
 @dataclass(frozen=True)

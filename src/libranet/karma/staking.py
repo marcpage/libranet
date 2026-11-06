@@ -617,13 +617,15 @@ class ValidationBuilder:
 
         def rank(check: ValidationBlockCheck) -> tuple[bool, int, int, int, ContentId]:
             score = check.score or ValidationScore(
-                ChainWeight(0), matching_bits(target.hex, check.block_id.hash), 0
+                weight=ChainWeight(0),
+                stake=0,
+                bits=matching_bits(target.hex, check.block_id.hash),
             )
             return (
                 not check.is_correct,
                 -score.weight.work,
-                -score.bits,
                 -score.stake,
+                -score.bits,
                 check.block_id,
             )
 
