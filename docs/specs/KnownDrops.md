@@ -407,11 +407,12 @@ larger ones.
   false starts and blocks that score zero among them. A block's `weight`
   says how heavy the chain before it claims to be. A block whose
   transactions are all in a larger block, or in one as large sharing more
-  bits, may be shunned, unless it is near 1 MiB or a validation block names
-  it. No block is shunned for being on a lighter chain. A block that is no
-  block of the ledger, unsigned or stating its `weight` or `generation`
-  falsely, is shunned, and the builder of a block found to state something
-  false is distrusted in the node's own trust list.
+  bits, may be shunned, unless it is full or a validation block names it.
+  No block is shunned for being on a lighter chain. A block that is no
+  block of the ledger, unsigned or found, as a head's chain is walked back,
+  stating its `weight`, `stake_baseline`, or `generation` falsely, is
+  shunned, and the builder of a block found to state something false is
+  distrusted in the node's own trust list.
 - **Defined in:**
   [Karma Ledger §3](KarmaLedger.md#3-generations) for the targets, the
   heaviest chain, heads, shunning, and distrusted builders,
@@ -434,10 +435,10 @@ each generation, and the one the heaviest chain goes through wins.
 - **Placed by** anyone, and may be built from others' stakes.
 - **Signed** by its builder, its list of witnesses with it, and each stake
   in it by its staker. **Not encrypted.**
-- **Bits:** as many as its builder mines. The bits, up to 27, and the
-  stake it holds make up its part of the chain's weight.
-  Each, the root's among them, is placed matching at least as many as the
-  node's search returns, 24 by default.
+- **Bits:** as many as its builder mines. The block adds 2^b times the
+  stake it counts to the chain's weight, b being its bits, counted to at
+  most 27. Each, the root's among them, is placed matching at least as many
+  as the node's search returns, 24 by default.
 - **Reading:** a reader passes over a block that is not correct, ranks the
   rest by the weight each adds to its chain, then by effective stake, then
   by bits, then by id
@@ -445,8 +446,9 @@ each generation, and the one the heaviest chain goes through wins.
   next generation on the best. The winner's stakers share the generation's
   reward, and the runner-up's stakers lose their stakes in it, unless they
   also staked in the winner. A validation block is shunned only when it is
-  no block of the ledger, unsigned or stating its `generation` falsely,
-  since any other may lead to another chain.
+  no block of the ledger, unsigned or found, as a head's chain is walked
+  back, stating its `generation` falsely, since any other may lead to
+  another chain.
   A builder found to state something false is distrusted, and no builder
   puts a distrusted identity's stake in a block. A node's head, the winner
   whose id names the target for new transactions, is told to its peers
