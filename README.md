@@ -168,8 +168,11 @@ key: its year, rating, cast, a description, and a backdrop come from there.
 Then add its episodes from video files. Each goes into its season by the
 numbers its file's name gives, as `S01E02` or `1x02`, or a number in its
 name in a folder named for its season, and is looked up at TMDB with its
-season. Only the episodes you add are shown, in season and episode order,
-with a button for each season.
+season. A file of two episodes, named as `S01E01E02` or `S01E01-02`, holds
+both. Or add every video in a folder, and in the folders within it, at
+once, correcting the numbers each is given before it is imported. Only the
+episodes you add are shown, in season and episode order, with a button for
+each season.
 
 When an episode ends, the next plays at once, on into the next season. The
 keys are the movie library's, with `[` and `]` for the season before and

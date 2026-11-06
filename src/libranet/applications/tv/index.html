@@ -236,6 +236,11 @@
   .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; margin: 0 0 0.5rem; }
   .crumbs button { padding: 0.1rem 0.4rem; }
 
+  /* The videos found in a folder, each to be numbered, or left out. */
+  .found li { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.25rem 0.75rem; }
+  .found label.check { flex: 1 1 14rem; font-size: 0.95rem; overflow-wrap: anywhere; }
+  .found .note { flex: 1 0 100%; }
+
   .activity { list-style: none; margin: 0.75rem 0 0; padding: 0; }
   .activity li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; margin: 0.35rem 0; }
   .activity progress { flex: 0 1 12rem; }
@@ -444,19 +449,37 @@
 </dialog>
 
 <dialog id="file-dialog" aria-labelledby="file-heading">
-  <h3 id="file-heading">Add an episode from a file</h3>
-  <p class="hint">The folders this node offers. Choose a video, and it is imported into the
-  network, and added to this series, in its season. Its season and episode come from its file's
-  name, as S01E02 or 1x02, or from a number in its name, in a folder named for its season, such as
-  Season 1, or Specials.</p>
-  <p class="hint"><span id="lookup-note"></span>
-    <button type="button" class="secondary small" id="lookup-key" disabled>TMDB key</button></p>
-  <nav class="crumbs" id="folder-path" aria-label="Where in the folders"></nav>
-  <ul class="entries" id="folder-entries"></ul>
-  <p class="result" id="folder-state" role="status" hidden></p>
-  <div class="buttons">
-    <button type="button" class="secondary" data-close>Close</button>
+  <h3 id="file-heading">Add episodes from files</h3>
+  <div id="folder-browse">
+    <p class="hint">The folders this node offers. Choose a video, and it is imported into the
+    network, and added to this series, in its season. Its season and episode come from its file's
+    name, as S01E02 or 1x02, or from a number in its name, in a folder named for its season, such as
+    Season 1, or Specials. A file of more than one episode is named for each, as S01E01E02, or for
+    the first and last, as S01E01-02. Or add every video in the folder shown, and in the folders
+    within it.</p>
+    <p class="hint"><span id="lookup-note"></span>
+      <button type="button" class="secondary small" id="lookup-key" disabled>TMDB key</button></p>
+    <nav class="crumbs" id="folder-path" aria-label="Where in the folders"></nav>
+    <ul class="entries" id="folder-entries"></ul>
+    <p class="result" id="folder-state" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Close</button>
+      <button type="button" id="folder-all" hidden>Add every video here</button>
+    </div>
   </div>
+  <form id="found-form" hidden>
+    <p class="hint">Each video found, numbered as its file's name gives. Correct any, number those
+    it does not, and leave out any you choose. An episode is a number, such as 2, or more than one,
+    such as 1, 2, for a file holding each. Season 0 is the specials. Those whose numbers this series
+    holds already are left out.</p>
+    <p class="hint" id="found-note" hidden></p>
+    <ul class="entries found" id="found-list"></ul>
+    <p class="result" id="found-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" id="found-back">Back</button>
+      <button type="submit">Add</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="numbers-dialog" aria-labelledby="numbers-heading">
@@ -663,10 +686,14 @@ const POSTER_SIZE = "w780";
 const NOT_TITLE = /^(?:\d{3,4}[pi]|4k|uhd|hdr(?:10)?|\d{1,2}bit|[xh]26[45]|hevc|xvid|divx|blu-?ray|b[dr]rip|remux|web-?(?:dl|rip)|hdtv|hdrip|dvd(?:rip|scr)?|aac|ac3|dts|ddp?\d?|atmos|truehd|repack|extended|unrated|remastered|imax)(?:-\w+)?$/i;
 
 // How a video file's name gives its season and episode: S01E02, s1e2, or 1x02.
+// One holding more than one episode names each after the first, S01E01E02, or
+// the last of them, S01E01-E02 or S01E01-02. A number after a hyphen is not
+// taken for an episode's if a letter follows it, as in S01E01-720p.
 const EPISODE_MARKS = [
-  /(?:^|[^a-z0-9])s(\d{1,3})[ ._-]?e(\d{1,4})(?![0-9])/i,
+  /(?:^|[^a-z0-9])s(\d{1,3})[ ._-]?e(\d{1,4})((?:-?e\d{1,4}|-\d{1,2}(?![a-z]))*)(?![0-9])/i,
   /(?:^|[^a-z0-9])(\d{1,2})x(\d{1,3})(?![0-9])/i,
 ];
+const MORE_EPISODES = /(-?)e?(\d+)/gi;
 
 // How a folder is named for the season it holds: Season 1, Series 1, or S1;
 // or Specials, for season 0. A file in one is numbered by the first word of
@@ -679,7 +706,11 @@ const EPISODE_WORD = /^(?:e|ep|episode)?(\d{1,4})$/i;
 // or "Doctor Who (2005)" do.
 const NAMED_YEAR = /^(.*?)[\s([]*((?:19|20)\d\d)[)\]]?$/;
 
-// How often an import is asked after.
+// How many folders below the one chosen every video is looked for in, so
+// that a link back to a folder above does not lead the search on forever.
+const FOLDER_DEPTH = 8;
+
+// How often the imports are asked after.
 const IMPORT_POLL_SECONDS = 1;
 
 // What a 503 that does not say is waited for, and how many are waited out
@@ -2555,9 +2586,9 @@ function cased(title) {
 
 // The season and episode numbers a video file's name gives, and the title
 // that follows them, if any: "Show.S01E02.Pilot.720p.mkv" gives episode 2 of
-// season 1, “Pilot”. A file whose name gives none, in a folder named for its
-// season, "Season 1/02 - Pilot.mkv" say, is numbered by the first number in
-// its name.
+// season 1, “Pilot”, and "Show.S01E01-03.mkv" episodes 1, 2, and 3. A file
+// whose name gives none, in a folder named for its season, "Season 1/02 -
+// Pilot.mkv" say, is numbered by the first number in its name.
 class EpisodeName {
   constructor(season, episodes, title) {
     this.season = season;
@@ -2577,7 +2608,8 @@ class EpisodeName {
 
       if (found) {
         const rest = bare.slice(found.index + found[0].length);
-        return new EpisodeName(Number(found[1]), [Number(found[2])], EpisodeName.title(rest));
+        const episodes = EpisodeName.numbers(Number(found[2]), found[3] || "");
+        return new EpisodeName(Number(found[1]), episodes, EpisodeName.title(rest));
       }
     }
 
@@ -2593,6 +2625,24 @@ class EpisodeName {
 
     const episode = Number(EPISODE_WORD.exec(words[at])[1]);
     return new EpisodeName(season, [episode], EpisodeName.title(words.slice(at + 1).join(" ")));
+  }
+
+  // The episodes of a file whose name gives `first`, then `more`: each that
+  // follows as E02, and each up to one that follows as -E03 or -03.
+  static numbers(first, more) {
+    const numbers = [first];
+
+    for (const [, through, number] of more.matchAll(MORE_EPISODES)) {
+      const last = Number(number);
+      const before = numbers[numbers.length - 1];
+
+      // One that is not after the episode before it is taken as given.
+      for (let each = through && last > before ? before + 1 : last; each <= last; each += 1) {
+        numbers.push(each);
+      }
+    }
+
+    return [...new Set(numbers)].sort((one, other) => one - other);
   }
 
   static words(text) {
@@ -2838,13 +2888,51 @@ async function seasonFromTmdb(series, number) {
   }
 }
 
+// What TMDB gives of the seasons of `series`, to add episodes to it with:
+// each season asked for once, however many of its episodes are added
+// together, with its poster if the series held no season of its number as
+// they began. Nothing is asked if the series has no TMDB id, or whoever is
+// signed in keeps no key.
+class TmdbSeasons {
+  constructor(series) {
+    this.series = series;
+    // The key, read once, as it is first needed.
+    this.lookup = null;
+    // What TMDB answered of each season, by its number, as it is asked.
+    this.answers = new Map();
+  }
+
+  // What TMDB gives of season `number`, as Lookup.season gives it, or null
+  // if nothing is asked. It fails as TMDB does, each time it is asked.
+  season(number) {
+    if (!this.answers.has(number)) {
+      this.answers.set(number, this.ask(number));
+    }
+
+    return this.answers.get(number);
+  }
+
+  async ask(number) {
+    const id = this.series.tmdbId();
+
+    if (id === undefined) {
+      return null;
+    }
+
+    this.lookup = this.lookup || Lookup.read();
+    const lookup = await this.lookup;
+    return lookup.key ? lookup.season(id, number, !this.series.season(seasonFolder(number))) : null;
+  }
+}
+
 // What is known of the episode in the video file `video` of `series`,
 // numbered as `named` says, as its info.json holds it, with its still, as
-// base64, or null; what TMDB gives of its season, to make it with if
-// `newSeason`, or null; and why it was not looked up, or "". It is looked up
-// at TMDB if the series has a TMDB id and whoever is signed in keeps a key,
-// or else known as the file's name gives it. It never fails.
-async function describeEpisode(series, named, video, newSeason) {
+// base64, or null; what TMDB gives of its season, from `seasons`, a
+// TmdbSeasons, to make it with if it is new, or null; and why it was not
+// looked up, or "". It is looked up at TMDB if the series has a TMDB id and
+// whoever is signed in keeps a key, or else known as the file's name gives
+// it. It never fails.
+async function describeEpisode(series, named, video, seasons) {
   const info = {
     title: named.title,
     series: series.name,
@@ -2853,21 +2941,15 @@ async function describeEpisode(series, named, video, newSeason) {
     episodes: named.episodes,
     video,
   };
-  const id = series.tmdbId();
   const known = { info, still: null, made: null, problem: "" };
 
-  if (id === undefined) {
-    return known;
-  }
-
   try {
-    const lookup = await Lookup.read();
+    const season = await seasons.season(named.season);
 
-    if (!lookup.key) {
+    if (!season) {
       return known;
     }
 
-    const season = await lookup.season(id, named.season, newSeason);
     const episode = await Lookup.episode(season, named.episodes);
 
     if (!episode) {
@@ -3107,9 +3189,66 @@ function entryRow(text, detail, action) {
   return item;
 }
 
+// What a folder the node offers holds: the folders and the videos in it, each
+// as [name, what the node says of it], in order of name, and how many other
+// files.
+class Folder {
+  constructor(segments, folders, videos, others) {
+    this.segments = segments;
+    this.folders = folders;
+    this.videos = videos;
+    this.others = others;
+  }
+
+  // The folder at `segments`, the folders it is in and then its name, or,
+  // if they are none, the folders the node offers.
+  static async list(segments) {
+    const path = segments.length ? `${DIRECTORY}/${encodedPath(segments.join("/"))}` : DIRECTORY;
+    const result = await call("GET", path);
+
+    if (!result.ok || !isObject(result.value) || !isObject(result.value.entries)) {
+      throw new Refusal(result);
+    }
+
+    const entries = Object.entries(result.value.entries).filter(([, entry]) => isObject(entry))
+      .sort(([one], [other]) => one.localeCompare(other));
+    const folders = entries.filter(([, entry]) => entry.type === "directory");
+    const videos = entries.filter(([, entry]) => entry.type === "file"
+      && isText(entry.content_type) && entry.content_type.startsWith("video/"));
+    return new Folder(segments, folders, videos, entries.length - folders.length - videos.length);
+  }
+
+  // Adds to `found` the videos in it, and in the folders within it, each as
+  // the segments of its path, and counts the other files, and the folders
+  // not looked in: those FOLDER_DEPTH below it, and those that could not be
+  // read. `told` is called as each folder is read.
+  async gather(found, told, depth = 0) {
+    found.videos.push(...this.videos.map(([name]) => [...this.segments, name]));
+    found.others += this.others;
+    told(found);
+
+    for (const [name] of this.folders) {
+      let folder = null;
+
+      try {
+        folder = depth < FOLDER_DEPTH ? await Folder.list([...this.segments, name]) : null;
+      } catch (error) {
+        console.warn(`“${[...this.segments, name].join("/")}” could not be read: ${error.message}`);
+      }
+
+      if (folder) {
+        await folder.gather(found, told, depth + 1);
+      } else {
+        found.passed += 1;
+      }
+    }
+  }
+}
+
 async function browse(segments) {
   const list = byId("folder-entries");
   const status = byId("folder-state");
+  const every = byId("folder-all");
   const crumbs = [crumb("Folders", [])];
 
   segments.forEach((segment, index) => {
@@ -3120,28 +3259,19 @@ async function browse(segments) {
   crumbs[crumbs.length - 1].focus();
   list.replaceChildren();
   list.hidden = true;
+  every.hidden = true;
   show(status, "Asking the node…");
-  const path = segments.length ? `${DIRECTORY}/${encodedPath(segments.join("/"))}` : DIRECTORY;
-  let result;
+  let listed;
 
   try {
-    result = await call("GET", path);
+    listed = await Folder.list(segments);
   } catch (error) {
     show(status, error.message, true);
     return;
   }
 
-  if (!result.ok || !isObject(result.value) || !isObject(result.value.entries)) {
-    show(status, new Refusal(result).message, true);
-    return;
-  }
-
-  const entries = Object.entries(result.value.entries).filter(([, entry]) => isObject(entry))
-    .sort(([one], [other]) => one.localeCompare(other));
-  const folders = entries.filter(([, entry]) => entry.type === "directory");
-  const videos = entries.filter(([, entry]) => entry.type === "file"
-    && isText(entry.content_type) && entry.content_type.startsWith("video/"));
-  const others = entries.length - folders.length - videos.length;
+  const { folders, videos, others } = listed;
+  browsing = listed;
 
   list.replaceChildren(
     ...folders.map(([name]) => entryRow(`${name}/`, "", () => browse([...segments, name]))),
@@ -3152,17 +3282,199 @@ async function browse(segments) {
   );
   list.hidden = folders.length + videos.length === 0;
 
+  // Every video is added from a folder, not from all the folders offered.
+  every.hidden = segments.length === 0 || list.hidden;
+
   if (list.firstElementChild) {
     list.querySelector("button").focus();
   }
 
-  if (segments.length === 0 && entries.length === 0) {
+  if (segments.length === 0 && folders.length + videos.length + others === 0) {
     show(status, "This node offers no folders. Its operator chooses them, in local.folders.");
   } else if (folders.length + videos.length === 0) {
     show(status, "This folder holds no videos.");
   } else {
     show(status, others ? `${plural(others, "other file", "other files")} here, not videos.` : "");
   }
+}
+
+// The folder the dialog adding from files shows, a Folder, and the videos
+// found in it, each a FoundVideo, while they are numbered.
+let browsing = null;
+let foundVideos = [];
+
+// Shows the folders, in the dialog adding from files, rather than the videos
+// found in one.
+function showFolders() {
+  foundVideos = [];
+  byId("file-heading").textContent = "Add episodes from files";
+  byId("found-form").hidden = true;
+  byId("folder-browse").hidden = false;
+}
+
+// A video found in a folder, listed for the person to number, or to leave
+// out: the segments of its path, and the row that lists it, numbered as its
+// name gives, and showing as much of its path as is below the folder chosen,
+// `from` segments in.
+class FoundVideo {
+  constructor(segments, from) {
+    const name = segments[segments.length - 1];
+    const named = EpisodeName.parse(segments);
+    const shown = segments.slice(from).join("/");
+    const check = make("label", null, "check");
+    this.segments = segments;
+    this.name = name;
+    // The title its name gives, however it is numbered.
+    this.title = named ? named.title : EpisodeName.title(name.replace(/\.[^.]*$/, ""));
+    this.box = make("input");
+    this.season = make("input");
+    this.episodes = make("input");
+    this.note = make("span", "", "note");
+    this.item = make("li");
+    this.box.type = "checkbox";
+    this.box.checked = true;
+    check.append(this.box, make("span", shown));
+
+    const fields = [[this.season, "Season", 4], [this.episodes, "Episode", 6]].map(([field, text, size]) => {
+      const label = make("label", text);
+      field.size = size;
+      field.setAttribute("inputmode", "numeric");
+      field.setAttribute("autocomplete", "off");
+      field.setAttribute("aria-label", `${text} of “${shown}”`);
+      field.addEventListener("input", () => this.refresh());
+      label.append(field);
+      return label;
+    });
+
+    if (named) {
+      this.season.value = String(named.season);
+      this.episodes.value = named.episodes.join(", ");
+    }
+
+    this.item.append(check, ...fields, this.note);
+    this.refresh();
+  }
+
+  // The numbers typed, with the title its name gives, as an EpisodeName; or
+  // null, if they are not numbers.
+  named() {
+    const season = this.season.value.trim();
+    const episodes = this.episodes.value.trim();
+
+    if (!/^\d{1,4}$/.test(season) || !/^\d{1,4}(?:\s*,\s*\d{1,4})*$/.test(episodes)) {
+      return null;
+    }
+
+    const numbers = [...new Set(episodes.split(",").map(Number))].sort((one, other) => one - other);
+    return new EpisodeName(Number(season), numbers, this.title);
+  }
+
+  chosen() {
+    return this.box.checked;
+  }
+
+  // Says whether the series open holds an episode of its numbers already,
+  // and leaves it out while it does: until it is numbered as another, when
+  // it is chosen again.
+  refresh() {
+    const series = state.series;
+    const named = this.named();
+    const held = named && series.holding(named.season, named.episodes);
+    show(this.note, held ? `Held already, as “${series.title(held)}”, so it is left out.` : "");
+
+    if (held) {
+      this.box.checked = false;
+      this.box.disabled = true;
+    } else if (this.box.disabled) {
+      this.box.disabled = false;
+      this.box.checked = true;
+    }
+  }
+}
+
+// Looks for every video in the folder shown, and in the folders within it,
+// and lists each found, for the person to number before any is added.
+async function findEvery() {
+  const folder = browsing;
+  const status = byId("folder-state");
+  const gathered = { videos: [], others: 0, passed: 0 };
+  await folder.gather(gathered, (so) => show(status, `Looking for videos… ${so.videos.length} found so far.`));
+  const notes = [];
+
+  if (gathered.others) {
+    notes.push(`${plural(gathered.others, "other file", "other files")} found, not videos.`);
+  }
+
+  if (gathered.passed) {
+    notes.push(`${plural(gathered.passed, "folder was", "folders were")} not looked in, as they could not be read, or are more than ${FOLDER_DEPTH} below this one.`);
+  }
+
+  if (gathered.videos.length === 0) {
+    return [["No videos are here, nor in the folders within it.", ...notes].join(" "), false];
+  }
+
+  const ordered = gathered.videos.sort((one, other) => one.join("/").localeCompare(other.join("/"), undefined, { numeric: true }));
+  foundVideos = ordered.map((segments) => new FoundVideo(segments, folder.segments.length));
+  byId("found-list").replaceChildren(...foundVideos.map((each) => each.item));
+  show(byId("found-note"), notes.join(" "));
+  show(byId("found-result"), "");
+  byId("file-heading").textContent = `Add every video in “${folder.segments[folder.segments.length - 1]}”`;
+  byId("folder-browse").hidden = true;
+  byId("found-form").hidden = false;
+  byId("found-list").querySelector("input:not(:disabled)").focus();
+  return null;
+}
+
+// Imports each video found that is chosen, once every one of them is
+// numbered, and none as another is, each in turn, in season and episode
+// order, with TMDB asked once for each season.
+async function addFound() {
+  const series = state.series;
+  const chosen = [];
+  const numbered = new Map();
+
+  // An episode added since they were listed leaves out any of its numbers.
+  for (const each of foundVideos) {
+    each.refresh();
+  }
+
+  for (const each of foundVideos.filter((video) => video.chosen())) {
+    const named = each.named();
+
+    if (!named) {
+      each.season.focus();
+      throw new Error(`Number “${each.name}”, or leave it out. A season and an episode are each a number, such as 1 and 2.`);
+    }
+
+    for (const number of named.episodes) {
+      const other = numbered.get(`${named.season} ${number}`);
+
+      if (other) {
+        each.episodes.focus();
+        throw new Error(`“${other.name}” and “${each.name}” are each ${episodeText(named.season, [number])}. Number one as another, or leave it out.`);
+      }
+
+      numbered.set(`${named.season} ${number}`, each);
+    }
+
+    chosen.push({ segments: each.segments, named });
+  }
+
+  if (chosen.length === 0) {
+    throw new Error("No video is chosen to add.");
+  }
+
+  const rank = (season) => (season === SPECIALS ? Infinity : season);
+  chosen.sort((one, other) => rank(one.named.season) - rank(other.named.season)
+    || one.named.episodes[0] - other.named.episodes[0]);
+  const seasons = new TmdbSeasons(series);
+  byId("file-dialog").close();
+
+  for (const { segments, named } of chosen) {
+    startImport(segments, named, seasons);
+  }
+
+  return null;
 }
 
 // The file chosen whose numbers the dialog asking for them is open on: the
@@ -3200,51 +3512,88 @@ async function numberFile() {
   return null;
 }
 
+// The imports followed until each is done, by id, each with what is told how
+// it is doing, and what is told when it is done, or has failed; and whether
+// the node is being asked after them. It is asked after them all at once,
+// however many there are.
+const followed = new Map();
+let askingAfterImports = false;
+
 // What the node says of an import, until it is done: the file bundle it stored.
-async function followImport(importId, progress) {
-  for (;;) {
-    const result = await call("GET", IMPORTS);
+function followImport(importId, progress) {
+  return new Promise((resolve, reject) => {
+    followed.set(importId, { progress, resolve, reject });
 
-    if (result.status === 503) {
-      await sleep(retryAfter(result.headers));
-      continue;
+    if (!askingAfterImports) {
+      askingAfterImports = true;
+      askAfterImports();
     }
+  });
+}
 
-    if (!result.ok) {
-      throw new Refusal(result);
-    }
+// Asks the node how the imports followed are doing, until none is. If it
+// cannot say, every one followed fails.
+async function askAfterImports() {
+  try {
+    while (followed.size > 0) {
+      const result = await call("GET", IMPORTS);
 
-    const imports = isObject(result.value) && isObject(result.value.imports) ? result.value.imports : {};
-    const record = imports[importId];
-
-    if (isObject(record)) {
-      if (record.status === "done" && isText(record.file)) {
-        return record.file;
+      if (result.status === 503) {
+        await sleep(retryAfter(result.headers));
+        continue;
       }
 
-      if (record.status === "failed") {
-        throw new Error(record.error || "The node did not say why the import failed.");
+      if (!result.ok) {
+        throw new Refusal(result);
       }
 
-      progress(record);
+      const imports = isObject(result.value) && isObject(result.value.imports) ? result.value.imports : {};
+
+      for (const [importId, { progress, resolve, reject }] of followed) {
+        const record = imports[importId];
+
+        if (!isObject(record)) {
+          continue;
+        }
+
+        if (record.status === "done" && isText(record.file)) {
+          followed.delete(importId);
+          resolve(record.file);
+        } else if (record.status === "failed") {
+          followed.delete(importId);
+          reject(new Error(record.error || "The node did not say why the import failed."));
+        } else {
+          progress(record);
+        }
+      }
+
+      await sleep(IMPORT_POLL_SECONDS);
+    }
+  } catch (error) {
+    for (const { reject } of followed.values()) {
+      reject(error);
     }
 
-    await sleep(IMPORT_POLL_SECONDS);
+    followed.clear();
+  } finally {
+    // At once, so that an import followed from now on is asked after again.
+    askingAfterImports = false;
   }
 }
 
 // Imports the file at `path`, named `name`, makes an episode of it, numbered
 // as `named` says, with what is known of it looked up while the file is
-// imported, and adds that to `series`, or its newest version. Returns the
+// imported, with what TMDB gives of its season from `seasons`, a
+// TmdbSeasons, and adds that to `series`, or its newest version. Returns the
 // episode's path, and why it was not looked up, or "".
-async function importEpisode(path, name, named, series, progress) {
+async function importEpisode(path, name, named, series, seasons, progress) {
   const started = await call("POST", IMPORTS, { body: { path } });
 
   if (started.status !== 202 || !isObject(started.value) || !isText(started.value.import_id)) {
     throw new Refusal(started);
   }
 
-  const described = describeEpisode(series, named, name, !series.season(seasonFolder(named.season)));
+  const described = describeEpisode(series, named, name, seasons);
   const file = await followImport(started.value.import_id, progress);
   const { info, still, made, problem } = await described;
   const add = { [name]: { file }, [INFO_FILE]: { text: jsonText(INFO_KEYS, info) } };
@@ -3268,8 +3617,10 @@ function warnOfLeaving(event) {
 }
 
 // Imports the file at `segments`, numbered as `named` says, into the series
-// open, unless it holds an episode of those numbers already.
-function startImport(segments, named) {
+// open, unless it holds an episode of those numbers already, with what TMDB
+// gives of its season from `seasons`, a TmdbSeasons, which the files added
+// together share.
+function startImport(segments, named, seasons = new TmdbSeasons(state.series)) {
   const series = state.series;
   const name = segments[segments.length - 1];
   const item = make("li");
@@ -3314,7 +3665,7 @@ function startImport(segments, named) {
   // The episode added is not opened: the page stays where it is, on the
   // series or the episode chosen, until the person chooses one. Why it was
   // not looked up, if it was not, stays in the activity list until dismissed.
-  importEpisode(segments.join("/"), name, named, series, progress).finally(() => {
+  importEpisode(segments.join("/"), name, named, series, seasons, progress).finally(() => {
     if (--state.imports === 0) {
       window.removeEventListener("beforeunload", warnOfLeaving);
     }
@@ -3570,9 +3921,14 @@ byId("show-keys").addEventListener("click", () => byId("keys-dialog").showModal(
 byId("new-series").addEventListener("click", openNew);
 byId("new-lookup-key").addEventListener("click", openLookup);
 byId("add-file").addEventListener("click", () => {
+  showFolders();
   byId("file-dialog").showModal();
   browse([]);
   showLookup(byId("lookup-note"), byId("lookup-key"), fileNote);
+});
+byId("found-back").addEventListener("click", () => {
+  showFolders();
+  byId("folder-all").focus();
 });
 byId("lookup-key").addEventListener("click", openLookup);
 byId("edit-series").addEventListener("click", openSeriesEdit);
@@ -3619,6 +3975,8 @@ onSubmit("apart-form", "apart-result", async () => {
   return null;
 });
 onSubmit("numbers-form", "numbers-result", numberFile);
+onClick("folder-all", "folder-state", findEvery);
+onSubmit("found-form", "found-result", addFound);
 onSubmit("lookup-form", "lookup-result", keepLookup);
 onSubmit("editor", "editor-result", saveEdit);
 onSubmit("series-form", "series-result", saveSeries);
