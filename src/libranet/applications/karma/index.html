@@ -510,7 +510,8 @@ function matchingBits(id, hash) {
 }
 
 // Whether `value` is a balance (KarmaLedger 5.3): the Kismet held, and the
-// generation whose reward last paid it, or null.
+// generation it has aged since, its last win moved later by the Kismet it has
+// received since, or null when it holds nothing.
 function isBalance(value) {
   return (
     isObject(value) &&
@@ -520,11 +521,11 @@ function isBalance(value) {
   );
 }
 
-// A balance as the page shows it: the Karma held, and when a reward last paid
-// it.
+// A balance as the page shows it: the Karma held, and the generation it has
+// aged since.
 function balanceShown(balance) {
   const shown = document.createElement("span");
-  const won = balance.last_won === null ? "never rewarded" : `last rewarded in generation ${balance.last_won}`;
+  const won = balance.last_won === null ? "nothing to stake" : `aging since generation ${balance.last_won}`;
   shown.append(amountOf(balance.kismet), make("span", `, ${won}`, "note"));
   return shown;
 }
@@ -1482,9 +1483,12 @@ async function showBlock(id) {
 
   if (unread === null) {
     const reach = block.contents.reach;
+    const ageLimit = block.contents.age_limit;
     facts.push(
       ["Which was built by", identityOrText(block.signer)],
       ["Its reach", Number.isSafeInteger(reach) ? plural(reach, "block", "blocks") : "not stated"],
+      ["Its age limit", Number.isSafeInteger(ageLimit) ? plural(ageLimit, "generation", "generations") : "not stated"],
+      ["Its stake baseline", formatWeight(block.contents.stake_baseline)],
     );
   }
 
