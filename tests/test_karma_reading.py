@@ -291,6 +291,34 @@ def test_a_block_read_holds_its_block_as_read_so_that_it_is_not_read_again(
     assert held.drop == BlockDrop.parsed(staking, ValidationBlock)
 
 
+def test_reading_each_reads_each_block_only_as_it_is_taken(
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    staking: bytes,
+) -> None:
+    another = ValidationBlock(1, None, (staked(bob, CAROL, 6),), ())
+    both = {
+        hold(truth, staking),
+        hold(truth, placed(FIRST.validation, alice.signed(another.text()).encoded())),
+    }
+    hold_keys(truth, alice, bob)
+
+    blocks = reader.read_each(FIRST.validation, ValidationBlock)
+
+    # Nothing is searched for until the first is taken.
+    assert recorder.messages == []
+
+    taken = next(blocks)
+
+    assert recorder.messages[0] == (EventType.SEARCH_REQUESTED, {"prefix": FIRST.validation.hex})
+    assert set(recorder.requested()) & both == {taken.block_id}
+    assert {taken.block_id, *(held.block_id for held in blocks)} == both
+    assert set(recorder.requested()) >= both
+
+
 def test_a_block_held_compressed_is_read_decompressed_and_measured_as_held(
     reader: TargetReader, truth: CasStore, recorder: Recorder, staking: bytes
 ) -> None:

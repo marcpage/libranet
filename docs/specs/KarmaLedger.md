@@ -136,19 +136,32 @@ A chain is a root and the generations built on it, each a transaction
 block and the validation block that validates it. Its **weight** is the sum,
 over every generation, of 2^b for the transaction block's drop, and 2^b
 times C for the validation block's, where b is the number of leading bits
-the drop's id shares with its target hash, and C is the validation block's
-**counted stake**: its total effective stake, in Kismet × generations
-(§6.6), but no more than twice the **stake baseline** B its transaction
-block states, C = min(S, 2 × B), and all of S while B is 0; C is counted as
-1 where it is 0, as only the root's is (§7.3). A drop matching b bits takes
-about 2^b hashes to find, so the weight is the work it took to build the
-chain, each validation block's work weighted by the stake behind it: a block
-holding twice the stake weighs as one sharing a bit more. So a block that
-gathers many stakers' stakes outweighs a luckier one holding only its
-builder's, and its reward is shared among them all (§6.6). Summing bits
-instead would let two 15-bit drops weigh as much as one 30-bit drop, which
-took 32,768 times the work of either. Stake counts, not stakers, since an
-identity costs nothing to make (§8).
+the drop's id shares with its target hash, counted to at most 27, and C is
+the validation block's **counted stake**: its total effective stake, in
+Kismet × generations (§6.6), but no more than twice the **stake baseline**
+B its transaction block states, C = min(S, 2 × B), and all of S while B is
+0; C is counted as 1 where it is 0, as only the root's is (§7.3). A drop
+matching b bits takes about 2^b hashes to find, so the weight is the work it
+took to build the chain, each validation block's work weighted by the stake
+behind it: a block holding twice the stake weighs as one sharing a bit more.
+So a block that gathers many stakers' stakes outweighs a luckier one holding
+only its builder's, and its reward is shared among them all (§6.6). Summing
+bits instead would let two 12-bit drops weigh as much as one 24-bit drop,
+which took 4,096 times the work of either. Stake counts, not stakers, since
+an identity costs nothing to make (§8).
+
+No more than 27 bits are counted: the 24 a search returns by default (§2),
+and 3 more. A drop sharing more weighs as one sharing 27. A block's bits past
+those it is placed with are luck, or hashing bought, and its stakes are
+public, so anyone may take an old generation's validation block, keep its
+stakes, and search for a nonce of many more bits. Were every bit counted, a
+copy sharing 40 bits would weigh as much as 65,536 of 24 bits holding as
+much stake, and every node would leave the generations built after the
+original for it, for a minute of a graphics card's work and no Karma (§8).
+Counted to 27, luck still makes a block weigh up to 8 times one of 24 bits
+holding as much stake, and so still decides between rivals of like stake, but
+no more than that, and between blocks holding much more or less, stake
+decides.
 
 The stake baseline is a running average of what the chain's recent winning
 validation blocks counted. Transaction block g states B_g, the baseline of
@@ -188,8 +201,8 @@ work alone.
 flowchart RL
     root["Root"]
     g1["Generation 1"] --> root
-    a2["Generation 2<br/>two 30-bit drops"] --> g1
-    a3["Generation 3<br/>two 30-bit drops<br/>heavier: 4 × 2³⁰ after generation 1,<br/>so every node follows this chain"] --> a2
+    a2["Generation 2<br/>two 27-bit drops"] --> g1
+    a3["Generation 3<br/>two 27-bit drops<br/>heavier: 4 × 2²⁷ after generation 1,<br/>so every node follows this chain"] --> a2
     b2["Generation 2′<br/>two 24-bit drops"] --> g1
     b3["Generation 3′<br/>two 24-bit drops"] --> b2
     b4["Generation 4′<br/>two 24-bit drops<br/>longer, but lighter:<br/>6 × 2²⁴ after generation 1"] --> b3
@@ -652,10 +665,10 @@ JSON object
   both drops of each of generations 0 through g − 1 weigh. It leaves out the
   block's own drop, whose bits are mined only once its content is fixed. It
   is a string of decimal digits, as an amount is (§4.1), since one drop
-  alone may add more than 2^256, and it is `"0"` in the root. A block's
-  `weight` is that of transaction block g − 1, plus 2^b for that block's
-  drop, and 2^b times what validation block g − 1 counts for that one's
-  (§3.3).
+  alone may add more than a JavaScript number holds exactly, and it is `"0"`
+  in the root. A block's `weight` is that of transaction block g − 1, plus
+  2^b for that block's drop, and 2^b times what validation block g − 1
+  counts for that one's (§3.3).
 - **`stake_baseline`** is B_g, what the total effective stake of a
   validation block staking on this block counts against in the chain's
   weight (§3.3): B_(g−1) moved toward what validation block g − 1 counted.
@@ -1005,7 +1018,8 @@ Of a generation's correct validation blocks, the best is, in order (Karma
   counted stake, its total effective stake, the sum, over its stakes, of
   each stake's Kismet times its staker's age (§6.6), up to twice the stake
   baseline;
-- of those, the one sharing the most bits with its target hash;
+- of those, the one sharing the most bits with its target hash, those past
+  the 27 a weight counts among them;
 - of those, the one holding the greatest total effective stake, counted
   whole, so that of blocks counting all the baseline allows, builders still
   prefer the one holding the most; and
@@ -1160,6 +1174,14 @@ does not follow (§3.5.3).
   it, as one with a bit more already does for about twice the work. The next
   generation's target moves with the head, and blocks at the old target become
   false starts (§3.4), whose transactions are still taken.
+- **Luck counts only so far.** A chain's weight counts no more than 27 bits
+  of any drop (§3.3). Stakes are public and signed, so anyone may build an
+  old generation's validation block again of the same stakes, and search it
+  for as many bits as hashing buys: a graphics card finds 32 bits in a fifth
+  of a second, and 40 in under a minute. Counted in full, such a copy would
+  outweigh every generation since, and replace them all. Counted to 27, it
+  weighs no more than 8 times a block of 24 bits holding the same stakes, so
+  replacing a longer history takes stake, not luck.
 - **The early chain is cheap to replace.** Weight grows only as generations
   are built (§3.3), so just after the root a rival root or fork needs only a
   few drops' work to win. The risk falls with each generation.
@@ -1218,7 +1240,9 @@ does not follow (§3.5.3).
   blocks of the same work, and a rival with less than half the honest work
   cannot catch up, however long it saved: saved-up stake can stretch an
   attack that has the work, for as long as A lets it save, but cannot
-  replace the work. The pot is still shared by the whole of each effective
+  replace the work. With bits counted to 27 as well (above), no block
+  weighs more than 16 times an honest block of 24 bits holding the
+  baseline's stake. The pot is still shared by the whole of each effective
   stake, so a holder that waited is paid for its wait.
 - **Compression varies.** Whether a block is full decides which blocks are
   validated, the same bytes compress to sizes some 9% apart by which zlib

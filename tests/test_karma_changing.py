@@ -255,7 +255,7 @@ def test_a_chain_heavier_only_as_its_walk_bounds_it_is_not_followed(
     carol: NodeIdentity,
 ) -> None:
     lucky = root.then(carol, alice, bits=12)
-    # Alice won the root, so weighs a tenth: 2^9 times 10 tenths, not the 100 bounded.
+    # Alice won the root, so her stake is a generation old: 2^9 times 10, not the 100 bounded.
     lighter = root.then(carol, alice, bits=9, kismet=10)
     assert lighter.most() > lucky.weight() > lighter.weight()
     following(follower, truth, lucky)
@@ -606,7 +606,7 @@ def test_of_two_as_heavy_the_one_of_more_bits_in_its_validation_block_is_followe
     carol: NodeIdentity,
 ) -> None:
     targets = root.targets
-    # Alice won the root, so weighs a tenth: 2^9 times 10 tenths is 2^10 times 5.
+    # Alice won the root, so her stake is a generation old: 2^9 times 10 is 2^10 times 5.
     fewer_on = signed_at(targets.transaction, bob, root.block_after(), 9)
     fewer = validating(targets.validation, alice, fewer_on, bits=9, kismet=10)
     following(follower, truth, Chain((*root.generations, Generation(fewer_on, fewer))))

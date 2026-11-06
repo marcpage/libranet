@@ -3043,8 +3043,8 @@ node can see; blocks on it go by eviction.
 The work in a Karma chain, weighted by the stake behind it: the sum, over every
 generation, of 2^b for the transaction block's drop and 2^b times the validation
 block's total effective stake for its drop, b being the leading bits each
-drop's id shares with its target hash. Each transaction block states, as
-`weight`, the weight of the chain before it.
+drop's id shares with its target hash, counted to at most 27. Each
+transaction block states, as `weight`, the weight of the chain before it.
 
 - **Sources:** [Karma Ledger §3.3](KarmaLedger.md#33-the-heaviest-chain),
   [§5.1](KarmaLedger.md#51-contents).

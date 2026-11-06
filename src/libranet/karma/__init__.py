@@ -85,6 +85,7 @@ from libranet.karma.root import ChainRoot
 from libranet.karma.staking import HeadStakes, StakeCover, StakedBlock, ValidationBuilder
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore, balances_left
 from libranet.karma.weight import (
+    COUNTED_BITS,
     NO_STAKE_BASELINE,
     STAKE_BASELINE_GENERATIONS,
     STAKE_BASELINE_MULTIPLE,
@@ -96,6 +97,7 @@ __all__ = [
     "AGE_LIMIT_FACTOR",
     "AGE_LIMIT_FLOOR",
     "BLOCK_BOUNDS",
+    "COUNTED_BITS",
     "FIRST_NEW_KISMET",
     "FULL_BLOCK_ROOM_BYTES",
     "HOLDER_BLOCK_BYTES",

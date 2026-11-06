@@ -1,5 +1,5 @@
 """Tests for the applications shipped with the node, and the root, ``/config``, movie,
-directory, mail, nodes, and Karma pages.
+TV, directory, mail, nodes, and Karma pages.
 
 Which way they were shipped, built into a wheel or run from source, is known
 only to the layered source, and is tested through it.
@@ -93,6 +93,7 @@ TV_APPLICATION = "tv"
 ROOT_PAGE_SOURCE = PACKAGED_APPLICATIONS / "root" / "index.html"
 CONFIG_PAGE_SOURCE = PACKAGED_APPLICATIONS / "config" / "index.html"
 MOVIE_PAGE_SOURCE = PACKAGED_APPLICATIONS / "movie" / "index.html"
+TV_PAGE_SOURCE = PACKAGED_APPLICATIONS / "tv" / "index.html"
 DIRECTORY_PAGE_SOURCE = PACKAGED_APPLICATIONS / "directory" / "index.html"
 MAIL_PAGE_SOURCE = PACKAGED_APPLICATIONS / "mail" / "index.html"
 NODES_PAGE_SOURCE = PACKAGED_APPLICATIONS / "nodes" / "index.html"
@@ -172,6 +173,11 @@ def movie_page(content: LayeredSource, built: PackagedApplications) -> str:
 
 
 @fixture
+def tv_page(content: LayeredSource, built: PackagedApplications) -> str:
+    return index_page(built.bundles[TV_APPLICATION], content).decode("utf-8")
+
+
+@fixture
 def directory_page(content: LayeredSource, built: PackagedApplications) -> str:
     return index_page(built.bundles[DIRECTORY_APPLICATION], content).decode("utf-8")
 
@@ -244,7 +250,7 @@ def router_for(
     )
 
 
-def test_the_node_ships_the_root_config_movie_directory_mail_nodes_and_karma_applications(
+def test_the_node_ships_the_root_config_movie_tv_directory_mail_nodes_and_karma_applications(
     built: PackagedApplications,
 ) -> None:
     assert (
@@ -454,7 +460,15 @@ def test_each_page_showing_a_node_offers_the_details_the_issue_names(
 
 @mark.parametrize(
     "page_fixture",
-    ["root_page", "nodes_page", "directory_page", "mail_page", "movie_page", "karma_page"],
+    [
+        "root_page",
+        "nodes_page",
+        "directory_page",
+        "mail_page",
+        "movie_page",
+        "tv_page",
+        "karma_page",
+    ],
 )
 def test_each_page_reading_drops_reads_whatever_the_node_finds_there(
     request: FixtureRequest, page_fixture: str
@@ -468,7 +482,9 @@ def test_each_page_reading_drops_reads_whatever_the_node_finds_there(
     assert findall(r"matchingBits\(.*?\)\s*[<>]", text) == []
 
 
-@mark.parametrize("page_fixture", ["config_page", "directory_page", "mail_page", "movie_page"])
+@mark.parametrize(
+    "page_fixture", ["config_page", "directory_page", "mail_page", "movie_page", "tv_page"]
+)
 def test_each_page_placing_drops_places_them_where_a_nodes_search_finds_them(
     request: FixtureRequest, page_fixture: str
 ) -> None:
@@ -579,6 +595,72 @@ def test_the_movie_page_calls_only_endpoints_the_node_serves(movie_page: str) ->
         BUNDLE_PATTERN,
         f"/data/sha256/{hex_digits}/AES256-CBC/{hex_digits}/{hex_digits[:16]}/Film.mp4",
     )
+
+
+def test_the_tv_application_is_built_from_its_directory(tv_page: str) -> None:
+    assert tv_page == TV_PAGE_SOURCE.read_text(encoding="utf-8")
+
+
+def test_the_tv_page_is_one_self_contained_document(tv_page: str) -> None:
+    assert tv_page.startswith("<!doctype html>")
+    # Nothing is loaded from a file of its own, or from anywhere else but
+    # TMDB, which is asked what is known of a series, a season, and an episode.
+    assert "<link" not in tv_page
+    assert findall(r"<script[^>]*\bsrc", tv_page) == []
+    assert "url(" not in tv_page.split("<style>", 1)[1].split("</style>", 1)[0]
+    assert "http:" not in tv_page
+    assert set(findall(r"https:[^\"`\s]*", tv_page)) == {
+        "https://api.themoviedb.org/3",
+        "https://image.tmdb.org/t/p",
+    }
+
+
+def test_the_tv_page_calls_only_endpoints_the_node_serves(tv_page: str) -> None:
+    called = set(findall(r'"(/data/[^"]*)"', tv_page))
+    hex_digits = "0123456789abcdef" * 4
+
+    # No store: the node keeps no series for whoever is not signed in.
+    assert called == {
+        CLIENT_PATH,
+        "/data/directory",
+        IMPORTS_PATH,
+        BUNDLES_PATH,
+        "/data/",
+        SESSION_PATH,
+        SIGNED_PATH,
+        DROP_PATH,
+        f"{ENCRYPTED_PATH}/",
+    }
+    # The folders, and an episode's file in its season of a series.
+    assert fullmatch(DIRECTORY_PATTERN, "/data/directory/TV/Season 1")
+    # A person's series, and the key they look things up at TMDB with:
+    # searched at their drops, each version opened, and those replaced shunned.
+    target = quote(f"tv series:sha256/{hex_digits}", safe="")
+    assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{target}")
+    lookup = quote(f"movie tmdb:sha256/{hex_digits}", safe="")
+    assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{lookup}")
+    assert fullmatch(ENCRYPTED_PATTERN, f"{ENCRYPTED_PATH}/sha256/{hex_digits}")
+    assert fullmatch(DATA_PATTERN, f"/data/sha256/{hex_digits}")
+    assert fullmatch(
+        BUNDLE_PATTERN,
+        f"/data/sha256/{hex_digits}/AES256-CBC/{hex_digits}/S01/{hex_digits[:16]}/Episode.mp4",
+    )
+
+
+def test_the_tv_page_keeps_series_where_the_plan_names_them(tv_page: str) -> None:
+    assert 'const SERIES_PREFIX = "tv series:";' in tv_page
+    assert 'const REMEMBERED = "tv.series";' in tv_page
+    assert 'const REMEMBERED_SEASONS = "tv.seasons";' in tv_page
+
+
+def test_the_tv_page_looks_up_with_the_key_the_movie_page_keeps(
+    tv_page: str, movie_page: str
+) -> None:
+    [tv_drop] = findall(r'const TMDB_PREFIX = "([^"]*)";', tv_page)
+    [movie_drop] = findall(r'const TMDB_PREFIX = "([^"]*)";', movie_page)
+
+    # So that a key given in either application serves both.
+    assert tv_drop == movie_drop == "movie tmdb:"
 
 
 def test_the_directory_application_is_built_from_its_directory(directory_page: str) -> None:
@@ -876,7 +958,8 @@ def test_the_config_page_links_its_node_to_its_page_on_the_main_port(config_page
 
 
 @mark.parametrize(
-    "page_fixture", ["movie_page", "directory_page", "mail_page", "nodes_page", "karma_page"]
+    "page_fixture",
+    ["movie_page", "tv_page", "directory_page", "mail_page", "nodes_page", "karma_page"],
 )
 def test_each_page_on_the_main_port_links_home_from_its_upper_right_corner(
     request: FixtureRequest, page_fixture: str
@@ -1047,6 +1130,7 @@ def test_the_config_page_makes_a_user_with_a_fallback_password(config_page: str)
         (ROOT_APPLICATION, "/", ROOT_PAGE_SOURCE, "203.0.113.42", {}, None),
         # Trusted, so served without a sandbox, and to a remote client, which only plays.
         (MOVIE_APPLICATION, "/movie/", MOVIE_PAGE_SOURCE, "203.0.113.42", {}, None),
+        (TV_APPLICATION, "/tv/", TV_PAGE_SOURCE, "203.0.113.42", {}, None),
         (DIRECTORY_APPLICATION, "/directory/", DIRECTORY_PAGE_SOURCE, "203.0.113.42", {}, None),
         (MAIL_APPLICATION, "/mail/", MAIL_PAGE_SOURCE, "203.0.113.42", {}, None),
         (NODES_APPLICATION, "/nodes/", NODES_PAGE_SOURCE, "203.0.113.42", {}, None),

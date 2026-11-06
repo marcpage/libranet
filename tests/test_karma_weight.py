@@ -1,4 +1,4 @@
-"""Tests for a chain's weight, the sum of 2^b over its drops (KarmaLedger §3.3)."""
+"""Tests for a chain's weight, the sum of 2^b over its drops, b at most 27 (KarmaLedger §3.3)."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from pytest import mark, raises
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.karma.weight import (
+    COUNTED_BITS,
     STAKE_BASELINE_GENERATIONS,
     STAKE_BASELINE_MULTIPLE,
     ChainWeight,
@@ -33,16 +34,29 @@ def test_a_drop_of_b_bits_weighs_two_to_the_b() -> None:
 
 
 def test_a_weight_is_the_sum_of_two_to_the_bits_of_each_drop() -> None:
-    weight = ChainWeight(0) + ChainWeight.of_bits(24) + ChainWeight.of_bits(30)
+    weight = ChainWeight(0) + ChainWeight.of_bits(24) + ChainWeight.of_bits(26)
 
-    assert weight + ChainWeight.of_bits(0) == ChainWeight(2**24 + 2**30 + 1)
+    assert weight + ChainWeight.of_bits(0) == ChainWeight(2**24 + 2**26 + 1)
 
 
-def test_two_drops_of_fifteen_bits_weigh_less_than_one_of_thirty() -> None:
-    fifteen = ChainWeight.of_bits(15)
+def test_two_drops_of_twelve_bits_weigh_less_than_one_of_twenty_four() -> None:
+    twelve = ChainWeight.of_bits(12)
 
-    assert fifteen + fifteen < ChainWeight.of_bits(30)
-    assert fifteen + fifteen == ChainWeight.of_bits(16)
+    assert twelve + twelve < ChainWeight.of_bits(24)
+    assert twelve + twelve == ChainWeight.of_bits(13)
+
+
+def test_no_more_than_the_counted_bits_weigh() -> None:
+    assert COUNTED_BITS == 27
+    assert ChainWeight.of_bits(COUNTED_BITS) == ChainWeight(2**COUNTED_BITS)
+    assert ChainWeight.of_bits(COUNTED_BITS + 1) == ChainWeight.of_bits(COUNTED_BITS)
+    assert ChainWeight.of_bits(40) == ChainWeight.of_bits(COUNTED_BITS)
+
+
+def test_a_lucky_drop_weighs_no_more_than_eight_of_twenty_four_bits() -> None:
+    ordinary = ChainWeight.of_staked(24, 5)
+
+    assert ChainWeight.of_staked(40, 5).work == 8 * ordinary.work
 
 
 def test_a_weight_is_taken_from_a_heavier_one() -> None:
@@ -62,10 +76,10 @@ def test_a_weight_reads_back_as_written(weight: ChainWeight) -> None:
     assert ChainWeight.from_value(weight.value()) == weight
 
 
-def test_a_drop_of_every_bit_weighs_two_to_the_256() -> None:
+def test_a_drop_of_every_bit_weighs_as_one_of_the_counted_bits() -> None:
     weight = ChainWeight.of_bits(256)
 
-    assert weight.value() == str(2**256)
+    assert weight == ChainWeight(2**COUNTED_BITS)
     assert ChainWeight.from_value(weight.value()) == weight
 
 
@@ -86,9 +100,14 @@ def test_a_negative_weight_is_refused() -> None:
         ChainWeight(-1)
 
 
-@mark.parametrize("bits", [0, 1, 24, 255])
+@mark.parametrize("bits", [0, 1, 24, COUNTED_BITS])
 def test_a_drops_bits_are_counted_against_its_target(bits: int) -> None:
     assert ChainWeight.of_drop(_sharing(bits), TARGET) == ChainWeight(2**bits)
+
+
+@mark.parametrize("bits", [COUNTED_BITS + 1, 255])
+def test_a_drops_bits_past_the_counted_add_nothing(bits: int) -> None:
+    assert ChainWeight.of_drop(_sharing(bits), TARGET) == ChainWeight(2**COUNTED_BITS)
 
 
 @mark.parametrize("stake, times", [(0, 1), (1, 1), (4, 4), (10**15, 10**15)])
@@ -103,15 +122,22 @@ def test_twice_the_stake_weighs_as_a_bit_more() -> None:
     assert ChainWeight.of_staked(6, 2) == ChainWeight.of_staked(7, 1)
 
 
+def test_more_stake_outweighs_luck_past_the_counted_bits() -> None:
+    lucky = ChainWeight.of_staked(32, 1)
+
+    assert ChainWeight.of_staked(24, 9) > lucky
+    assert ChainWeight.of_validation(_sharing(32), TARGET, 1) == lucky
+
+
 def test_a_negative_stake_is_refused() -> None:
     with raises(ValueError, match="must not be negative"):
         ChainWeight.of_staked(6, -1)
 
 
-def test_a_drop_whose_id_is_its_target_hash_weighs_two_to_the_256() -> None:
+def test_a_drop_whose_id_is_its_target_hash_weighs_as_one_of_the_counted_bits() -> None:
     drop = ContentId("sha256", TARGET.hex)
 
-    assert ChainWeight(5) + ChainWeight.of_drop(drop, TARGET) == ChainWeight(5 + 2**256)
+    assert ChainWeight(5) + ChainWeight.of_drop(drop, TARGET) == ChainWeight(5 + 2**COUNTED_BITS)
 
 
 def test_a_stake_baseline_of_0_counts_all_of_a_stake() -> None:

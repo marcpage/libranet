@@ -961,6 +961,16 @@ def test_a_block_at_the_roots_target_validating_a_false_root_is_passed_over(
             (ValidationScore.of(SECOND_ID, FIRST_VALIDATION_ID, 6, 4), "0f"),
             (ValidationScore.of(SECOND_ID, FIRST_VALIDATION_ID, 7, 1), "01"),
         ),
+        # Bits past the counted add no weight, so more stake outweighs them.
+        (
+            (ValidationScore.of(SECOND_ID, FIRST_VALIDATION_ID, 24, 9), "0f"),
+            (ValidationScore.of(SECOND_ID, FIRST_VALIDATION_ID, 32, 1), "01"),
+        ),
+        # Of as much weight, bits past the counted still rank.
+        (
+            (ValidationScore.of(SECOND_ID, FIRST_VALIDATION_ID, 30, 1), "0f"),
+            (ValidationScore.of(SECOND_ID, FIRST_VALIDATION_ID, 28, 1), "01"),
+        ),
         (
             (ValidationScore(ChainWeight(2**7 * 2), 7, 2), "0f"),
             (ValidationScore(ChainWeight(2**6 * 4), 6, 4), "01"),

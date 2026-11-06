@@ -618,10 +618,10 @@ node makes, and each validation block it builds.
 
 Mining is the combining of transactions into blocks, and the building of
 validation blocks of others' stakes, each searched for `karma.block_seconds`
-for more bits than it needs, since more bits weigh more. That is 0 by default,
-so the node searches only until a search will find each block, and stake
-decides between blocks. A node that cannot keep up with faster ones, such as
-those mining on graphics cards, may stop mining altogether: set
+for more bits than it needs, since more bits weigh more, up to 27 of them. That
+is 0 by default, so the node searches only until a search will find each block,
+and stake decides between blocks. A node that cannot keep up with faster ones,
+such as those mining on graphics cards, may stop mining altogether: set
 `karma.mining` to `false`. It then combines no transactions, and builds its
 validation blocks of its own stake, and those people make through it, alone,
 searched for only until a search will find them. The nodes that mine take its
