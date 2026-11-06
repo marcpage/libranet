@@ -25,7 +25,7 @@ of applications shipped, and its tests.
 
 ## 2. What It Adds
 
-Five steps, the first two built:
+Five steps, the first three built:
 
 - **The TV application.** A person's series, each looked up at TMDB, with
   episodes added from files and played one after another. Step 144.
@@ -408,7 +408,7 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 146 — Sharing a Series or an Episode
+## Step 146 — Sharing a Series or an Episode ✅
 
 **Issue:** #616, from #592. **Depends on:** Step 144.
 
@@ -469,6 +469,53 @@ My calls, not yet reviewed:
 node: a series shared whole and in part; a second season shared, and
 merged into the series holding the first; an episode shared, and added by
 id; and a movie refused by the TV page, and an episode by the movie page.
+
+Built. It was checked on a node of its own in headless Chrome, signed in as
+two people: a series of two seasons shared whole, and each season apart;
+the first season imported as a new series, and the second merged into it;
+the whole imported again, every episode held, and refused, saying so; a
+season partly held, merged, gaining only the episode it lacked and keeping
+its own description; an episode shared, refused by Add by id while its
+numbers were held, added once removed, and added to another series, making
+its season; a series of the same name at another TMDB id named apart, and
+imported again under that name, merged into it; an episode of another
+series at TMDB refused; a movie refused by the TV page, and an episode by
+the movie page; and a collection's id refused by Import a series, and a
+series' by Import a collection. Safari is yet to be checked.
+
+Calls made while building it, not yet reviewed:
+
+- **No name for part of a series.** The movie page names a collection
+  shared in part. A series shared in part keeps its own name, by which it
+  is merged.
+- **Seasons that cannot be chosen.** A season whose `season.json` could not
+  be read is listed, but cannot be chosen, to share or to import. Nor can a
+  season shared whose folder is not the one its number names, `S01` for
+  season 1, by which it is merged into a season held.
+- **Episodes not read.** Of a season held, an episode shared whose
+  `info.json` could not be read is not taken, since its numbers are not
+  known, and the page says how many were not.
+- **Nothing to take.** Seasons whose every episode is held already are
+  refused, saying how many were held, rather than making a version that
+  changes nothing.
+- **Before importing**, once an id is read, the page says whether the
+  seasons chosen make a new series, are added to the one held, or are to
+  be named apart, from the `series.json` of the one held alone.
+- **A series imported new** keeps all its `series.json` holds, its TMDB id
+  among them, under the name it is imported as. Each episode, added by id
+  or imported, keeps its `info.json` as shared, so its `series` names the
+  series it was shared from.
+- **Naming apart** suggests the name with the year the series shared first
+  aired, as `Doctor Who (2005)`, where it gives one. A name given that is
+  held is treated as the first was: merged into, unless it is another
+  series at TMDB too, when it is asked about again.
+- **Add by id** looks up at TMDB a season it makes, as adding from a file
+  does, and opens the episode added, as the movie page opens a movie added
+  by id.
+- **What is refused as what.** The TV page refuses as a movie an
+  `info.json` with no `season` at all, and one whose season or episodes
+  are not numbers as one it does not read. The movie page refuses as an
+  episode any `info.json` with a `season`.
 
 ---
 

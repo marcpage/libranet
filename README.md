@@ -174,6 +174,12 @@ once, correcting the numbers each is given before it is imported. Only the
 episodes you add are shown, in season and episode order, with a button for
 each season.
 
+Share a series with a friend by giving them its id, or an id made for only
+the seasons you choose. Their TV application imports the seasons they
+choose of it into the series of the same name they keep, taking only the
+episodes they lack, so you can share each new season as it comes. An
+episode can be shared alone too, and is added to a series by its id.
+
 When an episode ends, the next plays at once, on into the next season. The
 keys are the movie library's, with `[` and `]` for the season before and
 the next. Your series are kept for you alone, as your collections are, so
