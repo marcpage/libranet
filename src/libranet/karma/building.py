@@ -95,7 +95,7 @@ from libranet.karma.checking import ChainBefore, ChainView, FullBlock, NotFullBl
 from libranet.karma.following import ChainFollower
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
-from libranet.karma.ledger import BalanceSheet, reach_of
+from libranet.karma.ledger import AGE_LIMIT_FLOOR, BalanceSheet, StakeAge, reach_of
 from libranet.karma.placing import BlockPlacing
 from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
 from libranet.protocol.karma_amounts import Kismet
@@ -118,7 +118,9 @@ class CombinedBlock:
     ``payout`` pays the reward of the validation block it is built on.
     ``balances`` are those of everyone ``payout`` and ``taken`` name, as the
     block before leaves them, and ``stated`` the balances the blocks before
-    state, from the one before back as far as its reach. The first few of
+    state, from the one before back as far as its reach. ``holders`` are how
+    many hold Kismet in the balances its transactions are checked against
+    (§5.4). The first few of
     ``taken``, however many, keep the half-free rule, and are covered by
     their senders' balances, so that :meth:`block` of them is correct, but
     perhaps for being full. :meth:`of` chooses them.
@@ -129,6 +131,7 @@ class CombinedBlock:
     taken: tuple[SignedTransaction, ...]
     balances: Mapping[ContentId, Balance]
     stated: tuple[Mapping[ContentId, Balance], ...]
+    holders: int
 
     @classmethod
     def of(
@@ -162,27 +165,39 @@ class CombinedBlock:
         return cls(
             before,
             payout,
-            cls._taken(valid, BalanceSheet.of(every, balances).checked),
+            cls._taken(valid, BalanceSheet.of(every, balances, stakers=before.stakers()).checked),
             balances,
             (before.validated.balances, *older),
+            before.holders(),
         )
 
     def block(self, count: int) -> TransactionBlock:
         """The block of the first ``count`` transactions taken, stating everything as it is (§5.3).
 
         It states the balances of everyone it names, and of those holding
-        Kismet that shorten its reach (:meth:`_shortening`).
+        Kismet that shorten its reach (:meth:`_shortening`), and the age
+        limit that how many hold Kismet after it sets (§6.6).
+
         """
         block = self._holding(self.before, (self.payout, *self.taken[:count]))
-        balances = dict(BalanceSheet.of(block, self.balances).after)
+        sheet = BalanceSheet.of(block, self.balances, stakers=self.before.stakers())
+        balances = dict(sheet.after)
         balances.update(self._shortening(balances, block.most_balances - len(balances)))
-        return replace(block, balances=balances, reach=reach_of([balances, *self.stated]))
+        return replace(
+            block,
+            balances=balances,
+            reach=reach_of([balances, *self.stated]),
+            age_limit=StakeAge.limit(sheet.holders_after(self.holders)),
+        )
 
     @staticmethod
     def _holding(
         before: ChainBefore, entries: Iterable[SignedTransaction | Payout]
     ) -> TransactionBlock:
-        """The block built on ``before`` holding ``entries``, stating no balances, and no reach."""
+        """The block built on ``before`` holding ``entries``, stating no balances, and no reach.
+
+        Its age limit is the least, until :meth:`block` states it.
+        """
         return TransactionBlock(
             before.generation,
             before.validation_id,
@@ -190,6 +205,7 @@ class CombinedBlock:
             0,
             tuple(sorted(entries, key=lambda entry: entry.hash)),
             {},
+            AGE_LIMIT_FLOOR,
         )
 
     @staticmethod
@@ -541,7 +557,7 @@ class BlockBuilder:
             )
             return
 
-        holders = combined.before.holders()
+        holders = combined.holders
 
         # Not logged: it is looked at again each build, and is built once more
         # transactions make it full, or enough to combine.

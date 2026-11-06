@@ -3,7 +3,7 @@
 A drop whose id shares b leading bits with its target hash takes about 2^b
 hashes to find. A chain weighs the sum, over its generations, of 2^b for the
 transaction block's drop, and 2^b for the validation block's times its total
-effective stake, in tenths of a Kismet (§6.6), or once where that is 0, as
+effective stake, in Kismet × generations (§6.6), or once where that is 0, as
 only the root's is. So a validation block holding twice the stake weighs as
 one sharing a bit more. Summing bits instead would let two 15-bit drops weigh
 as much as one of 30 bits, which took 32,768 times the work of either. A
@@ -62,7 +62,7 @@ class ChainWeight:
         """The weight of a validation drop matching ``bits`` bits, its block holding ``stake``.
 
         That is 2^``bits`` times ``stake``, its block's total effective stake
-        in tenths of a Kismet, or once if that is 0, as only the root's is.
+        in Kismet × generations, or once if that is 0, as only the root's is.
 
         Raises:
             ValueError: ``bits`` is negative, or more than a hash has, or

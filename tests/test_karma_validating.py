@@ -21,7 +21,7 @@ from libranet.karma.blocks import (
 from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets
-from libranet.karma.ledger import BalanceSheet, Reward, reach_of
+from libranet.karma.ledger import AGE_LIMIT_FLOOR, BalanceSheet, Reward, reach_of
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
@@ -180,9 +180,14 @@ def by_hash(*transactions: SignedTransaction | Payout) -> tuple[SignedTransactio
     return tuple(sorted(transactions, key=lambda transaction: transaction.hash))
 
 
-def stating(block: TransactionBlock, before: Mapping[ContentId, Balance]) -> TransactionBlock:
-    """``block``, stating the balances it leaves from ``before``."""
-    return replace(block, balances=BalanceSheet.of(block, before).after)
+def stating(
+    block: TransactionBlock, before: Mapping[ContentId, Balance], stakers: Collection[ContentId]
+) -> TransactionBlock:
+    """``block``, stating the balances it leaves from ``before``.
+
+    ``stakers`` are those of the validation block whose reward its payout pays.
+    """
+    return replace(block, balances=BalanceSheet.of(block, before, stakers=stakers).after)
 
 
 def block_on(chain: ChainInMemory, *transactions: SignedTransaction) -> TransactionBlock:
@@ -195,8 +200,9 @@ def block_on(chain: ChainInMemory, *transactions: SignedTransaction) -> Transact
     validated = chain.transaction(FIRST_ID).block
     reward = Reward(validation.block, validation.builder, validated, validated.balances)
     entries = by_hash(*transactions, reward.payout())
-    block = TransactionBlock(2, FIRST_VALIDATION_ID, WEIGHT, 0, entries, {})
-    block = stating(block, chain.balances(block.named(), 1))
+    block = TransactionBlock(2, FIRST_VALIDATION_ID, WEIGHT, 0, entries, {}, AGE_LIMIT_FLOOR)
+    stakers = {stake.staker for stake in validation.block.stakes}
+    block = stating(block, chain.balances(block.named(), 1), stakers)
     return replace(block, reach=reach_of([block.balances, chain.stated(1)]))
 
 
@@ -288,7 +294,9 @@ def keys(alice: NodeIdentity, bob: NodeIdentity, carol: NodeIdentity) -> dict[Co
 @fixture(scope="module")
 def root(alice: NodeIdentity) -> TransactionBlock:
     created = paying(alice, {alice.node_id: 0}, generation=0)
-    return TransactionBlock(0, None, ChainWeight(0), 0, (created,), {alice.node_id: NO_BALANCE})
+    return TransactionBlock(
+        0, None, ChainWeight(0), 0, (created,), {alice.node_id: NO_BALANCE}, AGE_LIMIT_FLOOR
+    )
 
 
 @fixture(scope="module")
@@ -311,9 +319,16 @@ def chain(
     sent = paying(alice, {DAVE: 1_000}, fee=10, generation=0, created=moment(1))
     first = stating(
         TransactionBlock(
-            1, ROOT_VALIDATION_ID, ChainWeight(2**3 + 2**5), 0, by_hash(payout, sent), {}
+            1,
+            ROOT_VALIDATION_ID,
+            ChainWeight(2**3 + 2**5),
+            0,
+            by_hash(payout, sent),
+            {},
+            AGE_LIMIT_FLOOR,
         ),
         {},
+        {alice.node_id},
     )
     first_validation = validation_of(staked(alice, FIRST_ID, 500), generation=1)
     return ChainInMemory(
@@ -369,9 +384,9 @@ def test_a_correct_block_is_scored_by_the_weight_it_adds_its_bits_and_its_effect
     assert check.incorrect == ""
     assert check.block_id == VALIDATION_ID
     assert check.drop.block == validation
-    # Alice won generation 1, so weighs a tenth; Bob has won none, and weighs
-    # the whole.
-    stake = 1_000 * 1 + 100 * 10
+    # Alice won generation 1, and Bob holds only what he was paid in block 2,
+    # so each is a generation old: Kismet received is no older than that.
+    stake = 1_000 * 1 + 100 * 1
     assert check.score == ValidationScore(ChainWeight(2**7 + 2**6 * stake), 6, stake)
 
 

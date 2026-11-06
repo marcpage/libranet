@@ -467,7 +467,7 @@ def test_balances_are_stated_to_shorten_the_reach_within_the_cap(
     taking = sent(alice, {bob.node_id: 1}, 2)
     block = CombinedBlock.of([taking], third.head, chain, bounds=ROOMY).block(1)
 
-    assert block.balances[PAID[0]] == Balance(Kismet(5))
+    assert block.balances[PAID[0]] == Balance(Kismet(5), 1)
     assert block.reach == 0
     data = signed_at(third.targets.transaction, carol, block)
     hold(truth, data)

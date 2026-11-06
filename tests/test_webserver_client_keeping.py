@@ -92,7 +92,10 @@ def keeping_of(
     """
     KarmaBalances(
         HEAD,
-        {client: Balance(Kismet(kismet), 3) for client, kismet in {NODE: 1_000, **held}.items()},
+        {
+            client: Balance(Kismet(kismet), 3 if kismet else None)
+            for client, kismet in {NODE: 1_000, **held}.items()
+        },
     ).write(storage.karma_dir)
     return ClientKeeping(
         0,

@@ -67,7 +67,15 @@ from libranet.karma.generations import (
     new_kismet,
 )
 from libranet.karma.history import ChainGeneration, ChainHistory
-from libranet.karma.ledger import WEIGHT_GENERATIONS, BalanceSheet, Reward, StakeWeight, reach_of
+from libranet.karma.ledger import (
+    AGE_LIMIT_FACTOR,
+    AGE_LIMIT_FLOOR,
+    STAKES_PER_BLOCK,
+    BalanceSheet,
+    Reward,
+    StakeAge,
+    reach_of,
+)
 from libranet.karma.module import KarmaModule
 from libranet.karma.payments import NodePayments
 from libranet.karma.placing import BlockPlacing
@@ -79,6 +87,8 @@ from libranet.karma.validating import ValidationBlockCheck, ValidationScore, bal
 from libranet.karma.weight import ChainWeight
 
 __all__ = [
+    "AGE_LIMIT_FACTOR",
+    "AGE_LIMIT_FLOOR",
     "BLOCK_BOUNDS",
     "FIRST_NEW_KISMET",
     "FULL_BLOCK_ROOM_BYTES",
@@ -87,7 +97,7 @@ __all__ = [
     "MAX_BLOCK_BYTES",
     "MisplacedBlockError",
     "NEW_KISMET_DECREASE",
-    "WEIGHT_GENERATIONS",
+    "STAKES_PER_BLOCK",
     "BalanceSheet",
     "BlockBuilder",
     "BlockBounds",
@@ -123,8 +133,8 @@ __all__ = [
     "NotFullBlock",
     "OwnBlock",
     "Reward",
+    "StakeAge",
     "StakeCover",
-    "StakeWeight",
     "StakedBlock",
     "TargetReader",
     "TransactionBlock",

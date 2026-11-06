@@ -32,6 +32,7 @@ from libranet.karma.blocks import (
 from libranet.karma.checking import BlockScore, ChainView, TransactionBlockCheck
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
+from libranet.karma.ledger import AGE_LIMIT_FLOOR
 from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore
 from libranet.karma.weight import ChainWeight
@@ -180,7 +181,9 @@ def root_of(creator: NodeIdentity) -> TransactionBlock:
     """The root's transaction block, holding ``creator``'s transaction sending themselves 0."""
     transaction = Transaction(creator.node_id, {creator.node_id: Kismet(0)}, Kismet(0), 0, CREATED)
     created = SignedTransaction.of(creator.signed(transaction.text()))
-    return TransactionBlock(0, None, ChainWeight(0), 0, (created,), {creator.node_id: NO_BALANCE})
+    return TransactionBlock(
+        0, None, ChainWeight(0), 0, (created,), {creator.node_id: NO_BALANCE}, AGE_LIMIT_FLOOR
+    )
 
 
 def stating(generation: int, reach: int, balances: Mapping[ContentId, Balance]) -> TransactionBlock:
@@ -188,7 +191,9 @@ def stating(generation: int, reach: int, balances: Mapping[ContentId, Balance]) 
     payout = Payout.of(
         {None: Kismet(len(balances))}, {identity: Kismet(1) for identity in balances}, generation
     )
-    return TransactionBlock(generation, PREVIOUS, ChainWeight(0), reach, (payout,), balances)
+    return TransactionBlock(
+        generation, PREVIOUS, ChainWeight(0), reach, (payout,), balances, AGE_LIMIT_FLOOR
+    )
 
 
 @fixture(scope="module")
@@ -834,15 +839,14 @@ def test_a_reader_must_wait_keep_answers_and_read_something(
 def history(storage: StorageConfig, truth: CasStore, alice: NodeIdentity) -> ChainHistory:
     """Fourteen generations, from Alice's root, each transaction block held and stating Alice's.
 
-    Block 1 states Dave holding 7 Kismet, and block 2 Carol holding nothing,
-    having won in generation 1. Blocks 2 to 12 have a reach of 0, and block
-    13 one of 12. Alice's key is in block 1, and a hash is witnessed in
-    generation 2.
+    Block 1 states Dave holding 7 Kismet, and block 2 Carol holding nothing.
+    Blocks 2 to 12 have a reach of 0, and block 13 one of 12. Alice's key is
+    in block 1, and a hash is witnessed in generation 2.
     """
     blocks = [
         root_of(alice),
         stating(1, 1, {alice.node_id: Balance(Kismet(2)), DAVE: Balance(Kismet(7))}),
-        stating(2, 0, {alice.node_id: Balance(Kismet(9)), CAROL: Balance(Kismet(0), 1)}),
+        stating(2, 0, {alice.node_id: Balance(Kismet(9)), CAROL: NO_BALANCE}),
         *(
             stating(generation, 0, {alice.node_id: Balance(Kismet(generation))})
             for generation in range(3, 13)
@@ -951,7 +955,7 @@ def test_a_block_evicted_is_asked_for_again_and_read_once_stored(
     assert chain.transaction(evicted).block.generation == 1
 
 
-def test_a_balance_is_read_back_ten_blocks_past_a_reach_of_0(
+def test_a_balance_is_read_back_only_as_far_as_the_reach(
     chain: HeldChain,
     history: ChainHistory,
     truth: CasStore,
@@ -960,30 +964,31 @@ def test_a_balance_is_read_back_ten_blocks_past_a_reach_of_0(
 ) -> None:
     truth.delete(transaction_id(history, 1))
 
-    # Carol's last win, in block 2, is read; Dave, in block 1, is too far back.
+    # Block 12's reach is 0, so Carol, in block 2, and Dave, in block 1, are
+    # too far back, and block 1 is not asked for.
     assert chain.balances({alice.node_id, CAROL, DAVE}, 12) == {
         alice.node_id: Balance(Kismet(12)),
-        CAROL: Balance(Kismet(0), 1),
+        CAROL: NO_BALANCE,
         DAVE: NO_BALANCE,
     }
     assert recorder.asked_for() == []
 
 
-def test_a_balance_is_read_back_through_a_reach_past_ten_blocks(
-    chain: HeldChain, alice: NodeIdentity
-) -> None:
+def test_a_balance_is_read_back_through_the_reach(chain: HeldChain, alice: NodeIdentity) -> None:
     unstated = ContentId("sha256", "e0" * 32)
 
     assert chain.balances({alice.node_id, CAROL, DAVE, unstated}, 13) == {
         alice.node_id: Balance(Kismet(13)),
-        CAROL: Balance(Kismet(0), 1),
+        CAROL: NO_BALANCE,
         DAVE: Balance(Kismet(7)),
         unstated: NO_BALANCE,
     }
 
 
-def test_a_balance_near_the_root_is_read_back_to_it(chain: HeldChain) -> None:
-    assert chain.balances({DAVE}, 3) == {DAVE: Balance(Kismet(7))}
+def test_a_balance_stated_before_the_reach_is_not_read_however_near_the_root(
+    chain: HeldChain,
+) -> None:
+    assert chain.balances({DAVE}, 3) == {DAVE: NO_BALANCE}
 
 
 def test_every_balance_stated_back_through_the_reach_is_read_the_latest_of_each(
@@ -991,19 +996,16 @@ def test_every_balance_stated_back_through_the_reach_is_read_the_latest_of_each(
 ) -> None:
     assert chain.every_balance(13) == {
         alice.node_id: Balance(Kismet(13)),
-        CAROL: Balance(Kismet(0), 1),
+        CAROL: NO_BALANCE,
         DAVE: Balance(Kismet(7)),
     }
 
 
-def test_every_balance_is_read_back_ten_blocks_past_a_reach_of_0(
+def test_every_balance_is_read_back_only_as_far_as_the_reach(
     chain: HeldChain, alice: NodeIdentity
 ) -> None:
-    # Dave, stated in block 1 alone, is too far back.
-    assert chain.every_balance(12) == {
-        alice.node_id: Balance(Kismet(12)),
-        CAROL: Balance(Kismet(0), 1),
-    }
+    # Carol, stated in block 2, and Dave, in block 1, are too far back.
+    assert chain.every_balance(12) == {alice.node_id: Balance(Kismet(12))}
 
 
 def test_every_balance_waits_for_each_block_it_is_read_from(
@@ -1027,7 +1029,7 @@ def test_every_block_lacking_that_far_back_is_named_at_once_and_asked_for(
         truth.delete(content_id)
 
     with raises(MissingContentError) as raised:
-        chain.balances({CAROL}, 12)
+        chain.balances({CAROL}, 13)
 
     assert list(raised.value.content_ids) == lacking
     assert recorder.asked_for() == lacking

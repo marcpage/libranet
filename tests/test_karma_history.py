@@ -16,6 +16,7 @@ from libranet.json_format import compact_json
 from libranet.karma.blocks import TransactionBlock, ValidationBlock
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
+from libranet.karma.ledger import AGE_LIMIT_FLOOR
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import NO_BALANCE
@@ -313,7 +314,9 @@ def test_the_roots_generation_weighs_both_its_drops_and_keeps_its_key() -> None:
     creator = new_identity()
     root = Transaction(creator.node_id, {creator.node_id: Kismet(0)}, Kismet(0), 0, CREATED)
     signed = SignedTransaction.of(creator.signed(root.text()))
-    block = TransactionBlock(0, None, ChainWeight(0), 0, (signed,), {creator.node_id: NO_BALANCE})
+    block = TransactionBlock(
+        0, None, ChainWeight(0), 0, (signed,), {creator.node_id: NO_BALANCE}, AGE_LIMIT_FLOOR
+    )
     validation = ValidationBlock(0, None, (), ("e" * 64,))
     targets = GenerationTargets.root()
     block_id = matching(targets.transaction, 3)

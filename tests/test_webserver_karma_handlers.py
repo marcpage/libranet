@@ -133,7 +133,7 @@ def following(karma_dir: Path) -> Path:
         {
             NODE: Balance(Kismet(250), 139),
             ALICE: Balance(Kismet(10**28)),
-            SPENT: Balance(Kismet(0), 139),
+            SPENT: Balance(Kismet(0)),
         },
     ).write(karma_dir)
     return karma_dir

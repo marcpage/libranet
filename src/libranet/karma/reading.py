@@ -48,9 +48,9 @@ signed what it holds, for its check to decode it (Phase 6 Steps 121 and 122).
 (:class:`~libranet.karma.checking.ChainView`): the chain the Karma module
 follows, from its history (:class:`~libranet.karma.history.ChainHistory`)
 and the blocks held. A balance is read back through the transaction blocks
-of the genealogy, as far as the reach of the latest it is read through, or
-ten blocks, whichever is further, so that every ``last_won`` that still
-weighs a stake is read (§5.3, §6.6).
+of the genealogy, as far as the reach of the latest it is read through, which
+states every identity holding Kismet: one stated in none of them holds
+nothing, and has no ``last_won`` (§5.3).
 """
 
 from __future__ import annotations
@@ -80,7 +80,6 @@ from libranet.cas.shunned import ShunnedContent
 from libranet.config.models import LibranetConfig
 from libranet.karma.blocks import BlockDrop, TransactionBlock, ValidationBlock
 from libranet.karma.history import ChainGeneration
-from libranet.karma.ledger import WEIGHT_GENERATIONS
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.karma_balances import NO_BALANCE, Balance
@@ -735,10 +734,8 @@ class HeldChain:
 
         That is the latest stated of it in that block, or in those before it as
         far back as its ``reach``, which state every identity holding any
-        Kismet, or :data:`~libranet.karma.ledger.WEIGHT_GENERATIONS` blocks,
-        whichever is further, which state every ``last_won`` that lowers a
-        stake's weight; or else
-        :data:`~libranet.protocol.karma_balances.NO_BALANCE` (§5.3, §6.6).
+        Kismet; or else :data:`~libranet.protocol.karma_balances.NO_BALANCE`
+        (§5.3).
 
         Raises:
             IndexError: the history holds no such generation.
@@ -756,8 +753,8 @@ class HeldChain:
 
         That is the latest stated of each identity in that block, or in those
         before it as far back as :meth:`balances` reads, which state every
-        identity holding any Kismet, and every ``last_won`` that lowers a
-        stake's weight (§5.3). One stated in none of them holds nothing.
+        identity holding any Kismet (§5.3). One stated in none of them holds
+        nothing.
 
         Raises:
             IndexError: the history holds no such generation.
@@ -790,9 +787,7 @@ class HeldChain:
     def _stated_back(self, generation: int) -> list[Mapping[ContentId, Balance]]:
         """The balances the chain's transaction block ``generation`` states, and those before it.
 
-        Each block's are in turn, back as far as its ``reach``, or
-        :data:`~libranet.karma.ledger.WEIGHT_GENERATIONS` blocks, whichever is
-        further (§5.3).
+        Each block's are in turn, back as far as its ``reach`` (§5.3).
 
         Raises:
             IndexError: the history holds no such generation.
@@ -800,7 +795,7 @@ class HeldChain:
                 every block that far back that is not held, each asked for.
         """
         latest = self._transaction_block(generation)
-        oldest = max(generation - max(latest.reach, WEIGHT_GENERATIONS), 0)
+        oldest = max(generation - latest.reach, 0)
         stated = [latest.balances]
         lacking: list[ContentId] = []
 

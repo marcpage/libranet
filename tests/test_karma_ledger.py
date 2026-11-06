@@ -9,7 +9,7 @@ from libranet.cas.content_id import ContentId
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import TransactionBlock, ValidationBlock
 from libranet.karma.generations import LAST_ISSUING_GENERATION, new_kismet
-from libranet.karma.ledger import WEIGHT_GENERATIONS, BalanceSheet, Reward, StakeWeight, reach_of
+from libranet.karma.ledger import AGE_LIMIT_FLOOR, BalanceSheet, Reward, StakeAge, reach_of
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import NO_BALANCE, Balance
@@ -30,6 +30,10 @@ GENERATION = 42
 # A generation that issues no new Karma, so that a test sets the whole pot
 # with fees.
 QUIET = LAST_ISSUING_GENERATION + 1
+
+# The stakers of the validation block whose reward a block's payout pays, of
+# a block whose test is not about whom its payout pays.
+STAKERS = frozenset({ERIN})
 
 
 def paying(
@@ -65,11 +69,14 @@ def block_of(
     *transactions: SignedTransaction | Payout,
     generation: int = GENERATION,
     balances: dict[ContentId, Balance] | None = None,
+    age_limit: int = AGE_LIMIT_FLOOR,
 ) -> TransactionBlock:
     """Transaction block ``generation``, holding ``transactions``, and stating ``balances``."""
     ordered = tuple(sorted(transactions, key=lambda transaction: transaction.hash))
     previous = PREVIOUS if generation else None
-    return TransactionBlock(generation, previous, ChainWeight(0), 0, ordered, balances or {})
+    return TransactionBlock(
+        generation, previous, ChainWeight(0), 0, ordered, balances or {}, age_limit
+    )
 
 
 def staked(staker: NodeIdentity, kismet: int, *, created: datetime = CREATED) -> SignedStake:
@@ -86,11 +93,21 @@ def validation_of(
     return ValidationBlock(generation, runner_up, ordered, ())
 
 
-def fees_of(sender: NodeIdentity, fee: int, generation: int = QUIET) -> TransactionBlock:
+def fees_of(
+    sender: NodeIdentity, fee: int, generation: int = QUIET, *, age_limit: int = AGE_LIMIT_FLOOR
+) -> TransactionBlock:
     """Transaction block ``generation``, in which ``sender`` pays Dave 1 Kismet, and ``fee``."""
     return block_of(
-        paying(sender, {DAVE: 1}, fee=fee), payout_of({}, {}, generation), generation=generation
+        paying(sender, {DAVE: 1}, fee=fee),
+        payout_of({}, {}, generation),
+        generation=generation,
+        age_limit=age_limit,
     )
+
+
+def aged(*stakers: NodeIdentity, age: int = AGE_LIMIT_FLOOR) -> dict[ContentId, Balance]:
+    """A balance of each of ``stakers``, ``age`` generations old in validation block QUIET."""
+    return {staker.node_id: Balance(Kismet(1_000), QUIET - age) for staker in stakers}
 
 
 @fixture(scope="module")
@@ -111,14 +128,14 @@ def carol() -> NodeIdentity:
 @fixture(scope="module")
 def sheet(alice: NodeIdentity) -> BalanceSheet:
     block = block_of(paying(alice, {DAVE: 250}, fee=50), NEW_KARMA_TO_ERIN)
-    return BalanceSheet.of(block, {alice.node_id: Balance(Kismet(1_000), 30)})
+    return BalanceSheet.of(block, {alice.node_id: Balance(Kismet(1_000), 30)}, stakers=STAKERS)
 
 
 def test_a_sender_holds_less_all_it_pays_and_each_recipient_more(
     alice: NodeIdentity, sheet: BalanceSheet
 ) -> None:
     assert sheet.after[alice.node_id] == Balance(Kismet(750), 30)
-    assert sheet.after[DAVE] == Balance(Kismet(250))
+    assert sheet.after[DAVE] == Balance(Kismet(250), GENERATION - 1)
 
 
 def test_a_fee_stays_in_its_senders_balance_until_the_next_blocks_payout_takes_it(
@@ -127,19 +144,19 @@ def test_a_fee_stays_in_its_senders_balance_until_the_next_blocks_payout_takes_i
     payout = payout_of({None: 100, alice.node_id: 50}, {ERIN: 150}, GENERATION + 1)
     taking = block_of(payout, generation=GENERATION + 1)
 
-    after = BalanceSheet.of(taking, sheet.after).after
+    after = BalanceSheet.of(taking, sheet.after, stakers=STAKERS).after
 
     assert sheet.after[alice.node_id].kismet == Kismet(750)
     assert after[alice.node_id] == Balance(Kismet(700), 30)
 
 
-def test_each_identity_the_payout_pays_has_won_the_generation_before(
+def test_each_staker_the_payout_pays_has_won_the_generation_before(
     alice: NodeIdentity, bob: NodeIdentity
 ) -> None:
     payout = payout_of({None: 100, bob.node_id: 50}, {alice.node_id: 120, ERIN: 30})
     before = {alice.node_id: Balance(Kismet(5), 7), bob.node_id: Balance(Kismet(300), 7)}
 
-    after = BalanceSheet.of(block_of(payout), before).after
+    after = BalanceSheet.of(block_of(payout), before, stakers={alice.node_id, ERIN}).after
 
     assert after == {
         alice.node_id: Balance(Kismet(125), GENERATION - 1),
@@ -148,10 +165,74 @@ def test_each_identity_the_payout_pays_has_won_the_generation_before(
     }
 
 
+def test_a_builder_that_is_no_staker_receives_what_is_left_over(alice: NodeIdentity) -> None:
+    payout = payout_of({None: 100}, {alice.node_id: 90, BUILDER: 10})
+    before = {alice.node_id: Balance(Kismet(5), 7), BUILDER: Balance(Kismet(90), 20)}
+
+    after = BalanceSheet.of(block_of(payout), before, stakers={alice.node_id}).after
+
+    # (90 × 20 + 10 × 41) ÷ 100 = 22.1, rounded up.
+    assert after == {
+        alice.node_id: Balance(Kismet(95), GENERATION - 1),
+        BUILDER: Balance(Kismet(100), 23),
+    }
+
+
+def test_what_is_received_moves_last_won_toward_the_generation_before_by_amount(
+    alice: NodeIdentity, bob: NodeIdentity
+) -> None:
+    block = block_of(paying(bob, {alice.node_id: 100}), NEW_KARMA_TO_ERIN)
+    before = {alice.node_id: Balance(Kismet(300), 20), bob.node_id: Balance(Kismet(100), 5)}
+
+    after = BalanceSheet.of(block, before, stakers=STAKERS).after
+
+    # (300 × 20 + 100 × 41) ÷ 400 = 25.25, rounded up, so that rounding never
+    # makes what alice holds older.
+    assert after[alice.node_id] == Balance(Kismet(400), 26)
+
+
+def test_kismet_received_counts_as_a_generation_old_in_the_next_validation_block(
+    alice: NodeIdentity, bob: NodeIdentity
+) -> None:
+    block = block_of(paying(bob, {alice.node_id: 100}), NEW_KARMA_TO_ERIN)
+
+    after = BalanceSheet.of(block, {bob.node_id: Balance(Kismet(100), 5)}, stakers=STAKERS).after
+
+    assert after[alice.node_id] == Balance(Kismet(100), GENERATION - 1)
+    assert StakeAge.of(after[alice.node_id], GENERATION, AGE_LIMIT_FLOOR) == StakeAge(1)
+
+
+def test_what_is_received_is_weighed_against_what_is_kept_after_sending(
+    alice: NodeIdentity, bob: NodeIdentity
+) -> None:
+    block = block_of(
+        paying(alice, {DAVE: 600}), paying(bob, {alice.node_id: 200}), NEW_KARMA_TO_ERIN
+    )
+    before = {alice.node_id: Balance(Kismet(1_000), 10), bob.node_id: Balance(Kismet(200), 5)}
+
+    after = BalanceSheet.of(block, before, stakers=STAKERS).after
+
+    # Whatever order the block holds them in: (400 × 10 + 200 × 41) ÷ 600 =
+    # 20.33, rounded up.
+    assert after[alice.node_id] == Balance(Kismet(600), 21)
+
+
+def test_sending_leaves_last_won_and_a_sender_left_holding_nothing_has_none(
+    alice: NodeIdentity, bob: NodeIdentity
+) -> None:
+    block = block_of(paying(alice, {DAVE: 100}), paying(bob, {DAVE: 250}), NEW_KARMA_TO_ERIN)
+    before = {alice.node_id: Balance(Kismet(300), 20), bob.node_id: Balance(Kismet(250), 9)}
+
+    after = BalanceSheet.of(block, before, stakers=STAKERS).after
+
+    assert after[alice.node_id] == Balance(Kismet(200), 20)
+    assert after[bob.node_id] == NO_BALANCE
+
+
 def test_what_the_payout_pays_may_be_spent_in_its_own_block(alice: NodeIdentity) -> None:
     block = block_of(paying(alice, {DAVE: 400}), payout_of({None: 500}, {alice.node_id: 500}))
 
-    sheet = BalanceSheet.of(block, {})
+    sheet = BalanceSheet.of(block, {}, stakers={alice.node_id})
 
     assert sheet.checked[alice.node_id] == Balance(Kismet(500), GENERATION - 1)
     assert sheet.overspent == frozenset()
@@ -168,7 +249,7 @@ def test_a_sender_overspends_when_its_balance_does_not_cover_all_it_sends_and_it
         NEW_KARMA_TO_ERIN,
     )
 
-    sheet = BalanceSheet.of(block, {alice.node_id: Balance(Kismet(1_000))})
+    sheet = BalanceSheet.of(block, {alice.node_id: Balance(Kismet(1_000), 3)}, stakers=STAKERS)
 
     assert sheet.overspent == (frozenset({alice.node_id}) if overspends else frozenset())
 
@@ -177,20 +258,20 @@ def test_an_overspending_senders_transactions_are_not_applied(
     alice: NodeIdentity, bob: NodeIdentity
 ) -> None:
     block = block_of(paying(alice, {DAVE: 600}), paying(bob, {DAVE: 5}), NEW_KARMA_TO_ERIN)
-    before = {alice.node_id: Balance(Kismet(500), 3), bob.node_id: Balance(Kismet(5))}
+    before = {alice.node_id: Balance(Kismet(500), 3), bob.node_id: Balance(Kismet(5), 2)}
 
-    sheet = BalanceSheet.of(block, before)
+    sheet = BalanceSheet.of(block, before, stakers=STAKERS)
 
     assert sheet.overspent == frozenset({alice.node_id})
     assert sheet.after[alice.node_id] == Balance(Kismet(500), 3)
-    assert sheet.after[DAVE] == Balance(Kismet(5))
+    assert sheet.after[DAVE] == Balance(Kismet(5), GENERATION - 1)
 
 
 def test_a_payout_taking_more_than_an_identity_holds_is_refused(bob: NodeIdentity) -> None:
     block = block_of(payout_of({None: 100, bob.node_id: 50}, {ERIN: 150}))
 
     with raises(ValueError, match="takes 50 Kismet from .*, which holds 40"):
-        BalanceSheet.of(block, {bob.node_id: Balance(Kismet(40))})
+        BalanceSheet.of(block, {bob.node_id: Balance(Kismet(40), 3)}, stakers=STAKERS)
 
 
 def test_each_identity_the_block_names_and_does_not_state_is_unstated(
@@ -199,10 +280,10 @@ def test_each_identity_the_block_names_and_does_not_state_is_unstated(
     block = block_of(
         paying(alice, {DAVE: 250}),
         NEW_KARMA_TO_ERIN,
-        balances={alice.node_id: Balance(Kismet(750))},
+        balances={alice.node_id: Balance(Kismet(750), 3)},
     )
 
-    sheet = BalanceSheet.of(block, {alice.node_id: Balance(Kismet(1_000))})
+    sheet = BalanceSheet.of(block, {alice.node_id: Balance(Kismet(1_000), 3)}, stakers=STAKERS)
 
     assert sheet.unstated() == sorted([DAVE, ERIN])
 
@@ -213,13 +294,13 @@ def test_a_block_stating_each_balance_as_it_is_states_none_wrongly(
     before = {alice.node_id: Balance(Kismet(1_000), 30), bob.node_id: Balance(Kismet(9), 2)}
     stated = {
         alice.node_id: Balance(Kismet(750), 30),
-        DAVE: Balance(Kismet(250)),
+        DAVE: Balance(Kismet(250), GENERATION - 1),
         ERIN: Balance(Kismet(100), GENERATION - 1),
         bob.node_id: Balance(Kismet(9), 2),
     }
     block = block_of(paying(alice, {DAVE: 250}), NEW_KARMA_TO_ERIN, balances=stated)
 
-    sheet = BalanceSheet.of(block, before)
+    sheet = BalanceSheet.of(block, before, stakers=STAKERS)
 
     assert sheet.unstated() == []
     assert sheet.misstated() == []
@@ -236,7 +317,7 @@ def test_a_balance_stated_wrongly_in_kismet_or_last_won_is_misstated(
         paying(alice, {DAVE: 250}), NEW_KARMA_TO_ERIN, balances={alice.node_id: stated}
     )
 
-    sheet = BalanceSheet.of(block, {alice.node_id: Balance(Kismet(1_000), 30)})
+    sheet = BalanceSheet.of(block, {alice.node_id: Balance(Kismet(1_000), 30)}, stakers=STAKERS)
 
     assert sheet.misstated() == [alice.node_id]
 
@@ -247,14 +328,14 @@ def test_a_balance_stated_only_to_shorten_reach_is_checked_against_the_one_befor
     stated = {bob.node_id: Balance(Kismet(10), 2), RIVAL: Balance(Kismet(0))}
     block = block_of(paying(alice, {DAVE: 250}), NEW_KARMA_TO_ERIN, balances=stated)
 
-    before = {alice.node_id: Balance(Kismet(1_000)), bob.node_id: Balance(Kismet(9), 2)}
+    before = {alice.node_id: Balance(Kismet(1_000), 3), bob.node_id: Balance(Kismet(9), 2)}
 
-    sheet = BalanceSheet.of(block, before)
+    sheet = BalanceSheet.of(block, before, stakers=STAKERS)
 
     assert sheet.misstated() == [bob.node_id]
 
 
-def test_an_identity_stated_nowhere_holds_nothing_and_has_won_nothing(
+def test_an_identity_stated_nowhere_holds_nothing_and_has_no_last_won(
     sheet: BalanceSheet,
 ) -> None:
     assert sheet.balance(RIVAL) == NO_BALANCE == Balance(Kismet(0), None)
@@ -264,20 +345,32 @@ def test_an_identity_the_block_does_not_name_holds_what_it_did_before(
     alice: NodeIdentity, bob: NodeIdentity
 ) -> None:
     block = block_of(paying(alice, {DAVE: 250}), NEW_KARMA_TO_ERIN)
-    before = {alice.node_id: Balance(Kismet(1_000)), bob.node_id: Balance(Kismet(9), 2)}
+    before = {alice.node_id: Balance(Kismet(1_000), 3), bob.node_id: Balance(Kismet(9), 2)}
 
-    sheet = BalanceSheet.of(block, before)
+    sheet = BalanceSheet.of(block, before, stakers=STAKERS)
 
     assert sheet.balance(bob.node_id) == Balance(Kismet(9), 2)
-    assert sheet.balance(DAVE) == Balance(Kismet(250))
+    assert sheet.balance(DAVE) == Balance(Kismet(250), GENERATION - 1)
 
 
 def test_the_roots_block_leaves_its_creator_holding_nothing(alice: NodeIdentity) -> None:
     root = block_of(paying(alice, {alice.node_id: 0}), generation=0)
 
-    sheet = BalanceSheet.of(root, {})
+    sheet = BalanceSheet.of(root, {}, stakers=())
 
     assert sheet.after == {alice.node_id: NO_BALANCE}
+
+
+def test_how_many_hold_kismet_after_a_block_changes_only_by_those_it_names(
+    alice: NodeIdentity, bob: NodeIdentity, sheet: BalanceSheet
+) -> None:
+    emptying = block_of(paying(bob, {alice.node_id: 9}), NEW_KARMA_TO_ERIN)
+    emptied = BalanceSheet.of(emptying, {bob.node_id: Balance(Kismet(9), 2)}, stakers=STAKERS)
+
+    # Alice and Erin held Kismet as the block was checked, and Dave too after it.
+    assert sheet.holders_after(5) == 6
+    # Bob and Erin held Kismet as it was checked, and Alice and Erin after it.
+    assert emptied.holders_after(5) == 5
 
 
 def test_a_block_stating_every_holder_has_reach_0() -> None:
@@ -310,38 +403,58 @@ def test_an_identity_holding_nothing_needs_no_reach(stated: list[dict[ContentId,
 
 
 @mark.parametrize(
-    ("last_won", "tenths"),
-    [(41, 1), (40, 2), (33, 9), (32, 10), (0, 10), (None, WEIGHT_GENERATIONS)],
+    ("last_won", "limit", "generations"),
+    [(41, 10, 1), (40, 10, 2), (33, 10, 9), (32, 10, 10), (0, 10, 10), (0, 100, 42)],
 )
-def test_a_staker_weighs_a_tenth_for_each_generation_since_it_last_won(
-    last_won: int | None, tenths: int
+def test_a_stakers_age_is_the_generations_since_it_last_won_up_to_the_age_limit(
+    last_won: int, limit: int, generations: int
 ) -> None:
-    assert StakeWeight.of(Balance(Kismet(1), last_won), GENERATION) == StakeWeight(tenths)
+    age = StakeAge.of(Balance(Kismet(1), last_won), GENERATION, limit)
+
+    assert age == StakeAge(generations)
+
+
+def test_a_staker_holding_nothing_has_no_age() -> None:
+    assert StakeAge.of(NO_BALANCE, GENERATION, AGE_LIMIT_FLOOR) == StakeAge(0)
 
 
 @mark.parametrize("last_won", [GENERATION, GENERATION + 1])
-def test_a_staker_that_won_its_generation_or_later_has_no_weight(last_won: int) -> None:
+def test_a_staker_that_won_its_generation_or_later_has_no_age(last_won: int) -> None:
     with raises(ValueError, match="must have last won before it"):
-        StakeWeight.of(Balance(Kismet(1), last_won), GENERATION)
+        StakeAge.of(Balance(Kismet(1), last_won), GENERATION, AGE_LIMIT_FLOOR)
 
 
-@mark.parametrize("tenths", [0, WEIGHT_GENERATIONS + 1])
-def test_a_weight_outside_its_tenths_is_refused(tenths: int) -> None:
-    with raises(ValueError, match="from 1 to 10 tenths"):
-        StakeWeight(tenths)
+def test_a_negative_age_is_refused() -> None:
+    with raises(ValueError, match="must not be negative"):
+        StakeAge(-1)
 
 
-def test_each_stakers_stakes_weigh_alike_and_count_together(
-    alice: NodeIdentity, bob: NodeIdentity, carol: NodeIdentity
+@mark.parametrize(
+    ("holders", "limit"),
+    [(0, 10), (500, 10), (549, 10), (550, 11), (5_000, 100), (1_000_000, 20_000)],
+)
+def test_the_age_limit_is_a_hundred_times_the_holders_per_stake_a_block_holds_and_at_least_10(
+    holders: int, limit: int
+) -> None:
+    assert StakeAge.limit(holders) == limit
+
+
+@mark.parametrize(("limit", "bobs"), [(10, 1_000), (100, 3_000)])
+def test_each_stakers_stakes_count_alike_and_together(
+    alice: NodeIdentity, bob: NodeIdentity, carol: NodeIdentity, limit: int, bobs: int
 ) -> None:
     validation = validation_of(
         staked(alice, 300), staked(alice, 200, created=LATER), staked(bob, 100), staked(carol, 7)
     )
-    balances = {alice.node_id: Balance(Kismet(0), QUIET - 2), bob.node_id: Balance(Kismet(0))}
+    balances = {
+        alice.node_id: Balance(Kismet(500), QUIET - 2),
+        bob.node_id: Balance(Kismet(100), QUIET - 30),
+    }
 
-    stakes = StakeWeight.effective_stakes(validation, balances)
+    stakes = StakeAge.effective_stakes(validation, balances, limit)
 
-    assert stakes == {alice.node_id: 1_000, bob.node_id: 1_000, carol.node_id: 70}
+    # Carol holds nothing, as it is stated nowhere.
+    assert stakes == {alice.node_id: 1_000, bob.node_id: bobs, carol.node_id: 0}
 
 
 def test_the_pot_is_the_new_karma_and_the_fees_without_a_runner_up(
@@ -376,8 +489,9 @@ def test_shares_are_rounded_down_and_the_rest_goes_to_the_builder(
     alice: NodeIdentity, bob: NodeIdentity, carol: NodeIdentity
 ) -> None:
     validation = validation_of(staked(alice, 1), staked(bob, 2), staked(carol, 4))
+    balances = aged(alice, bob, carol)
 
-    shares = Reward(validation, bob.node_id, fees_of(alice, 10), {}).shares()
+    shares = Reward(validation, bob.node_id, fees_of(alice, 10), balances).shares()
 
     assert shares == {alice.node_id: Kismet(1), bob.node_id: Kismet(4), carol.node_id: Kismet(5)}
 
@@ -386,8 +500,9 @@ def test_a_builder_staking_nothing_is_paid_what_is_left_over(
     alice: NodeIdentity, bob: NodeIdentity, carol: NodeIdentity
 ) -> None:
     validation = validation_of(staked(alice, 1), staked(bob, 2), staked(carol, 4))
+    balances = aged(alice, bob, carol)
 
-    shares = Reward(validation, BUILDER, fees_of(alice, 10), {}).shares()
+    shares = Reward(validation, BUILDER, fees_of(alice, 10), balances).shares()
 
     assert shares == {
         alice.node_id: Kismet(1),
@@ -402,7 +517,7 @@ def test_a_builder_is_paid_nothing_when_nothing_is_left_over(
 ) -> None:
     validation = validation_of(staked(alice, 1), staked(bob, 4))
 
-    shares = Reward(validation, BUILDER, fees_of(alice, 10), {}).shares()
+    shares = Reward(validation, BUILDER, fees_of(alice, 10), aged(alice, bob)).shares()
 
     assert shares == {alice.node_id: Kismet(2), bob.node_id: Kismet(8)}
 
@@ -412,33 +527,56 @@ def test_a_staker_whose_share_rounds_to_0_is_left_out(
 ) -> None:
     validation = validation_of(staked(alice, 1), staked(bob, 3))
 
-    shares = Reward(validation, BUILDER, fees_of(alice, 1), {}).shares()
+    shares = Reward(validation, BUILDER, fees_of(alice, 1), aged(alice, bob)).shares()
 
     assert shares == {BUILDER: Kismet(1)}
 
 
-def test_a_builder_paid_what_is_left_over_has_won_the_generation(
+def test_a_builder_paid_what_is_left_over_receives_it_and_its_stakers_win(
     alice: NodeIdentity, bob: NodeIdentity
 ) -> None:
     validation = validation_of(staked(alice, 1), staked(bob, 2))
-    payout = Reward(validation, BUILDER, fees_of(alice, 10), {}).payout()
+    payout = Reward(validation, BUILDER, fees_of(alice, 10), aged(alice, bob)).payout()
+    before = {
+        alice.node_id: Balance(Kismet(10), QUIET - 5),
+        BUILDER: Balance(Kismet(99), QUIET - 50),
+    }
 
     after = BalanceSheet.of(
-        block_of(payout, generation=QUIET + 1), {alice.node_id: Balance(Kismet(10))}
+        block_of(payout, generation=QUIET + 1), before, stakers={alice.node_id, bob.node_id}
     ).after
 
-    assert after[BUILDER] == Balance(Kismet(1), QUIET)
+    # The builder's 1 Kismet left over moves its last_won a hundredth of the
+    # way from QUIET - 50 to QUIET, rounded up.
+    assert after == {
+        alice.node_id: Balance(Kismet(3), QUIET),
+        bob.node_id: Balance(Kismet(6), QUIET),
+        BUILDER: Balance(Kismet(100), QUIET - 49),
+    }
 
 
-def test_a_staker_that_won_recently_shares_by_its_weight(
+def test_a_staker_that_won_recently_shares_by_its_age(
     alice: NodeIdentity, bob: NodeIdentity
 ) -> None:
     validation = validation_of(staked(alice, 100), staked(bob, 10))
-    balances = {alice.node_id: Balance(Kismet(100), QUIET - 1)}
+    balances = {alice.node_id: Balance(Kismet(100), QUIET - 1), **aged(bob)}
 
     shares = Reward(validation, BUILDER, fees_of(bob, 10), balances).shares()
 
     assert shares == {alice.node_id: Kismet(5), bob.node_id: Kismet(5)}
+
+
+@mark.parametrize(("limit", "shares"), [(10, (6, 6)), (100, (10, 2))])
+def test_a_stakers_age_counts_up_to_the_age_limit_its_transaction_block_states(
+    alice: NodeIdentity, bob: NodeIdentity, limit: int, shares: tuple[int, int]
+) -> None:
+    validation = validation_of(staked(alice, 10), staked(bob, 10))
+    balances = {**aged(alice, age=50), **aged(bob)}
+    block = fees_of(bob, 12, age_limit=limit)
+
+    paid = Reward(validation, BUILDER, block, balances).shares()
+
+    assert paid == {alice.node_id: Kismet(shares[0]), bob.node_id: Kismet(shares[1])}
 
 
 def test_a_pot_staked_nothing_on_is_shared_equally(alice: NodeIdentity, bob: NodeIdentity) -> None:
@@ -457,7 +595,11 @@ def test_the_roots_reward_pays_its_creator_the_whole_of_generation_0s_new_karma(
     reward = Reward(validation, alice.node_id, root, {alice.node_id: Balance(Kismet(0))})
 
     payout = reward.payout()
-    after = BalanceSheet.of(block_of(payout, generation=1), {alice.node_id: Balance(Kismet(0))})
+    after = BalanceSheet.of(
+        block_of(payout, generation=1),
+        {alice.node_id: Balance(Kismet(0))},
+        stakers={alice.node_id},
+    )
 
     assert payout == payout_of({None: 2 * 10**15}, {alice.node_id: 2 * 10**15}, 1)
     assert after.after == {alice.node_id: Balance(Kismet(2 * 10**15), 0)}

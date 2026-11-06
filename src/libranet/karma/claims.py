@@ -13,7 +13,8 @@ the validation block before, as the blocks are read, their signatures not
 yet checked, so that a false one is found where it is first stated, and
 nothing before it is read (:class:`FalseStatement`). Until its stakers'
 balances are read, a validation block's effective stake is known only to be
-no more than its stakes would be with each staker weighing whole (§6.6), so
+no more than its stakes would be with each staker as old as the age limit
+lets it count (§6.6), so
 a ``weight`` stated after one not in the history is checked against that,
 and checked whole as the claim is checked forward.
 
@@ -44,7 +45,6 @@ from libranet.karma.blocks import (
 )
 from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.history import ChainGeneration, ChainHistory
-from libranet.karma.ledger import WEIGHT_GENERATIONS
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.validating import ValidationBlockCheck
 from libranet.karma.weight import ChainWeight
@@ -74,7 +74,8 @@ class ClaimedGeneration:
     ``generation``, built on validation block ``previous``, and stating that
     the chain before it weighs ``weight``. The chain through the two weighs
     no more than ``through``, as they claim: what it would if each of the
-    validation block's stakers weighed whole (§6.6).
+    validation block's stakers were as old as the age limit the transaction
+    block states lets it count (§6.6).
     """
 
     validation: ContentId
@@ -109,7 +110,7 @@ class ClaimedGeneration:
 
         transaction_id = validation.stakes[0].stake.transaction_block
         transaction = chain.transaction(transaction_id).block
-        most = WEIGHT_GENERATIONS * sum(stake.stake.kismet.count for stake in validation.stakes)
+        most = transaction.age_limit * sum(stake.stake.kismet.count for stake in validation.stakes)
         return cls(
             validation_id,
             validation.generation,

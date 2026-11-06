@@ -104,7 +104,7 @@ class ChainGeneration:
         """The generation in which validation block ``validation_id`` validates ``transaction_id``.
 
         ``validation_id`` is the generation's winning validation block, and
-        ``stake`` its total effective stake, in tenths of a Kismet (§6.6).
+        ``stake`` its total effective stake, in Kismet × generations (§6.6).
         """
         return cls(
             validation.generation,

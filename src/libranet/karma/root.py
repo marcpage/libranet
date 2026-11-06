@@ -23,6 +23,7 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import BlockDrop, TransactionBlock, ValidationBlock
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration
+from libranet.karma.ledger import AGE_LIMIT_FLOOR
 from libranet.karma.weight import ChainWeight
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import NO_BALANCE
@@ -123,4 +124,5 @@ class ChainRoot:
             0,
             (SignedTransaction.of(creator.signed(sent.text())),),
             {own: NO_BALANCE},
+            AGE_LIMIT_FLOOR,
         )
