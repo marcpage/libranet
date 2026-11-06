@@ -19,8 +19,8 @@ from libranet.cas.store import CasStore
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import BlockBounds, BlockDrop, TransactionBlock, ValidationBlock
 from libranet.karma.generations import GenerationTargets
-from libranet.karma.ledger import WEIGHT_GENERATIONS, BalanceSheet, Reward, StakeWeight, reach_of
-from libranet.karma.weight import ChainWeight
+from libranet.karma.ledger import AGE_LIMIT_FLOOR, BalanceSheet, Reward, StakeAge, reach_of
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.protocol.karma_amounts import Kismet
@@ -172,7 +172,16 @@ class Chain:
         own = creator.node_id
         sent = Transaction(own, {own: Kismet(0)}, Kismet(0), 0, CREATED)
         signed = SignedTransaction.of(creator.signed(sent.text()))
-        block = TransactionBlock(0, None, ChainWeight(0), 0, (signed,), {own: NO_BALANCE})
+        block = TransactionBlock(
+            0,
+            None,
+            ChainWeight(0),
+            0,
+            (signed,),
+            {own: NO_BALANCE},
+            AGE_LIMIT_FLOOR,
+            StakeBaseline(0),
+        )
         transaction = signed_at(ROOT.transaction, creator, block, bits)
         validation = ValidationBlock(0, None, (staked(creator, id_of(transaction), 0),), ())
         drops = Generation(
@@ -220,7 +229,11 @@ class Chain:
 
     def stake(self, generation: int = -1) -> int:
         """The total effective stake of its validation block ``generation`` (§6.6)."""
-        stakes = StakeWeight.effective_stakes(self.validation(generation), self.latest(generation))
+        stakes = StakeAge.effective_stakes(
+            self.validation(generation),
+            self.latest(generation),
+            self.transaction(generation).age_limit,
+        )
         return sum(stakes.values())
 
     def weight(self) -> ChainWeight:
@@ -231,11 +244,12 @@ class Chain:
         )
 
     def most(self) -> ChainWeight:
-        """The most it weighs, as a claim's walk bounds it: each staker weighing whole (§3.3)."""
+        """The most it weighs, as a claim's walk bounds it: each staker at the age limit (§3.3)."""
         last = self.generations[-1]
         staked = sum(stake.stake.kismet.count for stake in self.validation(-1).stakes)
-        return self.transaction(-1).weight_through(
-            id_of(last.transaction), id_of(last.validation), WEIGHT_GENERATIONS * staked
+        block = self.transaction(-1)
+        return block.weight_through(
+            id_of(last.transaction), id_of(last.validation), block.age_limit * staked
         )
 
     def block_after(self, *signed: SignedTransaction) -> TransactionBlock:
@@ -259,9 +273,13 @@ class Chain:
             0,
             tuple(sorted((reward.payout(), *signed), key=lambda entry: entry.hash)),
             {},
+            AGE_LIMIT_FLOOR,
+            validated.stake_baseline.after(self.stake(), validated.generation),
         )
         before = {identity: latest.get(identity, NO_BALANCE) for identity in block.named()}
-        block = replace(block, balances=BalanceSheet.of(block, before).after)
+        after = BalanceSheet.of(block, before, stakers=stakers).after
+        holders = sum(1 for balance in {**latest, **after}.values() if balance.kismet > Kismet(0))
+        block = replace(block, balances=after, age_limit=StakeAge.limit(holders))
         back = min(validated.reach, validated.generation)
         older = [
             self.transaction(generation).balances

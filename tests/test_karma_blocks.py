@@ -37,7 +37,7 @@ from libranet.karma.blocks import (
 )
 from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets, new_kismet
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.messaging.events import EventType
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import Balance
@@ -52,6 +52,8 @@ PREVIOUS = ContentId("sha256", "5e" * 32)
 STAKED_ON = ContentId("sha256", "3c" * 32)
 RIVAL = ContentId("sha256", "4d" * 32)
 WEIGHT = ChainWeight(1_288_490_188_800)
+BASELINE = StakeBaseline(52_000)
+AGE_LIMIT = 10
 NEW_KARMA = new_kismet(0)
 WITNESSES = ("0a" * 32, "9f" * 32)
 NONCE = b"\x0012345"
@@ -91,6 +93,8 @@ def block_of(
         3,
         by_hash(*transactions),
         balances or {},
+        AGE_LIMIT,
+        BASELINE,
     )
 
 
@@ -99,7 +103,14 @@ def root_of(creator: NodeIdentity) -> TransactionBlock:
     transaction = Transaction(creator.node_id, {creator.node_id: Kismet(0)}, Kismet(0), 0, CREATED)
     signed = SignedTransaction.of(creator.signed(transaction.text()))
     return TransactionBlock(
-        0, None, ChainWeight(0), 0, (signed,), {creator.node_id: Balance(Kismet(0))}
+        0,
+        None,
+        ChainWeight(0),
+        0,
+        (signed,),
+        {creator.node_id: Balance(Kismet(0))},
+        10,
+        StakeBaseline(0),
     )
 
 
@@ -174,6 +185,8 @@ def test_a_transaction_block_is_written_as_the_specification_gives_it(
         "generation",
         "previous",
         "weight",
+        "stake_baseline",
+        "age_limit",
         "reach",
         "transactions",
         "balances",
@@ -181,6 +194,8 @@ def test_a_transaction_block_is_written_as_the_specification_gives_it(
     assert value["generation"] == 1
     assert value["previous"] == str(PREVIOUS)
     assert value["weight"] == "1288490188800"
+    assert value["stake_baseline"] == "52000"
+    assert value["age_limit"] == AGE_LIMIT
     assert value["reach"] == 3
     assert value["transactions"] == [transaction.value() for transaction in block.transactions]
     assert list(value["balances"]) == sorted(value["balances"])
@@ -204,7 +219,17 @@ def test_members_a_transaction_block_does_not_know_are_passed_over(
 
 
 @mark.parametrize(
-    "member", ["generation", "previous", "weight", "reach", "transactions", "balances"]
+    "member",
+    [
+        "generation",
+        "previous",
+        "weight",
+        "stake_baseline",
+        "age_limit",
+        "reach",
+        "transactions",
+        "balances",
+    ],
 )
 def test_a_transaction_block_missing_a_member_is_refused_naming_it(
     block: TransactionBlock, member: str
@@ -225,6 +250,9 @@ def test_a_transaction_block_missing_a_member_is_refused_naming_it(
         ("previous", "previous"),
         ("weight", 1_288_490_188_800),
         ("weight", "01"),
+        ("stake_baseline", 52_000),
+        ("stake_baseline", "-1"),
+        ("age_limit", "10"),
         ("reach", "3"),
         ("transactions", {}),
         ("balances", []),
@@ -284,12 +312,12 @@ def test_a_transaction_that_is_no_object_is_refused(block: TransactionBlock) -> 
         TransactionBlock.from_value({**block.value(), "transactions": ["transaction"]})
 
 
-@mark.parametrize("generation, reach", [(-1, 3), (1, -1)])
-def test_a_negative_generation_or_reach_is_refused(
-    block: TransactionBlock, generation: int, reach: int
+@mark.parametrize("generation, reach, age_limit", [(-1, 3, 10), (1, -1, 10), (1, 3, -1)])
+def test_a_negative_generation_reach_or_age_limit_is_refused(
+    block: TransactionBlock, generation: int, reach: int, age_limit: int
 ) -> None:
     with raises(ValueError, match="must not be negative"):
-        replace(block, generation=generation, reach=reach)
+        replace(block, generation=generation, reach=reach, age_limit=age_limit)
 
 
 def test_transactions_out_of_order_are_refused(block: TransactionBlock) -> None:

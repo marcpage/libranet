@@ -26,9 +26,9 @@ from libranet.karma.blocks import BlockBounds, BlockDrop, TransactionBlock, Vali
 from libranet.karma.following import ChainFollower
 from libranet.karma.generations import FIRST_NEW_KISMET, GenerationTargets
 from libranet.karma.history import ChainHistory
-from libranet.karma.ledger import BalanceSheet, Reward, reach_of
+from libranet.karma.ledger import AGE_LIMIT_FLOOR, BalanceSheet, Reward, reach_of
 from libranet.karma.reading import HeldBlock, TargetReader
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.messaging.events import EventType
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import NO_BALANCE
@@ -171,7 +171,16 @@ class Root:
         own = creator.node_id
         sent = Transaction(own, {own: Kismet(0)}, Kismet(0), 0, CREATED)
         signed = SignedTransaction.of(creator.signed(sent.text()))
-        block = TransactionBlock(0, None, ChainWeight(0), 0, (signed,), {own: NO_BALANCE})
+        block = TransactionBlock(
+            0,
+            None,
+            ChainWeight(0),
+            0,
+            (signed,),
+            {own: NO_BALANCE},
+            AGE_LIMIT_FLOOR,
+            StakeBaseline(0),
+        )
         transaction = signed_at(ROOT.transaction, creator, block, transaction_bits)
         validation = ValidationBlock(0, None, (staked(creator, id_of(transaction), 0),), ())
         return cls(
@@ -196,9 +205,18 @@ class Root:
         validation = BlockDrop.parsed(self.validation, ValidationBlock)
         reward = Reward(validation.block, validation.builder, root, root.balances)
         block = TransactionBlock(
-            1, id_of(self.validation), self.weight(), 0, (reward.payout(),), {}
+            1,
+            id_of(self.validation),
+            self.weight(),
+            0,
+            (reward.payout(),),
+            {},
+            AGE_LIMIT_FLOOR,
+            StakeBaseline(0),
         )
-        block = replace(block, balances=BalanceSheet.of(block, root.balances).after)
+        stakers = {stake.staker for stake in validation.block.stakes}
+        after = BalanceSheet.of(block, root.balances, stakers=stakers).after
+        block = replace(block, balances=after)
         return replace(block, reach=reach_of([block.balances, root.balances]))
 
 
@@ -356,7 +374,7 @@ def test_a_generation_is_followed_once_its_blocks_are_stored(
         id_of(first),
         id_of(first_validation),
     )
-    # Alice won the root, so weighs a tenth, and her stake of 5 Kismet counts 5 tenths.
+    # Alice won the root, so her stake of 5 Kismet is a generation old, and counts 5.
     assert followed.weight == root.weight() + ChainWeight(2**9 * 5) + ChainWeight.of_drop(
         id_of(first), root.next.transaction
     )

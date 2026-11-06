@@ -22,7 +22,7 @@ def test_balances_are_written_and_read_back_with_the_head_they_were_read_at(
     tmp_path: Path,
 ) -> None:
     balances = KarmaBalances(
-        HEAD, {BOB: Balance(Kismet(0), 40), ALICE: Balance(Kismet(10**28), None)}
+        HEAD, {BOB: Balance(Kismet(7), 40), ALICE: Balance(Kismet(10**28), None)}
     )
 
     balances.write(tmp_path)
@@ -33,13 +33,13 @@ def test_balances_are_written_and_read_back_with_the_head_they_were_read_at(
         "weight": "1208",
         "balances": {
             str(ALICE): {"kismet": str(10**28), "last_won": None},
-            str(BOB): {"kismet": "0", "last_won": 40},
+            str(BOB): {"kismet": "7", "last_won": 40},
         },
     }
     assert KarmaBalances.read(tmp_path) == balances
 
 
-def test_an_identity_not_stated_holds_nothing_and_has_won_nothing() -> None:
+def test_an_identity_not_stated_holds_nothing_and_has_no_last_won() -> None:
     balances = KarmaBalances(HEAD, {ALICE: Balance(Kismet(250), 40)})
 
     assert balances.balance(ALICE) == Balance(Kismet(250), 40)
@@ -123,8 +123,43 @@ def test_a_balance_reads_back_as_written() -> None:
     assert balance.value() == {"kismet": "1250000", "last_won": 40}
 
 
-def test_a_balance_that_has_won_nothing_is_stated_with_null() -> None:
+def test_a_balance_holding_nothing_is_stated_with_null() -> None:
     assert Balance.from_value({"kismet": "0", "last_won": None}) == Balance(Kismet(0))
+
+
+def test_a_balance_holding_nothing_stating_a_last_won_is_refused() -> None:
+    with raises(ValueError, match='A balance holding no Kismet has no "last_won", got 40'):
+        Balance.from_value({"kismet": "0", "last_won": 40})
+
+
+def test_sending_leaves_last_won_as_it_was() -> None:
+    assert Balance(Kismet(300), 20).sent(Kismet(100)) == Balance(Kismet(200), 20)
+
+
+def test_sending_all_a_balance_holds_leaves_it_holding_nothing_with_no_last_won() -> None:
+    assert Balance(Kismet(300), 20).sent(Kismet(300)) == Balance(Kismet(0))
+
+
+def test_sending_more_than_a_balance_holds_is_refused() -> None:
+    with raises(ValueError, match="from 0 to"):
+        Balance(Kismet(300), 20).sent(Kismet(301))
+
+
+@mark.parametrize(
+    ("balance", "amount", "generation", "after"),
+    [
+        # (300 × 20 + 100 × 41) ÷ 400 = 25.25, rounded up.
+        (Balance(Kismet(300), 20), 100, 41, Balance(Kismet(400), 26)),
+        # (100 × 20 + 100 × 40) ÷ 200 = 30, exactly.
+        (Balance(Kismet(100), 20), 100, 40, Balance(Kismet(200), 30)),
+        (Balance(Kismet(0)), 100, 41, Balance(Kismet(100), 41)),
+        (Balance(Kismet(300), 20), 0, 41, Balance(Kismet(300), 20)),
+    ],
+)
+def test_receiving_moves_last_won_toward_the_generation_received_in_by_amount(
+    balance: Balance, amount: int, generation: int, after: Balance
+) -> None:
+    assert balance.received(Kismet(amount), generation) == after
 
 
 @mark.parametrize(

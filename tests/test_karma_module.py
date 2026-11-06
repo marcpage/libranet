@@ -39,7 +39,7 @@ from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.module import KarmaModule
 from libranet.karma.reading import HeldChain
 from libranet.karma.validating import ValidationBlockCheck
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.messaging.envelope import Message, event_of, make_message
 from libranet.messaging.events import EventType
 from libranet.messaging.node_trust import NodeTrust
@@ -193,6 +193,11 @@ def staking(signed: SignedStake) -> Message:
     return make_message(EventType.KARMA_STAKE, ModuleName.WEBSERVER, {"stake": signed.value()})
 
 
+# What the node stakes in generation 1 of :func:`paying_module`'s chain: 10% of
+# the root's reward, 20 Karma, as a node staking by default does.
+GENERATION_1_STAKE = 200_000_000_000_000
+
+
 def paid_by_node(
     storage: StorageConfig, seconds: int = 0, to: ContentId = PEER
 ) -> SignedTransaction:
@@ -217,8 +222,10 @@ def paying_module(
 
     The node holds the root's reward, 20 Karma, and generation 1's, which it
     alone staked on, 200 Kismet less, so pays 0.01% of the two,
-    399,999,999,999 Kismet, a payment. Its Karma is configured as ``karma``
-    says, or by default.
+    399,999,999,999 Kismet, a payment. It staked 10% of the 20 Karma in
+    generation 1, as it stakes by default, so that the stake baseline of
+    generation 2 is what a node staking so sets (KarmaLedger §3.3). Its Karma
+    is configured as ``karma`` says, or by default.
     """
     config = with_node_key(
         LibranetConfig(
@@ -229,7 +236,7 @@ def paying_module(
     node = NodeIdentity.load(config)
     truth = CasStore.source_of_truth(storage)
     truth.write(node.node_id, node.public_key)
-    chain = Chain.root(node, 9).then(node, node, bits=9)
+    chain = Chain.root(node, 9).then(node, node, bits=9, kismet=GENERATION_1_STAKE)
     hold(truth, *chain.drops(0, 1))
     module = KarmaModule(
         ModuleName.KARMA,
@@ -331,7 +338,7 @@ def test_a_module_started_in_a_new_data_directory_follows_no_chain(
 def test_a_module_started_again_reads_the_history_it_kept(
     storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
 ) -> None:
-    root = ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), ())
+    root = ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), (), StakeBaseline(0))
     ChainHistory.open(storage.karma_dir).add(root)
     module = module_over(storage, queues)
 
@@ -573,7 +580,7 @@ def test_two_requests_make_one_root(
 def test_a_module_following_a_chain_makes_no_root(
     storage: StorageConfig, queues: ModuleQueues
 ) -> None:
-    followed = ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), ())
+    followed = ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), (), StakeBaseline(0))
     ChainHistory.open(storage.karma_dir).add(followed)
     module = rooting_module(storage, queues)
 
@@ -804,7 +811,7 @@ def test_the_head_followed_is_said_as_the_module_first_looks_and_not_again_while
 ) -> None:
     clock = Clock()
     ChainHistory.open(storage.karma_dir).add(
-        ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), ())
+        ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), (), StakeBaseline(0))
     )
     module = module_over(storage, queues, clock)
     module.on_start()
@@ -846,7 +853,7 @@ def test_a_head_a_peer_tells_of_is_weighed_as_the_module_next_idles(
     storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
 ) -> None:
     ChainHistory.open(storage.karma_dir).add(
-        ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), ())
+        ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), (), StakeBaseline(0))
     )
     module = module_over(storage, queues)
     module.on_start()
@@ -870,7 +877,7 @@ def test_a_head_a_peer_tells_of_that_is_followed_is_not_weighed(
     storage: StorageConfig, queues: ModuleQueues
 ) -> None:
     ChainHistory.open(storage.karma_dir).add(
-        ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), ())
+        ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), (), StakeBaseline(0))
     )
     module = module_over(storage, queues)
     module.on_start()

@@ -6,7 +6,13 @@ from pytest import mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
-from libranet.karma.weight import COUNTED_BITS, ChainWeight
+from libranet.karma.weight import (
+    COUNTED_BITS,
+    STAKE_BASELINE_GENERATIONS,
+    STAKE_BASELINE_MULTIPLE,
+    ChainWeight,
+    StakeBaseline,
+)
 
 TARGET = DropTarget.of("karma transaction:0")
 
@@ -132,3 +138,63 @@ def test_a_drop_whose_id_is_its_target_hash_weighs_as_one_of_the_counted_bits() 
     drop = ContentId("sha256", TARGET.hex)
 
     assert ChainWeight(5) + ChainWeight.of_drop(drop, TARGET) == ChainWeight(5 + 2**COUNTED_BITS)
+
+
+def test_a_stake_baseline_of_0_counts_all_of_a_stake() -> None:
+    assert StakeBaseline(0).counted(10**30) == 10**30
+
+
+@mark.parametrize(("total", "counted"), [(0, 0), (150, 150), (200, 200), (201, 200), (10**9, 200)])
+def test_a_stake_counts_at_most_twice_the_baseline(total: int, counted: int) -> None:
+    assert STAKE_BASELINE_MULTIPLE == 2
+    assert StakeBaseline(100).counted(total) == counted
+
+
+def test_the_baseline_after_one_of_0_is_what_its_block_counts() -> None:
+    assert StakeBaseline(0).after(500, 1) == StakeBaseline(500)
+
+
+@mark.parametrize(
+    ("generation", "total", "after"),
+    [
+        # A window of 1 generation, while the chain is young: what it counts.
+        (2, 1_500, 1_500),
+        (3, 9_000, 2_000),
+        # A window of 2: halfway there, rounded down.
+        (4, 1_500, 1_250),
+        (4, 501, 750),
+        # A window of 1,000, the most.
+        (3_996, 1_100, 1_000),
+        (3_996, 2_000, 1_001),
+        (3_996, 0, 999),
+        (10**12, 2_000, 1_001),
+    ],
+)
+def test_the_baseline_moves_toward_what_each_block_counts_by_a_part_in_its_window(
+    generation: int, total: int, after: int
+) -> None:
+    assert StakeBaseline(1_000).after(total, generation) == StakeBaseline(after)
+
+
+def test_the_baseline_rises_no_more_than_a_part_in_its_window_a_generation() -> None:
+    baseline = StakeBaseline(10**6)
+
+    assert baseline.after(10**30, 10**9) == StakeBaseline(
+        10**6 + 10**6 // STAKE_BASELINE_GENERATIONS
+    )
+
+
+@mark.parametrize("baseline", [StakeBaseline(0), StakeBaseline(52_000), StakeBaseline(3 * 2**256)])
+def test_a_stake_baseline_reads_back_as_written(baseline: StakeBaseline) -> None:
+    assert StakeBaseline.from_value(baseline.value()) == baseline
+
+
+@mark.parametrize("value", [52_000, "-1", "01", "", None])
+def test_a_stake_baseline_not_written_in_decimal_digits_is_refused(value: object) -> None:
+    with raises(ValueError, match="A stake baseline must be a string of decimal digits"):
+        StakeBaseline.from_value(value)
+
+
+def test_a_negative_stake_baseline_is_refused() -> None:
+    with raises(ValueError, match="must not be negative"):
+        StakeBaseline(-1)

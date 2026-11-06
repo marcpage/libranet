@@ -2,8 +2,8 @@
 
 An identity's Karma, to a node, is its balance as the chain the node follows
 states it: the latest stated of it in the head's transaction block, or in
-those before it as far back as that block's reach, or ten blocks, whichever is
-further (KarmaLedger §5.3), with the reward of the head's validation block
+those before it as far back as that block's reach (KarmaLedger §5.3), with
+the reward of the head's validation block
 paid, as the next generation's transactions are checked against it (§2). No
 peer's claim of its own Karma is read.
 
@@ -15,8 +15,8 @@ at, as ``head.json`` names it (:mod:`libranet.protocol.karma_head`)::
      "balances": {"sha256/…": {"kismet": "250", "last_won": 40}}}
 
 each of the head's members ``null``, and ``balances`` empty, while it
-follows no chain. An identity it does not name holds nothing, and has won
-nothing: ``{"kismet": "0", "last_won": null}``. The web server reads it here,
+follows no chain. An identity it does not name holds nothing:
+``{"kismet": "0", "last_won": null}``. The web server reads it here,
 and the stats module, to order the nodes it lists by Karma (Phase 6 Step
 141), since neither loads the Karma module's code (Module System §2).
 """
@@ -47,12 +47,15 @@ _LAST_WON: Final = "last_won"
 
 @dataclass(frozen=True)
 class Balance:
-    """The ``kismet`` an identity holds, and ``last_won``, the generation it last won a share in.
+    """The ``kismet`` an identity holds, and ``last_won``, the effective generation it last won.
 
-    ``last_won`` is ``None`` for one that has won none (KarmaLedger §5.3).
+    ``last_won`` is the generation it last won a share in, moved later by the
+    Kismet it has received since, by amount (:meth:`received`), and is
+    ``None`` for one holding nothing (KarmaLedger §5.3).
 
     Raises:
-        ValueError: ``last_won`` is negative.
+        ValueError: ``last_won`` is negative, or given for a balance holding
+            nothing.
     """
 
     kismet: Kismet
@@ -63,6 +66,44 @@ class Balance:
             raise ValueError(
                 f'A balance\'s "{_LAST_WON}" must not be negative, got {self.last_won}'
             )
+
+        if self.last_won is not None and self.kismet == Kismet(0):
+            raise ValueError(
+                f'A balance holding no Kismet has no "{_LAST_WON}", got {self.last_won}'
+            )
+
+    def sent(self, amount: Kismet) -> Balance:
+        """This balance less ``amount``: its ``last_won`` as it was, or ``None`` if nothing is left.
+
+        Raises:
+            ValueError: ``amount`` is more than it holds.
+        """
+        if amount == Kismet(0):
+            return self
+
+        left = self.kismet - amount
+        return Balance(left, None if left == Kismet(0) else self.last_won)
+
+    def received(self, amount: Kismet, generation: int) -> Balance:
+        """This balance and ``amount``, received as if won in generation ``generation`` (§5.3).
+
+        Its ``last_won`` moves toward ``generation`` by ``amount``'s share of
+        what it then holds, rounded up, so that rounding never makes what it
+        holds older. One holding nothing takes ``generation``.
+
+        Raises:
+            ValueError: it would hold more than there can be.
+        """
+        if amount == Kismet(0):
+            return self
+
+        held = self.kismet + amount
+
+        if self.last_won is None:
+            return Balance(held, generation)
+
+        weighted = self.kismet.count * self.last_won + amount.count * generation
+        return Balance(held, -(-weighted // held.count))
 
     @classmethod
     def from_value(cls, value: object, *, named: str = "A balance") -> Balance:
@@ -92,8 +133,8 @@ class Balance:
         return {_KISMET: self.kismet.value(), _LAST_WON: self.last_won}
 
 
-#: The balance of an identity stated nowhere: it holds nothing, and has won
-#: nothing (KarmaLedger §5.3).
+#: The balance of an identity stated nowhere, and of every one holding
+#: nothing: it holds nothing, and has no ``last_won`` (KarmaLedger §5.3).
 NO_BALANCE: Final = Balance(Kismet(0))
 
 

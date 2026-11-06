@@ -24,8 +24,9 @@ node holds it, which its builder's copy, compressed otherwise, may not be
 (§5.4). The root's validation block is checked by its shape, and one at its
 target that is not the root's is passed over (§7.3). Of a generation's
 correct blocks, the best adds the most weight to the chain, its work times
-its total effective stake (§3.3), then shares the most bits with its target
-hash, then holds the greatest stake, then has the id that sorts first.
+what its total effective stake counts against the stake baseline (§3.3),
+then shares the most bits with its target hash, then holds the greatest
+stake, then has the id that sorts first.
 
 The chain is read through a :class:`~libranet.karma.checking.ChainView`, and
 the transaction blocks at the same generation's target are given as the
@@ -52,9 +53,9 @@ from libranet.karma.blocks import (
 from libranet.karma.checking import ChainView, TransactionBlockCheck
 from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets
-from libranet.karma.ledger import Reward, StakeWeight
+from libranet.karma.ledger import Reward, StakeAge
 from libranet.karma.reading import HeldBlock
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import NO_STAKE_BASELINE, ChainWeight, StakeBaseline
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import Balance
 
@@ -85,8 +86,8 @@ class ValidationScore:
     ``weight`` is what its generation adds to the chain's weight (§3.3): its
     own drop's, and that of the transaction block it validates. ``bits`` are
     those its drop shares with its target hash, and ``stake`` its total
-    effective stake, in tenths of a Kismet: the sum, over its stakes, of each
-    one's Kismet times its staker's weight (§6.6). One score is above another
+    effective stake, in Kismet × generations: the sum, over its stakes, of
+    each one's Kismet times its staker's age, up to the age limit (§6.6). One score is above another
     with more weight, of as much, with more bits, and of as many, with more
     stake. Of two blocks scoring alike, the one whose id sorts first is the
     better (:meth:`ValidationBlockCheck.best`), so the best is on the heaviest
@@ -99,16 +100,25 @@ class ValidationScore:
 
     @classmethod
     def of(
-        cls, validated_id: ContentId, named_for: ContentId | None, bits: int, stake: int
+        cls,
+        validated_id: ContentId,
+        named_for: ContentId | None,
+        bits: int,
+        stake: int,
+        *,
+        baseline: StakeBaseline = NO_STAKE_BASELINE,
     ) -> ValidationScore:
         """The score of a block sharing ``bits``, and holding ``stake``.
 
         It validates transaction block ``validated_id``, at the target named
-        for validation block ``named_for``, or the root's, if that is ``None``.
+        for validation block ``named_for``, or the root's, if that is ``None``,
+        which states ``baseline``, against which ``stake`` counts in the
+        weight it adds (§3.3).
         """
         target = GenerationTargets.built_on(named_for).transaction
         validated = ChainWeight.of_drop(validated_id, target)
-        return cls(validated + ChainWeight.of_staked(bits, stake), bits, stake)
+        counted = baseline.counted(stake)
+        return cls(validated + ChainWeight.of_staked(bits, counted), bits, stake)
 
 
 @dataclass(frozen=True)
@@ -380,7 +390,7 @@ class ValidationBlockCheck:
 
     @property
     def stake(self) -> int:
-        """Its total effective stake, in tenths of a Kismet, if it is correct, or else 0 (§6.6)."""
+        """Its total effective stake, in Kismet × generations, if it is correct, else 0 (§6.6)."""
         return 0 if self.score is None else self.score.stake
 
     @classmethod
@@ -640,11 +650,19 @@ class ValidationBlockCheck:
         if incorrect:
             return cls(checking.block_id, drop, None, incorrect)
 
-        stake = sum(StakeWeight.effective_stakes(drop.block, balances).values())
+        stake = sum(
+            StakeAge.effective_stakes(drop.block, balances, validated.drop.block.age_limit).values()
+        )
         return cls(
             checking.block_id,
             drop,
-            ValidationScore.of(validated_id, checking.named_for, bits, stake),
+            ValidationScore.of(
+                validated_id,
+                checking.named_for,
+                bits,
+                stake,
+                baseline=validated.drop.block.stake_baseline,
+            ),
         )
 
     @staticmethod

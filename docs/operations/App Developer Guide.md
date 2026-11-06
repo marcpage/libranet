@@ -1440,8 +1440,9 @@ follows, its own balance there, and how many identities hold Kismet:
 
 `kismet` is how many Kismet it holds, 10^14 to a Karma, written as decimal
 digits, since a JavaScript number holds no whole number above 2^53 exactly:
-read it with `BigInt`. `last_won` is the generation whose reward last paid
-it, or `null`. Each balance is the chain's at the head, with the head's
+read it with `BigInt`. `last_won` is the generation its Kismet has aged
+since: the generation whose reward last paid it a share as a staker, moved
+later by what it has received since, or `null` when it holds nothing. Each balance is the chain's at the head, with the head's
 reward paid, so whoever that reward pays holds it at once, the creator of a
 root its 20 Karma among them. `GET /data/karma/balances/{id}` gives anyone's
 balance, as the chain states it at the same head,

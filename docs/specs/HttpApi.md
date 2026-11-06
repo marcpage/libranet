@@ -1778,7 +1778,7 @@ A node's Karma, and any identity's, is its balance as the chain the node
 follows states it
 ([Karma Ledger §5.3](KarmaLedger.md#53-balances-and-reach)): the latest
 stated of it in the head's transaction block, or in those before it as far
-back as that block's reach, or ten blocks, whichever is further, with the
+back as that block's reach, with the
 reward of the head's validation block paid, as the next generation's
 transactions are checked against it
 ([Karma Ledger §2](KarmaLedger.md#2-relationship-to-other-documents)). So
@@ -1802,8 +1802,10 @@ GET /data/karma
 and `weight` the chain's weight through it, in decimal digits (Karma Ledger
 §3.3). `balance` is the balance of the node, `node_id`, as the chain states
 it at that head, its reward paid: `kismet` is the Kismet it holds, in
-decimal digits, and `last_won` the generation whose reward last paid it, or
-`null` if none has. `holders` is how many identities hold Kismet in those
+decimal digits, and `last_won` the effective generation it last won, the
+generation whose reward last paid it a share as a staker, moved later by the
+Kismet it has received since (Karma Ledger §5.3), or `null` if it holds
+nothing. `holders` is how many identities hold Kismet in those
 balances, which sets how large a block of the next generation must be to be
 full (Karma Ledger §5.4).
 

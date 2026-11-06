@@ -31,7 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from fractions import Fraction
-from functools import total_ordering
+from functools import cached_property, total_ordering
 from typing import Collection, Mapping, Protocol
 
 from libranet.cas.content_id import ContentId
@@ -47,9 +47,9 @@ from libranet.karma.blocks import (
 )
 from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets
-from libranet.karma.ledger import BalanceSheet, Reward, StakeWeight, reach_of
+from libranet.karma.ledger import AGE_LIMIT_FLOOR, BalanceSheet, Reward, StakeAge, reach_of
 from libranet.karma.reading import HeldBlock
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import NO_BALANCE, Balance
 from libranet.protocol.karma_transactions import Payout, SignedTransaction, TransactionKey
@@ -90,22 +90,44 @@ class ChainBefore:
         """The generation built on it: one more than its validation block's."""
         return self.validation.block.generation + 1
 
-    @property
-    def weight(self) -> ChainWeight:
-        """The chain's weight through it, which a block built on it states (§3.3, §5.1).
+    @cached_property
+    def stake(self) -> int:
+        """Its validation block's total effective stake, read once (§6.6).
 
-        Its validation block's drop is weighed by its stakes' effective stake,
-        each staker's balance read as the block it validates leaves it (§6.6).
+        Each staker's balance is read as the block it validates leaves it,
+        and its age counted up to the age limit that block states.
 
         Raises:
             MissingContentError: names the blocks ``chain`` lacks.
         """
-        stakes = StakeWeight.effective_stakes(
-            self.validation.block, self.chain.balances(self.stakers(), self.generation - 1)
+        stakes = StakeAge.effective_stakes(
+            self.validation.block,
+            self.chain.balances(self.stakers(), self.generation - 1),
+            self.validated.age_limit,
         )
-        return self.validated.weight_through(
-            self.validated_id, self.validation_id, sum(stakes.values())
-        )
+        return sum(stakes.values())
+
+    @property
+    def weight(self) -> ChainWeight:
+        """The chain's weight through it, which a block built on it states (§3.3, §5.1).
+
+        Its validation block's drop is weighed by what its total effective
+        stake counts against the stake baseline the block it validates
+        states.
+
+        Raises:
+            MissingContentError: names the blocks ``chain`` lacks.
+        """
+        return self.validated.weight_through(self.validated_id, self.validation_id, self.stake)
+
+    @property
+    def stake_baseline(self) -> StakeBaseline:
+        """The stake baseline a block built on it states, after its validation block's (§3.3).
+
+        Raises:
+            MissingContentError: names the blocks ``chain`` lacks.
+        """
+        return self.validated.stake_baseline.after(self.stake, self.generation - 1)
 
     def stakers(self) -> set[ContentId]:
         """The stakers of its validation block, whom its reward pays (§6.6)."""
@@ -141,8 +163,22 @@ class ChainBefore:
         """
         last = self.generation - 1
         payout = self.payout(self.chain.balances(self.stakers(), last))
-        block = TransactionBlock(self.generation, self.validation_id, self.weight, 0, (payout,), {})
-        return BalanceSheet.of(block, self.chain.balances(block.named() | set(identities), last))
+        # Only its balances are read, so its age limit and stake baseline are any.
+        block = TransactionBlock(
+            self.generation,
+            self.validation_id,
+            self.weight,
+            0,
+            (payout,),
+            {},
+            AGE_LIMIT_FLOOR,
+            StakeBaseline(0),
+        )
+        return BalanceSheet.of(
+            block,
+            self.chain.balances(block.named() | set(identities), last),
+            stakers=self.stakers(),
+        )
 
     def holders(self) -> int:
         """How many identities hold Kismet in the balances a block built on it is checked against.
@@ -197,8 +233,8 @@ class ChainBefore:
         """What ``block``, read at the target named for it, states falsely of it, or ``""``.
 
         ``block``, whose ``previous`` names its validation block, must be one
-        generation after it, and its ``weight`` must be the chain's through
-        it (§3.8, §5.1).
+        generation after it, its ``weight`` must be the chain's through it,
+        and its ``stake_baseline`` the one after it (§3.3, §3.8, §5.1).
         """
         if block.generation != self.generation:
             return (
@@ -212,6 +248,14 @@ class ChainBefore:
             return (
                 f'A transaction block\'s "weight" must be {weight.value()}, '
                 f"got {block.weight.value()}"
+            )
+
+        baseline = self.stake_baseline
+
+        if block.stake_baseline != baseline:
+            return (
+                f'A transaction block\'s "stake_baseline" must be {baseline.value()}, '
+                f"got {block.stake_baseline.value()}"
             )
 
         return ""
@@ -607,13 +651,16 @@ class TransactionBlockCheck:
             and signed[0].transaction.is_root
             and signed[0].transaction.sender == creator
             and dict(block.balances) == {creator: NO_BALANCE}
+            and block.age_limit == AGE_LIMIT_FLOOR
+            and block.stake_baseline == StakeBaseline(0)
         )
 
         if not shaped:
             return BlockFinding(
                 "A transaction block at the root's target must be generation 0, built on none, "
-                "of weight 0 and reach 0, holding only its builder's transaction sending "
-                "themselves 0, and stating its builder holding 0",
+                f"of weight 0, stake baseline 0, reach 0, and age limit {AGE_LIMIT_FLOOR}, "
+                "holding only its builder's transaction sending themselves 0, and stating its "
+                "builder holding 0",
                 creator,
             )
 
@@ -647,17 +694,21 @@ class TransactionBlockCheck:
         if statement:
             return BlockFinding(statement, drop.builder)
 
-        sheet = BalanceSheet.of(block, balances)
+        sheet = BalanceSheet.of(block, balances, stakers=before.stakers())
         verdicts = {
             signed.hash: TransactionVerdict.of(signed, sheet, before.chain)
             for signed in block.signed
         }
-        statement = cls._false_statement(sheet, verdicts) or before.false_reach(block)
+        holders = before.holders()
+        statement = (
+            cls._false_statement(sheet, verdicts)
+            or before.false_reach(block)
+            or cls._false_age_limit(block, sheet.holders_after(holders))
+        )
 
         if statement:
             return BlockFinding(statement, drop.builder)
 
-        holders = before.holders()
         full = bounds.is_full(compressed_bytes, holders)
         otherwise = cls._incorrect(sheet, verdicts)
 
@@ -674,6 +725,22 @@ class TransactionBlockCheck:
             return cls(drop, None, otherwise, True, False)
 
         return cls(drop, BlockScore.of(block, bits, before.chain))
+
+    @staticmethod
+    def _false_age_limit(block: TransactionBlock, holders: int) -> str:
+        """What ``block`` states falsely of its ``age_limit``, ``holders`` holding Kismet after it.
+
+        That is ``""`` when it states it truly (§6.6).
+        """
+        limit = StakeAge.limit(holders)
+
+        if block.age_limit != limit:
+            return (
+                f'A transaction block\'s "age_limit" must be {limit}, as {holders} hold Kismet '
+                f"after it, got {block.age_limit}"
+            )
+
+        return ""
 
     @staticmethod
     def _false_statement(sheet: BalanceSheet, verdicts: Mapping[str, TransactionVerdict]) -> str:

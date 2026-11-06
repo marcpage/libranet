@@ -11,9 +11,13 @@ common ancestor, or to a root. Each transaction block's ``generation`` and
 ``weight``, and each validation block's ``generation``, are checked against
 the validation block before, as the blocks are read, their signatures not
 yet checked, so that a false one is found where it is first stated, and
-nothing before it is read (:class:`FalseStatement`). Until its stakers'
+nothing before it is read (:class:`FalseStatement`). Each transaction
+block's ``stake_baseline`` is checked so too, against the most the validation
+block before lets it rise to, and exactly at the ancestor, so that a claim
+cannot raise what its validation blocks may count. Until its stakers'
 balances are read, a validation block's effective stake is known only to be
-no more than its stakes would be with each staker weighing whole (§6.6), so
+no more than its stakes would be with each staker as old as the age limit
+lets it count (§6.6), so
 a ``weight`` stated after one not in the history is checked against that,
 and checked whole as the claim is checked forward.
 
@@ -44,10 +48,9 @@ from libranet.karma.blocks import (
 )
 from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.history import ChainGeneration, ChainHistory
-from libranet.karma.ledger import WEIGHT_GENERATIONS
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.validating import ValidationBlockCheck
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.protocol.karma_transactions import TransactionKey
 
 
@@ -72,9 +75,12 @@ class ClaimedGeneration:
     Validation block ``validation``, of generation ``validation_generation``,
     stakes on transaction block ``transaction``, of generation
     ``generation``, built on validation block ``previous``, and stating that
-    the chain before it weighs ``weight``. The chain through the two weighs
-    no more than ``through``, as they claim: what it would if each of the
-    validation block's stakers weighed whole (§6.6).
+    the chain before it weighs ``weight``, and its stake baseline
+    ``stake_baseline``. The chain through the two weighs no more than
+    ``through``, as they claim: what it would if each of the validation
+    block's stakers were as old as the age limit the transaction block
+    states lets it count (§6.6); and the next generation's stake baseline is
+    no more than ``baseline_through`` (§3.3).
     """
 
     validation: ContentId
@@ -84,6 +90,8 @@ class ClaimedGeneration:
     previous: ContentId | None
     weight: ChainWeight
     through: ChainWeight
+    stake_baseline: StakeBaseline
+    baseline_through: StakeBaseline
 
     @classmethod
     def read(cls, chain: HeldChain, validation_id: ContentId) -> ClaimedGeneration | FalseStatement:
@@ -109,7 +117,7 @@ class ClaimedGeneration:
 
         transaction_id = validation.stakes[0].stake.transaction_block
         transaction = chain.transaction(transaction_id).block
-        most = WEIGHT_GENERATIONS * sum(stake.stake.kismet.count for stake in validation.stakes)
+        most = transaction.age_limit * sum(stake.stake.kismet.count for stake in validation.stakes)
         return cls(
             validation_id,
             validation.generation,
@@ -118,16 +126,19 @@ class ClaimedGeneration:
             transaction.previous,
             transaction.weight,
             transaction.weight_through(transaction_id, validation_id, most),
+            transaction.stake_baseline,
+            transaction.stake_baseline.after(most, transaction.generation),
         )
 
     def false_on(
-        self, before: int, weight: ChainWeight, *, at_most: bool = False
+        self, before: int, weight: ChainWeight, baseline: StakeBaseline, *, at_most: bool = False
     ) -> FalseStatement | None:
         """What it states falsely, built on a validation block of generation ``before``, or None.
 
-        The chain through that block weighs ``weight``, or, ``at_most``, no
-        more than that. For a root, built on none, ``before`` is -1, and
-        ``weight`` 0 (§7.2, §7.3).
+        The chain through that block weighs ``weight``, and the stake
+        baseline after it is ``baseline``, or, ``at_most``, no more than
+        those. For a root, built on none, ``before`` is -1, ``weight`` 0, and
+        ``baseline`` 0 (§3.3, §7.2, §7.3).
         """
         generation = before + 1
         named = "the root's" if self.previous is None else f"one more than that of {self.previous}"
@@ -151,6 +162,14 @@ class ClaimedGeneration:
                 self.transaction,
                 f'A transaction block\'s "weight" must be {"at most " if at_most else ""}'
                 f"{weight.value()}, got {self.weight.value()}",
+            )
+
+        if self.stake_baseline > baseline or (not at_most and self.stake_baseline != baseline):
+            return FalseStatement(
+                self.transaction,
+                f'A transaction block\'s "stake_baseline" must be '
+                f'{"at most " if at_most else ""}{baseline.value()}, got '
+                f"{self.stake_baseline.value()}",
             )
 
         return None
@@ -398,13 +417,14 @@ class HeadClaim:
             ancestor = last.generation - 1
 
             if last.previous is None:
-                ancestor, weight = -1, ChainWeight(0)
+                ancestor, weight, baseline = -1, ChainWeight(0), StakeBaseline(0)
 
             elif (
                 0 <= ancestor < len(history)
                 and history.generation(ancestor).validation == last.previous
             ):
                 weight = history.generation(ancestor).weight
+                baseline = history.generation(ancestor).stake_baseline
 
             else:
                 before = ClaimedGeneration.read(chain, last.previous)
@@ -412,7 +432,12 @@ class HeadClaim:
                 if isinstance(before, FalseStatement):
                     return before
 
-                false = last.false_on(before.validation_generation, before.through, at_most=True)
+                false = last.false_on(
+                    before.validation_generation,
+                    before.through,
+                    before.baseline_through,
+                    at_most=True,
+                )
 
                 if false is not None:
                     return false
@@ -420,7 +445,7 @@ class HeadClaim:
                 self.walked.append(before)
                 continue
 
-            false = last.false_on(ancestor, weight)
+            false = last.false_on(ancestor, weight, baseline)
 
             if false is not None:
                 return false

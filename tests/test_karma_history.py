@@ -16,7 +16,8 @@ from libranet.json_format import compact_json
 from libranet.karma.blocks import TransactionBlock, ValidationBlock
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
-from libranet.karma.weight import ChainWeight
+from libranet.karma.ledger import AGE_LIMIT_FLOOR
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import NO_BALANCE
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction, TransactionKey
@@ -48,6 +49,7 @@ def generation(
         ChainWeight(10 * (number + 1)),
         keys,
         witnessed,
+        StakeBaseline(7 * (number + 1)),
     )
 
 
@@ -100,6 +102,7 @@ def test_a_generation_added_is_written_with_the_genealogy_and_the_head(
         "validation": str(written.validation),
         "transaction": str(written.transaction),
         "weight": "40",
+        "stake_baseline": "28",
         "keys": [{"from": str(ALICE), "created": "2026-10-21T14:03:02Z"}],
         "witnessed": ["d" * 64],
     }
@@ -295,7 +298,7 @@ def test_a_generation_is_neither_negative_nor_held_when_not_in_the_history(
     chain: ChainHistory,
 ) -> None:
     with raises(ValueError, match="must not be negative"):
-        ChainGeneration(-1, ALICE, BOB, ChainWeight(0), (), ())
+        ChainGeneration(-1, ALICE, BOB, ChainWeight(0), (), (), StakeBaseline(0))
 
     with raises(IndexError, match="holds 3 generations, not 3"):
         chain.generation(3)
@@ -313,16 +316,32 @@ def test_the_roots_generation_weighs_both_its_drops_and_keeps_its_key() -> None:
     creator = new_identity()
     root = Transaction(creator.node_id, {creator.node_id: Kismet(0)}, Kismet(0), 0, CREATED)
     signed = SignedTransaction.of(creator.signed(root.text()))
-    block = TransactionBlock(0, None, ChainWeight(0), 0, (signed,), {creator.node_id: NO_BALANCE})
+    block = TransactionBlock(
+        0,
+        None,
+        ChainWeight(0),
+        0,
+        (signed,),
+        {creator.node_id: NO_BALANCE},
+        AGE_LIMIT_FLOOR,
+        StakeBaseline(0),
+    )
     validation = ValidationBlock(0, None, (), ("e" * 64,))
     targets = GenerationTargets.root()
     block_id = matching(targets.transaction, 3)
     validation_id = matching(targets.validation, 5)
 
     assert ChainGeneration.of(validation_id, validation, block_id, block, 0) == ChainGeneration(
-        0, validation_id, block_id, ChainWeight(2**3 + 2**5), (root.key,), ("e" * 64,)
+        0,
+        validation_id,
+        block_id,
+        ChainWeight(2**3 + 2**5),
+        (root.key,),
+        ("e" * 64,),
+        StakeBaseline(0),
     )
-    # A stake times its validation block's drop.
-    assert ChainGeneration.of(validation_id, validation, block_id, block, 7).weight == ChainWeight(
-        2**3 + 2**5 * 7
-    )
+    # A stake times its validation block's drop, and the next stake baseline
+    # that stake, as the root's baseline is 0.
+    staked = ChainGeneration.of(validation_id, validation, block_id, block, 7)
+    assert staked.weight == ChainWeight(2**3 + 2**5 * 7)
+    assert staked.stake_baseline == StakeBaseline(7)

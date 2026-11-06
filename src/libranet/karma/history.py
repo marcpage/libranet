@@ -7,10 +7,11 @@ The module keeps it in files of its own, in ``storage.karma_dir``:
 - ``generations/{g}.json``: what a check of a later block reads of
   generation g (:class:`ChainGeneration`): its validation block, the
   transaction block that validates, the chain's weight through the two, the
-  keys of that block's transactions (§4.4), and the hashes its validation
-  block witnesses (§6.4)::
+  stake baseline after them (§3.3), the keys of that block's transactions
+  (§4.4), and the hashes its validation block witnesses (§6.4)::
 
       {"validation": "sha256/…", "transaction": "sha256/…", "weight": "40",
+       "stake_baseline": "52000",
        "keys": [{"from": "sha256/…", "created": "2026-10-21T14:03:22Z"}],
        "witnessed": ["…"]}
 
@@ -45,7 +46,7 @@ from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
 from libranet.json_format import compact_json
 from libranet.karma.blocks import TransactionBlock, ValidationBlock
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.protocol.karma_head import (
     KARMA_HEAD_FILE,
     TRANSACTION_FIELD,
@@ -63,6 +64,7 @@ _LOGGER = getLogger(__name__)
 _GENEALOGY: Final = "genealogy"
 
 # The members of a generation's file the web server does not read.
+_STAKE_BASELINE: Final = "stake_baseline"
 _KEYS: Final = "keys"
 _WITNESSED: Final = "witnessed"
 
@@ -75,7 +77,8 @@ class ChainGeneration:
     transaction block ``transaction``, and the chain through the two weighs
     ``weight`` (§3.5). ``keys`` are those of that block's transactions, its
     payout aside (§4.2), and ``witnessed`` the hashes its validation block
-    lists (§6.4).
+    lists (§6.4). ``stake_baseline`` is the next generation's, which, as
+    ``weight``, the next transaction block states (§3.3).
 
     Raises:
         ValueError: ``generation`` is negative.
@@ -87,6 +90,7 @@ class ChainGeneration:
     weight: ChainWeight
     keys: tuple[TransactionKey, ...]
     witnessed: tuple[str, ...]
+    stake_baseline: StakeBaseline
 
     def __post_init__(self) -> None:
         if self.generation < 0:
@@ -104,7 +108,7 @@ class ChainGeneration:
         """The generation in which validation block ``validation_id`` validates ``transaction_id``.
 
         ``validation_id`` is the generation's winning validation block, and
-        ``stake`` its total effective stake, in tenths of a Kismet (§6.6).
+        ``stake`` its total effective stake, in Kismet × generations (§6.6).
         """
         return cls(
             validation.generation,
@@ -113,6 +117,7 @@ class ChainGeneration:
             transaction.weight_through(transaction_id, validation_id, stake),
             tuple(signed.transaction.key for signed in transaction.signed),
             validation.witnessed,
+            transaction.stake_baseline.after(stake, validation.generation),
         )
 
     @classmethod
@@ -146,6 +151,9 @@ class ChainGeneration:
             ),
             tuple(TransactionKey.from_value(key) for key in keys),
             tuple(witnessed),
+            StakeBaseline.from_value(
+                value.get(_STAKE_BASELINE), named=f'A generation\'s "{_STAKE_BASELINE}"'
+            ),
         )
 
     @classmethod
@@ -175,6 +183,7 @@ class ChainGeneration:
             VALIDATION_FIELD: str(self.validation),
             TRANSACTION_FIELD: str(self.transaction),
             WEIGHT_FIELD: self.weight.value(),
+            _STAKE_BASELINE: self.stake_baseline.value(),
             _KEYS: [key.value() for key in self.keys],
             _WITNESSED: list(self.witnessed),
         }

@@ -35,7 +35,7 @@ from libranet.karma.carried import CarriedTransactions
 from libranet.karma.checking import ChainBefore, ChainView, TransactionVerdict
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainHistory
-from libranet.karma.ledger import BalanceSheet
+from libranet.karma.ledger import AGE_LIMIT_FLOOR, BalanceSheet, StakeAge
 from libranet.karma.placing import BlockPlacing
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.protocol.karma_amounts import Kismet
@@ -78,14 +78,22 @@ class OwnBlock:
             0,
             tuple(sorted((payout, signed), key=lambda entry: entry.hash)),
             {},
+            AGE_LIMIT_FLOOR,
+            before.stake_baseline,
         )
-        sheet = BalanceSheet.of(block, chain.balances(block.named(), last))
+        sheet = BalanceSheet.of(
+            block, chain.balances(block.named(), last), stakers=before.stakers()
+        )
         verdict = TransactionVerdict.of(signed, sheet, chain)
 
         if verdict is not TransactionVerdict.VALID:
             return cls(signed, verdict, None)
 
-        stated = replace(block, balances=sheet.after)
+        stated = replace(
+            block,
+            balances=sheet.after,
+            age_limit=StakeAge.limit(sheet.holders_after(before.holders())),
+        )
         return cls(signed, verdict, replace(stated, reach=before.reach(stated)))
 
 

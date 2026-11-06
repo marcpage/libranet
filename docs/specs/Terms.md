@@ -94,6 +94,18 @@ average age of its transactions.
 - **See also:** [Generation](#generation), [Scoring](#scoring),
   [Transaction](#transaction), [Witnessed](#witnessed).
 
+### Age Limit
+
+The most generations of stake age that count in a Karma validation block, as
+the transaction block it validates states: max(10, ⌊100 × holders ÷ 5000⌋),
+holders being the identities holding Kismet after that block. It lets a staker
+holding a hundredth of the average stake wait long enough to win, once more
+stake than fit in a validation block.
+
+- **Sources:** [Karma Ledger §5.1](KarmaLedger.md#51-contents),
+  [§6.6](KarmaLedger.md#66-the-reward).
+- **See also:** [Effective Stake](#effective-stake), [Stake Age](#stake-age).
+
 ### Amount
 
 A quantity of Kismet in the Karma ledger, written as a string of decimal digits
@@ -269,8 +281,9 @@ it is lost, the node can no longer decrypt its backups.
 
 In the Karma ledger, the JSON object
 `{"kismet": amount, "last_won": generation}`: the Kismet an identity holds, and
-the generation of the last validation block whose reward paid it. A transaction
-block states, as of its end, the balance of every sender and recipient in it.
+the effective generation it last won, or `null` when it holds nothing. A
+transaction block states, as of its end, the balance of every sender and
+recipient in it.
 
 - **Sources:** [Karma Ledger §5.3](KarmaLedger.md#53-balances-and-reach).
 - **See also:** [Amount](#amount), [Kismet](#kismet), [Last Won](#last-won),
@@ -636,6 +649,16 @@ covered, its runner-up is allowed, and it fits in 1 MiB compressed.
 
 See [ARGON2ID](#argon2id).
 
+### Counted Stake
+
+What a Karma validation block's total effective stake counts in its chain's
+weight: no more than twice the stake baseline its transaction block states, or
+all of it while that is 0, so that stake saved up cannot stand in for work.
+
+- **Sources:** [Karma Ledger §3.3](KarmaLedger.md#33-the-heaviest-chain).
+- **See also:** [Effective Stake](#effective-stake),
+  [Stake Baseline](#stake-baseline).
+
 ### Covering Stakes
 
 The rule that a staker's stakes in one validation block together may not exceed
@@ -861,13 +884,15 @@ node's HTTP message signatures, and the bundles it signs, use it.
 
 ### Effective Stake
 
-A stake's Kismet times its staker's weight: a tenth for each generation since
-the staker last won, up to the whole after ten, and the whole for one that
-never has. It ranks validation blocks after proof of work, and divides the pot.
+A stake's Kismet times its staker's stake age: the generations since its
+`last_won`, up to the age limit, in Kismet × generations. It ranks validation
+blocks after proof of work, counted against the stake baseline, and divides the
+pot whole.
 
 - **Sources:** [Karma §23](Karma.md#23-stake-and-recent-winners),
   [Karma Ledger §6.6](KarmaLedger.md#66-the-reward).
-- **See also:** [Last Won](#last-won), [Pot](#pot),
+- **See also:** [Age Limit](#age-limit), [Counted Stake](#counted-stake),
+  [Last Won](#last-won), [Pot](#pot), [Stake Age](#stake-age),
   [Recent Winner](#recent-winner), [Share](#share), [Stake](#stake).
 
 ### Encrypted Block
@@ -1420,9 +1445,12 @@ nothing places it yet.
 
 ### Last Won
 
-A Karma balance's `last_won`: the generation of the last validation block whose
-reward paid the identity, or `null`. It sets the weight of the identity's
-stakes.
+A Karma balance's `last_won`: the effective generation the identity last won.
+It is the generation of the last validation block whose reward paid it a share
+as a staker, moved later by the Kismet it has received since, by amount, as if
+each were won in the generation before the block paying it; `null` when it
+holds nothing. It sets the stake age of the identity's stakes, so a transfer
+never adds to anyone's.
 
 - **Sources:** [Karma Ledger §5.3](KarmaLedger.md#53-balances-and-reach),
   [§6.6](KarmaLedger.md#66-the-reward).
@@ -2179,8 +2207,9 @@ an application. Any client may, and every response is sandboxed.
 
 ### Recent Winner
 
-A staker that won a validation recently. Its stakes weigh less, a tenth for
-each generation since it won, which spreads rewards among participants.
+A staker that won a validation recently. Its stakes weigh less, its stake age
+growing a generation for each generation since it won, which spreads rewards
+among participants: a staker that waits is paid for the wait when it wins.
 
 - **Sources:** [Karma §23](Karma.md#23-stake-and-recent-winners),
   [Karma Ledger §6.6](KarmaLedger.md#66-the-reward).
@@ -2594,6 +2623,16 @@ candidate blocks.
   [Runner-Up](#runner-up), [Staker](#staker),
   [Validation Block](#validation-block).
 
+### Stake Age
+
+How many generations a Karma staker's stakes count for: the generations since
+its `last_won`, up to the age limit, and 0 for one holding nothing. Distinct
+from a transaction's age.
+
+- **Sources:** [Karma Ledger §6.6](KarmaLedger.md#66-the-reward).
+- **See also:** [Age](#age), [Age Limit](#age-limit),
+  [Effective Stake](#effective-stake), [Last Won](#last-won).
+
 ### Stake Aggregation
 
 Combining stakes into large candidate positions, whose effect on winning and on
@@ -2601,6 +2640,18 @@ runner-up exposure is still to be simulated.
 
 - **Sources:** [Karma §36.7](Karma.md#367-stake-aggregation).
 - **See also:** [Stake](#stake), [Stake Splitting](#stake-splitting).
+
+### Stake Baseline
+
+What a Karma validation block's total effective stake counts against in its
+chain's weight, as the transaction block it validates states: a running average
+of what the chain's recent winning validation blocks counted, over up to 1,000
+generations, and 0 in the root and generation 1.
+
+- **Sources:** [Karma Ledger §3.3](KarmaLedger.md#33-the-heaviest-chain),
+  [§5.1](KarmaLedger.md#51-contents).
+- **See also:** [Counted Stake](#counted-stake),
+  [Effective Stake](#effective-stake).
 
 ### Stake Splitting
 

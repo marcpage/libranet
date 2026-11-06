@@ -6,7 +6,8 @@ signed stakes on one transaction block. A block is a signed bundle, signed by
 its builder, whose ``contents`` is JSON (§5.1, §6.1)::
 
     {"generation": 42, "previous": "sha256/…", "weight": "1288490188800",
-     "reach": 3, "transactions": […], "balances": {"sha256/0a1b…":
+     "stake_baseline": "52000", "age_limit": 10, "reach": 3,
+     "transactions": […], "balances": {"sha256/0a1b…":
      {"kismet": "1250000", "last_won": 40}}}
 
     {"generation": 42, "runner_up": "sha256/…", "stakes": […],
@@ -55,7 +56,7 @@ from libranet.json_fields import integer_field
 from libranet.json_format import compact_json
 from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.karma_amounts import Kismet
@@ -89,6 +90,8 @@ HOLDER_BLOCK_BYTES: Final = 8 * KIB
 _GENERATION: Final = "generation"
 _PREVIOUS: Final = "previous"
 _WEIGHT: Final = "weight"
+_STAKE_BASELINE: Final = "stake_baseline"
+_AGE_LIMIT: Final = "age_limit"
 _REACH: Final = "reach"
 _TRANSACTIONS: Final = "transactions"
 _BALANCES: Final = "balances"
@@ -117,15 +120,19 @@ class TransactionBlock:
     ``previous`` is ``None`` in the root alone. ``weight`` is the chain's
     before it, and ``reach`` how many blocks back every balance is stated.
     ``transactions`` are sorted by hash, the payout among them, and
-    ``balances`` are each identity's after them all.
+    ``balances`` are each identity's after them all. ``age_limit`` is the
+    most generations of a staker's age that count in the validation blocks
+    staking on it, as set by how many hold Kismet after it (§6.6), and
+    ``stake_baseline`` what their total effective stake counts against in
+    the chain's weight (§3.3).
 
     Raises:
         ValueError: it states something false by itself (§3.8):
-            ``generation`` or ``reach`` is negative; its transactions are out
-            of order or repeated, or two share a key; it holds no payout after
-            the root, one in the root, more than one, or one of another
-            generation; a transaction moves 0 Kismet outside the root; or it
-            states more balances than §5.3 allows.
+            ``generation``, ``reach``, or ``age_limit`` is negative; its
+            transactions are out of order or repeated, or two share a key; it
+            holds no payout after the root, one in the root, more than one,
+            or one of another generation; a transaction moves 0 Kismet
+            outside the root; or it states more balances than §5.3 allows.
     """
 
     generation: int
@@ -134,12 +141,14 @@ class TransactionBlock:
     reach: int
     transactions: tuple[SignedTransaction | Payout, ...]
     balances: Mapping[ContentId, Balance]
+    age_limit: int
+    stake_baseline: StakeBaseline
 
     def __post_init__(self) -> None:
-        if self.generation < 0 or self.reach < 0:
+        if self.generation < 0 or self.reach < 0 or self.age_limit < 0:
             raise ValueError(
-                f'A transaction block\'s "{_GENERATION}" and "{_REACH}" must not be negative, '
-                f"got {self.generation} and {self.reach}"
+                f'A transaction block\'s "{_GENERATION}", "{_REACH}", and "{_AGE_LIMIT}" must '
+                f"not be negative, got {self.generation}, {self.reach}, and {self.age_limit}"
             )
 
         _check_sorted([transaction.hash for transaction in self.transactions], _TRANSACTIONS)
@@ -214,6 +223,8 @@ class TransactionBlock:
             integer_field(value, _REACH),
             tuple(_transaction(entry) for entry in _list_member(value, _TRANSACTIONS)),
             stated,
+            integer_field(value, _AGE_LIMIT),
+            StakeBaseline.from_value(value.get(_STAKE_BASELINE), named=f'"{_STAKE_BASELINE}"'),
         )
 
     def value(self) -> dict[str, Any]:
@@ -222,6 +233,8 @@ class TransactionBlock:
             _GENERATION: self.generation,
             _PREVIOUS: None if self.previous is None else str(self.previous),
             _WEIGHT: self.weight.value(),
+            _STAKE_BASELINE: self.stake_baseline.value(),
+            _AGE_LIMIT: self.age_limit,
             _REACH: self.reach,
             _TRANSACTIONS: [transaction.value() for transaction in self.transactions],
             _BALANCES: {
@@ -279,18 +292,20 @@ class TransactionBlock:
         """The chain's weight through this block, ``block_id``, and the block validating it.
 
         That is its ``weight``, the chain's before it, 2^b for its own drop,
-        and 2^b times ``stake`` for validation block ``validation_id``'s, each
-        drop matching b bits of its target hash, ``stake`` being that block's
-        total effective stake, in tenths of a Kismet (§3.3).
+        and 2^b times what ``stake`` counts against its ``stake_baseline``
+        for validation block ``validation_id``'s, each drop matching b bits
+        of its target hash, ``stake`` being that block's total effective
+        stake, in Kismet × generations (§3.3).
 
         Raises:
             ValueError: ``stake`` is negative.
         """
         targets = GenerationTargets.built_on(self.previous)
+        counted = self.stake_baseline.counted(stake)
         return (
             self.weight
             + ChainWeight.of_drop(block_id, targets.transaction)
-            + ChainWeight.of_validation(validation_id, targets.validation, stake)
+            + ChainWeight.of_validation(validation_id, targets.validation, counted)
         )
 
     def _check_payout(self) -> None:

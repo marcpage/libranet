@@ -822,7 +822,8 @@ function formatKarma(kismet) {
 }
 
 // Whether `value` is a balance (KarmaLedger 5.3): the Kismet held, and the
-// generation whose reward last paid it, or null.
+// generation it has aged since, its last win moved later by the Kismet it has
+// received since, or null when it holds nothing.
 function isBalance(value) {
   return (
     isObject(value) &&
@@ -895,7 +896,7 @@ function karmaFor(id) {
 
   const link = make("a", balance.error ? "Karma not read" : `${formatKarma(balance.kismet)} Karma`, "karma");
   link.href = `/karma/?id=${encodeURIComponent(id)}`;
-  const won = balance.last_won === null ? "never rewarded" : `last rewarded in generation ${balance.last_won}`;
+  const won = balance.last_won === null ? "nothing to stake" : `aging since generation ${balance.last_won}`;
   link.title = balance.error || `${balance.kismet} Kismet, ${won}`;
   return [link];
 }

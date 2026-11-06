@@ -9,16 +9,16 @@ fees of its transaction block, and its runner-up's stakes, less those of
 every staker on the winning side.
 
 The pot is shared among the winning block's stakers by effective stake:
-each stake's Kismet times its staker's weight, a tenth for each generation
-since the staker last won, up to the whole. Every node divides a pot alike,
-to the Kismet, since a payout is known by the hash of what it states: each
-share is rounded down, and the Kismet left over go to the block's builder
-(§6.6).
+each stake's Kismet times its staker's age, the generations since its
+``last_won``, up to the age limit its transaction block states. Every node
+divides a pot alike, to the Kismet, since a payout is known by the hash of
+what it states: each share is rounded down, and the Kismet left over go to
+the block's builder (§6.6).
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, replace
-from typing import Final, Mapping, Sequence
+from dataclasses import dataclass
+from typing import Collection, Final, Mapping, Sequence
 
 from libranet.cas.content_id import ContentId
 from libranet.karma.blocks import TransactionBlock, ValidationBlock
@@ -27,44 +27,52 @@ from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import NO_BALANCE, Balance
 from libranet.protocol.karma_transactions import Payout
 
-#: How many generations after a win a staker's weight takes to grow back
-#: whole, a tenth each generation (§6.6, Karma §23).
-WEIGHT_GENERATIONS: Final = 10
+#: The age limit while every stake fits in a validation block: the most
+#: generations of age that count, however few hold Kismet (§6.6).
+AGE_LIMIT_FLOOR: Final = 10
+
+#: How many times the identities holding Kismet, for each stake a validation
+#: block holds, the age limit is, so that a staker holding a hundredth of the
+#: average can still win (§6.6).
+AGE_LIMIT_FACTOR: Final = 100
+
+#: About how many stakes fit in a validation block (KarmaScaling §2).
+STAKES_PER_BLOCK: Final = 5_000
 
 
 @dataclass(frozen=True, order=True)
-class StakeWeight:
-    """How much of a staker's stakes count: ``tenths`` tenths of each, from 1 to all of them.
+class StakeAge:
+    """How many generations a staker's stakes count for: ``generations``, up to the age limit.
+
+    It is 0 only for a staker holding nothing, as the root's creator does
+    (§6.6, §7.3).
 
     Raises:
-        ValueError: ``tenths`` is under 1, or more than
-            :data:`WEIGHT_GENERATIONS`.
+        ValueError: ``generations`` is negative.
     """
 
-    tenths: int
+    generations: int
 
     def __post_init__(self) -> None:
-        if not 1 <= self.tenths <= WEIGHT_GENERATIONS:
-            raise ValueError(
-                f"A stake's weight must be from 1 to {WEIGHT_GENERATIONS} tenths, got {self.tenths}"
-            )
+        if self.generations < 0:
+            raise ValueError(f"A stake's age must not be negative, got {self.generations}")
 
     @classmethod
-    def of(cls, balance: Balance, generation: int) -> StakeWeight:
-        """The weight in validation block ``generation`` of a staker holding ``balance``.
+    def of(cls, balance: Balance, generation: int, limit: int) -> StakeAge:
+        """The age in validation block ``generation`` of a staker holding ``balance``.
 
         ``balance`` is the staker's as transaction block ``generation``
-        leaves it. A staker weighs a tenth for each generation since its
-        ``last_won``, up to the whole, and the whole if it has won none
-        (§6.6): a tenth just after a win, two tenths a generation later, and
-        so on (Karma §23).
+        leaves it, and ``limit`` the age limit that block states. A staker's
+        age is the generations since its ``last_won``, up to ``limit``: one
+        just after a win, or after receiving all it holds, two a generation
+        later, and so on (§6.6, Karma §23).
 
         Raises:
             ValueError: ``balance`` last won ``generation`` or later, which no
                 balance transaction block ``generation`` leaves has.
         """
         if balance.last_won is None:
-            return cls(WEIGHT_GENERATIONS)
+            return cls(0)
 
         since = generation - balance.last_won
 
@@ -74,18 +82,29 @@ class StakeWeight:
                 f"got {balance.last_won}"
             )
 
-        return cls(min(since, WEIGHT_GENERATIONS))
+        return cls(min(since, limit))
+
+    @staticmethod
+    def limit(holders: int) -> int:
+        """The age limit of a transaction block leaving ``holders`` holding Kismet (§6.6).
+
+        That is :data:`AGE_LIMIT_FACTOR` times ``holders``, for each of
+        :data:`STAKES_PER_BLOCK`, rounded down, and at least
+        :data:`AGE_LIMIT_FLOOR`.
+        """
+        return max(AGE_LIMIT_FLOOR, AGE_LIMIT_FACTOR * holders // STAKES_PER_BLOCK)
 
     @classmethod
     def effective_stakes(
-        cls, validation: ValidationBlock, balances: Mapping[ContentId, Balance]
+        cls, validation: ValidationBlock, balances: Mapping[ContentId, Balance], limit: int
     ) -> dict[ContentId, int]:
-        """Each staker's effective stake in ``validation``, in tenths of a Kismet (§6.5, §6.6).
+        """Each staker's effective stake in ``validation``, in Kismet × generations (§6.5, §6.6).
 
-        That is all the staker's stakes in it, which weigh alike, times its
-        weight, from its balance in ``balances``: the latest stated through
-        the transaction block ``validation`` validates. A staker
-        ``balances`` lacks holds nothing, and has won nothing (§5.3).
+        That is all the staker's stakes in it, which count alike, times its
+        age, from its balance in ``balances``, the latest stated through the
+        transaction block ``validation`` validates, up to ``limit``, the age
+        limit that block states. A staker ``balances`` lacks holds nothing
+        (§5.3).
 
         Raises:
             ValueError: a staker's balance last won ``validation``'s
@@ -97,7 +116,8 @@ class StakeWeight:
             staked[signed.staker] = staked.get(signed.staker, 0) + signed.stake.kismet.count
 
         return {
-            staker: count * cls.of(balances.get(staker, NO_BALANCE), validation.generation).tenths
+            staker: count
+            * cls.of(balances.get(staker, NO_BALANCE), validation.generation, limit).generations
             for staker, count in staked.items()
         }
 
@@ -123,22 +143,32 @@ class BalanceSheet:
     overspent: frozenset[ContentId]
 
     @classmethod
-    def of(cls, block: TransactionBlock, before: Mapping[ContentId, Balance]) -> BalanceSheet:
+    def of(
+        cls,
+        block: TransactionBlock,
+        before: Mapping[ContentId, Balance],
+        *,
+        stakers: Collection[ContentId],
+    ) -> BalanceSheet:
         """The balances ``block`` is checked against and leaves, from ``before``.
 
-        Its payout is applied first: each identity its ``from`` names gives
-        what it names, and each its ``to`` names, the builder of validation
-        block g − 1 among them, is paid what it names, and has ``last_won``
-        g − 1. Then each transaction is: its sender less all it
-        pays, its fee aside, which the next block's payout takes, and each
-        recipient plus what it is paid.
+        ``stakers`` are those of validation block g − 1, whose reward its
+        payout pays. The payout is applied first: each identity its ``from``
+        names gives what it names, and each its ``to`` names is paid what it
+        names. A staker paid has won generation g − 1, and has ``last_won``
+        g − 1; the builder, if it is no staker, receives what it is paid.
+        Then each transaction is: its sender less all it pays, its fee aside,
+        which the next block's payout takes, and each recipient receives what
+        it is paid. What an identity receives in the block moves its
+        ``last_won`` toward g − 1, by amount, after all it sends
+        (:meth:`~libranet.protocol.karma_balances.Balance.received`), so that
+        the order of the block's transactions does not matter.
 
         Raises:
             ValueError: the payout takes more from an identity than it holds,
                 or an identity would hold more than there can be.
         """
-        checked = cls._paid(block, before)
-        held = dict(checked)
+        checked = cls._paid(block, before, stakers)
         sending: dict[ContentId, int] = {}
 
         for signed in block.signed:
@@ -148,20 +178,27 @@ class BalanceSheet:
         overspent = frozenset(
             sender for sender, count in sending.items() if count > checked[sender].kismet.count
         )
-
-        for signed in block.signed:
-            transaction = signed.transaction
-
-            if transaction.sender not in overspent:
-                paid = transaction.sends() - transaction.fee
-                held[transaction.sender] = replace(
-                    held[transaction.sender], kismet=held[transaction.sender].kismet - paid
-                )
-
-                for identity, amount in transaction.to.items():
-                    held[identity] = replace(held[identity], kismet=held[identity].kismet + amount)
-
+        sent, received = cls._moved(block, overspent)
+        held = {
+            identity: balance.sent(sent.get(identity, Kismet(0))).received(
+                received.get(identity, Kismet(0)), block.generation - 1
+            )
+            for identity, balance in checked.items()
+        }
         return cls(block, before, checked, held, overspent)
+
+    def holders_after(self, holders: int) -> int:
+        """How many hold Kismet after the block, ``holders`` holding it as the block is checked.
+
+        Those are in every identity's balance the block is checked against,
+        with the payout applied (§5.3, §5.4), so only those the block names
+        change from them.
+        """
+        return (
+            holders
+            - sum(1 for balance in self.checked.values() if balance.kismet != Kismet(0))
+            + sum(1 for balance in self.after.values() if balance.kismet != Kismet(0))
+        )
 
     def balance(self, identity: ContentId) -> Balance:
         """``identity``'s balance after the block: as it leaves it, if it names it, or as before."""
@@ -187,10 +224,37 @@ class BalanceSheet:
         )
 
     @staticmethod
+    def _moved(
+        block: TransactionBlock, overspent: frozenset[ContentId]
+    ) -> tuple[dict[ContentId, Kismet], dict[ContentId, Kismet]]:
+        """What each identity sends in ``block``, fees aside, and receives, but ``overspent``'s.
+
+        Raises:
+            ValueError: an identity would receive more than there can be.
+        """
+        sent: dict[ContentId, Kismet] = {}
+        received: dict[ContentId, Kismet] = {}
+
+        for signed in block.signed:
+            transaction = signed.transaction
+
+            if transaction.sender not in overspent:
+                paid = transaction.sends() - transaction.fee
+                sent[transaction.sender] = sent.get(transaction.sender, Kismet(0)) + paid
+
+                for identity, amount in transaction.to.items():
+                    received[identity] = received.get(identity, Kismet(0)) + amount
+
+        return sent, received
+
+    @staticmethod
     def _paid(
-        block: TransactionBlock, before: Mapping[ContentId, Balance]
+        block: TransactionBlock, before: Mapping[ContentId, Balance], stakers: Collection[ContentId]
     ) -> dict[ContentId, Balance]:
         """The balance of each identity ``block`` names, from ``before``, with its payout applied.
+
+        Each of ``stakers`` it pays has won, and any other it pays, the
+        builder, receives what it is paid.
 
         Raises:
             ValueError: the payout takes more from an identity than it holds,
@@ -212,10 +276,16 @@ class BalanceSheet:
                     f"{held[source].kismet.value()}"
                 )
 
-            held[source] = replace(held[source], kismet=held[source].kismet - amount)
+            held[source] = held[source].sent(amount)
+
+        won = block.generation - 1
 
         for identity, amount in payout.to.items():
-            held[identity] = Balance(held[identity].kismet + amount, block.generation - 1)
+            if identity in stakers:
+                held[identity] = Balance(held[identity].kismet + amount, won)
+
+            else:
+                held[identity] = held[identity].received(amount, won)
 
         return held
 
@@ -289,17 +359,19 @@ class Reward:
     def shares(self) -> dict[ContentId, Kismet]:
         """What the pot pays each staker, and ``builder``, as the payout's ``to`` states it (§6.6).
 
-        The pot is divided by effective stake, or equally among the stakers
-        when that totals 0, as the root's one stake of ``"0"`` does (§7.4).
-        Each share is rounded down, and the Kismet left over, fewer than
-        there are stakers, go to ``builder``, whether it stakes or not, so
-        that the shares total the pot. One paid 0 is left out.
+        The pot is divided by effective stake, each staker's age up to the
+        age limit ``block`` states, or equally among the stakers when that
+        totals 0, as only the root's one stake of ``"0"`` does, every other
+        stake being of Kismet at least a generation old (§7.4). Each share is
+        rounded down, and the Kismet left over, fewer than there are stakers,
+        go to ``builder``, whether it stakes or not, so that the shares total
+        the pot. One paid 0 is left out.
 
         Raises:
             ValueError: a staker's balance last won ``validation``'s
                 generation or later.
         """
-        stakes = StakeWeight.effective_stakes(self.validation, self.balances)
+        stakes = StakeAge.effective_stakes(self.validation, self.balances, self.block.age_limit)
         total = sum(stakes.values())
 
         if total == 0:

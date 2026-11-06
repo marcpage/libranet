@@ -12,7 +12,7 @@ from libranet.cas.content_id import ContentId
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.history import ChainGeneration, ChainHistory
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_carried import CARRIED_FILE, CarriedTransaction
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
@@ -59,6 +59,7 @@ def chain_of(
                 ChainWeight(generation),
                 () if generation not in held else (held[generation].transaction.key,),
                 () if generation not in listed else (listed[generation].hash,),
+                StakeBaseline(0),
             )
             for generation in range(generations)
         ],

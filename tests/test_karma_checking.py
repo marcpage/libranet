@@ -29,8 +29,8 @@ from libranet.karma.checking import (
 )
 from libranet.karma.errors import MisplacedBlockError
 from libranet.karma.generations import GenerationTargets, new_kismet
-from libranet.karma.ledger import BalanceSheet, Reward, reach_of
-from libranet.karma.weight import ChainWeight
+from libranet.karma.ledger import AGE_LIMIT_FLOOR, BalanceSheet, Reward, reach_of
+from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_balances import NO_BALANCE, Balance
 from libranet.protocol.karma_stakes import SignedStake, Stake
@@ -73,9 +73,14 @@ SECOND = GenerationTargets.after(FIRST_VALIDATION_ID)
 SECOND_ID = matching(SECOND.transaction, 7)
 
 # The weight of the chain before transaction block 2: 2^b over each drop, and
-# validation block 1's drop counts times its stake: Alice's 500 Kismet, weighing a
-# tenth, since she won the root.
+# validation block 1's drop counts times its stake: Alice's 500 Kismet, a
+# generation old, since she won the root, and counted whole, as block 1's
+# stake baseline is 0.
 WEIGHT = ChainWeight(2**3 + 2**5 + 2**4 + 2**6 * 500)
+
+# The stake baseline transaction block 2 states: what validation block 1
+# counted.
+BASELINE = StakeBaseline(500)
 
 
 @dataclass(frozen=True)
@@ -173,9 +178,19 @@ def by_hash(*transactions: SignedTransaction | Payout) -> tuple[SignedTransactio
     return tuple(sorted(transactions, key=lambda transaction: transaction.hash))
 
 
-def stating(block: TransactionBlock, before: Mapping[ContentId, Balance]) -> TransactionBlock:
-    """``block``, stating the balances it leaves from ``before``, and a reach of 0."""
-    return replace(block, balances=BalanceSheet.of(block, before).after)
+def stating(
+    block: TransactionBlock, before: Mapping[ContentId, Balance], stakers: Collection[ContentId]
+) -> TransactionBlock:
+    """``block``, stating the balances it leaves from ``before``, and a reach of 0.
+
+    ``stakers`` are those of the validation block whose reward its payout pays.
+    """
+    return replace(block, balances=BalanceSheet.of(block, before, stakers=stakers).after)
+
+
+def stakers_of(chain: ChainInMemory) -> set[ContentId]:
+    """The stakers of validation block 1 on ``chain``, whose reward block 2's payout pays."""
+    return {stake.staker for stake in chain.validation(FIRST_VALIDATION_ID).block.stakes}
 
 
 def reward_of(chain: ChainInMemory, generation: int = 2) -> Payout:
@@ -199,8 +214,17 @@ def block_on(
     if not any(isinstance(transaction, Payout) for transaction in transactions):
         transactions = (*transactions, reward_of(chain, generation))
 
-    block = TransactionBlock(generation, FIRST_VALIDATION_ID, WEIGHT, 0, by_hash(*transactions), {})
-    block = stating(block, chain.balances(block.named(), 1))
+    block = TransactionBlock(
+        generation,
+        FIRST_VALIDATION_ID,
+        WEIGHT,
+        0,
+        by_hash(*transactions),
+        {},
+        AGE_LIMIT_FLOOR,
+        BASELINE,
+    )
+    block = stating(block, chain.balances(block.named(), 1), stakers_of(chain))
     return replace(block, reach=reach_of([block.balances, chain.stated(1)]))
 
 
@@ -232,7 +256,7 @@ def checked(
 
 def sheet_of(block: TransactionBlock, chain: ChainInMemory) -> BalanceSheet:
     """The balances ``block``, built on ``chain``, is checked against."""
-    return BalanceSheet.of(block, chain.balances(block.named(), 1))
+    return BalanceSheet.of(block, chain.balances(block.named(), 1), stakers=stakers_of(chain))
 
 
 @fixture(scope="module")
@@ -253,7 +277,16 @@ def keys(alice: NodeIdentity, bob: NodeIdentity) -> dict[ContentId, bytes]:
 @fixture(scope="module")
 def root(alice: NodeIdentity) -> TransactionBlock:
     created = paying(alice, {alice.node_id: 0}, generation=0)
-    return TransactionBlock(0, None, ChainWeight(0), 0, (created,), {alice.node_id: NO_BALANCE})
+    return TransactionBlock(
+        0,
+        None,
+        ChainWeight(0),
+        0,
+        (created,),
+        {alice.node_id: NO_BALANCE},
+        AGE_LIMIT_FLOOR,
+        StakeBaseline(0),
+    )
 
 
 @fixture(scope="module")
@@ -267,9 +300,17 @@ def chain(alice: NodeIdentity, bob: NodeIdentity, root: TransactionBlock) -> Cha
     sent = paying(alice, {DAVE: 1_000}, fee=10, generation=0, created=moment(1))
     first = stating(
         TransactionBlock(
-            1, ROOT_VALIDATION_ID, ChainWeight(2**3 + 2**5), 0, by_hash(payout, sent), {}
+            1,
+            ROOT_VALIDATION_ID,
+            ChainWeight(2**3 + 2**5),
+            0,
+            by_hash(payout, sent),
+            {},
+            AGE_LIMIT_FLOOR,
+            StakeBaseline(0),
         ),
         {},
+        {alice.node_id},
     )
     first_validation = ValidationBlock(1, None, (staked(alice, FIRST_ID, 500),), ())
     return ChainInMemory(
@@ -319,7 +360,8 @@ def test_the_payout_and_balances_a_correct_block_states_are_the_rewards_and_thos
     assert block.payout.to == {alice.node_id: Kismet(new_kismet(1).count + 10)}
     assert block.balances == {
         alice.node_id: Balance(Kismet(held - 300), 1),
-        bob.node_id: Balance(Kismet(300)),
+        # What Bob is paid in block 2 counts as if he won generation 1.
+        bob.node_id: Balance(Kismet(300), 1),
     }
 
 
@@ -330,7 +372,7 @@ def test_a_block_stating_every_holder_has_reach_0(
     block: TransactionBlock,
 ) -> None:
     stating_dave = replace(
-        block, balances={**block.balances, DAVE: Balance(Kismet(1_000))}, reach=0
+        block, balances={**block.balances, DAVE: Balance(Kismet(1_000), 0)}, reach=0
     )
 
     check = checked(stating_dave, alice, chain, keys)
@@ -413,7 +455,16 @@ def test_what_a_block_states_falsely_by_itself_is_found_naming_its_builder(
             lambda block: replace(block, weight=ChainWeight(119)),
             f'"weight" must be {WEIGHT.value()}, got 119',
         ),
+        (
+            lambda block: replace(block, stake_baseline=StakeBaseline(501)),
+            '"stake_baseline" must be 500, got 501',
+        ),
         (lambda block: replace(block, reach=2), '"reach" must be 1, got 2'),
+        (
+            lambda block: replace(block, age_limit=AGE_LIMIT_FLOOR + 1),
+            # Alice, Dave, and Bob.
+            f'"age_limit" must be {AGE_LIMIT_FLOOR}, as 3 hold Kismet after it, got 11',
+        ),
     ],
 )
 def test_a_block_stating_falsely_what_it_is_built_on_distrusts_its_builder(
@@ -734,8 +785,10 @@ def test_the_roots_block_is_correct_by_its_shape_though_not_full(
         lambda root: replace(root, weight=ChainWeight(1)),
         lambda root: replace(root, reach=1),
         lambda root: replace(
-            root, balances={identity: Balance(Kismet(0), 0) for identity in root.balances}
+            root, balances={identity: Balance(Kismet(1), 0) for identity in root.balances}
         ),
+        lambda root: replace(root, age_limit=AGE_LIMIT_FLOOR + 1),
+        lambda root: replace(root, stake_baseline=StakeBaseline(1)),
     ],
 )
 def test_a_block_at_the_roots_target_not_shaped_as_the_root_is_false(

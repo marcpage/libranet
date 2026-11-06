@@ -123,10 +123,10 @@ def test_every_balance_stated_at_the_head_is_written_with_the_heads_reward_paid(
     balances.write()
 
     # Alice staked on generation 2, whose reward pays her, and Bob holds what
-    # she paid him.
+    # she paid him, in block 2, as if he won generation 1.
     assert written(storage)["balances"] == {
         str(alice.node_id): chain.block_after().balances[alice.node_id].value(),
-        str(bob.node_id): {"kismet": "7", "last_won": None},
+        str(bob.node_id): {"kismet": "7", "last_won": 1},
     }
 
 
