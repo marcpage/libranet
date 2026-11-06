@@ -25,7 +25,7 @@ of applications shipped, and its tests.
 
 ## 2. What It Adds
 
-Five steps, the first built:
+Five steps, the first two built:
 
 - **The TV application.** A person's series, each looked up at TMDB, with
   episodes added from files and played one after another. Step 144.
@@ -319,7 +319,7 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 145 — Adding a Folder
+## Step 145 — Adding a Folder ✅
 
 **Issue:** #615, from #592. **Depends on:** Step 144.
 
@@ -363,6 +363,48 @@ My calls, not yet reviewed:
 **Testable in isolation:** checked by hand: a folder of two seasons, in
 folders of their own and not; a file of two episodes; files whose names
 give no numbers; and a season some of whose episodes are held already.
+
+Built. It was checked on a node of its own in headless Chrome, with TMDB's
+answers given by the browser: a folder of two seasons, one in folders of
+its own and one not, with specials; files of two episodes, named
+`S01E02E03` and `S02E02-03`, each looked up as both; a file whose name and
+folder give no numbers, refused until numbered; one numbered as another
+chosen, refused; one numbered as an episode held, left out until numbered
+again; an episode held already, listed and left out; the files that are not
+videos counted; TMDB asked once for each season; a version placed for each
+episode added; and a file of two episodes played. Safari is yet to be
+checked.
+
+Calls made while building it, not yet reviewed:
+
+- **Not from the folders offered.** Add every video here is offered in a
+  folder, but not in the list of the folders the node offers, so that every
+  video on the machine is not looked for at once.
+- **How deep it looks.** Folders up to eight below the one chosen are
+  looked in, so that a link back to a folder above, which the node follows,
+  does not lead the search on forever. A folder deeper, or one that cannot
+  be read, is passed over, and the list says how many were.
+- **Hyphens are ranges.** `S01E01-03` is episodes 1, 2, and 3, and
+  `S01E01-E03` the same, while `S01E01E03` is episodes 1 and 3. A number
+  after a hyphen is taken only if it is one or two digits, and no letter
+  follows it, so that `S01E01-720p` is episode 1. One that is not after the
+  episode before it is taken as given.
+- **The list.** Each video is listed by its path below the folder chosen, in
+  order of its path, with its season and its episodes, separated by commas,
+  as the editor takes them, and a box to leave it out, each chosen to start
+  with. One whose numbers are held is left out, its box not to be chosen,
+  until it is numbered as another, when it is chosen again. A video chosen
+  and not numbered, or numbered as another chosen, is refused when they are
+  added, saying which. Back returns to the folder.
+- **Imported in order.** Those chosen are imported in season order, with
+  specials last, and in episode order within each, so that the first is
+  imported first, whatever order they are listed in.
+- **One question for every import.** The node is asked how the imports are
+  doing once a second for all of them, rather than once a second for each,
+  as a folder may hold many.
+- **Titles.** A video numbered by hand keeps the title its name gives, if
+  any, or else is titled by its name, as one numbered in the dialog of
+  Step 144 is.
 
 ---
 
