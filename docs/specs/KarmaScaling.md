@@ -247,21 +247,22 @@ several times longer than its spread keeps that rare.
 ### 6.2 Mining and Staking
 
 A chain's weight counts each validation block's work times the stake it
-holds ([Karma Ledger §3.3](KarmaLedger.md#33-the-heaviest-chain)), so every
-bit past the 24 a block needs doubles its weight, as doubling its stake
-would. Each doubling of the nonces searched adds about a bit. In ten
-seconds of searching:
+holds ([Karma Ledger §3.3](KarmaLedger.md#33-the-heaviest-chain)), so each
+of the first 3 bits past the 24 a block needs doubles its weight, as
+doubling its stake would. Bits past 27 count for nothing. Each doubling of
+the nonces searched adds about a bit. In ten seconds of searching:
 
 | Searcher | Nonces a second | Bits found | Weight, against one Python core |
 | --- | ---: | ---: | ---: |
 | Python, one core | 1.2 million | about 24 | 1 |
-| Native code, one core | 20 to 30 million | about 28 | about 16 |
-| A graphics card | about 20 billion | about 38 | about 16,000 |
+| Native code, one core | 20 to 30 million | about 28 | 8 |
+| A graphics card | about 20 billion | about 38 | 8 |
 
-A miner on a graphics card outweighs a validation block holding 16,000
-times its stake. A node that searches only until a block will be found
-(§6.1) leaves stake to decide among the nodes that do the same, but nothing
-stops another node from searching longer.
+A miner on a graphics card outweighs a validation block holding no more
+than 8 times its stake, as one on a single core of native code does. A node
+that searches only until a block will be found (§6.1) leaves stake to
+decide among the nodes that do the same, and another node searching longer
+gains no more than those 8 times.
 
 **Mining** is the building of the chain's blocks: combining the
 transactions put up into transaction blocks, and building validation blocks
@@ -391,9 +392,6 @@ These are fixed by the protocol, so no node's choice changes them:
   identity it names, so each recipient costs its id twice (§2).
 - **8 KiB a holder.** A small network closes a generation only once each
   holder has paid about 8 KiB (§5.1).
-- **Unbounded work.** Work past the 24 bits a block needs counts in its
-  weight without limit, so faster hardware outweighs stake (§6.2).
-  Counting no more than some bits past 24 would leave stake to decide.
 - **Two targets a generation.** Every block of a generation is placed at
   one of two targets, so the nodes nearest them hold and serve them all
   (§6.5).

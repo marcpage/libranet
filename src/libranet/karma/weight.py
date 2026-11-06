@@ -5,21 +5,29 @@ hashes to find. A chain weighs the sum, over its generations, of 2^b for the
 transaction block's drop, and 2^b for the validation block's times its total
 effective stake, in tenths of a Kismet (§6.6), or once where that is 0, as
 only the root's is. So a validation block holding twice the stake weighs as
-one sharing a bit more. Summing bits instead would let two 15-bit drops weigh
-as much as one of 30 bits, which took 32,768 times the work of either. A
-transaction block states the weight of the chain before it as a string of
-decimal digits, as an amount is written, since one drop alone may add more
-than 2^256 (§5.1).
+one sharing a bit more. Summing bits instead would let two 12-bit drops weigh
+as much as one of 24 bits, which took 4,096 times the work of either. No
+more than ``COUNTED_BITS`` are counted: a bit past them is luck, or hashing
+bought, and would otherwise let one block searched for again outweigh every
+generation after it. A transaction block states the weight of the chain
+before it as a string of decimal digits, as an amount is written (§5.1).
 """
 
 from __future__ import annotations
 from dataclasses import dataclass
+from typing import Final
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.cas.prefix import matching_bits
 from libranet.config.models import TARGET_BITS
 from libranet.json_fields import decimal_count
+
+# The most bits a drop's weight counts (KarmaLedger §3.3): the 24 a search
+# returns by default, and 3 more. So luck may make a block weigh up to 8 times
+# as much as another of the same stake, and still decide between rivals, but no
+# block weighs more than 8 of 24 bits holding the same stake do.
+COUNTED_BITS: Final = 27
 
 
 @dataclass(frozen=True, order=True)
@@ -40,13 +48,16 @@ class ChainWeight:
     def of_bits(cls, bits: int) -> ChainWeight:
         """The weight of a drop matching ``bits`` leading bits: 2^``bits``.
 
+        Bits past ``COUNTED_BITS`` add nothing, so a drop of more weighs
+        2^``COUNTED_BITS``.
+
         Raises:
             ValueError: ``bits`` is negative, or more than a hash has.
         """
         if not 0 <= bits <= TARGET_BITS:
             raise ValueError(f"bits must be from 0 to {TARGET_BITS}, got {bits}")
 
-        return cls(2**bits)
+        return cls(2 ** min(bits, COUNTED_BITS))
 
     @classmethod
     def of_drop(cls, drop: ContentId, target: DropTarget) -> ChainWeight:

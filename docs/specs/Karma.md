@@ -657,7 +657,8 @@ A validation candidate has:
 
 When the next transaction block becomes complete, the best candidate is selected
 by its proof-of-work quality times its total weighted stake: twice the stake
-counts as much as one more matching bit. So a candidate gathering the stakes of
+counts as much as one more matching bit, up to 3 bits past the 24 a block needs,
+past which more bits count for nothing. So a candidate gathering the stakes of
 many participants outweighs a luckier one holding only its builder's, and the
 reward is shared among them all.
 

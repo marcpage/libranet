@@ -76,10 +76,11 @@ from libranet.karma.reading import ChainGenerations, HeldBlock, HeldChain, Targe
 from libranet.karma.root import ChainRoot
 from libranet.karma.staking import HeadStakes, StakeCover, StakedBlock, ValidationBuilder
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore, balances_left
-from libranet.karma.weight import ChainWeight
+from libranet.karma.weight import COUNTED_BITS, ChainWeight
 
 __all__ = [
     "BLOCK_BOUNDS",
+    "COUNTED_BITS",
     "FIRST_NEW_KISMET",
     "FULL_BLOCK_ROOM_BYTES",
     "HOLDER_BLOCK_BYTES",
