@@ -19,16 +19,18 @@ for each (§4). Every issue in the milestone is either a step or accounted
 for in §4. The milestone is not a numbered phase: it adds one application,
 and can be built alongside any phase.
 
-Nothing here changes the node. Every endpoint the application uses is one
-the movie or TV application uses already. A song's tags are read on the
-page, from the file the node imported, by asking for ranges of it (HttpApi
-§12.1, §19). The only Python it changes is the list of applications
-shipped, and its tests. §6 asks whether the node should also give the
-content types of some audio files that Python does not know.
+Nothing here changes the node, but for Step 154, which is built only if
+it is needed. Every endpoint the application uses is one the movie or TV
+application uses already. A song's tags are read on the page, from the
+file the node imported, by asking for ranges of it (HttpApi §12.1, §19).
+The only Python Steps 149 to 153 change is the list of applications
+shipped, and its tests. Step 154 lets a bundle give the content type a
+file is served with, should Safari not play the audio files the node
+serves as `application/octet-stream`.
 
 ## 2. What It Adds
 
-Five steps:
+Six steps, the last built only if it is needed:
 
 - **The music application.** A person's library, with songs added from a
   file or from a whole folder, played one after another, and filtered by
@@ -38,6 +40,8 @@ Five steps:
 - **Playlists.** Songs of the library, in the person's order. Step 151.
 - **Sharing a song, or a playlist.** Step 152.
 - **Keeping a playlist offline**, as movies are kept. Step 153.
+- **A file's content type, given by its bundle**, so that the node serves
+  each song as the audio it is. Step 154, if Safari needs it.
 
 ## 3. How to Read the Steps Below
 
@@ -47,17 +51,20 @@ The conventions of [TV App](TV%20App.md) §3 carry over. In addition:
   [TV App](TV%20App.md) ends at Step 148, the highest assigned, so this
   plan starts at Step 149.
 - **Settled with the user** is what was asked and answered before this
-  plan was written. **My calls, not yet reviewed** are what this plan
-  chose without asking, to be reviewed before the step is built.
+  plan was written. **My calls** are what this plan chose without
+  asking: **reviewed** once the user has agreed to them, as for Steps
+  149 to 153, and **not yet reviewed** until then, to be reviewed before
+  the step is built.
 - **Change sets.** The page is HTML and script, not Python, so the limit
   CLAUDE.md sets on new Python does not bind it. Even so, each step is one
   change set that can be reviewed on its own, but for Steps 149 and 150,
-  which go in as two each.
+  which go in as two each. Step 154 is Python, and well within the limit.
 - **Testing.** As for the movie and TV applications, the page has no
   automated tests: each step is checked by hand, in at least Safari and
   one other browser, signed in on a local client. The Python Step 149
-  changes is tested in `tests/test_applications_packaged.py`, and every
-  change set passes the checks of [Phase 3](Phase%203.md) §3.
+  changes is tested in `tests/test_applications_packaged.py`, and Step
+  154's in the tests of the modules it changes. Every change set passes the
+  checks of [Phase 3](Phase%203.md) §3.
 
 ---
 
@@ -205,7 +212,7 @@ What is to be built:
   App Developer Guide §9 names the application. Known Drops gains
   `music library:{id}`.
 
-My calls, not yet reviewed:
+My calls, reviewed:
 
 - **The page starts as a copy of the TV page**, about 4,000 lines, since
   it signs a person in, reads and merges their versions, browses the
@@ -263,16 +270,15 @@ one that fails as it loads, passed over; each filter, alone and together;
 editing and removing; every key; and a library of a few thousand songs,
 opened and filtered, to see that it is quick enough.
 
-**Open questions:**
+**Checked while it is built:**
 
-- **The content types the node gives.** The node gives a file's content
-  type from its name, with Python's own table, which has none for `.m4a`,
-  `.flac`, `.ogg`, `.oga`, or `.wma`, on Python 3.11 and 3.13 alike. So
-  the node serves those as `application/octet-stream`. Chrome and Firefox
-  play audio whatever its type, but Safari may not, and `.m4a` is the
-  format of most music bought from Apple. If Safari does not play them, a
-  few lines of Python in `webserver/bundle_paths.py` would add the types
-  Python lacks. That changes what the node serves, but adds no endpoint.
+- **Whether Safari plays what the node serves.** The node gives a file's
+  content type from its name, with Python's own table, which has none for
+  `.m4a`, `.flac`, `.ogg`, `.oga`, or `.wma`, on Python 3.11 and 3.13
+  alike. So the node serves those as `application/octet-stream`. Chrome
+  and Firefox play audio whatever its type, but Safari may not, and `.m4a`
+  is the format of most music bought from Apple. If Safari does not play
+  them, Step 154 is built.
 
 ---
 
@@ -336,7 +342,7 @@ What is to be built:
   shown before importing still names each song by its path, since nothing
   is read before it is imported.
 
-My calls, not yet reviewed:
+My calls, reviewed:
 
 - **Two change sets.** First ID3 and the cover found in a folder, which
   serve MP3, the most common format; then MP4, Vorbis comments, and RIFF.
@@ -397,7 +403,7 @@ What is to be built:
 - **The browser remembers** the playlist last open, or the library, as
   `music.list`.
 
-My calls, not yet reviewed:
+My calls, reviewed:
 
 - **In the list, not the library bundle.** A playlist only names songs,
   so it is kept in the person's list, beside the library, as a
@@ -450,7 +456,7 @@ What is to be built:
   movie or an episode. The movie and TV pages are checked to refuse a song,
   whose `info.json` names no `video`, and changed to if they do not.
 
-My calls, not yet reviewed:
+My calls, reviewed:
 
 - **No index in what is shared.** A playlist shared holds its songs'
   `info.json`, but not the library's `index/`, which names where each song
@@ -494,7 +500,7 @@ What is to be built:
   keeping** removes its archive.
 - **Known Drops** gains `music offline:{id}`.
 
-My calls, not yet reviewed:
+My calls, reviewed:
 
 - **A playlist, not the library**, is kept offline. A library may be too
   large to keep in an archive.
@@ -507,6 +513,78 @@ store evicted, before and after a restart.
 
 ---
 
+## Step 154 — A File's Content Type, Given by Its Bundle
+
+**Issue:** to be made (§4), from #479, only if it is needed. **Depends
+on:** Phase 1 Steps 13, 14; Phase 3 Steps 71, 72; Step 149.
+
+Built only if Step 149 finds that Safari does not play `.m4a`, `.flac`,
+or `.ogg` served as `application/octet-stream`.
+
+Settled with the user:
+
+- **If the node must change for songs to play, a file in a bundle gains
+  metadata**: the content type it is served with. Not a new endpoint.
+
+HttpApi §13 says already that a directory bundle MAY give a file's content
+type, and that a node serves the file with it if it does. But no field
+gives it yet (HttpApi §13, Bundle Specification §9), and the node finds
+every file's type from its name.
+
+What is to be built:
+
+- **Bundle Specification §2.1** gains `metadata.content_type`: the media
+  type the file is served with (RFC 9110 §8.3.1), such as `audio/flac`,
+  for a file bundle and for a file entry of a directory bundle alike. §9
+  no longer lists a file's content type as open, and HttpApi §13 names the
+  field where it says there is none.
+- **The model.** `Metadata` (`bundle/shapes.py`) gains `content_type:
+  str | None`, which `bundle/parsing.py` reads and `Metadata` writes. A
+  value that is not a media type, a type and a subtype, each a token, and
+  any parameters, with no control characters, makes the bundle malformed,
+  since the node sends it in a header.
+- **Serving.** A file whose metadata gives a content type is served with
+  it, both as an application's file (HttpApi §13.2) and as one read from a
+  bundle (§12.1), in `BundlePaths.file_response`
+  (`webserver/bundle_paths.py`). A listing of a directory in a bundle
+  (§12.1, `webserver/bundle_reads.py`) gives it as the file's
+  `content_type`. A file whose metadata gives none is served as now, by
+  its name.
+- **Giving it.** `POST /data/bundles` (HttpApi §12.3,
+  `protocol/bundle_requests.py`, `webserver/bundle_edits.py`) takes
+  `{"file": id, "content_type": "audio/flac"}`, placing the file with that
+  type in its metadata. A type that is not a media type is `400 Bad
+  Request`. An entry copied with `{"from"}` keeps its content type, as it
+  keeps the rest of its metadata.
+- **The music page** gives each song's audio a type, from a table of its
+  own, as it makes the song's bundle: `audio/mp4` for `.m4a`, `.m4b`, and
+  `.aac` in MP4; `audio/flac`; `audio/ogg` for `.ogg`, `.oga`, and
+  `.opus`; `audio/x-ms-wma`; and so on. Songs added before this step are
+  given theirs as they are next edited.
+
+My calls, not yet reviewed:
+
+- **In the entry, not the import.** The type is given where a file is
+  placed in a bundle, beside the name it is otherwise found from, rather
+  than recorded in the file bundle an import makes, so that a file
+  imported has one id whatever it is used as.
+- **Only `{"file"}` takes a type.** The page writes JSON and JPEG with
+  `{"text"}` and `{"base64"}`, whose types the node's table knows.
+- **Every song is given its type**, not only those the node would serve as
+  `application/octet-stream`, so that every node serves a song alike,
+  whatever its Python's table holds, as HttpApi §13 asks.
+- **Malformed, not passed over.** A bundle giving a content type that is
+  not one is refused, as one whose extended attribute is not padded base64
+  is (Phase 2 Step 52), rather than read with the type ignored.
+
+**Testable in isolation:** `metadata.content_type` read, written, and a
+bad one refused; a file served with it, as an application's file and read
+from a bundle, and listed with it; `POST /data/bundles` giving it, refusing
+a bad one, and `{"from"}` keeping it; and, by hand, an `.m4a` and a
+`.flac` played in Safari.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Music app** milestone, by number, and where it went.
@@ -516,28 +594,29 @@ step, and this table then given their numbers.
 | Issue | Asks for | Step |
 | --- | --- | --- |
 | #478 | Defining the music application | None: this plan |
-| #479 | Implementing the music application, split into the issues below | 149 to 153 |
+| #479 | Implementing the music application, split into the issues below | 149 to 154 |
 | *to be made* | The music application: a library, added from a file or a folder, played, and filtered | 149 |
 | *to be made* | Reading a song's tags on the page | 150 |
 | *to be made* | Playlists | 151 |
 | *to be made* | Sharing a song or a playlist | 152 |
 | *to be made* | Keeping a playlist offline | 153 |
+| *to be made, if needed* | A file's content type, given by its bundle | 154 |
 
 ## 5. Suggested Build Order
 
 | Order | Steps | Why here |
 | --- | --- | --- |
-| 1 | 149 | Every other step adds to it. |
-| 2 | 150 | A library named only by its paths is of little use for long. |
-| 3 | 151 | Needs only Step 149, and is wanted before sharing. |
-| 4 | 152 | Shares playlists, and needs Step 151. |
-| 5 | 153 | Keeps the bundle Step 152 makes, and is needed least. |
+| 1 | 149 | Every other step adds to it, and it shows whether Step 154 is needed. |
+| 2 | 154, if needed | Songs Safari cannot play are not worth reading the tags of. |
+| 3 | 150 | A library named only by its paths is of little use for long. |
+| 4 | 151 | Needs only Step 149, and is wanted before sharing. |
+| 5 | 152 | Shares playlists, and needs Step 151. |
+| 6 | 153 | Keeps the bundle Step 152 makes, and is needed least. |
 
 ## 6. Open Items Not Yet Decided
 
-- **The content types the node gives** for `.m4a`, `.flac`, `.ogg`,
-  `.oga`, and `.wma`, which Python's table lacks, and whether Safari plays
-  them as `application/octet-stream` (Step 149).
+- **Whether Step 154 is needed**: whether Safari plays `.m4a`, `.flac`,
+  and `.ogg` served as `application/octet-stream` (Step 149).
 - **A client no one is signed in on** keeps no library (Step 149), and that
   is every client not on the node's own machine: a phone's browser, say.
   Whether such a client may at least play a song, or a playlist, given its
