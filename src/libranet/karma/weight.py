@@ -180,7 +180,7 @@ class StakeBaseline:
         return str(self.stake)
 
     def counted(self, total: int) -> int:
-        """What a validation block's total effective stake of ``total`` counts in the chain's weight.
+        """What a validation block's total effective stake of ``total`` counts in chain weight.
 
         That is no more than :data:`STAKE_BASELINE_MULTIPLE` times this
         baseline, or all of it while the baseline is 0.
@@ -191,7 +191,7 @@ class StakeBaseline:
         return min(total, STAKE_BASELINE_MULTIPLE * self.stake)
 
     def after(self, total: int, generation: int) -> StakeBaseline:
-        """The next generation's baseline, once winning validation block ``generation`` holds ``total``.
+        """The next generation's baseline, after winning validation block ``generation``.
 
         ``total`` is that block's total effective stake, and this its
         baseline. What it counts moves the baseline toward it by one part in
