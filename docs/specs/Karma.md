@@ -658,9 +658,12 @@ A validation candidate has:
 When the next transaction block becomes complete, the best candidate is selected
 by its proof-of-work quality times its total weighted stake: twice the stake
 counts as much as one more matching bit, up to 3 bits past the 24 a block needs,
-past which more bits count for nothing. So a candidate gathering the stakes of
-many participants outweighs a luckier one holding only its builder's, and the
-reward is shared among them all.
+past which more bits count for nothing. The stake counts only up to twice a
+baseline that follows what recent winners held, so that stake saved up rather
+than staked cannot stand in for work; past that, more stake decides only
+between candidates otherwise alike. So a candidate gathering the stakes of many
+participants outweighs a luckier one holding only its builder's, and the reward
+is shared among them all.
 
 The luck of the proof of work still introduces an element of randomness and
 uncertainty into the selection process.

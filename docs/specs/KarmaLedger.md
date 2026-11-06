@@ -234,8 +234,8 @@ it is carried over unchanged, and its sender does not put it up again.
 A node's **head** is the validation block whose id names the target that
 new transactions are put up at (§3.1): the winning validation block of the
 latest generation it has chosen one for. A head's weight is the `weight` of
-the transaction block it validates, plus 2^b for that block's drop and for
-the head's own.
+the transaction block it validates, plus 2^b for that block's drop, and 2^b
+times the head's counted stake for the head's own (§3.3).
 
 #### 3.5.1 Genealogy
 
@@ -288,10 +288,12 @@ target, it goes through these steps in order:
    genealogy after the common ancestor becomes the new chain's, and it tells
    its peers its new head
    (§3.5.2). Otherwise it keeps its own head. A block found to state
-   something false distrusts its builder (§3.8), and one that is no block
-   of the ledger, unsigned or false in its `weight`, `stake_baseline`, or
-   `generation`, is shunned (§3.7). A block that is only incorrect, such as
-   one not full, is neither.
+   something false distrusts its builder (§3.8). One that is unsigned, or
+   that the walk back (step 2) finds false in its `weight`,
+   `stake_baseline`, or `generation`, is no block of the ledger, and is
+   shunned as well (§3.7); one found false in them only as the new branch is
+   checked (step 4) distrusts its builder alone. A block that is only
+   incorrect, such as one not full, is neither.
 6. **Carry the rest over.** It puts each collected transaction into the
    transaction block it builds at the new head's target. One whose sender's
    balance the new chain does not cover, as when the new chain has spent
@@ -332,10 +334,9 @@ ledger, and a node SHOULD shun it (§3.8). Otherwise, a node MUST NOT shun
 a validation block, since any one may lead to another chain. It MUST NOT
 shun a transaction block that a validation block names. Validation blocks
 are made only on full transaction blocks, so a node SHOULD NOT shun a
-transaction block that is full either, near 1 MiB or, while few hold
-Kismet, above what they ask for, or near enough to full that a validation
-block the node has not seen yet may name it (§5.4) unless it fails basic
-validation.
+transaction block that is full either, as the copy it holds measures it:
+near 1 MiB or, while few hold Kismet, above what they ask for (§5.4),
+unless it fails basic validation.
 
 A node MAY shun any other transaction block, such as one put up small or
 one still being combined, whose data is all held in another transaction
@@ -773,15 +774,19 @@ identity's balance before the block, the latest stated before it or else
   identity, the payout's among them, less all the payout's `from` takes
   from it (§5.2), and less all it sends as a sender, its fees aside, which
   the next block's payout takes; and
-- its `last_won` is g − 1 if the payout pays the identity a share of the
-  reward of validation block g − 1 as a staker in it (§6.6). Otherwise,
-  what the identity receives in the block, R, the builder's leftover and
-  the block's transactions alike, moves its `last_won` L toward g − 1, by
-  amount, from what it keeps, K, all it holds less all it sends and all
-  the payout takes: ⌈(K × L + R × (g − 1)) ÷ (K + R)⌉, rounded up, so that
-  rounding never makes what it holds older. One keeping nothing takes
-  g − 1. One receiving nothing keeps its `last_won`, or has `null` if it
-  is left holding nothing.
+- its `last_won` is worked out in the order the block applies what it
+  moves, the payout first (§5.2). An identity the payout pays that has a
+  stake in validation block g − 1 has won generation g − 1 (§6.6), and has
+  `last_won` g − 1. Any other the payout pays, the builder paid what
+  rounding leaves over, receives it: what it receives, R, moves its
+  `last_won` L toward g − 1, by amount, from what it keeps, K, all it holds
+  less all the payout takes: ⌈(K × L + R × (g − 1)) ÷ (K + R)⌉, rounded
+  up, so that rounding never makes what it holds older. Then what the
+  identity receives in the block's transactions moves the `last_won` it
+  then has toward g − 1 in the same way, K being all it then holds less all
+  it sends. At either step, one keeping nothing takes g − 1, and one
+  receiving nothing keeps its `last_won`, or has `null` if it is left
+  holding nothing.
 
 So Kismet received in block g counts as if it were won in generation g − 1,
 and is a generation old in validation block g. Sending moves no `last_won`,
@@ -858,8 +863,8 @@ the paid ones (§5.1), and their fees draw builders to as many as it allows
 A block with anything incorrect about it scores zero, below every correct
 block. A correct block is signed, is full, is shaped and placed as §5.1 to
 §5.3 say, holds only valid transactions (§4.4), and states its payout, its
-balances (`kismet` and `last_won` alike), its `weight`, and its `reach` as
-they are.
+balances (`kismet` and `last_won` alike), its `weight`, its
+`stake_baseline`, its `age_limit`, and its `reach` as they are.
 
 ### 5.6 Building and Combining
 
@@ -875,11 +880,11 @@ put up until then, however many there are. It may place one sooner, so that
 one block takes the place of many that every node would otherwise read: the
 reference node does once enough of the transactions it would take, 100 unless
 its configuration says otherwise, are in no one block it holds there. A
-builder that has no transaction
-to take, and holds no correct block at the generation's transaction target,
-builds one holding
-the payout alone, so that the balances the reward of the head's validation
-block leaves are stated there as soon as the head is placed (§7.4).
+builder that has no transaction to take, and holds no block at the
+generation's transaction target that is correct but perhaps for not being
+full (§5.5), builds one holding the payout alone, so that the balances the
+reward of the head's validation block leaves are stated there as soon as
+the head is placed (§7.4).
 
 A block that is not full, or that scores zero, is never validated, but it
 is still read: a builder takes its valid transactions into correct blocks.
@@ -1151,8 +1156,8 @@ validation block 1 counts all its stake, and sets the baseline after it
 (§3.3). The payout is applied first in block 1 (§5.2), so
 the creator may spend it there, and may stake it in validation block 1.
 A node following the root builds a block 1 holding that payout alone,
-unless it holds a correct one already (§5.6), and reads the creator as
-holding the 20 Karma from then on (§2).
+unless it holds one already that is correct but perhaps for not being full
+(§5.6), and reads the creator as holding the 20 Karma from then on (§2).
 
 ### 7.5 Rival Roots
 
@@ -1280,8 +1285,6 @@ does not follow (§3.5.3).
 
 Not yet specified:
 
-- Whether effective stake breaks ties between chains, or counts in their
-  weight.
 - How far back transaction keys are kept for the check for duplicates
   (§4.4), and witnessed hashes for the check of witnesses (§6.4), since a
   transaction never expires, and what a node does with a transaction older
