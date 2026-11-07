@@ -207,6 +207,10 @@
 
   span.poster { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 1.75rem; }
 
+  /* The series kept offline, below the rest, each with what manages keeping it below its name. */
+  #offline-heading { margin: 1.5rem 0 0; }
+  #offline-list li > button.small { align-self: flex-start; margin: 0.25rem 0.35rem 0; }
+
   /* An episode's still, marked once it is watched, and showing how far it was watched in the one stopped in. */
   .still { position: relative; display: block; }
   .still .seen {
@@ -323,6 +327,8 @@
     <h2 id="chooser-heading">Series</h2>
     <p class="state" id="chooser-state" role="status" hidden></p>
     <ul class="cards" id="chooser-list"></ul>
+    <h3 id="offline-heading" hidden>Kept offline</h3>
+    <ul class="cards" id="offline-list" hidden></ul>
     <div class="toolbar signed-in-only" hidden>
       <button type="button" id="new-series">New series</button>
       <button type="button" class="secondary" id="import-series">Import a series</button>
@@ -362,6 +368,7 @@
               </button>
             </div>
           </div>
+          <p class="note offline-note" hidden>Kept offline, this series is only played here, and nothing you watch of it is kept.</p>
           <p class="note" id="episode-place"></p>
           <p class="note" id="episode-facts"></p>
           <p class="description" id="episode-description"></p>
@@ -412,6 +419,9 @@
         <button type="button" class="icon signed-in-only" id="share-series" title="Share" aria-label="Share" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V3 M8 7l4-4 4 4 M9 10H5v11h14V10h-4"/></svg>
         </button>
+        <button type="button" class="icon signed-in-only" id="keep-offline" title="Keep offline" aria-label="Keep offline" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12 M8 11l4 4 4-4 M4 17v4h16v-4"/></svg>
+        </button>
         <button type="button" class="icon signed-in-only" id="edit-series" title="Edit" aria-label="Edit" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
         </button>
@@ -420,6 +430,7 @@
         </button>
       </div>
     </div>
+    <p class="note offline-note" hidden>Kept offline, this series is only played here, and nothing you watch of it is kept.</p>
     <input type="search" class="filter" id="episode-filter" aria-label="Words to look for"
       placeholder="Whole words to look for" autocomplete="off" spellcheck="false" hidden>
     <ul class="activity" id="activity"></ul>
@@ -650,6 +661,41 @@
   </div>
 </dialog>
 
+<dialog id="keep-dialog" aria-labelledby="keep-heading">
+  <form id="keep-form">
+    <h3 id="keep-heading">Keep seasons offline</h3>
+    <p class="hint">The seasons chosen, each with every episode it holds, are kept on this node, in a
+    series of their own, and play here even once it is offline, until the day chosen. Signing in
+    still works offline too. What you watch of them there is not kept.</p>
+    <ul class="entries" id="keep-choices"></ul>
+    <div class="fields">
+      <label class="wide">Name <input id="keep-name" required autocomplete="off"></label>
+      <label>Keep until <input type="date" id="keep-until" required></label>
+    </div>
+    <p class="result" id="keep-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Keep offline</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="kept-dialog" aria-labelledby="kept-heading">
+  <form id="kept-form">
+    <h3 id="kept-heading"></h3>
+    <p class="hint" id="kept-state"></p>
+    <div class="fields">
+      <label>Keep until <input type="date" id="kept-until" required></label>
+      <button type="submit">Keep longer</button>
+    </div>
+    <p class="result" id="kept-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="danger" id="stop-keeping">Stop keeping</button>
+      <button type="button" class="secondary" data-close>Done</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="shared-dialog" aria-labelledby="shared-heading">
   <h3 id="shared-heading"></h3>
   <p class="hint">Whoever is given this id can play this episode, and add it to a series of their
@@ -745,11 +791,26 @@ const SESSION = "/data/session";
 const SIGNED = "/data/signed";
 const DROPS = "/data/drop";
 const ENCRYPTED = "/data/encrypted/";
+const ARCHIVES = "/data/archives";
 
 // Where a person's series are kept, "tv series:{id}": in versions at the
 // drop, each signed by them and encrypted for them (HttpApi 9, 11.5, 11.6).
 // The node keeps no series for whoever is not signed in.
 const SERIES_PREFIX = "tv series:";
+
+// Where the series a person keeps offline are listed, "tv offline:{id}": a
+// version for each, signed by them and encrypted for them, which a change to
+// their series never shuns, as it shuns those it replaces. Each is kept in an
+// archive of the node's own (HttpApi 12.4), beside the version, the identity
+// block they signed in with, and their public key, so that signing in and
+// reading the version work offline. What they watch of it is not kept, as
+// their list of series is not.
+const OFFLINE_PREFIX = "tv offline:";
+
+// How long a version kept offline may go without its archive being reported
+// before it is taken to be no longer kept, as the node reports an archive
+// asked for within moments.
+const REPORT_GRACE_SECONDS = 60;
 
 // What each version placed asks the node to search for its nonce, matching as
 // many bits as a node's search returns by default, so that it is found.
@@ -877,6 +938,8 @@ const state = {
   series: null,
   season: null,
   selected: null,
+  // Whether the series open is one kept offline, which is only played.
+  offline: false,
   // The still taken while editing: its bytes, as base64, and a URL showing it.
   poster: null,
   // Whether the person left fullscreen while the episode chosen played.
@@ -1364,6 +1427,23 @@ class Series {
     return jsonText(SERIES_KEYS, { ...details, seasons: seasons.map((season) => season.folder) });
   }
 
+  // What makes an encrypted series bundle of `seasons` alone, each whole,
+  // with its series.json, listing only those seasons, and its backdrop: to
+  // share, or to keep offline.
+  part(seasons) {
+    const add = { [SERIES_FILE]: { text: this.text(this.details, seasons) } };
+
+    if (isText(this.details.poster)) {
+      add[this.details.poster] = { from: this.bundle, path: this.details.poster };
+    }
+
+    for (const season of seasons) {
+      add[season.folder] = { from: this.bundle, path: season.folder };
+    }
+
+    return { encrypted: true, add };
+  }
+
   entry() {
     return { name: this.name, bundle: this.bundle };
   }
@@ -1682,6 +1762,156 @@ async function openVersion(id) {
   }
 }
 
+// A bundle's id without the key it may carry, as the node names what it keeps.
+function plainId(bundle) {
+  return bundle.split("/").slice(0, 2).join("/");
+}
+
+// The series whoever is signed in keeps offline, each as its version at
+// their offline drop lists it, with the archive keeping it, as the node last
+// reported it, or null if the node has not said.
+class Offline {
+  constructor(entry, version, archive) {
+    this.entry = entry;
+    this.version = version;
+    this.archive = archive;
+  }
+
+  static target() {
+    return `${OFFLINE_PREFIX}${state.owner.id}`;
+  }
+
+  // Each series kept offline. One whose archive the node no longer keeps, as
+  // once it expires, is forgotten, and its version shunned.
+  static async read() {
+    const ids = await foundAt(Offline.target());
+    const lists = await Promise.all(ids.map((id) => Kept.version(id)));
+    const archives = await Offline.archives();
+    const kept = [];
+
+    for (const [index, id] of ids.entries()) {
+      for (const entry of lists[index] || []) {
+        const archive = archives && archives.find((each) => each.bundles.includes(plainId(entry.bundle)));
+        const reported = (Date.now() - Date.parse(entry.changed)) / 1000 > REPORT_GRACE_SECONDS;
+
+        if (archives && !archive && reported) {
+          await Offline.forget(id);
+        } else {
+          kept.push(new Offline(entry, id, archive || null));
+        }
+      }
+    }
+
+    kept.sort((one, other) => one.entry.name.localeCompare(other.entry.name));
+    return kept;
+  }
+
+  // Every archive the node reports it keeps, each with its id; null if the
+  // node cannot say yet.
+  static async archives() {
+    const result = await call("GET", ARCHIVES);
+
+    if (result.status === 503) {
+      return null;
+    }
+
+    if (!result.ok || !isObject(result.value) || !isObject(result.value.archives)) {
+      throw new Refusal(result);
+    }
+
+    return Object.entries(result.value.archives)
+      .filter(([, report]) => isObject(report) && Array.isArray(report.bundles))
+      .map(([id, report]) => ({ ...report, id }));
+  }
+
+  // Keeps `seasons` of `series` offline, each whole, in a series of their own
+  // named `name`, made as sharing part of a series makes one, until
+  // `expires`, and returns the archive's id.
+  static async keep(series, seasons, name, expires) {
+    const session = await askSession();
+
+    if (!session || session.id !== state.owner.id) {
+      throw new SessionEnded();
+    }
+
+    if (!isText(session.block)) {
+      throw new Error("This node does not say which identity block you signed in with, so signing in could not be kept offline.");
+    }
+
+    const bundle = await makeBundle(series.part(seasons));
+    const entry = { name, bundle, changed: new Date().toISOString(), block: session.block };
+    const version = await placeVersion(Offline.target(), { series: [entry] });
+    return new Offline(entry, version, null).archiveUntil(expires);
+  }
+
+  // Shuns the version `id`, which lists a series no longer kept offline.
+  static async forget(id) {
+    const shunned = await call("DELETE", `${DATA}${id}`);
+
+    if (!shunned.ok) {
+      console.warn(`The version ${id} no longer kept offline was not shunned: ${new Refusal(shunned).message}`);
+    }
+  }
+
+  // Asks the node to keep this series, its version, and what signing in
+  // reads, until `expires`, and returns the archive's id. Asked again, the
+  // same archive is kept longer.
+  async archiveUntil(expires) {
+    const result = await call("POST", ARCHIVES, {
+      body: {
+        bundles: [this.entry.bundle],
+        objects: [this.version, this.entry.block, state.owner.id],
+        expires,
+      },
+    });
+
+    if (result.status !== 202 || !isObject(result.value) || !isText(result.value.archive_id)) {
+      throw new Refusal(result);
+    }
+
+    return result.value.archive_id;
+  }
+
+  // Stops keeping this series offline.
+  async stop() {
+    if (this.archive) {
+      const removed = await call("DELETE", `${ARCHIVES}/${this.archive.id}`);
+
+      if (!removed.ok) {
+        throw new Refusal(removed);
+      }
+    }
+
+    await Offline.forget(this.version);
+  }
+}
+
+// When the day `chosen`, from a date field, ends where the browser is, as
+// the node is told an archive expires; null if it is not a day yet to come.
+function endOfDay(chosen) {
+  const [year, month, day] = chosen.split("-").map(Number);
+  const end = new Date(year, month - 1, day + 1);
+  return Number.isNaN(end.getTime()) || end <= new Date() ? null : end.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+// The day an archive expiring at `expires` is kept until, as a date field gives it.
+function dayBefore(expires) {
+  const last = new Date(Date.parse(expires) - 1000);
+  return dateValue(last);
+}
+
+function dateValue(date) {
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// The first day a date field may choose: tomorrow.
+function tomorrow() {
+  const day = new Date();
+  day.setDate(day.getDate() + 1);
+  return dateValue(day);
+}
+
 function recall() {
   try {
     const entry = JSON.parse(localStorage.getItem(REMEMBERED) || "null");
@@ -1763,10 +1993,17 @@ async function keepVersion(previous, next) {
 
 // Whether what is watched is kept: for whoever is signed in, unless with their
 // fallback password before the fallback takes over (HttpApi 11.4), as nothing
-// is signed then. Such a person is played to all the same.
+// is signed then, or of a series kept offline, as their list is not kept with
+// it. Such a person is played to all the same.
 function keepsWatching() {
   const owner = state.owner;
-  return Boolean(owner) && !(isText(owner.fallback_for) && !isText(owner.fallback));
+  return Boolean(owner) && !(isText(owner.fallback_for) && !isText(owner.fallback)) && !state.offline;
+}
+
+// Whether the series open is the one named `name` the person keeps, rather
+// than one kept offline, which is never changed.
+function isOpen(name) {
+  return Boolean(state.series) && !state.offline && sameName(state.series.name, name);
 }
 
 // How many changes this page has made to what is watched, so that only the
@@ -1806,7 +2043,7 @@ async function changeWatching(change) {
 
   const last = count === watchingChanges;
 
-  if (last && kept && state.series && sameName(state.series.name, name) && !kept.same(state.watching)) {
+  if (last && kept && isOpen(name) && !kept.same(state.watching)) {
     state.watching = kept;
     showWatching();
   }
@@ -1871,7 +2108,7 @@ function serially(action) {
 
 // The newest version this page knows of the series named `name`.
 async function newest(name) {
-  if (state.series && sameName(state.series.name, name)) {
+  if (isOpen(name)) {
     return state.series;
   }
 
@@ -1916,7 +2153,7 @@ async function changeSeries(
         throw error;
       }
 
-      if (state.series && sameName(state.series.name, series.name)) {
+      if (isOpen(series.name)) {
         await reopen(series.name);
       }
 
@@ -1924,7 +2161,7 @@ async function changeSeries(
     }
   }
 
-  if (state.series && sameName(state.series.name, next.name)) {
+  if (isOpen(next.name)) {
     if (moved && state.selected === moved[0]) {
       const video = byId("video");
       state.selected = moved[1];
@@ -2041,17 +2278,27 @@ function closePlayer() {
 
 // Shows `series`, with what is watched of it, `watching`, at the season of the
 // episode to watch next, with focus on it; or, if there is none, at the
-// season last chosen in it.
-function showSeries(series, watching = new Watching()) {
+// season last chosen in it. One kept offline, if `offline`, is only played,
+// saying that nothing watched of it is kept, and is not remembered, as the
+// person's series are.
+function showSeries(series, watching = new Watching(), offline = false) {
   const next = watching.next(series);
   closePlayer();
   state.series = series;
+  state.offline = offline;
   state.watching = watching;
   state.season = next === null ? null : next.split("/")[0];
-  remember(series.entry());
+
+  if (!offline) {
+    remember(series.entry());
+  }
 
   for (const element of document.querySelectorAll("#library .signed-in-only, #details .signed-in-only")) {
-    element.hidden = !state.owner;
+    element.hidden = !state.owner || offline;
+  }
+
+  for (const element of document.querySelectorAll(".offline-note")) {
+    element.hidden = !offline;
   }
 
   // Each series opens with its seasons shown, not the filter's matches.
@@ -2063,12 +2310,14 @@ function showSeries(series, watching = new Watching()) {
   focusEpisode(next);
 }
 
-async function openSeries(entry) {
+// Opens the series `entry` names: one the person keeps, or one kept offline,
+// if `offline`, of which nothing is watched.
+async function openSeries(entry, offline = false) {
   const status = byId("page-state");
   show(status, `Reading “${entry.name}”…`);
 
   try {
-    showSeries(await Series.read(entry.bundle, entry.name), Watching.from(entry.watching));
+    showSeries(await Series.read(entry.bundle, entry.name), Watching.from(entry.watching), offline);
   } finally {
     show(status, "");
   }
@@ -2108,34 +2357,108 @@ async function showChooser() {
     return;
   }
 
-  // Each series is shown with its backdrop, which its series.json names.
-  const details = await Promise.all(kept.list.map((entry) => readEntry(entry.bundle, SERIES_FILE).catch((error) => {
-    console.warn(`The ${SERIES_FILE} of “${entry.name}” could not be read: ${error.message}`);
-    return null;
-  })));
+  // Those kept offline are listed beside, so that they are not waited on
+  // behind the backdrops of the rest, which the node may have to fetch.
+  const [details, offline] = await Promise.all([seriesDetails(kept.list), showOffline()]);
   list.replaceChildren(...kept.list.map((entry, index) => seriesChoice(entry, details[index])));
-  const first = list.querySelector("[aria-pressed=true]") || list.querySelector("button")
+  const first = chooser.querySelector("[aria-pressed=true]") || list.querySelector("button")
+    || byId("offline-list").querySelector("button")
     || chooser.querySelector(".toolbar:not([hidden]) button");
 
   if (first) {
     first.focus();
   }
 
-  show(status, kept.list.length > 0 ? "Choose a series." : "You keep no series yet. Make one.");
+  show(status, kept.list.length > 0 || offline > 0 ? "Choose a series." : "You keep no series yet. Make one.");
 }
 
-function seriesChoice(entry, details) {
+// What the series.json of each series of `entries` holds, or null where it
+// could not be read: each series is shown with its backdrop, which that names.
+function seriesDetails(entries) {
+  return Promise.all(entries.map((entry) => readEntry(entry.bundle, SERIES_FILE).catch((error) => {
+    console.warn(`The ${SERIES_FILE} of “${entry.name}” could not be read: ${error.message}`);
+    return null;
+  })));
+}
+
+// Lists the series kept offline, for whoever is signed in, beneath the rest,
+// and returns how many there are.
+async function showOffline() {
+  const heading = byId("offline-heading");
+  const list = byId("offline-list");
+  list.replaceChildren();
+  heading.hidden = true;
+  list.hidden = true;
+  let kept;
+
+  try {
+    kept = await Offline.read();
+  } catch (error) {
+    console.warn(`The series kept offline could not be read: ${error.message}`);
+    return 0;
+  }
+
+  const details = await seriesDetails(kept.map((offline) => offline.entry));
+  list.replaceChildren(...kept.map((offline, index) => seriesChoice(offline.entry, details[index], offline)));
+  heading.hidden = kept.length === 0;
+  list.hidden = kept.length === 0;
+  return kept.length;
+}
+
+// A series to choose, `entry`, shown with its backdrop, its name, and its
+// year, as its series.json, `details`, gives them. One kept offline,
+// `offline`, shows how keeping it goes instead of its year, and has what
+// manages keeping it below.
+function seriesChoice(entry, details, offline = null) {
   const item = make("li");
   const pick = make("button", null, "pick");
   const text = make("span", null, "caption");
   const year = isObject(details) && isShown(details.year) ? String(details.year) : "";
+  const open = Boolean(state.series && state.offline === Boolean(offline) && sameName(state.series.name, entry.name));
   pick.type = "button";
-  pick.setAttribute("aria-pressed", String(Boolean(state.series && sameName(state.series.name, entry.name))));
-  text.append(make("strong", entry.name), make("span", year, "note"));
+  pick.setAttribute("aria-pressed", String(open));
+  text.append(make("strong", entry.name), make("span", offline ? keptText(offline.archive) : year, "note"));
   pick.append(posterImage(isObject(details) && isText(details.poster) ? entryUrl(entry.bundle, details.poster) : null), text);
-  pick.addEventListener("click", () => perform(pick, byId("chooser-state"), () => openSeries(entry)));
+  pick.addEventListener("click", () => perform(pick, byId("chooser-state"), () => openSeries(entry, Boolean(offline))));
   item.append(pick);
+
+  if (offline) {
+    const manage = make("button", "Keeping…", "secondary small");
+    manage.type = "button";
+    manage.setAttribute("aria-label", `Keeping “${entry.name}” offline`);
+    manage.addEventListener("click", () => openKept(offline));
+    item.append(manage);
+  }
+
   return item;
+}
+
+// What an archive keeping a series offline is doing, as the node last said,
+// or that it has not said, if `archive` is null.
+function keptText(archive) {
+  if (!archive) {
+    return "Kept offline";
+  }
+
+  if (archive.status === "done") {
+    return `Kept until ${untilText(archive.expires)}`;
+  }
+
+  if (archive.status === "failed") {
+    return `Not kept: ${archive.error || "the node did not say why"}`;
+  }
+
+  if (archive.status === "running") {
+    return `Writing ${archive.written} of ${archive.needed}`;
+  }
+
+  return `Fetching ${plural(archive.missing, "part", "parts")} it lacks`;
+}
+
+// The last day an archive expiring at `expires` is kept, as the browser
+// shows a date; or that it is kept until removed, if `expires` is null.
+function untilText(expires) {
+  return isText(expires) ? new Date(Date.parse(expires) - 1000).toLocaleDateString() : "it is removed";
 }
 
 // The series and its episodes.
@@ -3142,21 +3465,154 @@ async function sharePart() {
     throw new Error("Choose at least one season.");
   }
 
-  const add = { [SERIES_FILE]: { text: series.text(series.details, seasons) } };
-
-  if (isText(series.details.poster)) {
-    add[series.details.poster] = { from: series.bundle, path: series.details.poster };
-  }
-
-  for (const season of seasons) {
-    add[season.folder] = { from: series.bundle, path: season.folder };
-  }
-
   byId("share-made").hidden = true;
-  byId("share-part-id").textContent = await makeBundle({ encrypted: true, add });
+  byId("share-part-id").textContent = await makeBundle(series.part(seasons));
   byId("share-made").hidden = false;
   const episodes = seasons.reduce((total, season) => total + season.episodes.size, 0);
   return [`An id for ${plural(seasons.length, "season", "seasons")} of “${series.name}”, holding ${plural(episodes, "episode", "episodes")}:`, false];
+}
+
+// Keeping seasons offline.
+
+// Chooses seasons of the series open to keep offline, as sharing part of it
+// chooses them, the season chosen in it chosen to start with.
+function openKeep() {
+  const series = state.series;
+  byId("keep-form").reset();
+  byId("keep-choices").replaceChildren(...series.seasons.map((season) => checkbox(
+    season.folder, seasonChoice(season), season.folder === state.season, season.details === null,
+  )));
+  byId("keep-choices").hidden = series.seasons.length === 0;
+  byId("keep-name").value = `${series.name}, offline`;
+  byId("keep-until").min = tomorrow();
+  show(byId("keep-result"), series.seasons.length ? "" : "This series holds no seasons yet.");
+  byId("keep-dialog").showModal();
+}
+
+async function keepChosen() {
+  const series = state.series;
+  const folders = checked("keep-choices");
+  const seasons = series.seasons.filter((season) => folders.includes(season.folder));
+  const name = byId("keep-name").value.trim();
+  const expires = endOfDay(byId("keep-until").value);
+
+  if (seasons.length === 0) {
+    throw new Error("Choose at least one season.");
+  }
+
+  if (!name) {
+    throw new Error("Give the seasons kept a name.");
+  }
+
+  if (!expires) {
+    throw new Error("Choose a day to keep them until, after today.");
+  }
+
+  const archive = await Offline.keep(series, seasons, name, expires);
+  byId("keep-dialog").close();
+  followKeeping(archive, name);
+  return null;
+}
+
+// Says, in the activity list, how keeping `name` offline in the archive
+// `archive` goes, until it is kept or not.
+function followKeeping(archive, name) {
+  const item = make("li");
+  const label = make("span", `Keeping “${name}” offline`);
+  const bar = make("progress");
+  const note = make("span", "Asking the node…", "note");
+  bar.setAttribute("aria-label", `How much of “${name}” is kept offline`);
+  item.append(label, bar, note);
+  byId("activity").append(item);
+
+  const ended = (text, isError) => {
+    const dismiss = make("button", "Dismiss", "secondary small");
+    dismiss.type = "button";
+    dismiss.addEventListener("click", () => item.remove());
+    label.textContent = text;
+    label.className = isError ? "error" : "";
+    bar.remove();
+    note.remove();
+    item.append(dismiss);
+  };
+
+  const progress = (report) => {
+    if (typeof report.needed === "number" && report.needed > 0) {
+      bar.max = report.needed;
+      bar.value = report.status === "running" ? report.written : report.needed - report.missing;
+    }
+
+    note.textContent = keptText(report);
+  };
+
+  writtenArchive(archive, progress).then(
+    (report) => ended(`“${name}” is kept offline until ${untilText(report.expires)}.`, false),
+    (error) => ended(`“${name}” was not kept offline: ${error.message}`, true),
+  );
+}
+
+// The node's report of the archive `archive`, once it is written, `progress`
+// told of each report before then.
+async function writtenArchive(archive, progress) {
+  for (;;) {
+    const archives = await Offline.archives();
+    const report = archives && archives.find((each) => each.id === archive);
+
+    if (report && report.status === "done") {
+      return report;
+    }
+
+    if (report && report.status === "failed") {
+      throw new Error(report.error || "The node did not say why.");
+    }
+
+    if (report) {
+      progress(report);
+    }
+
+    await sleep(IMPORT_POLL_SECONDS);
+  }
+}
+
+// The series kept offline that the dialog for it is open on.
+let managing = null;
+
+function openKept(offline) {
+  managing = offline;
+  const archive = offline.archive;
+  byId("kept-form").reset();
+  byId("kept-heading").textContent = `Keeping “${offline.entry.name}” offline`;
+  byId("kept-state").textContent = archive ? `${keptText(archive)}.` : "The node has not said yet how keeping it goes.";
+  byId("kept-until").min = tomorrow();
+  byId("kept-until").value = archive && isText(archive.expires) ? dayBefore(archive.expires) : "";
+  show(byId("kept-result"), "");
+  byId("kept-dialog").showModal();
+}
+
+async function keepLonger() {
+  const expires = endOfDay(byId("kept-until").value);
+
+  if (!expires) {
+    throw new Error("Choose a day to keep it until, after today.");
+  }
+
+  await managing.archiveUntil(expires);
+  byId("kept-dialog").close();
+  await showChooser();
+  return null;
+}
+
+async function stopKeeping() {
+  const offline = managing;
+
+  if (!window.confirm(`Stop keeping “${offline.entry.name}” offline?`)) {
+    return null;
+  }
+
+  await offline.stop();
+  byId("kept-dialog").close();
+  await showChooser();
+  return null;
 }
 
 // Whether TMDB ids `one` and `other`, each undefined for a series made with
@@ -4764,6 +5220,7 @@ for (const [action, handler] of Object.entries(MEDIA_KEYS)) {
 arrowKeys(byId("episodes"), "button.pick");
 arrowKeys(byId("seasons"));
 arrowKeys(byId("chooser-list"), "button.pick");
+arrowKeys(byId("offline-list"));
 arrowKeys(byId("folder-entries"));
 arrowKeys(byId("new-choices"));
 
@@ -4797,6 +5254,7 @@ byId("add-id").addEventListener("click", () => {
   byId("id-dialog").showModal();
 });
 byId("share-series").addEventListener("click", openShare);
+byId("keep-offline").addEventListener("click", openKeep);
 byId("new-lookup-key").addEventListener("click", openLookup);
 byId("add-file").addEventListener("click", () => {
   showFolders();
@@ -4880,6 +5338,9 @@ onSubmit("import-apart", "import-apart-result", async () => {
   return importChosen(name);
 });
 onClick("share-part", "share-state", sharePart);
+onSubmit("keep-form", "keep-result", keepChosen);
+onSubmit("kept-form", "kept-result", keepLonger);
+onClick("stop-keeping", "kept-result", stopKeeping);
 onClick("take-poster", "poster-result", takePoster);
 onClick("share-episode", "episode-result", shareEpisode);
 onClick("remove-episode", "episode-result", removeEpisode);
