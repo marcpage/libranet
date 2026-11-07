@@ -179,6 +179,8 @@ the seasons you choose. Their TV application imports the seasons they
 choose of it into the series of the same name they keep, taking only the
 episodes they lack, so you can share each new season as it comes. An
 episode can be shared alone too, and is added to a series by its id.
+Seasons of a series can be kept on your node until a day you choose, so that
+they still play there once it is offline, as a collection of movies can.
 
 When an episode ends, the next plays at once, on into the next season. The
 TV application keeps which episodes you have watched, and where you stopped
@@ -374,7 +376,7 @@ you say so on `/config`.
 | [Phase 7 Plan](docs/implementation/Phase%207.md) | Enhancements: steps 16, 50, 57, and 95, planned |
 | [Phase 8 Plan](docs/implementation/Phase%208.md) | A seed node: step 84, planned |
 | [Movie App Plan](docs/implementation/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 83, 85–88, and 115, all built |
-| [TV App Plan](docs/implementation/TV%20App.md) | The TV application: steps 144–148, step 144 built |
+| [TV App Plan](docs/implementation/TV%20App.md) | The TV application: steps 144–148, all built |
 | [Music App Plan](docs/implementation/Music%20App.md) | The music application: steps 149–154, planned |
 | [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |
 | [File Layout](docs/implementation/File%20Layout.md) | Every file a node reads or writes, and the settings that move them |
