@@ -679,20 +679,18 @@ def test_the_music_application_is_built_from_its_directory(music_page: str) -> N
 
 def test_the_music_page_is_one_self_contained_document(music_page: str) -> None:
     assert music_page.startswith("<!doctype html>")
-    # Nothing is loaded from a file of its own, or from anywhere else but
-    # TMDB, as the TV page it is copied from loads nothing else.
+    # Nothing is loaded from a file of its own, or from anywhere else: a
+    # song's details come from its path.
     assert "<link" not in music_page
     assert findall(r"<script[^>]*\bsrc", music_page) == []
     assert "url(" not in music_page.split("<style>", 1)[1].split("</style>", 1)[0]
     assert "http:" not in music_page
-    assert set(findall(r"https:[^\"`\s]*", music_page)) == {
-        "https://api.themoviedb.org/3",
-        "https://image.tmdb.org/t/p",
-    }
+    assert "https:" not in music_page
 
 
 def test_the_music_page_calls_only_endpoints_the_node_serves(music_page: str) -> None:
     called = set(findall(r'"(/data/[^"]*)"', music_page))
+    hex_digits = "0123456789abcdef" * 4
 
     # No store: the node keeps no music for whoever is not signed in.
     assert called == {
@@ -705,6 +703,56 @@ def test_the_music_page_calls_only_endpoints_the_node_serves(music_page: str) ->
         SIGNED_PATH,
         DROP_PATH,
         f"{ENCRYPTED_PATH}/",
+    }
+    # The folders, and a song's audio in its folder of a person's library.
+    assert fullmatch(DIRECTORY_PATTERN, "/data/directory/Music/Artist/Album")
+    # A person's library: searched at their drop, each version opened, and
+    # those replaced shunned.
+    target = quote(f"music library:sha256/{hex_digits}", safe="")
+    assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{target}")
+    assert fullmatch(ENCRYPTED_PATTERN, f"{ENCRYPTED_PATH}/sha256/{hex_digits}")
+    assert fullmatch(DATA_PATTERN, f"/data/sha256/{hex_digits}")
+    assert fullmatch(
+        BUNDLE_PATTERN,
+        f"/data/sha256/{hex_digits}/AES256-CBC/{hex_digits}/songs/{hex_digits[:16]}/01 Song.mp3",
+    )
+
+
+def test_the_music_page_keeps_a_library_where_the_plan_names_it(music_page: str) -> None:
+    assert 'const LIBRARY_PREFIX = "music library:";' in music_page
+    assert 'const REMEMBERED_SHUFFLE = "music.shuffle";' in music_page
+    assert 'const REMEMBERED_FILTERS = "music.filters";' in music_page
+
+
+def test_the_music_page_is_bright_where_the_movie_and_tv_pages_are_dark(
+    music_page: str, movie_page: str, tv_page: str
+) -> None:
+    assert '<meta name="color-scheme" content="light">' in music_page
+    assert '<meta name="color-scheme" content="dark">' in movie_page
+    assert '<meta name="color-scheme" content="dark">' in tv_page
+    # Light, even when the system is set to dark.
+    assert "prefers-color-scheme" not in music_page
+
+
+def test_the_music_page_takes_as_songs_the_files_the_plan_names(music_page: str) -> None:
+    [types] = findall(r"const AUDIO_TYPES = \{([^}]*)\};", music_page)
+
+    assert set(findall(r"^\s+(\w+): \"audio/", types, MULTILINE)) == {
+        "mp3",
+        "m4a",
+        "m4b",
+        "aac",
+        "flac",
+        "ogg",
+        "oga",
+        "opus",
+        "wav",
+        "aif",
+        "aiff",
+        "wma",
+        "ape",
+        "wv",
+        "mka",
     }
 
 

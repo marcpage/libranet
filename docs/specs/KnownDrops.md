@@ -28,6 +28,7 @@ is placed at its target, and links to the documents that define it.
 | [`movie offline:{id}`](#313-movies-kept-offline) | A version for each collection a person keeps offline | The movie application | The person | For the person | In use |
 | [`movie tmdb:{id}`](#314-tmdb-keys) | The versions of the key a person looks things up at TMDB with | The movie and TV applications | The person | For the person | In use |
 | [`tv series:{id}`](#315-tv-series) | The versions of a person's list of TV series | The TV application | The person | For the person | In use |
+| [`music library:{id}`](#316-music-libraries) | The versions of a person's library of music | The music application | The person | For the person | In use |
 | [`node:{id}`](#39-what-a-node-says-of-itself) | The versions of what a node says of itself | The node | The node | No | In use |
 | [`karma transaction:{validation}`](#310-karma-transaction-blocks) | Karma's transaction blocks, and transactions put up for them | Anyone | Its builder; each transaction by its sender | No | In use |
 | [`karma validation:{validation}`](#311-karma-validation-blocks) | Karma's validation blocks | Anyone | Its builder; each stake by its staker | No | In use |
@@ -48,6 +49,7 @@ flowchart TB
         pid --> movie["movie collections:{id}<br/>movie offline:{id}<br/>their movies (§3.12, §3.13)"]
         pid --> tmdb["movie tmdb:{id}<br/>their TMDB key (§3.14)"]
         pid --> tv["tv series:{id}<br/>their TV series (§3.15)"]
+        pid --> music["music library:{id}<br/>their music (§3.16)"]
     end
     subgraph node["A node"]
         direction LR
@@ -572,3 +574,34 @@ for a client no one is signed in on.
   replaces, as for movie collections (§3.12).
 - **Defined in:** [TV App](../implementation/TV%20App.md) Steps 144 and
   147.
+
+### 3.16 Music Libraries
+
+**Target:** `music library:{id}`
+
+A person's library of music names its newest bundle, and when it last
+changed: `{"library": {"bundle", "changed"}}`. The bundle is encrypted, so
+that only whoever is given its id can read it. It holds `songs/`, each song
+in a folder named by the first 16 hex digits of its own bundle's hash, and
+`index/`, what is known of every song, in files each holding the songs
+whose folders begin with the same two hex digits. It is kept in versions,
+so that it follows the person from node to node, and versions made apart,
+on two nodes say, are merged as they are read. The node keeps no library
+for a client no one is signed in on.
+
+- **Placed by** the music application, with `POST /data/signed`, given
+  `encrypt: {for: id}`, whenever the person's library changes: once for
+  each song added from a file, and once for each folder of songs added
+  together, once every song of it is imported.
+- **Signed** by the person, then **encrypted** for the person.
+- **Bits:** placed matching at least 24, searched for 1 second.
+- **Reading:** a reader passes over every version that does not open for
+  the person, that they did not sign, or that names no bundle. It merges
+  every version left: the library at the version that changed it last, and
+  of two changed in the same moment, the one whose drop's id comes first,
+  with each song the others hold and it does not, and their entries in
+  `index/`, added to it. Merging adds songs, and never removes any. Each
+  change places a version naming the merged library's newest bundle, and
+  shuns the versions read, which it replaces, as for movie collections
+  (§3.12), but for any it could not merge whole.
+- **Defined in:** [Music App](../implementation/Music%20App.md) Step 149.

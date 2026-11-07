@@ -53,6 +53,7 @@ see [Project Status](#project-status).
     - [Back up your files](#back-up-your-files)
     - [Watch movies](#watch-movies)
     - [Watch TV](#watch-tv)
+    - [Listen to music](#listen-to-music)
     - [Use and share applications](#use-and-share-applications)
   - [How It Works](#how-it-works)
   - [Getting Started](#getting-started)
@@ -190,6 +191,28 @@ series, and what you have watched of them, are kept for you alone, as your
 collections are, so the TV application keeps none for a browser no one is
 signed in on.
 
+### Listen to music
+
+Every node also ships a music application, at `/music/` on the node, which
+is bright where the movie library and TV are dark. Signed in, in a browser
+on the node's own computer, add songs from audio files of any kind, one at
+a time, or every song in a folder, and in the folders within it, at once.
+A song's title comes from its file's name, less a track number it starts
+with, its album from the folder it is in, and its artist from the folder
+above that, as a library laid out as `Artist/Album/01 Title.mp3` gives, and
+each can be edited. A song added already is not added again, so a folder
+can be added again as it grows. Your library lists every song you have
+added, by artist, album, disc, and track, and is filtered by artist, by
+album, or by the whole words of any detail of a song.
+
+Play a song, and the songs after it in the list play on, or, with Shuffle
+on, the songs of the list in an order chosen at random. The list stays shown
+while one plays. A song the browser cannot play, such as a `.wma` in Chrome,
+or one that fails as it loads, is marked, and passed over. The keys are the
+TV application's, with `S` for Shuffle. Your library is kept for you alone,
+as your series are, so the music application keeps none for a browser no
+one is signed in on.
+
 ### Use and share applications
 
 Any collection of web pages can be served as an application. Give your node
@@ -264,7 +287,8 @@ uv run libranet
 Then open `http://127.0.0.1:8080/` in a browser. That is your node's front
 page, which says who the node is and links to its applications: the movie
 library at `http://127.0.0.1:8080/movie/`, TV at
-`http://127.0.0.1:8080/tv/`, the user directory at
+`http://127.0.0.1:8080/tv/`, music at `http://127.0.0.1:8080/music/`, the
+user directory at
 `http://127.0.0.1:8080/directory/`, mail at `http://127.0.0.1:8080/mail/`,
 the nodes it knows at `http://127.0.0.1:8080/nodes/`, the Karma chain it
 follows at `http://127.0.0.1:8080/karma/`, and the administration page,
@@ -375,7 +399,7 @@ you say so on `/config`.
 | [Phase 8 Plan](docs/implementation/Phase%208.md) | A seed node: step 84, planned |
 | [Movie App Plan](docs/implementation/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 83, 85–88, and 115, all built |
 | [TV App Plan](docs/implementation/TV%20App.md) | The TV application: steps 144–148, step 144 built |
-| [Music App Plan](docs/implementation/Music%20App.md) | The music application: steps 149–154, planned |
+| [Music App Plan](docs/implementation/Music%20App.md) | The music application: steps 149–154, step 149 built |
 | [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |
 | [File Layout](docs/implementation/File%20Layout.md) | Every file a node reads or writes, and the settings that move them |
 | [Database Schema](docs/implementation/Database%20Schema.md) | The statistics database's tables, and what reads and writes them |
