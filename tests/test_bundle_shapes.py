@@ -14,6 +14,7 @@ from libranet.bundle.shapes import (
     XattrValue,
     ancestors,
     is_entry_path,
+    is_media_type,
 )
 from libranet.cas.content_id import ContentId
 
@@ -134,6 +135,52 @@ def test_an_inline_value_may_be_empty() -> None:
     assert Metadata(xattrs={"user.empty": ""}).xattrs == {"user.empty": ""}
 
 
+@mark.parametrize(
+    "content_type",
+    [
+        "audio/flac",
+        "Audio/X-MS-WMA",
+        "application/vnd.api+json",
+        "text/html; charset=utf-8",
+        'text/plain;charset="utf-8"',
+        'multipart/form-data ; boundary="a \\"b\\" c"',
+        "text/plain;",
+        "text/plain; ; a=b",
+    ],
+)
+def test_metadata_keeps_a_content_type_that_is_a_media_type(content_type: str) -> None:
+    assert is_media_type(content_type)
+    assert Metadata(content_type=content_type).content_type == content_type
+
+
+@mark.parametrize(
+    "content_type",
+    [
+        "",
+        "audio",
+        "audio/",
+        "/flac",
+        "audio/flac/x",
+        "audio flac",
+        "audio/flac ",
+        " audio/flac",
+        "audio/flac\r\nSet-Cookie: a=b",
+        "audio/fl\u00e1c",
+        "text/plain; charset",
+        "text/plain; charset=",
+        "text/plain; charset=utf 8",
+        'text/plain; a="unclosed',
+        'text/plain; a="tab\there"',
+        "text/plain\t; a=b",
+    ],
+)
+def test_metadata_refuses_a_content_type_that_is_not_a_media_type(content_type: str) -> None:
+    assert not is_media_type(content_type)
+
+    with raises(MalformedBundleError, match='"content_type" must be a media type'):
+        Metadata(content_type=content_type)
+
+
 def test_extended_attribute_parts_are_listed_in_order() -> None:
     metadata = Metadata(xattrs={"user.a": (PART, OTHER_PART), "user.b": "MQ==", "user.c": (PART,)})
 
@@ -185,6 +232,7 @@ def test_a_file_with_only_what_its_bytes_decide_keeps_its_parts_their_sizes_and_
             algorithm="sha256",
             hash=WHOLE_HASH,
             xattrs={"user.tag": "dGFn"},
+            content_type="audio/flac",
         ),
         versions=((OTHER_PART,),),
         part_sizes_bytes=(3072, 1024),

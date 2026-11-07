@@ -163,6 +163,7 @@ def _metadata(fields: dict[str, object]) -> Metadata:
         algorithm=_optional_lower_case(metadata, "algorithm"),
         hash=_optional_lower_case(metadata, "hash"),
         xattrs=_xattrs(metadata),
+        content_type=_optional_string(metadata, "content_type"),
     )
 
 

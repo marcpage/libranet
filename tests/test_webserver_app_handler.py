@@ -624,6 +624,17 @@ def test_a_served_file_carries_its_guessed_content_type(
     assert get(handler, "/wiki/docs/style.css").headers["Content-Type"] == "text/css"
 
 
+def test_a_served_file_carries_the_content_type_its_bundle_gives(
+    handler: AppHandler, files: ResolvedFiles, store: CasStore
+) -> None:
+    entry = entry_for(b"fLaC")
+    hold(store, b"fLaC")
+    typed = replace(entry, metadata=replace(entry.metadata, content_type="audio/flac"))
+    save_entry(files, WIKI_BUNDLE, "docs/style.css", typed)
+
+    assert get(handler, "/wiki/docs/style.css").headers["Content-Type"] == "audio/flac"
+
+
 @mark.parametrize(
     "path, matches",
     [

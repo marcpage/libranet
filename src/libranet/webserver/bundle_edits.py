@@ -20,9 +20,11 @@ The removals are made, then the additions, in order of path, so that one
 beneath another is put into what that one put there. An addition replaces
 whatever was at its path, and one beneath a file or a symlink is ``400``.
 Bytes given are cut into parts as a file is, encrypted when the bundle is
-(BundleSpecification §7). An entry copied from an encrypted bundle keeps its
-parts' keys, even in a bundle that is not encrypted, so that whoever is given
-that bundle can read it.
+(BundleSpecification §7). A file bundle named with a content type is placed
+with that type in its metadata (BundleSpecification §2.1). An entry copied
+keeps its metadata, its content type among it, and one copied from an
+encrypted bundle keeps its parts' keys, even in a bundle that is not
+encrypted, so that whoever is given that bundle can read it.
 
 The new bundle names its base in ``versions``, but for a bundle that is not
 encrypted over one that is, which would otherwise carry the base's key. It is
@@ -49,7 +51,7 @@ at (:class:`~libranet.webserver.local_only.LocalOnly`).
 """
 
 from __future__ import annotations
-from dataclasses import KW_ONLY, dataclass
+from dataclasses import KW_ONLY, dataclass, replace
 from http import HTTPStatus
 from logging import getLogger
 from pathlib import Path
@@ -184,6 +186,10 @@ class _Reader:
 
             if not isinstance(found, FileBundle):
                 raise BundleEditError(f"{given.file.content_id} is not a file bundle")
+
+            if given.content_type is not None:
+                typed = replace(found.metadata, content_type=given.content_type)
+                found = replace(found, metadata=typed)
 
             return {path: found}
 

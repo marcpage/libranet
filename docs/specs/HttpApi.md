@@ -2800,7 +2800,8 @@ without one.
   ```
 
   `size` is absent for a file whose bundle does not record it.
-  `content_type` is the type the file would be served with.
+  `content_type` is the type the file would be served with: the one its
+  bundle gives it, or else one found from its name (§13).
 - **A path reaching a file or a directory through a symbolic link** is
   answered `302 Found`, with the path it leads to, so that each is read at
   one path.
@@ -2931,7 +2932,8 @@ Content-Type: application/json
    "Film (2001)": {"from": "sha256/…", "path": ""},
    "Film (2001)/info.json": {"text": "{\"title\": \"Film\"}"},
    "Film (2001)/poster.jpg": {"base64": "/9j/4AAQ…"},
-   "Other.mp4": {"file": "sha256/…"}
+   "Other.mp4": {"file": "sha256/…"},
+   "Song.flac": {"file": "sha256/…", "content_type": "audio/flac"}
  },
  "remove": ["Old Film (1999)"]}
 ```
@@ -2956,12 +2958,18 @@ base's identifier, as the request named it.
 - **`add`** maps each entry path to what goes there, replacing whatever
   the base held at that path:
   - `{"file": id}`: the file bundle `id` names, as an import gives (§12.2).
+    With `"content_type"`, as `{"file": id, "content_type": "audio/flac"}`,
+    the file is placed with that type in its metadata
+    ([Bundle Specification §2.1](BundleSpecification.md#21-fields)), and
+    is served with it. A type that is not a media type is
+    `400 Bad Request`.
   - `{"from": id, "path": p}`: what bundle `id` holds at `p`. A file or a
-    symbolic link is copied to the path, a link as it is, not followed. A
-    directory has every entry beneath it copied to the same place beneath
-    the path, and its own metadata-only entry, if it has one, to the path
-    itself. A directory holding nothing is still there once copied. `""`
-    names the bundle's root, or a file bundle's own file.
+    symbolic link is copied to the path, a link as it is, not followed, and
+    a file with all its metadata, its content type among it. A directory
+    has every entry beneath it copied to the same place beneath the path,
+    and its own metadata-only entry, if it has one, to the path itself. A
+    directory holding nothing is still there once copied. `""` names the
+    bundle's root, or a file bundle's own file.
   - `{"text": s}` or `{"base64": b}`: a file of these bytes, stored by the
     node.
 
@@ -3142,24 +3150,28 @@ reaches a file or a directory through a symbolic link MAY be answered
 If a directory bundle indicates that it is discoverable, then an index is
 generated whenever a directory within the bundle is referenced directly.
 
-The directory bundle MAY specify content type (if so, that is the type that
-should be used). If the directory bundle does not specify content type, the node
-MAY use an internal extension lookup table to determine content type. The node
-SHOULD make a best guess effort to determine content type. A node SHOULD use a
-table of its own rather than its host's, so that every node serves a file with
-the same type. A file whose name says it is compressed, such as `.tar.gz`,
-SHOULD be served as `application/octet-stream`, since a type guessed from the
-name would describe the file once decompressed.
+The directory bundle MAY specify a file's content type, as the file's
+`metadata.content_type`
+([Bundle Specification §2.1](BundleSpecification.md#21-fields)), and if it
+does, the file is served with that type. If the directory bundle does not
+specify content type, the node MAY use an internal extension lookup table
+to determine content type. The node SHOULD make a best guess effort to
+determine content type. A node SHOULD use a table of its own rather than its
+host's, so that every node serves a file with the same type. A file whose
+name says it is compressed, such as `.tar.gz`, SHOULD be served as
+`application/octet-stream`, since a type guessed from the name would
+describe the file once decompressed.
 
 If a file requested is not in the bundle, a standard `404` error should be
 returned. Directory bundles may specify a specific `404` page file.
 
-A bundle has no field yet for its default file, for being discoverable, for a
-file's content type, or for a `404` page
+A bundle has no field yet for its default file, for being discoverable, or
+for a `404` page
 ([Bundle Specification §9](BundleSpecification.md#9-open-items--not-yet-specified)).
-Until it does, the default file is `index.html`, no index is generated, a
-file's content type is found from its name, and a path the bundle does not
-hold is a plain `404`.
+Until it does, the default file is `index.html`, no index is generated, and
+a path the bundle does not hold is a plain `404`. A file's content type is
+the `metadata.content_type` its bundle gives it, and is found from its name
+where its bundle gives none.
 
 Applications are defined on the local node. Each node will have its own list of
 application mappings. This allows someone to configure their specific view and

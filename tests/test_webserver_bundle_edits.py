@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from base64 import b64encode
+from dataclasses import replace
 from functools import partial
 from hashlib import sha256
 from io import BytesIO
@@ -267,6 +268,36 @@ def test_each_source_is_put_at_its_path(
     assert file_bytes(uploads, entries["Film (2001)/info.json"]) == INFO
     assert file_bytes(uploads, entries["Film (2001)/poster.jpg"]) == POSTER
     assert top_of(uploads, made(response)).versions == ()
+
+
+def test_a_file_is_placed_with_the_content_type_given_and_keeps_it_when_copied(
+    router: Router, store: CasStore, uploads: OwnUploads
+) -> None:
+    imported = str(stored(store, film(1)))
+    typed = replace(film(1), metadata=replace(film(1).metadata, content_type="audio/mp4"))
+    plain = made(router.dispatch(edit_request({"add": {"song.m4a": {"file": imported}}})))
+    given = {"song.m4a": {"file": imported, "content_type": "audio/mp4"}}
+
+    # Only the type changes, which is still a new version.
+    retyped = made(router.dispatch(edit_request({"base": str(plain), "add": given})))
+    copy = {"copy.m4a": {"from": str(retyped), "path": "song.m4a"}}
+    copied = made(router.dispatch(edit_request({"add": copy})))
+
+    assert read(uploads, plain) == {"song.m4a": film(1)}
+    assert read(uploads, retyped) == {"song.m4a": typed}
+    assert read(uploads, copied) == {"copy.m4a": typed}
+
+
+def test_a_content_type_that_is_not_a_media_type_is_refused(
+    router: Router, store: CasStore
+) -> None:
+    given = {"file": str(stored(store, film(1))), "content_type": "audio"}
+
+    response = router.dispatch(edit_request({"add": {"song.m4a": given}}))
+
+    assert response.status == 400
+    assert problem_type(response) == INVALID_REQUEST
+    assert '"content_type" must be a media type' in loads(response.body)["detail"]
 
 
 def test_a_file_bundle_is_copied_by_its_empty_path(

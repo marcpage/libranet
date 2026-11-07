@@ -33,6 +33,7 @@ def test_every_source_is_read() -> None:
                 "Film (2001)/info.json": {"text": '{"title": "Film"}'},
                 "Film (2001)/poster.jpg": {"base64": b64encode(b"\xff\xd8").decode()},
                 "Other.mp4": {"file": str(FILE)},
+                "Song.flac": {"file": str(FILE), "content_type": "audio/flac"},
             },
             "remove": ["Old Film (1999)"],
         }
@@ -46,6 +47,7 @@ def test_every_source_is_read() -> None:
             "Film (2001)/info.json": BytesSource(b'{"title": "Film"}'),
             "Film (2001)/poster.jpg": BytesSource(b"\xff\xd8"),
             "Other.mp4": FileSource(PartPath(FILE)),
+            "Song.flac": FileSource(PartPath(FILE), "audio/flac"),
         },
         ("Old Film (1999)",),
     )
@@ -93,6 +95,13 @@ def test_a_source_names_a_path_in_a_bundle_by_its_encrypted_id() -> None:
         {"add": {"film": {}}},
         {"add": {"film": {"file": 7}}},
         {"add": {"film": {"file": str(FILE), "text": ""}}},
+        {"add": {"film": {"file": str(FILE), "content_type": 7}}},
+        {"add": {"film": {"file": str(FILE), "content_type": None}}},
+        {"add": {"film": {"file": str(FILE), "content_type": "not a type"}}},
+        {"add": {"film": {"file": str(FILE), "content_type": "audio/flac\r\nX: y"}}},
+        {"add": {"film": {"content_type": "audio/flac"}}},
+        {"add": {"film": {"from": str(PLAIN), "path": "", "content_type": "audio/flac"}}},
+        {"add": {"film": {"text": "", "content_type": "audio/flac"}}},
         {"add": {"film": {"from": str(PLAIN)}}},
         {"add": {"film": {"from": str(PLAIN), "path": 7}}},
         {"add": {"film": {"from": str(PLAIN), "path": "../escape"}}},
@@ -111,6 +120,11 @@ def test_a_source_names_a_path_in_a_bundle_by_its_encrypted_id() -> None:
 def test_an_unusable_edit_is_refused(value: object) -> None:
     with raises(InvalidRequestError):
         BundleEditRequest.from_value(value)
+
+
+def test_a_file_source_refuses_a_content_type_that_is_not_a_media_type() -> None:
+    with raises(ValueError, match='"content_type" must be a media type'):
+        FileSource(PartPath(FILE), "audio")
 
 
 @mark.parametrize(
