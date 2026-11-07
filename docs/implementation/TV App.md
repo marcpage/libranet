@@ -25,7 +25,7 @@ of applications shipped, and its tests.
 
 ## 2. What It Adds
 
-Five steps, the first three built:
+Five steps, the first four built:
 
 - **The TV application.** A person's series, each looked up at TMDB, with
   episodes added from files and played one after another. Step 144.
@@ -519,7 +519,7 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 147 — What Has Been Watched
+## Step 147 — What Has Been Watched ✅
 
 **Issue:** #617, from #592. **Depends on:** Step 144.
 
@@ -580,6 +580,56 @@ My calls, not yet reviewed:
 played on, on the same node and on another the person signs in on; one
 played to its end, and one marked by hand; and a series watched on one
 node while a season is added to it on another, both kept once merged.
+
+Built. It was checked on a node of its own in headless Chrome: an episode
+paused part way, and played on from there once the page was opened again,
+the series opening at its season with focus on it; one left in its last
+twentieth, and one played to its end, each watched, and the next playing
+on; where it was kept after five minutes of playing, and as the page was
+hidden; one marked watched by hand, and not watched; an episode edited, its
+`watching` kept as it was; one removed, and removed from `watched`; the
+series opening at the first episode after the last watched, in the next
+season; two versions placed apart by hand, as two nodes would place them,
+one holding the series with a season less but watched later, and one the
+season, watched earlier, merged to the season and what was watched later,
+and placed as one version at the next pause; a pause where the person had
+stopped already placing nothing; a version whose `watching` is not one
+passed over; and, signed in as a fallback that has not taken over, an
+episode played and paused, and nothing kept. Watching on two nodes, and
+Safari, are yet to be checked.
+
+Calls made while building it, not yet reviewed:
+
+- **Nothing to watch next.** A series of which nothing is watched or
+  stopped in, or whose last episode is watched, opens at the season last
+  chosen in it, as before.
+- **One episode stopped in.** Stopping in an episode replaces where the
+  person stopped in any other. An episode watched, played again, and left
+  part way, is stopped in, and watched still, and plays on from there.
+  Watched to its end again, it is no longer stopped in.
+- **Stopped in, once played.** An episode left before a whole second of it
+  has played changes nothing, so one chosen and left at its start leaves
+  the episode stopped in as it was. Seconds are kept whole.
+- **Marking** an episode watched, or not watched, forgets where the person
+  stopped in it, so that it plays from its start. Marking says why it is
+  refused, signed in with a fallback password, as editing does.
+- **Each change made to the list as read.** What a pause, an end, or a mark
+  changes, that an episode is watched or where the person stopped, is made
+  to the `watching` of the list read again for it, as every change to the
+  list is, rather than the page's own replacing it. So what was watched on
+  another node since stays, but for what the change changes, and the page
+  then shows what is kept. A change that changes nothing places no version.
+- **Removing** an episode places a second version, removing it from
+  `watched`, after the one removing it from the series.
+- **On the cards.** An episode watched shows a check on its still, and
+  `Watched` beside its facts. The one stopped in shows `Stopped at 12:34`,
+  and, where its duration is known, a bar along the foot of its still, as
+  far across as it was watched.
+- **The mark** is a check in a circle, before Edit, filled once the episode
+  is watched, and named for what it does: Mark watched, or Mark not watched.
+- **Nothing noted where nothing is kept.** Signed in with a fallback
+  password, the cards show only what was kept before, and do not change as
+  the person watches.
 
 ---
 

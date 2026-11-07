@@ -102,6 +102,10 @@
   button.icon:hover:not(:disabled) { border-color: var(--border); }
   button.icon.danger { color: var(--bad); }
 
+  /* What marks the episode watched, filled once it is. */
+  button.icon.watched svg circle { fill: var(--accent); stroke: var(--accent); }
+  button.icon.watched svg path { stroke: var(--accent-text); }
+
   .icon svg {
     width: 1.25rem;
     height: 1.25rem;
@@ -202,6 +206,32 @@
   }
 
   span.poster { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 1.75rem; }
+
+  /* An episode's still, marked once it is watched, and showing how far it was watched in the one stopped in. */
+  .still { position: relative; display: block; }
+  .still .seen {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.35rem;
+    padding: 0 0.4rem;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--accent-text);
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+  .still .how-far {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 0.25rem;
+    border-radius: 0 0 6px 6px;
+    background: rgb(0 0 0 / 0.6);
+    overflow: hidden;
+  }
+  .still .how-far span { display: block; height: 100%; background: var(--accent); }
+
   .caption { display: block; padding: 0.4rem 0.15rem 0; }
   .caption strong, .caption .note { display: block; overflow-wrap: anywhere; }
 
@@ -315,6 +345,9 @@
           <div class="title-row">
             <h2 id="episode-title"></h2>
             <div class="icons">
+              <button type="button" class="icon signed-in-only" id="mark-watched" title="Mark watched" aria-label="Mark watched" hidden>
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.75 2.75L16.5 9.5"/></svg>
+              </button>
               <button type="button" class="icon signed-in-only" id="edit-episode" title="Edit" aria-label="Edit" hidden>
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
               </button>
@@ -728,6 +761,17 @@ const DROP_MINIMUM_BITS = 24;
 const REMEMBERED = "tv.series";
 const REMEMBERED_SEASONS = "tv.seasons";
 
+// How little of an episode is left to go once it is watched: a twentieth, as
+// in its closing credits. And how long one plays between the versions placed
+// of where it is.
+const WATCHED_TO_GO = 1 / 20;
+const KEEP_PLAYING_SECONDS = 5 * 60;
+
+// Why nothing is changed for whoever is signed in with their fallback
+// password, before the fallback takes over: nothing they keep is signed
+// (HttpApi 11.4, 11.5).
+const FALLBACK_REFUSAL = "Signed in with your fallback password, nothing you keep is changed until your fallback takes over.";
+
 // What a series, a season in it, and an episode hold.
 const SERIES_FILE = "series.json";
 const SEASON_FILE = "season.json";
@@ -840,6 +884,12 @@ const state = {
   // How many episodes are being imported, each of which the page itself adds
   // to its series once the node has stored its file.
   imports: 0,
+  // What is watched of the series open, a Watching; where the episode chosen
+  // plays on from once it loads, in seconds, or null, from its start; and
+  // when where it is was last noted, as Date.now() gives it.
+  watching: null,
+  resumeAt: null,
+  notedAt: 0,
 };
 
 function byId(id) {
@@ -1071,6 +1121,12 @@ function parseId(text) {
 // The folder an episode is added to a season in, named by its bundle's hash.
 function folderOf(episode) {
   return episode.split("/")[1].slice(0, FOLDER_DIGITS);
+}
+
+// The folder of the episode at `path` in its season, by which what is watched
+// names it, so that it stays the same when the episode's numbers are edited.
+function episodeFolder(path) {
+  return path.split("/")[1];
 }
 
 // The folder of season `number` in a series: S01, S02, and S00 for specials.
@@ -1317,6 +1373,109 @@ class Series {
   }
 }
 
+// What a person has watched of a series, kept with the series' entry in their
+// list, beside its bundle, and so never shared: the folders of the episodes
+// watched, in order of name, and where they stopped in the one they left part
+// way through, as {episode, seconds}, or null, if they stopped in none.
+class Watching {
+  constructor(watched = [], stopped = null) {
+    this.watched = watched;
+    this.stopped = stopped;
+  }
+
+  // What `kept`, a series' `watching` in a version of the list, says; nothing
+  // watched, if it is undefined.
+  static from(kept) {
+    if (!isObject(kept)) {
+      return new Watching();
+    }
+
+    const stopped = isObject(kept.stopped) ? { episode: kept.stopped.episode, seconds: kept.stopped.seconds } : null;
+    return new Watching([...new Set(kept.watched)].sort(), stopped);
+  }
+
+  // Whether `kept` is a series' `watching`, as a version of the list holds it.
+  static valid(kept) {
+    if (!isObject(kept) || !isText(kept.changed) || !Array.isArray(kept.watched) || !kept.watched.every(isText)) {
+      return false;
+    }
+
+    const stopped = kept.stopped;
+    return stopped === undefined || stopped === null || (isObject(stopped) && isText(stopped.episode)
+      && Number.isFinite(stopped.seconds) && stopped.seconds >= 0);
+  }
+
+  // As a version of the list holds it, but for when it changed.
+  json() {
+    return this.stopped ? { watched: this.watched, stopped: this.stopped } : { watched: this.watched };
+  }
+
+  same(other) {
+    return JSON.stringify(this.json()) === JSON.stringify(other.json());
+  }
+
+  // Whether the episode in `folder` was watched.
+  has(folder) {
+    return this.watched.includes(folder);
+  }
+
+  // How far into the episode in `folder` the person stopped, in seconds, or
+  // null, if they did not stop in it.
+  stoppedIn(folder) {
+    return this.stopped && this.stopped.episode === folder ? this.stopped.seconds : null;
+  }
+
+  // With the episode in `folder` watched, or not, if not `watched`, and, either
+  // way, not stopped in, so that it plays from its start.
+  marked(folder, watched) {
+    const others = this.watched.filter((each) => each !== folder);
+    const stopped = this.stoppedIn(folder) === null ? this.stopped : null;
+    return new Watching(watched ? [...others, folder].sort() : others, stopped);
+  }
+
+  // With the person stopped in the episode in `folder`, `seconds` in, rather
+  // than in any other.
+  stoppedAt(folder, seconds) {
+    return new Watching(this.watched, { episode: folder, seconds });
+  }
+
+  // With only the episodes `series` holds.
+  within(series) {
+    const held = new Set(series.paths().map(episodeFolder));
+    const stopped = this.stopped && held.has(this.stopped.episode) ? this.stopped : null;
+    return new Watching(this.watched.filter((folder) => held.has(folder)), stopped);
+  }
+
+  // The path of the episode of `series` to watch next: the one stopped in, or
+  // else the first held after the last watched; null if there is none, as
+  // when none has been watched yet, or the last has.
+  next(series) {
+    const paths = series.paths();
+    const stopped = paths.find((path) => this.stoppedIn(episodeFolder(path)) !== null);
+    let last = -1;
+
+    if (stopped) {
+      return stopped;
+    }
+
+    paths.forEach((path, index) => {
+      if (this.has(episodeFolder(path))) {
+        last = index;
+      }
+    });
+
+    return last >= 0 && last + 1 < paths.length ? paths[last + 1] : null;
+  }
+
+  // What the card of the episode in `folder` says of it: that it was watched,
+  // and how far into it the person stopped, if they did.
+  note(folder) {
+    const seconds = this.stoppedIn(folder);
+    const stopped = seconds === null ? "" : `Stopped at ${formatDuration(seconds)}`;
+    return [this.has(folder) ? "Watched" : "", stopped].filter(isText).join(" · ");
+  }
+}
+
 function isEntry(entry) {
   return isObject(entry) && isText(entry.name) && isText(entry.bundle);
 }
@@ -1345,7 +1504,10 @@ class SessionEnded extends Error {
 // The series kept for whoever is signed in, each by name at its newest
 // version: a version at their drop, or more than one, made apart, on two
 // nodes say, and merged as they are read, each series at the version that
-// last changed it. No series are kept for whoever is not signed in.
+// last changed it. What is watched of each, its `watching`, is merged apart
+// from its bundle, at the version that last changed that, so that an episode
+// watched on one node and a season added on another both stay. No series are
+// kept for whoever is not signed in.
 class Kept {
   constructor(list, versions = []) {
     this.list = list;
@@ -1361,20 +1523,32 @@ class Kept {
     const ids = await foundAt(Kept.target());
     const lists = await Promise.all(ids.map((id) => Kept.version(id)));
     const merged = new Map();
+    const watchings = new Map();
 
     ids.forEach((id, index) => {
       for (const entry of lists[index] || []) {
         const held = merged.get(nameKey(entry.name));
         const later = !held || entry.changed > held.entry.changed ||
           (entry.changed === held.entry.changed && id < held.id);
+        const watched = watchings.get(nameKey(entry.name));
+        const watching = entry.watching;
+        const watchedLater = watching && (!watched || watching.changed > watched.watching.changed ||
+          (watching.changed === watched.watching.changed && id < watched.id));
 
         if (later) {
           merged.set(nameKey(entry.name), { entry, id });
         }
+
+        if (watchedLater) {
+          watchings.set(nameKey(entry.name), { watching, id });
+        }
       }
     });
 
-    const list = [...merged.values()].map((held) => held.entry);
+    const list = [...merged].map(([key, held]) => {
+      const watched = watchings.get(key);
+      return defined({ ...held.entry, watching: watched ? watched.watching : undefined });
+    });
     list.sort((one, other) => one.name.localeCompare(other.name));
     return new Kept(list, ids.filter((id, index) => lists[index] !== null));
   }
@@ -1395,11 +1569,19 @@ class Kept {
       return null;
     }
 
-    return contents.series.filter((entry) => isEntry(entry) && isText(entry.changed));
+    return contents.series.filter((entry) => isEntry(entry) && isText(entry.changed)).map((entry) => {
+      if (entry.watching === undefined || Watching.valid(entry.watching)) {
+        return entry;
+      }
+
+      console.warn(`Passing over what is watched of “${entry.name}” in ${id}: it is not what this page reads.`);
+      return defined({ ...entry, watching: undefined });
+    });
   }
 
   // Places `list` as a version of the person's series, signed by them and
-  // encrypted for them, each series it changes marked when, then blocks the
+  // encrypted for them, each series whose bundle it changes marked when, and
+  // each whose `watching` it changes, that marked when too, then blocks the
   // versions it replaces (HttpApi 5.5), so that they do not push the newest
   // out of a search.
   async place(list) {
@@ -1407,7 +1589,14 @@ class Kept {
     const now = new Date().toISOString();
     const series = list.map((entry) => {
       const held = before.get(nameKey(entry.name));
-      return held && held.bundle === entry.bundle ? held : { ...entry, changed: now };
+      const placed = { ...entry, changed: held && held.bundle === entry.bundle ? held.changed : now };
+
+      if (entry.watching) {
+        const same = held && held.watching && Watching.from(held.watching).same(Watching.from(entry.watching));
+        placed.watching = same ? held.watching : { ...Watching.from(entry.watching).json(), changed: now };
+      }
+
+      return placed;
     });
     await placeVersion(Kept.target(), { series });
 
@@ -1422,14 +1611,16 @@ class Kept {
     return new Kept(series);
   }
 
-  // Keeps the list `change` makes of the one kept, read again for it.
+  // Keeps the list `change` makes of the one kept, read again for it. A
+  // change that gives back the list it was given places nothing.
   static async change(change) {
     if (!state.owner) {
       throw new Error("No one is signed in, so no series are kept. Sign in on the home page.");
     }
 
     const kept = await Kept.read();
-    return kept.place(change(kept.list));
+    const list = change(kept.list);
+    return list === kept.list ? kept : kept.place(list);
   }
 
   // The series named `name`, ignoring case, or null.
@@ -1457,7 +1648,7 @@ async function placeVersion(target, contents) {
   }
 
   if (result.status === 403) {
-    throw new Error("Signed in with your fallback password, nothing you keep is changed until your fallback takes over.");
+    throw new Error(FALLBACK_REFUSAL);
   }
 
   if (!result.ok || !isObject(result.value) || !isText(result.value.id)) {
@@ -1564,9 +1755,108 @@ async function keepVersion(previous, next) {
       throw new Conflict(`“${next.name}” was changed elsewhere since this page read it.`);
     }
 
-    return list.map((entry, at) => (at === index ? next.entry() : entry));
+    // What is watched of the series stays as it is.
+    return list.map((entry, at) => (at === index ? { ...entry, ...next.entry() } : entry));
   });
   remember(next.entry());
+}
+
+// Whether what is watched is kept: for whoever is signed in, unless with their
+// fallback password before the fallback takes over (HttpApi 11.4), as nothing
+// is signed then. Such a person is played to all the same.
+function keepsWatching() {
+  const owner = state.owner;
+  return Boolean(owner) && !(isText(owner.fallback_for) && !isText(owner.fallback));
+}
+
+// How many changes this page has made to what is watched, so that only the
+// last of those being kept shows what is kept.
+let watchingChanges = 0;
+
+// Makes the change `change`, from a Watching to another, to what is watched of
+// the series open, and shows it at once, if it changes anything there. Then
+// keeps it, in turn with every other change to the list: made to what the
+// list holds as it is read again, so that what was watched elsewhere since
+// stays, as far as the change leaves it; and placing nothing if the list holds
+// it already. The series open shows what is kept.
+async function changeWatching(change) {
+  const name = state.series.name;
+  const watching = change(state.watching);
+  let kept = null;
+
+  if (watching.same(state.watching)) {
+    return;
+  }
+
+  const count = ++watchingChanges;
+  state.watching = watching;
+  showWatching();
+
+  await serially(() => Kept.change((list) => {
+    const entry = list.find((each) => sameName(each.name, name));
+
+    if (!entry) {
+      return list;
+    }
+
+    const before = Watching.from(entry.watching);
+    kept = change(before);
+    return kept.same(before) ? list : list.map((each) => (each === entry ? { ...each, watching: kept.json() } : each));
+  }));
+
+  const last = count === watchingChanges;
+
+  if (last && kept && state.series && sameName(state.series.name, name) && !kept.same(state.watching)) {
+    state.watching = kept;
+    showWatching();
+  }
+}
+
+// Notes where the person is in the episode chosen, as the video shows it:
+// watched, once it has played to its end, `ended`, or has less than a
+// twentieth of it to go; or else stopped in, that far in, once it has played
+// at all. And keeps that. Nothing is noted where nothing would be kept.
+function noteWhereStopped(ended = false) {
+  const video = byId("video");
+  const path = state.selected;
+  state.notedAt = Date.now();
+
+  if (!keepsWatching() || path === null || !state.series.holds(path) || !video.getAttribute("src")) {
+    return;
+  }
+
+  const folder = episodeFolder(path);
+  const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : null;
+  const seconds = Math.floor(video.currentTime);
+  let change = null;
+
+  if (ended || (duration !== null && duration - video.currentTime < duration * WATCHED_TO_GO)) {
+    change = (watching) => watching.marked(folder, true);
+  } else if (seconds > 0) {
+    change = (watching) => watching.stoppedAt(folder, seconds);
+  }
+
+  if (change === null) {
+    return;
+  }
+
+  changeWatching(change).catch((error) => {
+    const where = state.selected !== null ? byId("episode-result") : byId("library-result");
+    show(where, `What you watched was not kept: ${error.message}`, true);
+  });
+}
+
+// Marks the episode chosen watched, or, if it was, not watched.
+async function markWatched() {
+  const folder = episodeFolder(state.selected);
+  const watched = !state.watching.has(folder);
+
+  if (!keepsWatching()) {
+    throw new Error(FALLBACK_REFUSAL);
+  }
+
+  await changeWatching((watching) => watching.marked(folder, watched));
+  return null;
 }
 
 // Changes to series are made one at a time, each from the version the one
@@ -1733,8 +2023,10 @@ async function addEpisode(series, episode, info, made = null) {
 
 // Opening a series, and choosing one.
 
+// Leaves the episode chosen, if any, noting where the person stopped in it.
 function closePlayer() {
   const video = byId("video");
+  noteWhereStopped();
   video.pause();
   video.removeAttribute("src");
   video.removeAttribute("poster");
@@ -1747,11 +2039,15 @@ function closePlayer() {
   byId("library").hidden = false;
 }
 
-// Shows `series`, at the season last chosen in it.
-function showSeries(series) {
+// Shows `series`, with what is watched of it, `watching`, at the season of the
+// episode to watch next, with focus on it; or, if there is none, at the
+// season last chosen in it.
+function showSeries(series, watching = new Watching()) {
+  const next = watching.next(series);
   closePlayer();
   state.series = series;
-  state.season = null;
+  state.watching = watching;
+  state.season = next === null ? null : next.split("/")[0];
   remember(series.entry());
 
   for (const element of document.querySelectorAll("#library .signed-in-only, #details .signed-in-only")) {
@@ -1764,7 +2060,7 @@ function showSeries(series) {
   byId("chooser").hidden = true;
   show(byId("library-result"), "");
   renderLibrary();
-  focusEpisode(null);
+  focusEpisode(next);
 }
 
 async function openSeries(entry) {
@@ -1772,7 +2068,7 @@ async function openSeries(entry) {
   show(status, `Reading “${entry.name}”…`);
 
   try {
-    showSeries(await Series.read(entry.bundle, entry.name));
+    showSeries(await Series.read(entry.bundle, entry.name), Watching.from(entry.watching));
   } finally {
     show(status, "");
   }
@@ -1983,17 +2279,67 @@ function keepFilter() {
 }
 
 function episodeItem(series, path, withSeason) {
-  const info = series.info(path);
   const item = make("li");
   const pick = make("button", null, "pick");
   pick.type = "button";
   pick.dataset.path = path;
   pick.setAttribute("aria-pressed", String(path === state.selected));
-  pick.append(posterImage(info && isText(info.poster) ? series.url(`${path}/${info.poster}`) : null),
-    caption(series, path, withSeason));
+  pick.append(episodeStill(series, path), caption(series, path, withSeason));
   pick.addEventListener("click", () => select(path));
   item.append(pick);
   return item;
+}
+
+// The still of the episode at `path` of `series`, marked if it was watched,
+// and showing how far it was watched if the person stopped in it, as far as
+// its duration is known.
+function episodeStill(series, path) {
+  const info = series.info(path);
+  const folder = episodeFolder(path);
+  const seconds = state.watching.stoppedIn(folder);
+  const frame = make("span", null, "still");
+  frame.append(posterImage(info && isText(info.poster) ? series.url(`${path}/${info.poster}`) : null));
+
+  if (state.watching.has(folder)) {
+    const seen = make("span", "✓", "seen");
+    seen.setAttribute("aria-hidden", "true");
+    frame.append(seen);
+  }
+
+  if (seconds !== null && info && typeof info.duration_seconds === "number" && info.duration_seconds > 0) {
+    const bar = make("span", null, "how-far");
+    const part = make("span");
+    part.style.width = `${Math.min(100, (seconds / info.duration_seconds) * 100)}%`;
+    bar.setAttribute("aria-hidden", "true");
+    bar.append(part);
+    frame.append(bar);
+  }
+
+  return frame;
+}
+
+// Shows what is watched of the series open, on its episodes' cards, with focus
+// kept on the one that had it, and on the episode chosen.
+function showWatching() {
+  const focused = byId("episodes").contains(document.activeElement) ? document.activeElement.dataset.path : null;
+  renderEpisodes();
+
+  if (focused !== null) {
+    focusEpisode(focused);
+  }
+
+  if (state.selected !== null) {
+    showMark();
+  }
+}
+
+// Shows whether the episode chosen was watched, on what marks it watched.
+function showMark() {
+  const control = byId("mark-watched");
+  const watched = state.watching.has(episodeFolder(state.selected));
+  control.classList.toggle("watched", watched);
+  control.title = watched ? "Mark not watched" : "Mark watched";
+  control.setAttribute("aria-label", control.title);
 }
 
 // Gives focus to the episode at `path` of those listed, or to the first
@@ -2106,13 +2452,14 @@ function placeText(info) {
 }
 
 // An episode's number and title, and its air date and duration, after its
-// season, if `withSeason`.
+// season, if `withSeason`, and before what is watched of it.
 function caption(series, path, withSeason) {
   const info = series.info(path);
   const numbers = episodeNumbers(info);
   const title = numbers.length ? `${numbers.join(", ")}. ${series.title(path)}` : series.title(path);
   const season = series.season(path.split("/")[0]);
-  const note = withSeason ? [season.label(), facts(info)].filter(isText).join(" · ") : facts(info);
+  const watched = state.watching.note(episodeFolder(path));
+  const note = [withSeason ? season.label() : "", facts(info), watched].filter(isText).join(" · ");
   const text = make("span", null, "caption");
   text.append(make("strong", title), make("span", note, "note"));
   return text;
@@ -2128,16 +2475,25 @@ function select(path, { playedOn = false } = {}) {
   const video = byId("video");
   const source = info && isText(info.video) ? `${path}/${info.video}` : "";
   const folder = path.split("/")[0];
+
+  // The episode left for another is noted where the person stopped in it.
+  if (video.dataset.source !== source) {
+    noteWhereStopped();
+  }
+
   stopEditing();
   state.selected = path;
   show(byId("episode-result"), "");
 
-  // The same episode of a newer version of the series plays on where it was.
+  // The same episode of a newer version of the series plays on where it was,
+  // and the one the person stopped in, from where they stopped.
   if (video.dataset.source !== source) {
     video.dataset.source = source;
     byId("video-trouble").hidden = true;
+    state.resumeAt = null;
 
     if (source) {
+      state.resumeAt = state.watching.stoppedIn(episodeFolder(path));
       video.src = series.url(source);
       state.leftFullscreen = playedOn && !isFullscreen();
     } else {
@@ -2184,7 +2540,25 @@ function showDetails() {
     pick.setAttribute("aria-pressed", String(pick.dataset.path === path));
   }
 
+  showMark();
   refreshControls();
+}
+
+// Plays the episode chosen on from where the person stopped in it, once it loads.
+function playOn() {
+  const video = byId("video");
+
+  if (state.resumeAt !== null) {
+    video.currentTime = state.resumeAt;
+    state.resumeAt = null;
+  }
+}
+
+// While an episode plays, where the person is in it is kept every so often.
+function noteWhilePlaying() {
+  if (!byId("video").paused && Date.now() - state.notedAt >= KEEP_PLAYING_SECONDS * 1000) {
+    noteWhereStopped();
+  }
 }
 
 // Enables only the changes that can be made to the episode chosen.
@@ -2246,8 +2620,8 @@ function playOrPause() {
 }
 
 // Leaves the episode chosen, stopped and out of full screen, for its season,
-// with focus back on it there, to choose another. Chosen again, it plays from
-// its start.
+// with focus back on it there, to choose another. Chosen again, it plays on
+// from where it was stopped, unless it was watched to its end.
 function leaveEpisode() {
   const path = state.selected;
 
@@ -2662,12 +3036,14 @@ async function saveSeason() {
 
 // Removing an episode.
 
-// Removes the episode chosen, and its season, if that holds no other.
+// Removes the episode chosen, and its season, if that holds no other, and
+// what is watched of it.
 async function removeEpisode() {
   const path = state.selected;
   const title = state.series.title(path);
+  const name = state.series.name;
 
-  if (!window.confirm(`Remove “${title}” from “${state.series.name}”?`)) {
+  if (!window.confirm(`Remove “${title}” from “${name}”?`)) {
     return null;
   }
 
@@ -2678,6 +3054,11 @@ async function removeEpisode() {
       await changeSeries(series, seasonsWithout(series.seasons, path));
     }
   });
+
+  if (keepsWatching() && sameName(state.series.name, name)) {
+    const series = state.series;
+    await changeWatching((watching) => watching.within(series));
+  }
 
   show(byId("library-result"), `Removed “${title}”.`);
   return null;
@@ -2998,7 +3379,12 @@ async function importChosen(name) {
     }
 
     const into = await newest(entry.name);
-    return otherAtTmdb(into.tmdbId(), source.tmdbId()) ? { apart: into } : mergeSeasons(into, source, seasons);
+
+    if (otherAtTmdb(into.tmdbId(), source.tmdbId())) {
+      return { apart: into };
+    }
+
+    return { ...(await mergeSeasons(into, source, seasons)), watching: Watching.from(entry.watching) };
   });
 
   if (outcome.apart) {
@@ -3007,7 +3393,7 @@ async function importChosen(name) {
   }
 
   byId("import-dialog").close();
-  showSeries(outcome.series);
+  showSeries(outcome.series, outcome.watching);
   show(byId("library-result"), outcome.note);
   return null;
 }
@@ -3602,7 +3988,7 @@ async function makeNamed(name) {
     }
 
     byId("new-dialog").close();
-    showSeries(held);
+    showSeries(held, Watching.from(entry.watching));
     show(byId("library-result"), `You keep “${held.name}” already, so it is open.`);
     return;
   }
@@ -4284,8 +4670,15 @@ async function start() {
 
 const video = byId("video");
 video.addEventListener("loadedmetadata", fillDuration);
+video.addEventListener("loadedmetadata", playOn);
 video.addEventListener("error", videoTrouble);
 video.addEventListener("play", playFullscreen);
+
+// Where the person is in the episode chosen is kept as it is paused, as it
+// ends, before the next plays, and every so often while it plays.
+video.addEventListener("pause", () => noteWhereStopped());
+video.addEventListener("ended", () => noteWhereStopped(true));
+video.addEventListener("timeupdate", noteWhilePlaying);
 video.addEventListener("ended", playNext);
 video.addEventListener("fullscreenchange", leftFullscreen);
 video.addEventListener("webkitendfullscreen", leftFullscreen);
@@ -4306,6 +4699,13 @@ byId("video-again").addEventListener("click", () => {
 video.addEventListener("fullscreenchange", () => {
   if (document.fullscreenElement === video) {
     video.focus();
+  }
+});
+
+// And as the page is hidden, which it may be before it is closed.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    noteWhereStopped();
   }
 });
 
@@ -4483,6 +4883,7 @@ onClick("share-part", "share-state", sharePart);
 onClick("take-poster", "poster-result", takePoster);
 onClick("share-episode", "episode-result", shareEpisode);
 onClick("remove-episode", "episode-result", removeEpisode);
+onClick("mark-watched", "episode-result", markWatched);
 
 start();
 </script>

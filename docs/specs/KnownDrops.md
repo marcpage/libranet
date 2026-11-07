@@ -544,20 +544,31 @@ that a key given in either serves both.
 **Target:** `tv series:{id}`
 
 A person's list of TV series names each series, with its newest bundle and
-when it last changed. It is kept in versions, so that it follows the
-person from node to node, and versions made apart, on two nodes say, are
-merged as they are read. The node keeps no list of series for a client no
-one is signed in on.
+when it last changed, and what the person has watched of it, if anything:
+`{"series": [{"name", "bundle", "changed", "watching"}, ...]}`. `watching`
+is `{"watched": ["<episode folder>", ...], "stopped": {"episode": "<episode
+folder>", "seconds": 1234}, "changed": "…"}`: the folders of the episodes
+watched, where the person stopped in the one they left part way through,
+if any, and when it last changed. It is kept in versions, so that it
+follows the person from node to node, and versions made apart, on two
+nodes say, are merged as they are read. The node keeps no list of series
+for a client no one is signed in on.
 
 - **Placed by** the TV application, with `POST /data/signed`, given
-  `encrypt: {for: id}`, whenever the person's list of series changes.
+  `encrypt: {for: id}`, whenever the person's list of series changes, and
+  what they have watched with it: as an episode is paused, ends, or is
+  left, as the page is hidden, and every five minutes while one plays.
 - **Signed** by the person, then **encrypted** for the person.
 - **Bits:** placed matching at least 24, searched for 1 second.
 - **Reading:** a reader passes over every version that does not open for
   the person, or that they did not sign. It merges every version left:
   each series, found by its name ignoring case, at the version that
   changed it last, and of two changed in the same second, the one whose
-  drop's id comes first. Each change places a version holding the merged
-  list, and shuns the versions read, which it replaces, as for movie
-  collections (§3.12).
-- **Defined in:** [TV App](../implementation/TV%20App.md) Step 144.
+  drop's id comes first. Each series' `watching` is merged apart from its
+  bundle, at the version that changed it last, by its own `changed`, so
+  that an episode watched on one node and a season added on another both
+  stay. A `watching` that is not one is passed over. Each change places a
+  version holding the merged list, and shuns the versions read, which it
+  replaces, as for movie collections (§3.12).
+- **Defined in:** [TV App](../implementation/TV%20App.md) Steps 144 and
+  147.
