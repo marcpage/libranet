@@ -61,6 +61,7 @@ DIRECTORY = DirectoryBundle(
         DirectoryMarker(),
         FileBundle((PART,), XATTRS),
         DirectoryMarker(XATTRS),
+        FileBundle((PART,), Metadata(content_type="text/plain; charset=utf-8")),
     ],
 )
 def test_a_bundle_reads_back_as_itself(bundle: Bundle) -> None:
@@ -90,6 +91,13 @@ def test_every_field_is_written_as_the_specification_names_it() -> None:
         "versions": [[PART], [PART, OTHER_PART]],
     }
     assert loads(encode_bundle(DIRECTORY))["extensions"] == [OTHER_PART]
+
+
+def test_a_content_type_is_written_as_content_type() -> None:
+    assert bundle_value(FileBundle((PART,), Metadata(content_type="audio/flac"))) == {
+        "metadata": {"content_type": "audio/flac"},
+        "contents": [PART],
+    }
 
 
 def test_encoding_is_compact_sorted_ascii_and_the_same_every_time() -> None:

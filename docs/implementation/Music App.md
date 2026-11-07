@@ -515,8 +515,8 @@ store evicted, before and after a restart.
 
 ## Step 154 — A File's Content Type, Given by Its Bundle
 
-**Issue:** to be made (§4), from #479, only if it is needed. **Depends
-on:** Phase 1 Steps 13, 14; Phase 3 Steps 71, 72; Step 149.
+**Issue:** #644, from #479. **Depends on:** Phase 1 Steps 13, 14; Phase
+3 Steps 71, 72; Step 149.
 
 Built only if Step 149 finds that Safari does not play `.m4a`, `.flac`,
 or `.ogg` served as `application/octet-stream`.
@@ -583,6 +583,28 @@ from a bundle, and listed with it; `POST /data/bundles` giving it, refusing
 a bad one, and `{"from"}` keeping it; and, by hand, an `.m4a` and a
 `.flac` played in Safari.
 
+The node's part is built: the specifications, the model, serving, and
+`POST /data/bundles`, each tested as above. The music page's part waits
+for Step 149, which makes the page, and Safari is yet to be checked.
+
+Calls made while building it, not yet reviewed:
+
+- **Kept as written.** A media type's case is not significant, but
+  `content_type` is kept and sent as the bundle gives it, as every other
+  string of its metadata is.
+- **Strict about what a header may carry.** A media type may have spaces
+  around each `;`, but no tab, and nothing that is not ASCII, in a quoted
+  parameter value or anywhere else, though RFC 9110 allows both.
+- **Only a file is served with it.** A directory's metadata, or a
+  metadata-only entry's, may carry a `content_type` too, which is checked
+  as a file's is, and means nothing.
+- **A type given replaces one held.** `{"file", "content_type"}` places
+  the file with the type given, whatever type its file bundle has, and
+  `{"file"}` alone with the file bundle's own, if it has one.
+- **Not for an import.** `content_only`, which an import and a packaged
+  application keep a file to, leaves the content type out, as it leaves
+  out a file's times and extended attributes.
+
 ---
 
 ## 4. Issues in the Milestone
@@ -600,7 +622,7 @@ step, and this table then given their numbers.
 | *to be made* | Playlists | 151 |
 | *to be made* | Sharing a song or a playlist | 152 |
 | *to be made* | Keeping a playlist offline | 153 |
-| *to be made, if needed* | A file's content type, given by its bundle | 154 |
+| #644 | A file's content type, given by its bundle | 154 |
 
 ## 5. Suggested Build Order
 

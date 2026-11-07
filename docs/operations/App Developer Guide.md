@@ -495,6 +495,7 @@ const response = await fetch("/data/bundles", {
       "Film (2001)/info.json": { text: JSON.stringify({ title: "Film" }) },
       "Film (2001)/poster.jpg": { base64: "/9j/4AAQ…" },
       "Other.mp4": { file: "sha256/…" },
+      "Song.flac": { file: "sha256/…", content_type: "audio/flac" },
     },
     remove: ["Old Film (1999)"],
   }),
@@ -505,9 +506,12 @@ const { bundle } = await response.json();
 - **`base`** is the bundle this one is a new version of, or `null` for a new
   one. The new bundle holds every entry the base holds, but those changed.
 - **`add`** maps each entry path to what goes there: `{"file": id}`, a file
-  an import gave; `{"from": id, "path": p}`, whatever bundle `id` holds at
-  `p`, a whole directory if it is one, and `""` for its root; or
-  `{"text": s}` or `{"base64": b}`, a file of those bytes.
+  an import gave, served with the `content_type` given beside it, if one
+  is, rather than a type found from its name; `{"from": id, "path": p}`,
+  whatever bundle `id` holds at `p`, a whole directory if it is one, and
+  `""` for its root, with any content type it was given; or `{"text": s}`
+  or `{"base64": b}`, a file of those bytes. A `content_type` that is not a
+  media type, such as `audio/flac`, is `400`.
 - **`remove`** lists entry paths to take out of the base, a directory with
   everything beneath it.
 - **`encrypted`** stores the bundle, and each file whose bytes the request
@@ -1583,8 +1587,7 @@ of HTML and script, and uses every endpoint above. What it does, and why:
 - **Change the node.** Backups, builds, and registering applications are
   `/config`'s, on a port of its own, which no application can reach.
 - **Say more about their files.** A bundle has no field yet for a default
-  file other than `index.html`, a file's content type, or a `404` page
-  (HTTP API §13).
+  file other than `index.html`, or a `404` page (HTTP API §13).
 
 ## 9. Changing the Shipped Applications
 

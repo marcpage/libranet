@@ -41,9 +41,10 @@ the file never changes under::
 A range is sent only if any ``If-Range`` is that tag. A date there never
 matches, as no file is sent with a ``Last-Modified``.
 
-A bundle gives no content type, so it is guessed from the file's extension,
-using the standard library's own table rather than the host's, so every node
-guesses alike.
+A file is served with the content type its bundle gives it
+(BundleSpecification §2.1). Failing that, it is guessed from the file's
+extension, using the standard library's own table rather than the host's, so
+every node guesses alike.
 """
 
 from __future__ import annotations
@@ -89,12 +90,16 @@ LISTED_DIRECTORY: Final = "directory"
 LISTED_SYMLINK: Final = "symlink"
 
 
-def content_type_for(entry_path: str) -> str:
-    """The media type to serve the file at ``entry_path`` as, from its extension.
+def content_type_for(entry_path: str, given: str | None = None) -> str:
+    """The media type to serve the file at ``entry_path`` as: ``given``, or else from its extension.
 
-    A name saying the file is compressed, such as ``.tar.gz``, is served as
-    bytes, since a guessed type would describe the content once decompressed.
+    ``given`` is the type its bundle gives it, if any. A name saying the file
+    is compressed, such as ``.tar.gz``, is served as bytes, since a guessed
+    type would describe the content once decompressed.
     """
+    if given is not None:
+        return given
+
     guessed, encoding = _MIME_TYPES.guess_type(entry_path, strict=False)
 
     if guessed is None or encoding is not None:
@@ -212,7 +217,8 @@ class BundlePaths:
             "Accept-Ranges": _NO_RANGES if entry.part_sizes_bytes is None else BYTES_UNIT,
             **({} if tag is None else {"ETag": tag}),
         }
-        sent_headers = {"Content-Type": content_type_for(entry_path), **validators, **headers}
+        content_type = content_type_for(entry_path, entry.metadata.content_type)
+        sent_headers = {"Content-Type": content_type, **validators, **headers}
 
         if byte_range is None:
             stream = self.parts.stream(entry)

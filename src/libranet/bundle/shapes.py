@@ -20,6 +20,7 @@ unreadable rather than the whole directory.
 from __future__ import annotations
 from base64 import b64decode
 from dataclasses import dataclass, field
+from re import compile as compile_pattern
 from typing import Any, Callable, Final, Iterable, Mapping, TypeAlias
 
 from libranet.bundle.errors import MalformedBundleError, UnsupportedBundleError
@@ -39,6 +40,15 @@ _UNUSABLE_SEGMENTS: Final = NO_STEP_SEGMENTS | {PARENT_SEGMENT}
 #: 1 MiB as stored (§4). A writer splits a directory into no more than a
 #: reader follows.
 DEFAULT_MAX_EXTENSIONS: Final = 1024
+
+# A media type (RFC 9110 §8.3.1): a type and a subtype, each a token, and any
+# parameters, each a token or a quoted string. It is sent in a header, so it
+# holds no control character, nor any that is not ASCII.
+_TOKEN: Final = r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+"
+_QUOTED_STRING: Final = r'"(?:[ !#-\[\]-~]|\\[ -~])*"'
+_MEDIA_TYPE: Final = compile_pattern(
+    rf"{_TOKEN}/{_TOKEN}(?: *; *(?:{_TOKEN}=(?:{_TOKEN}|{_QUOTED_STRING}))?)*"
+)
 
 
 def is_utf8(text: str) -> bool:
@@ -60,6 +70,16 @@ def is_entry_path(path: str) -> bool:
     NUL.
     """
     return "\0" not in path and _UNUSABLE_SEGMENTS.isdisjoint(path.split(PATH_SEPARATOR))
+
+
+def is_media_type(text: str) -> bool:
+    """Whether ``text`` is a media type (RFC 9110 §8.3.1), as a file's content type must be.
+
+    It is a type and a subtype, each a token, and any parameters, with no
+    control character, nor any that is not ASCII, since it is sent in a
+    header.
+    """
+    return _MEDIA_TYPE.fullmatch(text) is not None
 
 
 def ancestors(paths: Iterable[str]) -> set[str]:
@@ -86,12 +106,14 @@ class Metadata:
     reassembled bytes (§2.3); each is present only with the other.
     Timestamps are kept as written. ``xattrs`` holds extended attributes by
     name (§2.4), each value inline as base64, kept as written, or as parts.
+    ``content_type`` is the media type a file is served with, if it is given
+    one (§2.1).
 
     Raises:
         MalformedBundleError: ``size_bytes`` is negative, only one of
-            ``algorithm`` and ``hash`` is given, or an extended attribute's
+            ``algorithm`` and ``hash`` is given, an extended attribute's
             name is empty, holds a NUL, or is not UTF-8, or its value is
-            not padded base64.
+            not padded base64, or ``content_type`` is not a media type.
     """
 
     created: str | None = None
@@ -102,6 +124,7 @@ class Metadata:
     algorithm: str | None = None
     hash: str | None = None
     xattrs: Mapping[str, XattrValue] = field(default_factory=dict)
+    content_type: str | None = None
 
     def __post_init__(self) -> None:
         if self.size_bytes is not None and self.size_bytes < 0:
@@ -120,6 +143,11 @@ class Metadata:
 
             if isinstance(value, str) and not _is_base64(value):
                 raise MalformedBundleError(f"Extended attribute {name!r} is not padded base64")
+
+        if self.content_type is not None and not is_media_type(self.content_type):
+            raise MalformedBundleError(
+                f'"content_type" must be a media type, got {self.content_type!r}'
+            )
 
     def whole_file_id(self) -> ContentId | None:
         """The hash the reassembled file must have, if this metadata gives one.
@@ -163,6 +191,7 @@ class Metadata:
                 ("size", self.size_bytes),
                 ("algorithm", self.algorithm),
                 ("hash", self.hash),
+                ("content_type", self.content_type),
             )
             if item is not None
         }
@@ -225,8 +254,8 @@ class FileBundle:
         """This file with only what its bytes decide.
 
         That is its parts, their sizes, its size, and its whole-file hash, but
-        none of its times, permissions, or extended attributes, nor the
-        versions it supersedes.
+        none of its times, permissions, extended attributes, or content type,
+        nor the versions it supersedes.
         """
         recorded = self.metadata
         return FileBundle(

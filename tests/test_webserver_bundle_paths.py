@@ -89,6 +89,14 @@ def test_the_content_type_is_guessed_from_the_extension(entry_path: str, content
     assert content_type_for(entry_path) == content_type
 
 
+@mark.parametrize(
+    "entry_path, given",
+    [("song.mp4", "audio/mp4"), ("archive.tar.gz", "application/gzip"), ("README", "text/plain")],
+)
+def test_a_content_type_given_is_used_whatever_the_extension(entry_path: str, given: str) -> None:
+    assert content_type_for(entry_path, given) == given
+
+
 def test_a_request_waits_no_longer_than_the_parts_are_waited_for(paths: BundlePaths) -> None:
     before = monotonic()
 

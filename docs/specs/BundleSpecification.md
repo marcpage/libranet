@@ -76,6 +76,14 @@ flowchart TD
   - `algorithm`, `hash` — the hash algorithm and hash value of the
     **fully reassembled file** (see §2.3).
   - `xattrs` — the file's extended attributes (see §2.4).
+  - `content_type` — the media type the file is served with
+    ([RFC 9110 §8.3.1](https://www.rfc-editor.org/rfc/rfc9110.html#section-8.3.1)),
+    such as `audio/flac`, for a file bundle and for a file entry of a
+    directory bundle (§3.1) alike: a type and a subtype, each a token, and
+    any parameters, with no control character and nothing that is not
+    ASCII. A value that is not one makes the bundle malformed, since a node
+    sends it in a header. A file without one is served with a type found
+    from its name (HTTP API §13).
 - **`contents`** — required. An ordered list of CAS paths, one per part of the
   file, in the order the parts appear in the reconstructed file. Example:
   `["sha256/...", "sha256/...", ...]`.
@@ -848,7 +856,7 @@ The following were identified during design discussion but not yet resolved:
   bundle's root.
 - Fields an application's directory bundle could carry for serving it (HTTP
   API §13): a default file in place of `index.html`, whether a directory's
-  index is generated, a file's content type, and a page for a path not found.
+  index is generated, and a page for a path not found.
 - Whether readers should validate/reject non-NFC path or symlink-target
   strings, or purely rely on producer conformance (current guidance:
   recommended, not enforced, no validation required).

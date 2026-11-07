@@ -192,6 +192,8 @@ def test_metadata_must_be_an_object(metadata: object) -> None:
         {"executable": 1},
         {"algorithm": 1, "hash": WHOLE_HASH},
         {"algorithm": "sha256", "hash": None},
+        {"content_type": 1},
+        {"content_type": None},
     ],
 )
 def test_metadata_field_of_the_wrong_type_is_malformed(metadata: dict[str, object]) -> None:
@@ -238,6 +240,23 @@ def test_extended_attribute_parts_must_be_strings() -> None:
 def test_an_extended_attribute_that_is_not_base64_is_malformed() -> None:
     with raises(MalformedBundleError, match="not padded base64"):
         parse_bundle({"contents": [], "metadata": {"xattrs": {"user.bad": "MQ"}}})
+
+
+def test_a_content_type_is_read_as_written_for_a_file_bundle_and_a_file_entry() -> None:
+    metadata = {"content_type": "Audio/FLAC"}
+    entry = {"contents": [PART_A], "metadata": metadata}
+
+    assert parse_bundle(entry) == FileBundle((PART_A,), Metadata(content_type="Audio/FLAC"))
+    assert parse_bundle({"contents": {"song.flac": entry}}) == DirectoryBundle(
+        {"song.flac": FileBundle((PART_A,), Metadata(content_type="Audio/FLAC"))}
+    )
+
+
+def test_a_content_type_that_is_not_a_media_type_is_malformed_and_its_entry_named() -> None:
+    entry = {"contents": [PART_A], "metadata": {"content_type": "audio/flac\r\nX: y"}}
+
+    with raises(MalformedBundleError, match="Entry 'song.flac': \"content_type\" must be a media"):
+        parse_bundle({"contents": {"song.flac": entry}})
 
 
 @mark.parametrize("metadata", [{"algorithm": "sha256"}, {"hash": WHOLE_HASH}])

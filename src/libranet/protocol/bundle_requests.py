@@ -8,18 +8,20 @@ bytes it gives, which the node never expands (Phase 3 Step 72)::
      "add": {"Film (2001)": {"from": "sha256/…", "path": ""},
              "Film (2001)/info.json": {"text": "{\\"title\\": \\"Film\\"}"},
              "Film (2001)/poster.jpg": {"base64": "/9j/4AAQ…"},
-             "Other.mp4": {"file": "sha256/…"}},
+             "Other.mp4": {"file": "sha256/…"},
+             "Song.flac": {"file": "sha256/…", "content_type": "audio/flac"}},
      "remove": ["Old Film (1999)"]}
 
 ``base`` is the bundle the new one is a version of, if any. What ``add`` puts
-at each path is one of three sources: a file bundle, by its id
-(:class:`FileSource`); what a bundle holds at a path, a file or a directory
-(:class:`CopySource`); or bytes, given as text or as base64
-(:class:`BytesSource`). ``remove`` names paths to take out of the base. Each
-path is an entry path (BundleSpecification §3.1), and none is both added and
-removed. A bundle is named by its id, or by the id per-entry encryption gives
-it, which carries its key (BundleSpecification §7). Whether the new bundle is
-encrypted defaults to whether its base is.
+at each path is one of three sources: a file bundle, by its id, and the
+content type it is served with, if one is given (:class:`FileSource`); what
+a bundle holds at a path, a file or a directory (:class:`CopySource`); or
+bytes, given as text or as base64 (:class:`BytesSource`). ``remove`` names
+paths to take out of the base. Each path is an entry path
+(BundleSpecification §3.1), and none is both added and removed. A bundle is
+named by its id, or by the id per-entry encryption gives it, which carries
+its key (BundleSpecification §7). Whether the new bundle is encrypted
+defaults to whether its base is.
 
 A page that has written a bundle's JSON itself, such as an extension of the
 user directory the directory application keeps, gives it whole instead, to
@@ -36,11 +38,12 @@ from typing import Final, Mapping, TypeAlias
 
 from libranet.bundle.parsing import parse_bundle
 from libranet.bundle.parts import PartPath
-from libranet.bundle.shapes import Bundle, is_entry_path, is_utf8
+from libranet.bundle.shapes import Bundle, is_entry_path, is_media_type, is_utf8
 from libranet.protocol.errors import InvalidRequestError
 
 # The keys of each source's JSON object (HttpApi §12.3).
 _FILE_KEYS: Final = frozenset({"file"})
+_TYPED_FILE_KEYS: Final = _FILE_KEYS | {"content_type"}
 _COPY_KEYS: Final = frozenset({"from", "path"})
 _TEXT_KEYS: Final = frozenset({"text"})
 _BASE64_KEYS: Final = frozenset({"base64"})
@@ -51,9 +54,21 @@ _WHOLE_KEY: Final = "bundle"
 
 @dataclass(frozen=True)
 class FileSource:
-    """A file bundle, by its id, as an import gives one (HttpApi §12.2)."""
+    """A file bundle, by its id, as an import gives one (HttpApi §12.2).
+
+    ``content_type`` is the media type the file is served with, if one is
+    given (BundleSpecification §2.1), placed in its metadata.
+
+    Raises:
+        ValueError: ``content_type`` is not a media type.
+    """
 
     file: PartPath
+    content_type: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.content_type is not None and not is_media_type(self.content_type):
+            raise ValueError(f'"content_type" must be a media type, got {self.content_type!r}')
 
 
 @dataclass(frozen=True)
@@ -244,8 +259,12 @@ def _source(value: object, path: str) -> EntrySource:
 
     keys = value.keys()
 
-    if keys == _FILE_KEYS and isinstance(value["file"], str):
-        return FileSource(PartPath.parse(value["file"]))
+    if (
+        _FILE_KEYS <= keys <= _TYPED_FILE_KEYS
+        and isinstance(value["file"], str)
+        and isinstance(value.get("content_type", ""), str)
+    ):
+        return FileSource(PartPath.parse(value["file"]), value.get("content_type"))
 
     if keys == _COPY_KEYS and isinstance(value["from"], str) and isinstance(value["path"], str):
         return CopySource(PartPath.parse(value["from"]), value["path"])
@@ -257,6 +276,6 @@ def _source(value: object, path: str) -> EntrySource:
         return BytesSource.of_base64(value["base64"], f"for {path!r}")
 
     raise ValueError(
-        f'What goes at {path!r} must be {{"file"}}, {{"from", "path"}}, {{"text"}}, '
-        'or {"base64"}, each a string'
+        f'What goes at {path!r} must be {{"file"}}, with or without "content_type", '
+        '{"from", "path"}, {"text"}, or {"base64"}, each a string'
     )

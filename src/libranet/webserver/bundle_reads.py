@@ -263,7 +263,7 @@ def _described(entry: object, entry_path: str) -> dict[str, Any] | None:
         return {
             "type": LISTED_FILE,
             **({} if size_bytes is None else {"size": size_bytes}),
-            "content_type": content_type_for(entry_path),
+            "content_type": content_type_for(entry_path, entry.metadata.content_type),
         }
 
     if isinstance(entry, Symlink):

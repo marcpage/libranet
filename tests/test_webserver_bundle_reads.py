@@ -160,25 +160,36 @@ def body_of(response: Response) -> bytes:
     return response.body if response.stream is None else b"".join(response.stream.chunks)
 
 
-def film_entry(*parts: bytes) -> FileBundle:
-    """The entry of a file joining ``parts``."""
+def film_entry(*parts: bytes, content_type: str | None = None) -> FileBundle:
+    """The entry of a file joining ``parts``, given ``content_type`` if it is not ``None``."""
     content = b"".join(parts)
     return FileBundle(
         tuple(str(ContentId.for_data(part, "sha256")) for part in parts),
-        Metadata(size_bytes=len(content), algorithm="sha256", hash=sha256(content).hexdigest()),
+        Metadata(
+            size_bytes=len(content),
+            algorithm="sha256",
+            hash=sha256(content).hexdigest(),
+            content_type=content_type,
+        ),
         part_sizes_bytes=tuple(len(part) for part in parts),
     )
 
 
 def resolve(
-    files: ResolvedFiles, store: CasStore, bundle: PartPath, entry_path: str, *parts: bytes
+    files: ResolvedFiles,
+    store: CasStore,
+    bundle: PartPath,
+    entry_path: str,
+    *parts: bytes,
+    content_type: str | None = None,
 ) -> None:
     """Save the entry of the file at ``entry_path`` in ``bundle``, holding its ``parts``."""
     for part in parts:
         store.write(ContentId.for_data(part, "sha256"), part)
 
     target = files.entry_for(bundle.content_id, entry_path, decrypted_with=bundle.key)
-    write_atomically(target, compress(encode_bundle(film_entry(*parts))))
+    entry = film_entry(*parts, content_type=content_type)
+    write_atomically(target, compress(encode_bundle(entry)))
 
 
 def save_directory(files: ResolvedFiles, bundle: PartPath, entries: Mapping[str, Entry]) -> None:
@@ -228,6 +239,20 @@ def test_a_file_is_served_from_its_parts_sandboxed_and_cached(
     assert response.headers["ETag"] == f'"sha256-{sha256(FILM).hexdigest()}"'
     assert response.headers["Cache-Control"] == IMMUTABLE_CACHE_CONTROL
     assert SANDBOX.items() <= response.headers.items()
+
+
+def test_a_file_is_served_and_listed_with_the_content_type_its_bundle_gives(
+    router: Router, files: ResolvedFiles, store: CasStore, outcomes: ApplicationOutcomes
+) -> None:
+    resolve(files, store, BUNDLE, "song.mp4", *FILM_PARTS, content_type="audio/mp4")
+    save_directory(files, BUNDLE, {"song.mp4": film_entry(*FILM_PARTS, content_type="audio/mp4")})
+    is_directory(outcomes, BUNDLE, "")
+
+    served = read(router, f"/data/{BUNDLE}/song.mp4")
+    listed = read(router, f"/data/{BUNDLE}/")
+
+    assert (served.status, served.headers["Content-Type"]) == (200, "audio/mp4")
+    assert loads(listed.body)["entries"]["song.mp4"]["content_type"] == "audio/mp4"
 
 
 def test_a_range_of_a_file_is_sent_with_the_parts_holding_it(

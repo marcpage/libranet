@@ -90,6 +90,7 @@ from libranet.bundle.shapes import (
     XattrValue,
     ancestors,
     is_entry_path,
+    is_media_type,
     is_utf8,
 )
 from libranet.bundle.signing import (
@@ -191,6 +192,7 @@ __all__ = [
     "encode_bundle",
     "has_small_order",
     "is_entry_path",
+    "is_media_type",
     "is_protected",
     "is_utf8",
     "load_bundle",

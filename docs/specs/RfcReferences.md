@@ -527,6 +527,7 @@ applications use HTTP's semantics throughout: the methods `GET`, `HEAD`, `PUT`,
 | [§5.3](https://www.rfc-editor.org/rfc/rfc9110.html#section-5.3) | A header field received more than once has its values joined with commas |
 | [§5.6.1](https://www.rfc-editor.org/rfc/rfc9110.html#section-5.6.1) | Empty elements of a list, as in `Range: bytes=,0-4,`, are skipped |
 | [§5.6.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-5.6.2) | The `token` rule, for a method or header field name |
+| [§8.3.1](https://www.rfc-editor.org/rfc/rfc9110.html#section-8.3.1) | A media type, as a file's bundle gives the content type it is served with ([Bundle Specification §2.1](BundleSpecification.md#21-fields)) |
 | [§8.6](https://www.rfc-editor.org/rfc/rfc9110.html#section-8.6) | A `POST`, `PUT`, or `PATCH` with no body is still sent `Content-Length: 0` |
 | [§8.8.3](https://www.rfc-editor.org/rfc/rfc9110.html#section-8.8.3) | A file's strong `ETag`, such as `"sha256-9f86d0…"`; `If-Range` uses the strong comparison (§8.8.3.2) |
 | [§9.3.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-9.3.2) | A `HEAD` is answered as a `GET` would be, without the body |
