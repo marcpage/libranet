@@ -37,7 +37,7 @@ So far, six steps, all built. Steps 85 to 88 change
 The conventions of [Phase 3](Phase%203.md) §3 carry over. In addition:
 
 - **Step numbers stay stable**, and new steps take the next free number.
-  [Phase 8](Phase%208.md) ends at Step 84, so this plan starts at Step
+  [Phase 10](Phase%2010.md) ends at Step 84, so this plan starts at Step
   85. Step 83 was planned in [Phase 4](Phase%204.md), and moved here
   unbuilt with #261, keeping its number.
 - **A step of a phase is named with its phase.** A step number alone is

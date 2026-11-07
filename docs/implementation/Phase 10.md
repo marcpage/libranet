@@ -1,6 +1,6 @@
-# Libranet Python Implementation Plan — Phase 8
+# Libranet Python Implementation Plan — Phase 10
 
-Version 0.3 • October 2026
+Version 0.4 • November 2026
 
 ---
 
@@ -17,7 +17,7 @@ A seed node is dialed by every node that starts with nothing, so it has
 more peers dialing it than any other. Today a node takes every incoming
 connection it is offered, as many as its web server has threads for.
 
-Every step below comes from an issue in the GitHub **Phase 8 - Create
+Every step below comes from an issue in the GitHub **Phase 10 - Create
 seed node** milestone, and each step names its issues. Every issue in
 the milestone is either a step or accounted for in §4. As in the phases
 before it, this is an implementation plan, not a protocol specification
@@ -26,15 +26,15 @@ before it, this is an implementation plan, not a protocol specification
 behavior this code implements.
 
 The milestone depends on keeping content in AWS S3, #149, which is
-planned with the enhancements in [Phase 7](Phase%207.md) and not yet
-written as a step there.
+planned with the bonus features in [Phase 11](Phase%2011.md) and not
+yet written as a step there.
 
 Nothing here is expected to change the architecture of Phase 1 §2: the
 same supervisor, the same dispatcher, the same module processes, the same
 filesystem CAS, and the same invariant that only the stats module opens
 SQLite.
 
-## 2. What Phase 8 Adds
+## 2. What Phase 10 Adds
 
 So far, one step:
 
@@ -54,8 +54,9 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
 - **Step numbers stay stable**, and new steps take the next free number.
   Step 84 was the next free number when this plan was written, so this
   phase starts there. This plan was Phase 7 until the trust network
-  became Phase 5, and moved with its milestone, its step keeping its
-  number.
+  became Phase 5, and Phase 8 until the Chaos endpoint became Phase 7
+  and the web endpoint Phase 8. Each time it moved with its milestone,
+  its step keeping its number.
 - **A step of an earlier phase is named with its phase**, as Phase 2
   names Phase 1's. A step number alone is a step of this document.
 
@@ -129,8 +130,8 @@ content is kept until it stops.
 
 ## 4. Issues in the Milestone
 
-Every issue in the **Phase 8 - Create seed node** milestone, by number,
-and where it went.
+Every issue in the **Phase 10 - Create seed node** milestone, by
+number, and where it went.
 
 | Issue | Asks for | Step |
 | --- | --- | --- |
@@ -139,7 +140,7 @@ and where it went.
 | #481 | Running a node on an EC2 instance | None yet: not planned |
 
 The milestone's own description asks for the seed node itself: running
-one in public, keeping content in AWS S3 (#149, [Phase 7](Phase%207.md)),
+one in public, keeping content in AWS S3 (#149, [Phase 11](Phase%2011.md)),
 and shipping its address in `config/seed_peers.json`. Of that, only where
 it might run has issues, #480 and #481, and none of it is a step yet.
 

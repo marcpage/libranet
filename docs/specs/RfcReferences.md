@@ -158,7 +158,7 @@ URLs throughout are otherwise split and joined with Python's `urllib.parse`.
 - Implementation:
   [`protocol/localhost_resolution.py`](../../src/libranet/protocol/localhost_resolution.py)
   (`_url_host`).
-- Plans: [Phase 7](../implementation/Phase%207.md) Step 57 (IPv6).
+- Plans: [Phase 9](../implementation/Phase%209.md) Step 57 (IPv6).
 - Tests:
   [`test_protocol_localhost_resolution.py`](../../tests/test_protocol_localhost_resolution.py).
 
@@ -262,7 +262,7 @@ hosts `/config` answers to, such as `macbook.local`.
   [High-Level Design §4.9.1](HighLevelDesign.md#491-optional-local-discovery-mdnsdns-sd)
   and [HTTP API §2.3.3](HttpApi.md#233-requests-from-other-sites) (`.local`
   host names).
-- Plans: [Phase 7](../implementation/Phase%207.md) Step 16, with the
+- Plans: [Phase 11](../implementation/Phase%2011.md) Step 16, with the
   `zeroconf` library. It is not built yet.
 
 ### 2.8 RFC 6763: DNS-Based Service Discovery
@@ -281,7 +281,7 @@ and any service with no usable `id`.
 
 - Specifications:
   [High-Level Design §4.9.1](HighLevelDesign.md#491-optional-local-discovery-mdnsdns-sd).
-- Plans: [Phase 7](../implementation/Phase%207.md) Step 16. It is not built
+- Plans: [Phase 11](../implementation/Phase%2011.md) Step 16. It is not built
   yet.
 
 ### 2.9 RFC 7468: PEM Textual Encodings
@@ -914,7 +914,7 @@ use it.
   [`protocol/client_origin.py`](../../src/libranet/protocol/client_origin.py)
   (`parsed_address`) and
   [`protocol/localhost_resolution.py`](../../src/libranet/protocol/localhost_resolution.py).
-- Plans: [Phase 7](../implementation/Phase%207.md) Step 57.
+- Plans: [Phase 9](../implementation/Phase%209.md) Step 57.
 - Tests:
   [`test_protocol_client_origin.py`](../../tests/test_protocol_client_origin.py),
   [`test_protocol_localhost_resolution.py`](../../tests/test_protocol_localhost_resolution.py).

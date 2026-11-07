@@ -85,8 +85,9 @@ The conventions of [Phase 2](Phase%202.md) §3 and
   enhancement plans were Phases 4 and 5 until this phase took the place
   of the first, and Phases 5 and 6 until the trust network,
   [Phase 5](Phase%205.md), took the place after it; they are now
-  [Phase 6](Phase%206.md) and [Phase 7](Phase%207.md), and their steps
-  kept their numbers. A step that moves keeps its number too: Step 30,
+  [Phase 6](Phase%206.md) and, after the Chaos and web endpoints took
+  Phases 7 and 8, [Phase 9](Phase%209.md), and their steps kept their
+  numbers. A step that moves keeps its number too: Step 30,
   planned in Phase 2, came here from the Karma plan with #71, and Step 83 moved on to
   [Improve Movie Web App](Improve%20Movie%20Web%20App.md) with #261.
   Step 92 was added after Step 91, with #276, and Step 93 after Step 80,
@@ -149,7 +150,7 @@ Ruled before building:
   is no `/config` endpoint for it. Deleting the database is the only reset,
   as for everything stats keeps. Karma's merges (Phase 6 Step 56) will send
   stats the message the endpoint sends. Letting a shunning no one sees any
-  more age out (#279) is planned as [Phase 7](Phase%207.md) Step 95.
+  more age out (#279) is planned as [Phase 9](Phase%209.md) Step 95.
 - **Held content that becomes shunned is deleted at once**, whether or not
   storage is short, and handed off to no peer.
 
