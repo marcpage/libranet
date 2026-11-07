@@ -1594,9 +1594,9 @@ of HTML and script, and uses every endpoint above. What it does, and why:
 The applications a node ships with are directories under
 [`src/libranet/applications/`](../../src/libranet/applications/): `root`,
 served at `/`, `config`, served at `/config`, `movie`, served at
-`/movie`, `tv`, served at `/tv`, `directory`, served at `/directory`,
-`mail`, served at `/mail`, `nodes`, served at `/nodes`, and `karma`, served
-at `/karma`.
+`/movie`, `tv`, served at `/tv`, `music`, served at `/music`,
+`directory`, served at `/directory`, `mail`, served at `/mail`, `nodes`,
+served at `/nodes`, and `karma`, served at `/karma`.
 `SHIPPED_APPLICATIONS` in `packaged.py`
 names each, and a node trusts them from the start. Each but `root` links
 home from its upper right corner (§3.1), and each carries its own copy of

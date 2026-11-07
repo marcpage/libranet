@@ -1,5 +1,5 @@
 """Tests for the applications shipped with the node, and the root, ``/config``, movie,
-TV, directory, mail, nodes, and Karma pages.
+TV, music, directory, mail, nodes, and Karma pages.
 
 Which way they were shipped, built into a wheel or run from source, is known
 only to the layered source, and is tested through it.
@@ -90,10 +90,12 @@ MAIL_APPLICATION = "mail"
 NODES_APPLICATION = "nodes"
 KARMA_APPLICATION = "karma"
 TV_APPLICATION = "tv"
+MUSIC_APPLICATION = "music"
 ROOT_PAGE_SOURCE = PACKAGED_APPLICATIONS / "root" / "index.html"
 CONFIG_PAGE_SOURCE = PACKAGED_APPLICATIONS / "config" / "index.html"
 MOVIE_PAGE_SOURCE = PACKAGED_APPLICATIONS / "movie" / "index.html"
 TV_PAGE_SOURCE = PACKAGED_APPLICATIONS / "tv" / "index.html"
+MUSIC_PAGE_SOURCE = PACKAGED_APPLICATIONS / "music" / "index.html"
 DIRECTORY_PAGE_SOURCE = PACKAGED_APPLICATIONS / "directory" / "index.html"
 MAIL_PAGE_SOURCE = PACKAGED_APPLICATIONS / "mail" / "index.html"
 NODES_PAGE_SOURCE = PACKAGED_APPLICATIONS / "nodes" / "index.html"
@@ -178,6 +180,11 @@ def tv_page(content: LayeredSource, built: PackagedApplications) -> str:
 
 
 @fixture
+def music_page(content: LayeredSource, built: PackagedApplications) -> str:
+    return index_page(built.bundles[MUSIC_APPLICATION], content).decode("utf-8")
+
+
+@fixture
 def directory_page(content: LayeredSource, built: PackagedApplications) -> str:
     return index_page(built.bundles[DIRECTORY_APPLICATION], content).decode("utf-8")
 
@@ -250,7 +257,7 @@ def router_for(
     )
 
 
-def test_the_node_ships_the_root_config_movie_tv_directory_mail_nodes_and_karma_applications(
+def test_the_node_ships_the_root_config_movie_tv_music_directory_mail_nodes_and_karma_applications(
     built: PackagedApplications,
 ) -> None:
     assert (
@@ -265,6 +272,7 @@ def test_the_node_ships_the_root_config_movie_tv_directory_mail_nodes_and_karma_
             NODES_APPLICATION,
             KARMA_APPLICATION,
             TV_APPLICATION,
+            MUSIC_APPLICATION,
         }
     )
 
@@ -467,6 +475,7 @@ def test_each_page_showing_a_node_offers_the_details_the_issue_names(
         "mail_page",
         "movie_page",
         "tv_page",
+        "music_page",
         "karma_page",
     ],
 )
@@ -483,7 +492,8 @@ def test_each_page_reading_drops_reads_whatever_the_node_finds_there(
 
 
 @mark.parametrize(
-    "page_fixture", ["config_page", "directory_page", "mail_page", "movie_page", "tv_page"]
+    "page_fixture",
+    ["config_page", "directory_page", "mail_page", "movie_page", "tv_page", "music_page"],
 )
 def test_each_page_placing_drops_places_them_where_a_nodes_search_finds_them(
     request: FixtureRequest, page_fixture: str
@@ -668,6 +678,89 @@ def test_the_tv_page_looks_up_with_the_key_the_movie_page_keeps(
 
     # So that a key given in either application serves both.
     assert tv_drop == movie_drop == "movie tmdb:"
+
+
+def test_the_music_application_is_built_from_its_directory(music_page: str) -> None:
+    assert music_page == MUSIC_PAGE_SOURCE.read_text(encoding="utf-8")
+
+
+def test_the_music_page_is_one_self_contained_document(music_page: str) -> None:
+    assert music_page.startswith("<!doctype html>")
+    # Nothing is loaded from a file of its own, or from anywhere else: a
+    # song's details come from its path.
+    assert "<link" not in music_page
+    assert findall(r"<script[^>]*\bsrc", music_page) == []
+    assert "url(" not in music_page.split("<style>", 1)[1].split("</style>", 1)[0]
+    assert "http:" not in music_page
+    assert "https:" not in music_page
+
+
+def test_the_music_page_calls_only_endpoints_the_node_serves(music_page: str) -> None:
+    called = set(findall(r'"(/data/[^"]*)"', music_page))
+    hex_digits = "0123456789abcdef" * 4
+
+    # No store: the node keeps no music for whoever is not signed in.
+    assert called == {
+        CLIENT_PATH,
+        "/data/directory",
+        IMPORTS_PATH,
+        BUNDLES_PATH,
+        "/data/",
+        SESSION_PATH,
+        SIGNED_PATH,
+        DROP_PATH,
+        f"{ENCRYPTED_PATH}/",
+    }
+    # The folders, and a song's audio in its folder of a person's library.
+    assert fullmatch(DIRECTORY_PATTERN, "/data/directory/Music/Artist/Album")
+    # A person's library: searched at their drop, each version opened, and
+    # those replaced shunned.
+    target = quote(f"music library:sha256/{hex_digits}", safe="")
+    assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{target}")
+    assert fullmatch(ENCRYPTED_PATTERN, f"{ENCRYPTED_PATH}/sha256/{hex_digits}")
+    assert fullmatch(DATA_PATTERN, f"/data/sha256/{hex_digits}")
+    assert fullmatch(
+        BUNDLE_PATTERN,
+        f"/data/sha256/{hex_digits}/AES256-CBC/{hex_digits}/songs/{hex_digits[:16]}/01 Song.mp3",
+    )
+
+
+def test_the_music_page_keeps_a_library_where_the_plan_names_it(music_page: str) -> None:
+    assert 'const LIBRARY_PREFIX = "music library:";' in music_page
+    assert 'const REMEMBERED_SHUFFLE = "music.shuffle";' in music_page
+    assert 'const REMEMBERED_FILTERS = "music.filters";' in music_page
+
+
+def test_the_music_page_is_bright_where_the_movie_and_tv_pages_are_dark(
+    music_page: str, movie_page: str, tv_page: str
+) -> None:
+    assert '<meta name="color-scheme" content="light">' in music_page
+    assert '<meta name="color-scheme" content="dark">' in movie_page
+    assert '<meta name="color-scheme" content="dark">' in tv_page
+    # Light, even when the system is set to dark.
+    assert "prefers-color-scheme" not in music_page
+
+
+def test_the_music_page_takes_as_songs_the_files_the_plan_names(music_page: str) -> None:
+    [types] = findall(r"const AUDIO_TYPES = \{([^}]*)\};", music_page)
+
+    assert set(findall(r"^\s+(\w+): \"audio/", types, MULTILINE)) == {
+        "mp3",
+        "m4a",
+        "m4b",
+        "aac",
+        "flac",
+        "ogg",
+        "oga",
+        "opus",
+        "wav",
+        "aif",
+        "aiff",
+        "wma",
+        "ape",
+        "wv",
+        "mka",
+    }
 
 
 def test_the_directory_application_is_built_from_its_directory(directory_page: str) -> None:

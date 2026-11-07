@@ -1,0 +1,2861 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Music</title>
+<style>
+  /* Always bright, even when the system is set to dark, with the theater's red of the movie and TV pages for accents. */
+  :root {
+    color-scheme: light;
+    --background: #faf6f4;
+    --surface: #ffffff;
+    --text: #241c1c;
+    --muted: #6e615e;
+    --border: #e6dbd8;
+    --accent: #c8102e;
+    --accent-text: #fff6f0;
+    --bad: #b3261e;
+    --warn: #9a5b00;
+    --playing: #fbe9eb;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  header, main { max-width: 76rem; margin: 0 auto; padding: 0 1rem; }
+  header {
+    padding-top: 2.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+  }
+  main { padding-bottom: 2rem; }
+  header .toolbar { margin: 0; }
+
+  /* What has focus from the keyboard, plain on the bright. */
+  :focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+  /* Home, the node's front page, in the upper right corner of every page. */
+  .home {
+    position: absolute;
+    top: 0.75rem;
+    right: 1rem;
+    font-size: 1.5rem;
+    line-height: 1;
+    text-decoration: none;
+  }
+  h1 { font-size: 1.5rem; margin: 0; }
+  h2 { font-size: 1.15rem; margin: 0; }
+  h3 { font-size: 1.05rem; margin: 0 0 0.75rem; }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1.25rem 0;
+  }
+
+  .subtitle, .hint, .note { color: var(--muted); }
+  .subtitle { margin: 0.25rem 0 0; }
+  .hint { margin: 0 0 0.75rem; }
+  .note { font-size: 0.9em; }
+  .state { margin: 1rem 0 0; }
+  .result { margin: 0.75rem 0 0; }
+  .error { color: var(--bad); }
+
+  .heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 0; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; margin: 1rem 0 0; }
+
+  button {
+    font: inherit;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 0.4rem 0.9rem;
+    background: var(--accent);
+    color: var(--accent-text);
+    cursor: pointer;
+  }
+
+  button.secondary { background: transparent; color: var(--text); }
+  button.danger { background: transparent; color: var(--bad); border-color: var(--bad); }
+  button.small { padding: 0.2rem 0.55rem; font-size: 0.85rem; }
+  button:disabled { opacity: 0.6; cursor: default; }
+
+  /* A button shown as an icon alone, which it is named for. */
+  button.icon { padding: 0.3rem; line-height: 0; background: transparent; color: var(--text); border-color: transparent; }
+  button.icon:hover:not(:disabled) { border-color: var(--border); }
+  button.icon.danger { color: var(--bad); }
+
+  /* A song this browser cannot play, or that failed as it loaded. */
+  button.icon.warn { color: var(--warn); }
+
+  /* Shuffle, while it is on. */
+  button.icon[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+
+  .icon svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--muted); }
+  label.wide { flex: 1 1 16rem; }
+  label.check { flex-direction: row; align-items: center; gap: 0.5rem; font-size: 1rem; color: var(--text); }
+  .fields { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; margin: 0 0 0.75rem; }
+
+  input, select, textarea {
+    font: inherit;
+    font-size: 1rem;
+    color: var(--text);
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.4rem 0.55rem;
+  }
+
+  select { max-width: 100%; min-width: 12rem; }
+
+  /* The song playing: its cover, and beside it its title, artist, and album, the browser's own controls, and Previous, Next, and Shuffle. */
+  .player { display: flex; align-items: center; gap: 1.25rem; }
+  .cover-frame { flex: 0 0 8rem; width: 8rem; }
+  .now { flex: 1 1 auto; min-width: 0; }
+  .now p { margin: 0.25rem 0 0; }
+
+  .cover {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 6px;
+    background: var(--border);
+  }
+
+  span.cover { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 2.5rem; }
+
+  audio { display: block; width: 100%; margin: 0.75rem 0 0; }
+  /* The song, with focus, has no box around it to distract from it. */
+  audio:focus { outline: none; }
+
+  /* A title, with what is done with it in the upper right corner. */
+  .title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+  .title-row h2 { overflow-wrap: anywhere; }
+  .icons { display: flex; flex: none; gap: 0.25rem; margin: -0.3rem -0.3rem 0 0; }
+
+  /* Artist and Album, each a list to choose from, and the filter of free text below them. */
+  .filters { margin: 0.75rem 0 0; }
+  .filter { display: block; width: 100%; margin: 0 0 0.75rem; }
+
+  /* The list of songs: a play icon, the track number, title, artist, album, and duration of each, and its Edit and Remove. */
+  .songs { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+
+  .song {
+    display: grid;
+    grid-template-columns: 2.25rem 2.25rem minmax(0, 3fr) minmax(0, 2fr) minmax(0, 2fr) 3.5rem 4.25rem;
+    align-items: center;
+    gap: 0 0.5rem;
+    padding: 0.1rem 0.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .song > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .song.head { color: var(--muted); font-size: 0.85rem; padding-top: 0; padding-bottom: 0.25rem; }
+  .song .number, .song .duration { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .song .also { display: none; }
+  .song.playing { background: var(--playing); }
+  .song.playing .name { color: var(--accent); font-weight: 600; }
+  .song.chosen { box-shadow: inset 3px 0 0 var(--accent); }
+
+  /* A song's Edit and Remove are shown for the song playing or chosen, and for one pointed at. */
+  .row-icons { display: flex; justify-content: flex-end; gap: 0.1rem; visibility: hidden; }
+  .song.playing .row-icons, .song.chosen .row-icons, .song:hover .row-icons, .song:focus-within .row-icons { visibility: visible; }
+
+  @media (max-width: 44rem) {
+    .player { align-items: flex-start; }
+    .cover-frame { flex-basis: 5rem; width: 5rem; }
+    .song { grid-template-columns: 2.25rem minmax(0, 1fr) 3.5rem 4.25rem; }
+    .song .number, .song .artist, .song .album { display: none; }
+    .song .title span { display: block; overflow: hidden; text-overflow: ellipsis; }
+    .song .also { color: var(--muted); font-size: 0.85em; }
+  }
+
+  /* Lists of choices: folders, and songs found in one. */
+  .entries {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 50vh;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .entries li { padding: 0.35rem 0.6rem; }
+  .entries li + li { border-top: 1px solid var(--border); }
+
+  .entries button {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.15rem 0;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+  }
+
+  .entries button span:first-child { overflow-wrap: anywhere; }
+  .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; margin: 0 0 0.5rem; }
+  .crumbs button { padding: 0.1rem 0.4rem; }
+
+  /* The songs found in a folder, each to be left out, or not. */
+  .found li { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.25rem 0.75rem; }
+  .found label.check { flex: 1 1 14rem; font-size: 0.95rem; overflow-wrap: anywhere; }
+  .found .note { flex: 1 0 100%; }
+
+  /* What is imported, which a folder of a few thousand songs makes long. */
+  .activity { list-style: none; margin: 0.75rem 0 0; padding: 0; max-height: 40vh; overflow-y: auto; }
+  .activity li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; margin: 0.35rem 0; }
+  .activity progress { flex: 0 1 12rem; }
+
+  dialog {
+    width: min(40rem, calc(100vw - 2rem));
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  dialog::backdrop { background: rgb(0 0 0 / 0.3); }
+
+  /* The keys, and what each does. */
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 1rem; margin: 0; }
+  .keys dd { margin: 0; }
+
+  kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.05rem 0.35rem;
+    background: var(--background);
+  }
+</style>
+</head>
+<body>
+<a class="home" href="/" title="Home" aria-label="Home">&#x1F3E0;</a>
+<header>
+  <div>
+    <h1>Music</h1>
+    <p class="subtitle" id="client-note">Asking the node&hellip;</p>
+  </div>
+  <div class="toolbar">
+    <button type="button" class="icon changes-only" id="add-file" title="Add from a file" aria-label="Add from a file" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 4H5v17h12v-8 M18 3v6 M15 6h6 M8 13h6 M8 17h6"/></svg>
+    </button>
+    <button type="button" class="icon signed-in-only" id="filter-songs" title="Filter" aria-label="Filter" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M16 16l5 5"/></svg>
+    </button>
+    <button type="button" class="icon" id="show-keys" title="Keys" aria-label="Keys">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.75 2.17C12.5 12.1 12 12.6 12 13.5V14 M12 17.5v.01"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+  <noscript><section><p>This page needs JavaScript.</p></section></noscript>
+  <p class="state" id="page-state" role="status" hidden></p>
+
+  <section id="player-section" aria-labelledby="song-title" hidden>
+    <div class="player">
+      <div class="cover-frame" id="cover"></div>
+      <div class="now">
+        <div class="title-row">
+          <h2 id="song-title"></h2>
+          <div class="icons">
+            <button type="button" class="icon changes-only" id="edit-playing" title="Edit" aria-label="Edit" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
+            </button>
+          </div>
+        </div>
+        <p class="note" id="song-from"></p>
+        <audio id="audio" controls preload="metadata"></audio>
+        <div class="toolbar">
+          <button type="button" class="icon" id="previous" title="Previous" aria-label="Previous">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 6l-9 6 9 6z M6 6v12"/></svg>
+          </button>
+          <button type="button" class="icon" id="next" title="Next" aria-label="Next">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l9 6-9 6z M18 6v12"/></svg>
+          </button>
+          <button type="button" class="icon" id="shuffle" title="Shuffle" aria-label="Shuffle" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 7h3c4.5 0 6.5 10 11 10h4 M3 17h3c1.7 0 3-1.4 4.1-3.2 M13.9 10.2C15 8.4 16.3 7 18 7h3 M18 4l3 3-3 3 M18 14l3 3-3 3"/></svg>
+          </button>
+        </div>
+        <p class="result" id="player-result" role="status" hidden></p>
+      </div>
+    </div>
+  </section>
+
+  <section id="library" aria-labelledby="library-heading" hidden>
+    <div class="heading">
+      <h2 id="library-heading">Library</h2>
+      <span class="note" id="library-count"></span>
+    </div>
+    <div class="fields filters" id="filters">
+      <label>Artist <select id="artist-filter"><option value="">Every artist</option></select></label>
+      <label>Album <select id="album-filter"><option value="">Every album</option></select></label>
+    </div>
+    <input type="search" class="filter" id="song-filter" aria-label="Words to look for"
+      placeholder="Whole words to look for" autocomplete="off" spellcheck="false" hidden>
+    <ul class="activity" id="activity"></ul>
+    <p class="result" id="library-result" role="status" hidden></p>
+    <p class="state" id="library-state" hidden></p>
+    <div class="song head" id="songs-head" aria-hidden="true">
+      <span></span><span class="number">#</span><span>Title</span><span class="artist">Artist</span>
+      <span class="album">Album</span><span class="duration">Time</span><span></span>
+    </div>
+    <ol class="songs" id="songs"></ol>
+  </section>
+</main>
+
+<template id="icons">
+  <svg data-icon="play" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5l11 7-11 7z"/></svg>
+  <svg data-icon="pause" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5v14 M15 5v14"/></svg>
+  <svg data-icon="warn" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l10 18H2z M12 10v4 M12 17.5v.01"/></svg>
+  <svg data-icon="edit" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
+  <svg data-icon="remove" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16 M9 7V4h6v3 M6 7l1 14h10l1-14 M10 11v6 M14 11v6"/></svg>
+</template>
+
+<dialog id="file-dialog" aria-labelledby="file-heading">
+  <h3 id="file-heading">Add songs from files</h3>
+  <div id="folder-browse">
+    <p class="hint">The folders this node offers. Choose a song, and it is imported into the
+    network, and added to your library. Its title comes from its file's name, less a track number
+    it starts with, its album from the folder it is in, and its artist from the folder above that,
+    as a library laid out as Artist/Album/01 Title.mp3 gives. Each can be edited after. Or add every
+    song in the folder shown, and in the folders within it.</p>
+    <nav class="crumbs" id="folder-path" aria-label="Where in the folders"></nav>
+    <ul class="entries" id="folder-entries"></ul>
+    <p class="result" id="folder-state" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Close</button>
+      <button type="button" id="folder-all" hidden>Add every song here</button>
+    </div>
+  </div>
+  <form id="found-form" hidden>
+    <p class="hint">Each song found. Leave out any you choose. Those your library holds already are
+    left out. Your library is kept at a drop of yours, signed by you and encrypted for you alone,
+    so that you find it on any node you sign in on.</p>
+    <p class="hint" id="found-note" hidden></p>
+    <ul class="entries found" id="found-list"></ul>
+    <p class="result" id="found-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" id="found-back">Back</button>
+      <button type="submit">Add</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="song-dialog" aria-labelledby="song-heading">
+  <form id="song-form">
+    <h3 id="song-heading"></h3>
+    <div class="fields">
+      <label class="wide">Title <input id="edit-title" autocomplete="off"></label>
+    </div>
+    <div class="fields">
+      <label class="wide">Artist <input id="edit-artist" autocomplete="off"></label>
+      <label class="wide">Album artist <input id="edit-album-artist" autocomplete="off"></label>
+    </div>
+    <div class="fields">
+      <label class="wide">Album <input id="edit-album" autocomplete="off"></label>
+      <label>Year <input id="edit-year" inputmode="numeric" size="5" autocomplete="off"></label>
+    </div>
+    <div class="fields">
+      <label>Track <input id="edit-track" inputmode="numeric" size="4" autocomplete="off"></label>
+      <label>Of <input id="edit-tracks" inputmode="numeric" size="4" autocomplete="off" aria-label="Tracks on the disc"></label>
+      <label>Disc <input id="edit-disc" inputmode="numeric" size="4" autocomplete="off"></label>
+      <label>Of <input id="edit-discs" inputmode="numeric" size="4" autocomplete="off" aria-label="Discs of the album"></label>
+    </div>
+    <div class="fields">
+      <label class="wide">Genre <input id="edit-genre" autocomplete="off"></label>
+      <label class="wide">Composer <input id="edit-composer" autocomplete="off"></label>
+    </div>
+    <p class="hint">What is edited is kept in your library. The file's own tags are not changed.</p>
+    <p class="result" id="song-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="keys-dialog" aria-labelledby="keys-heading">
+  <h3 id="keys-heading">Keys</h3>
+  <p class="hint">Anywhere on the page but in a field, and while no other dialog is open.</p>
+  <dl class="keys">
+    <dt><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></dt>
+    <dd>Move through the songs listed, from the one with focus.</dd>
+    <dt><kbd>Home</kbd> <kbd>End</kbd></dt>
+    <dd>To the first, or the last.</dd>
+    <dt><kbd>Enter</kbd></dt>
+    <dd>Play the song with focus, and then the songs after it in the list, or pause it if it is
+    playing.</dd>
+    <dt><kbd>Space</kbd> <kbd>G</kbd></dt>
+    <dd>Play or pause the song chosen. Space presses a button that has focus instead.</dd>
+    <dt><kbd>N</kbd> <kbd>P</kbd></dt>
+    <dd>Play the next song, or the one before.</dd>
+    <dt><kbd>S</kbd></dt>
+    <dd>Shuffle on, or off.</dd>
+    <dt><kbd>`</kbd></dt>
+    <dd>Filter the songs, as the magnifying glass does, to those with every whole word typed in any
+    of their details. Enter keeps the filter, and Escape empties it. It starts empty each time, so `
+    then Enter shows every song the artist and album chosen do.</dd>
+    <dt><kbd>?</kbd> <kbd>/</kbd></dt>
+    <dd>These keys.</dd>
+  </dl>
+  <div class="buttons">
+    <button type="button" class="secondary" data-close>Done</button>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+
+// The endpoints this page uses (HttpApi 2.4, 12.2, 12.3). What a bundle
+// holds is read at DATA, then its id, then a path (HttpApi 12.1).
+const CLIENT = "/data/client";
+const DIRECTORY = "/data/directory";
+const IMPORTS = "/data/imports";
+const BUNDLES = "/data/bundles";
+const DATA = "/data/";
+const SESSION = "/data/session";
+const SIGNED = "/data/signed";
+const DROPS = "/data/drop";
+const ENCRYPTED = "/data/encrypted/";
+
+// Where a person's library is kept, "music library:{id}": in versions at the
+// drop, each signed by them and encrypted for them (HttpApi 9, 11.5, 11.6),
+// each naming the library's newest bundle. The node keeps no library for
+// whoever is not signed in.
+const LIBRARY_PREFIX = "music library:";
+
+// What each version placed asks the node to search for its nonce, matching as
+// many bits as a node's search returns by default, so that it is found.
+const DROP_SECONDS = 1;
+const DROP_MINIMUM_BITS = 24;
+
+// Where this browser remembers whether Shuffle is on, and the artist and the
+// album last chosen to filter the library by.
+const REMEMBERED_SHUFFLE = "music.shuffle";
+const REMEMBERED_FILTERS = "music.filters";
+
+// Why nothing is changed for whoever is signed in with their fallback
+// password, before the fallback takes over: nothing they keep is signed
+// (HttpApi 11.4, 11.5).
+const FALLBACK_REFUSAL = "Signed in with your fallback password, nothing you keep is changed until your fallback takes over.";
+
+// What a library holds: a folder of songs, each in a folder of its own, and
+// the index of what is known of every song, in files each holding the songs
+// whose folders begin with the same two hex digits. And what a song holds,
+// beside its audio.
+const SONGS = "songs";
+const INDEX = "index";
+const INFO_FILE = "info.json";
+
+// What a song's info.json holds, in the order it is written, and what its
+// entry in the index holds: the same, and the path it was imported from, and
+// its audio's file bundle, so that the same file is not added twice. Its
+// path is kept in the index alone, so that sharing a song does not tell
+// where it was on the person's machine.
+const INFO_KEYS = [
+  "title", "artist", "album_artist", "album", "track", "tracks", "disc", "discs", "year", "genre",
+  "composer", "duration_seconds", "audio", "cover",
+];
+const INDEX_KEYS = [...INFO_KEYS, "source", "file"];
+
+// How many hex digits of a song bundle's hash name its folder in the
+// library, and how its folder, and a file of the index, are named.
+const FOLDER_DIGITS = 16;
+const SONG_FOLDER = /^[0-9a-f]{16}$/;
+const INDEX_FILE = /^([0-9a-f]{2})\.json$/;
+
+// The kinds of audio a song may be, by the extension of its file's name, each
+// with the type this browser is asked whether it can play. The node gives
+// several of them as application/octet-stream, so a file's name is read as
+// well as the type the node gives it.
+const AUDIO_TYPES = {
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  m4b: "audio/mp4",
+  aac: "audio/aac",
+  flac: "audio/flac",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  opus: "audio/ogg; codecs=opus",
+  wav: "audio/wav",
+  aif: "audio/aiff",
+  aiff: "audio/aiff",
+  wma: "audio/x-ms-wma",
+  ape: "audio/ape",
+  wv: "audio/wavpack",
+  mka: "audio/x-matroska",
+};
+
+// How a song's file's name starts with its track number, "01 Title", "01 -
+// Title", or "01. Title", and the number of its disc before that, as in
+// "1-01 Title".
+const TRACK_NAME = /^(?:(\d{1,2})[-.](?=\d))?(\d{1,3})(?:\s*[-.–—)]\s*|[\s_]+)(?=\S)(.+)$/u;
+
+// How a folder is named for a disc of an album: CD1, CD 2, Disc 1, or Disk 2.
+const DISC_FOLDER = /^(?:cd|dis[ck])[\s._-]*(\d{1,2})$/i;
+
+// How an album's folder ends in its year, as "Abbey Road (1969)" does.
+const DATED_ALBUM = /^(.*\S)\s*[([]((?:19|20)\d\d)[)\]]$/;
+
+// How many folders below the one chosen every song is looked for in, so
+// that a link back to a folder above does not lead the search on forever.
+const FOLDER_DEPTH = 8;
+
+// How often the imports are asked after.
+const IMPORT_POLL_SECONDS = 1;
+
+// What a 503 that does not say is waited for, and how many are waited out
+// before the answer is given up on.
+const DEFAULT_RETRY_SECONDS = 5;
+const MAX_WAITS = 6;
+
+// How many times a picture is asked for before it is given up on.
+const POSTER_TRIES = 3;
+
+// A content id, plain or carrying the key of a bundle stored encrypted (HttpApi 5).
+const CONTENT_ID = /^[a-z0-9-]+\/[0-9a-f]+(?:\/[A-Za-z0-9:-]+\/[0-9a-f]+)?$/;
+
+// How songs are compared as they are listed, and artists and albums as they
+// are offered: ignoring case, and numbers in order.
+const COLLATOR = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+
+const state = {
+  // Whether this browser is on the node's own machine (HttpApi 2.4).
+  local: false,
+  // Whoever is signed in (HttpApi 11.4), whose own library is kept, or null,
+  // for whom none is.
+  owner: null,
+  // Their library, a Library.
+  library: null,
+  // The folder of the song chosen to play, playing or paused, or null; and
+  // the songs chosen to play: the folders of those listed as it was chosen,
+  // in the order shown, those in the order they play in, and where in that
+  // order the song chosen is.
+  current: null,
+  queue: null,
+  // The folder of the song chosen in the list, to edit or remove.
+  chosen: null,
+  // The folders of the songs that failed as they loaded, since the page opened.
+  failed: new Set(),
+  // Whether Shuffle is on, and the artist and the album chosen, each as
+  // nameKey gives it, or "" for every one.
+  shuffle: false,
+  filters: { artist: "", album: "" },
+  // How many folders of songs are being imported, each of which the page
+  // itself adds to the library once the node has stored its files.
+  imports: 0,
+};
+
+function byId(id) {
+  return document.getElementById(id);
+}
+
+function make(tag, text, className) {
+  const node = document.createElement(tag);
+
+  if (text !== undefined && text !== null) {
+    node.textContent = String(text);
+  }
+
+  if (className) {
+    node.className = className;
+  }
+
+  return node;
+}
+
+function show(element, message, isError = false) {
+  element.textContent = message;
+  element.classList.toggle("error", isError);
+  element.hidden = !message;
+}
+
+function sleep(seconds) {
+  return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+}
+
+function isObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isText(value) {
+  return typeof value === "string" && value !== "";
+}
+
+// Whether a value from a song's JSON is one this page shows.
+function isShown(value) {
+  return isText(value) || (typeof value === "number" && Number.isFinite(value));
+}
+
+// Whether `value` is a track's, a disc's, or a year's number.
+function isNumber(value) {
+  return Number.isInteger(value) && value >= 0;
+}
+
+function plural(count, one, many) {
+  return count === 1 ? `1 ${one}` : `${count} ${many}`;
+}
+
+// The whole words of `text`, in lower case: its runs of letters and digits.
+function wordsOf(text) {
+  return text.toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter(isText);
+}
+
+// An artist's or an album's name as songs are found by it, ignoring case.
+function nameKey(name) {
+  return name.toLowerCase();
+}
+
+function formatDuration(seconds) {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
+    return "";
+  }
+
+  const whole = Math.round(seconds);
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor(whole / 60) % 60;
+  const two = (count) => String(count).padStart(2, "0");
+  return hours ? `${hours}:${two(minutes)}:${two(whole % 60)}` : `${minutes}:${two(whole % 60)}`;
+}
+
+function formatSize(bytes) {
+  if (typeof bytes !== "number") {
+    return "";
+  }
+
+  for (const [unit, size] of [["GB", 1e9], ["MB", 1e6], ["kB", 1e3]]) {
+    if (bytes >= size) {
+      return `${(bytes / size).toFixed(1)} ${unit}`;
+    }
+  }
+
+  return `${bytes} B`;
+}
+
+// How long `headers` say to wait before asking again (HttpApi 5.2): at least a
+// second, so that a Retry-After of 0 does not ask again at once, and the
+// default when they do not say.
+function retryAfter(headers) {
+  const seconds = Number.parseInt(headers.get("Retry-After") || "", 10);
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.max(seconds, 1) : DEFAULT_RETRY_SECONDS;
+}
+
+// The node could not be reached at all.
+class Unreachable extends Error {}
+
+// An answer that is not what was asked for, saying what the node said of it.
+class Refusal extends Error {
+  constructor(result) {
+    const problem = isObject(result.value) ? result.value : {};
+    super(problem.detail || problem.title || `The node answered ${result.status}.`);
+    this.status = result.status;
+  }
+}
+
+// One request to the node. `value` is the body read as JSON, or null. What
+// changes is never answered from the browser's cache; what a bundle holds
+// never changes, and may be.
+async function call(method, path, { body, headers = {}, cache = "no-store" } = {}) {
+  const init = { method, cache, headers: { ...headers } };
+
+  if (body !== undefined) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+
+  let response;
+
+  try {
+    response = await fetch(path, init);
+  } catch (error) {
+    throw new Unreachable(`The node could not be reached: ${error.message}`);
+  }
+
+  const text = await response.text();
+  let value = null;
+
+  try {
+    value = text ? JSON.parse(text) : null;
+  } catch (error) {
+    value = null;
+  }
+
+  return { status: response.status, ok: response.ok, headers: response.headers, value };
+}
+
+// As call, but waiting out the 503s the node answers while it fetches what it lacks.
+async function patiently(method, path, options) {
+  for (let waits = 0; ; waits += 1) {
+    const result = await call(method, path, options);
+
+    if (result.status !== 503 || waits >= MAX_WAITS) {
+      return result;
+    }
+
+    await sleep(retryAfter(result.headers));
+  }
+}
+
+function encodedPath(path) {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+// Where the entry at `path` in `bundle` is read. The empty path is the
+// bundle's root, which needs its "/" (HttpApi 12.1).
+function entryUrl(bundle, path) {
+  return `${DATA}${bundle}/${encodedPath(path)}`;
+}
+
+// The JSON at `path` in `bundle`: a file, or a directory's entries.
+async function readEntry(bundle, path) {
+  const result = await patiently("GET", entryUrl(bundle, path), { cache: "default" });
+
+  if (!result.ok) {
+    throw new Refusal(result);
+  }
+
+  if (result.value === null) {
+    throw new Error(`${path} is not JSON.`);
+  }
+
+  return result.value;
+}
+
+// `value`, `keys` first, in their order, then any others it has, leaving out
+// any undefined.
+function ordered(keys, value) {
+  const result = {};
+
+  for (const key of [...keys, ...Object.keys(value)]) {
+    if (!(key in result) && value[key] !== undefined) {
+      result[key] = value[key];
+    }
+  }
+
+  return result;
+}
+
+// `value` as a JSON file holds it, `keys` first, in their order, then any
+// others it has, leaving out any undefined.
+function jsonText(keys, value) {
+  return `${JSON.stringify(ordered(keys, value), null, 2)}\n`;
+}
+
+// `value` without its members that are undefined.
+function defined(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, each]) => each !== undefined));
+}
+
+// Makes a bundle (HttpApi 12.3) and returns its id.
+async function makeBundle(edit) {
+  const result = await patiently("POST", BUNDLES, { body: edit });
+
+  if (!result.ok || !isObject(result.value) || typeof result.value.bundle !== "string") {
+    throw new Refusal(result);
+  }
+
+  return result.value.bundle;
+}
+
+// The icon named `name`, from those the page holds.
+function icon(name) {
+  return byId("icons").content.querySelector(`[data-icon="${name}"]`).cloneNode(true);
+}
+
+// The extension of the file named `name`, in lower case, or "" if it has none.
+function extensionOf(name) {
+  const at = name.lastIndexOf(".");
+  return at > 0 ? name.slice(at + 1).toLowerCase() : "";
+}
+
+// Whether the file named `name` is a song, as the node says of it, `entry`:
+// audio, as the node gives its type, or with a name ending in a song's
+// extension, any case.
+function isSongFile(name, entry) {
+  return (isText(entry.content_type) && entry.content_type.startsWith("audio/"))
+    || Object.hasOwn(AUDIO_TYPES, extensionOf(name));
+}
+
+// Whether this browser says it can play audio of `type`, asked once for each type.
+const playsType = new Map();
+
+function canPlay(type) {
+  if (!playsType.has(type)) {
+    playsType.set(type, byId("audio").canPlayType(type) !== "");
+  }
+
+  return playsType.get(type);
+}
+
+// One song of a library: the folder it is in, and what its entry in the
+// index holds.
+class Song {
+  constructor(folder, details) {
+    this.folder = folder;
+    this.details = details;
+    // The whole words of its details, as the filter finds it by, once asked.
+    this.words = null;
+  }
+
+  // Its detail `key`, if it is text, or "".
+  text(key) {
+    const value = this.details[key];
+    return isText(value) ? value : "";
+  }
+
+  // Its detail `key`, if it is a number, or null.
+  number(key) {
+    const value = this.details[key];
+    return isNumber(value) ? value : null;
+  }
+
+  title() {
+    return this.text("title") || this.text("audio") || this.folder;
+  }
+
+  artist() {
+    return this.text("artist");
+  }
+
+  albumArtist() {
+    return this.text("album_artist");
+  }
+
+  album() {
+    return this.text("album");
+  }
+
+  // Whom the library is listed by: its album artist, or its artist where it
+  // has none.
+  listedArtist() {
+    return this.albumArtist() || this.artist();
+  }
+
+  // Its artist and album, as the player shows them under its title.
+  byline() {
+    return [this.artist(), this.album()].filter(isText).join(" · ");
+  }
+
+  // The path of `name` in its folder of the library.
+  path(name) {
+    return `${SONGS}/${this.folder}/${name}`;
+  }
+
+  // The type this browser is asked whether it can play it as, or null if its
+  // file's name gives none.
+  type() {
+    const extension = extensionOf(this.text("audio"));
+    return Object.hasOwn(AUDIO_TYPES, extension) ? AUDIO_TYPES[extension] : null;
+  }
+
+  // Whether this browser says it cannot play it.
+  refused() {
+    const type = this.type();
+    return type !== null && !canPlay(type);
+  }
+
+  // Whether every one of `words` is a whole word of its title, artist, album
+  // artist, album, genre, composer, year, or file's name.
+  matches(words) {
+    if (this.words === null) {
+      const year = isShown(this.details.year) ? String(this.details.year) : "";
+      const details = [this.title(), this.artist(), this.albumArtist(), this.album(), this.text("genre"),
+        this.text("composer"), year, this.text("audio")];
+      this.words = new Set(wordsOf(details.join(" ")));
+    }
+
+    return words.every((word) => this.words.has(word));
+  }
+
+  // Its info.json: its details, but where it was imported from.
+  infoText() {
+    return jsonText(INFO_KEYS, { ...this.details, source: undefined, file: undefined });
+  }
+
+  // Its entry in the index.
+  entry() {
+    return ordered(INDEX_KEYS, this.details);
+  }
+
+  with(details) {
+    return new Song(this.folder, details);
+  }
+}
+
+// Compares `one` and `other` as text, ignoring case, with nothing after any.
+function compareText(one, other) {
+  if (!one !== !other) {
+    return one ? -1 : 1;
+  }
+
+  return COLLATOR.compare(one, other);
+}
+
+// Compares `one` and `other` as numbers, with null after any.
+function compareNumber(one, other) {
+  if ((one === null) !== (other === null)) {
+    return one === null ? 1 : -1;
+  }
+
+  return one === null ? 0 : one - other;
+}
+
+// The order the library is listed in: by album artist, or artist where a song
+// has none, then album, disc, track, and title, each ignoring case.
+function compareSongs(one, other) {
+  return compareText(one.listedArtist(), other.listedArtist())
+    || compareText(one.album(), other.album())
+    || (one.number("disc") || 0) - (other.number("disc") || 0)
+    || compareNumber(one.number("track"), other.number("track"))
+    || compareText(one.title(), other.title())
+    || (one.folder < other.folder ? -1 : 1);
+}
+
+// The folder a song is added to a library in, named by its bundle's hash.
+function folderOf(song) {
+  return song.split("/")[1].slice(0, FOLDER_DIGITS);
+}
+
+// The two hex digits a song's folder begins with, which name the file of the
+// index it is in, and that file's path.
+function prefixOf(folder) {
+  return folder.slice(0, 2);
+}
+
+function indexPath(prefix) {
+  return `${INDEX}/${prefix}.json`;
+}
+
+// A file of the index holding `songs`, by their folders.
+function indexText(songs) {
+  const sorted = [...songs].sort((one, other) => (one.folder < other.folder ? -1 : 1));
+  return jsonText(["songs"], { songs: Object.fromEntries(sorted.map((song) => [song.folder, song.entry()])) });
+}
+
+// One version of a person's library: its bundle, or null for one with no
+// songs added yet; each song it holds, by its folder; when the version it is
+// changed; the bundles of the versions kept whose every song it holds, which
+// the next it is kept as replaces; and the prefixes of the files of its
+// index that could not be read, whose songs it is not changed for.
+class Library {
+  constructor(bundle, songs, { changed = "", from = bundle ? [bundle] : [], unread = [] } = {}) {
+    this.bundle = bundle;
+    this.songs = songs;
+    this.changed = changed;
+    this.from = new Set(from);
+    this.unread = new Set(unread);
+    // Its songs by where they were imported from, and by their files, once asked.
+    this.sources = null;
+    this.files = null;
+  }
+
+  static empty() {
+    return new Library(null, new Map());
+  }
+
+  // The library `bundle` holds, of the version changed when `changed`: every
+  // file of its index, each read at once.
+  static async read(bundle, changed = "") {
+    let listing;
+
+    try {
+      listing = await readEntry(bundle, INDEX);
+    } catch (error) {
+      if (error.status === 404) {
+        return new Library(bundle, new Map(), { changed });
+      }
+
+      throw error;
+    }
+
+    const names = isObject(listing) && isObject(listing.entries)
+      ? Object.keys(listing.entries).filter((name) => INDEX_FILE.test(name)) : [];
+    const files = await Promise.all(names.map((name) => readEntry(bundle, `${INDEX}/${name}`).catch((error) => {
+      console.warn(`${INDEX}/${name} of your library could not be read: ${error.message}`);
+      return null;
+    })));
+    const songs = new Map();
+    const unread = [];
+
+    names.forEach((name, index) => {
+      const prefix = INDEX_FILE.exec(name)[1];
+      const file = files[index];
+
+      if (!isObject(file) || !isObject(file.songs)) {
+        unread.push(prefix);
+        return;
+      }
+
+      for (const [folder, details] of Object.entries(file.songs)) {
+        if (SONG_FOLDER.test(folder) && folder.startsWith(prefix) && isObject(details) && isText(details.audio)) {
+          songs.set(folder, new Song(folder, details));
+        } else {
+          console.warn(`Passing over ${folder} in ${INDEX}/${name}: it is not a song this page reads.`);
+        }
+      }
+    });
+
+    return new Library(bundle, songs, { changed, unread });
+  }
+
+  // The library the versions `entries` name, each {bundle, changed, id},
+  // the newest first: the newest, with each song the others hold and it
+  // does not added to it, and their entries in the index. Merging adds
+  // songs, and never removes any. `held`, a Library read already, may be one
+  // of them. A version that cannot be read is passed over, and one that
+  // cannot be merged whole, as when part of the index of either cannot be
+  // read, is not among those it holds every song of, so that the next
+  // version kept does not replace it.
+  static async open(entries, held = null) {
+    if (entries.length === 0) {
+      return held || Library.empty();
+    }
+
+    const read = (entry) => (held && held.bundle === entry.bundle ? held : Library.read(entry.bundle, entry.changed));
+    const newest = await read(entries[0]);
+    const from = new Set(newest.from);
+    const add = {};
+    const set = new Map();
+
+    for (const entry of entries.slice(1)) {
+      if (from.has(entry.bundle)) {
+        continue;
+      }
+
+      let other;
+
+      try {
+        other = await read(entry);
+      } catch (error) {
+        console.warn(`Passing over the version of your library at ${entry.id}: ${error.message}`);
+        continue;
+      }
+
+      let whole = other.unread.size === 0;
+
+      for (const song of other.songs.values()) {
+        if (newest.unread.has(prefixOf(song.folder))) {
+          whole = false;
+        } else if (!newest.songs.has(song.folder) && !set.has(song.folder)) {
+          set.set(song.folder, song);
+          add[`${SONGS}/${song.folder}`] = { from: other.bundle, path: `${SONGS}/${song.folder}` };
+        }
+      }
+
+      if (whole) {
+        other.from.forEach((bundle) => from.add(bundle));
+      }
+    }
+
+    const library = set.size ? await newest.edited({ add, set }) : newest;
+    return library.holding(from);
+  }
+
+  url(path) {
+    return entryUrl(this.bundle, path);
+  }
+
+  // The song imported from `source`, or null.
+  holdingSource(source) {
+    this.sources = this.sources || new Map([...this.songs.values()].map((song) => [song.details.source, song]));
+    return this.sources.get(source) || null;
+  }
+
+  // The song whose audio is the file bundle `file`, or null.
+  holdingFile(file) {
+    this.files = this.files || new Map([...this.songs.values()].map((song) => [song.details.file, song]));
+    return this.files.get(file) || null;
+  }
+
+  // A new version of this library, with `edit` made: the entries `add` names
+  // added, those `remove` names removed, each song `set` holds, by folder,
+  // set, and those in the folders `drop` names dropped. The file of the index
+  // of each song set or dropped is written again.
+  async edited({ add = {}, remove = [], set = new Map(), drop = [] }) {
+    const songs = new Map(this.songs);
+    const prefixes = new Set([...set.keys(), ...drop].map(prefixOf));
+    const additions = { ...add };
+    const removals = [...remove];
+
+    for (const folder of drop) {
+      songs.delete(folder);
+    }
+
+    for (const [folder, song] of set) {
+      songs.set(folder, song);
+    }
+
+    for (const prefix of prefixes) {
+      if (this.unread.has(prefix)) {
+        throw new Error("Part of your library could not be read, so it is not changed. Reload the page, and try again.");
+      }
+
+      const held = [...songs.values()].filter((song) => prefixOf(song.folder) === prefix);
+
+      if (held.length) {
+        additions[indexPath(prefix)] = { text: indexText(held) };
+      } else {
+        removals.push(indexPath(prefix));
+      }
+    }
+
+    const bundle = await makeBundle(this.bundle
+      ? { base: this.bundle, add: additions, remove: removals } : { encrypted: true, add: additions });
+    return new Library(bundle, songs, { changed: this.changed, from: [...this.from, bundle], unread: this.unread });
+  }
+
+  // As kept, in the version placed when `changed`.
+  placed(changed) {
+    return new Library(this.bundle, this.songs, { changed, unread: this.unread });
+  }
+
+  // Holding every song of the versions whose bundles `from` names, too.
+  holding(from) {
+    return new Library(this.bundle, this.songs, { changed: this.changed, from: [...from, ...this.from], unread: this.unread });
+  }
+}
+
+// The ids a search of the drop `target` finds (HttpApi 9.7). The node finds
+// only what shares enough leading bits with its hash to have been placed there.
+async function foundAt(target) {
+  const search = await call("GET", `${DROPS}/${encodeURIComponent(target)}`);
+  const answered = search.ok && isObject(search.value) && isText(search.value.target) &&
+    Array.isArray(search.value.results);
+
+  if (!answered) {
+    throw new Refusal(search);
+  }
+
+  return search.value.results.filter((id) => isText(id) && CONTENT_ID.test(id));
+}
+
+// The session ended while the page was open (HttpApi 11.4).
+class SessionEnded extends Error {
+  constructor() {
+    super("Your session has ended. Reload the page, and sign in again.");
+  }
+}
+
+// Whether the version `one` changed after `other`, or, of two changed in the
+// same moment, whose drop's id comes first.
+function newestFirst(one, other) {
+  if (one.changed !== other.changed) {
+    return one.changed > other.changed ? -1 : 1;
+  }
+
+  return one.id === other.id ? 0 : (one.id < other.id ? -1 : 1);
+}
+
+// The versions of the library kept for whoever is signed in: each the bundle
+// it names, when it changed, and the id of the version at their drop, the
+// newest first. There are more than one where they were made apart, on two
+// nodes say, which Library.open merges. No library is kept for whoever is
+// not signed in.
+class Kept {
+  constructor(entries = []) {
+    this.entries = entries;
+  }
+
+  static async read() {
+    if (!state.owner) {
+      return new Kept();
+    }
+
+    const ids = await foundAt(Kept.target());
+    const opened = await Promise.all(ids.map((id) => Kept.version(id)));
+    const entries = ids.map((id, index) => (opened[index] ? { ...opened[index], id } : null)).filter(Boolean);
+    return new Kept(entries.sort(newestFirst));
+  }
+
+  // The drop of whoever is signed in.
+  static target() {
+    return `${LIBRARY_PREFIX}${state.owner.id}`;
+  }
+
+  // The library the version at the drop `id` names, opened with the key of
+  // whoever is signed in (HttpApi 11.6); null if it is not held, or is not a
+  // version they signed.
+  static async version(id) {
+    const contents = await openVersion(id);
+    const library = isObject(contents) ? contents.library : null;
+
+    if (!isObject(library) || !isText(library.bundle) || !CONTENT_ID.test(library.bundle) || !isText(library.changed)) {
+      console.warn(`Passing over ${id}: it is no version of your library.`);
+      return null;
+    }
+
+    return { bundle: library.bundle, changed: library.changed };
+  }
+
+  // Places a version naming `bundle` as the person's library, signed by them
+  // and encrypted for them, then blocks the versions it replaces (HttpApi
+  // 5.5), those of the bundles `from` names, so that they do not push the
+  // newest out of a search. Returns when it changed.
+  async place(bundle, from) {
+    const changed = new Date().toISOString();
+    await placeVersion(Kept.target(), { library: { bundle, changed } });
+
+    for (const { id } of this.entries.filter((entry) => from.has(entry.bundle))) {
+      const shunned = await call("DELETE", `${DATA}${id}`);
+
+      if (!shunned.ok) {
+        console.warn(`The replaced version ${id} was not shunned: ${new Refusal(shunned).message}`);
+      }
+    }
+
+    return changed;
+  }
+}
+
+// Places a version holding `contents` at the drop `target`, signed by
+// whoever is signed in and encrypted for them (HttpApi 11.5, 11.6), and
+// returns its id.
+async function placeVersion(target, contents) {
+  const result = await patiently("POST", SIGNED, {
+    body: {
+      target,
+      text: JSON.stringify(contents),
+      seconds: DROP_SECONDS,
+      minimum_bits: DROP_MINIMUM_BITS,
+      encrypt: { for: state.owner.id },
+    },
+  });
+
+  if (result.status === 401) {
+    throw new SessionEnded();
+  }
+
+  if (result.status === 403) {
+    throw new Error(FALLBACK_REFUSAL);
+  }
+
+  if (!result.ok || !isObject(result.value) || !isText(result.value.id)) {
+    throw new Refusal(result);
+  }
+
+  return result.value.id;
+}
+
+// What the version at the drop `id` holds, as JSON, opened with the key of
+// whoever is signed in (HttpApi 11.6); null if it is not held, or is not a
+// version they signed.
+async function openVersion(id) {
+  const result = await patiently("GET", `${ENCRYPTED}${id}`);
+
+  if (result.status === 401) {
+    throw new SessionEnded();
+  }
+
+  const value = result.value;
+
+  if (!result.ok || !isObject(value) || value.signer !== state.owner.id || !isText(value.contents)) {
+    console.warn(`Passing over ${id}: it is no version of yours held here.`);
+    return null;
+  }
+
+  try {
+    return JSON.parse(value.contents);
+  } catch (error) {
+    return null;
+  }
+}
+
+// Whether the library is changed: for whoever is signed in, unless with their
+// fallback password before the fallback takes over (HttpApi 11.4), as nothing
+// is signed then.
+function canChange() {
+  const owner = state.owner;
+  return Boolean(owner) && !(isText(owner.fallback_for) && !isText(owner.fallback));
+}
+
+// Changes to the library are made one at a time, each from the version the
+// one before it made.
+let changing = Promise.resolve();
+
+function serially(action) {
+  const run = changing.then(action);
+  changing = run.catch(() => undefined);
+  return run;
+}
+
+// Makes the change `change` gives of the library, and keeps it, in turn with
+// every other change. The versions kept are read again for it, and any made
+// elsewhere since this page read the library, on another node say, are
+// merged into it first. `change` is given the library so made, and gives the
+// edit to make of it, as Library.edited takes it, or null to make none.
+async function changeLibrary(change) {
+  if (!canChange()) {
+    throw new Error(state.owner ? FALLBACK_REFUSAL : "No one is signed in, so no library is kept. Sign in on the home page.");
+  }
+
+  await serially(async () => {
+    const kept = await Kept.read();
+    const ours = state.library;
+    const elsewhere = kept.entries.filter((entry) => !ours.from.has(entry.bundle));
+    const candidates = ours.bundle ? [...elsewhere, { bundle: ours.bundle, changed: ours.changed, id: "" }] : elsewhere;
+    const library = elsewhere.length ? await Library.open(candidates.sort(newestFirst), ours) : ours;
+    const edit = change(library);
+    let next = library;
+
+    if (edit) {
+      const made = await library.edited(edit);
+      next = made.placed(await kept.place(made.bundle, library.from));
+    }
+
+    if (next !== ours) {
+      state.library = next;
+      renderLibrary();
+    }
+  });
+}
+
+function recallShuffle() {
+  try {
+    return localStorage.getItem(REMEMBERED_SHUFFLE) === "true";
+  } catch (error) {
+    return false;
+  }
+}
+
+function rememberShuffle() {
+  try {
+    localStorage.setItem(REMEMBERED_SHUFFLE, String(state.shuffle));
+  } catch (error) {
+    console.warn(`This browser cannot remember whether Shuffle is on: ${error.message}`);
+  }
+}
+
+function recallFilters() {
+  try {
+    const filters = JSON.parse(localStorage.getItem(REMEMBERED_FILTERS) || "null");
+    const as = (value) => (typeof value === "string" ? value : "");
+    return isObject(filters) ? { artist: as(filters.artist), album: as(filters.album) } : { artist: "", album: "" };
+  } catch (error) {
+    return { artist: "", album: "" };
+  }
+}
+
+function rememberFilters() {
+  try {
+    localStorage.setItem(REMEMBERED_FILTERS, JSON.stringify(state.filters));
+  } catch (error) {
+    console.warn(`This browser cannot remember the filters chosen: ${error.message}`);
+  }
+}
+
+// The library, and its songs.
+
+// The rows of the list, by their songs' folders, in the library's order:
+// each the song it shows, and the item showing it, made once for each song.
+let rows = new Map();
+
+function renderLibrary() {
+  const library = state.library;
+  const list = byId("songs");
+  const focused = focusedFolder();
+  const before = rows;
+  const songs = [...library.songs.values()].sort(compareSongs);
+
+  rows = new Map(songs.map((song) => {
+    const held = before.get(song.folder);
+    return [song.folder, held && held.song === song ? held : { song, item: songRow(song) }];
+  }));
+
+  list.replaceChildren(...[...rows.values()].map((row) => row.item));
+  byId("library").hidden = false;
+  byId("player-section").hidden = false;
+
+  if (state.current !== null && !library.songs.has(state.current)) {
+    stopPlaying();
+  }
+
+  rows.forEach((row) => paintRow(row));
+  renderFilters();
+  showPlaying();
+
+  if (focused !== null) {
+    focusSong(focused);
+  }
+}
+
+function songRow(song) {
+  const item = make("li", null, "song");
+  const play = make("button", null, "icon play");
+  const title = make("span", null, "title");
+  const icons = make("span", null, "row-icons changes-only");
+  item.dataset.folder = song.folder;
+  play.type = "button";
+  play.addEventListener("click", () => chooseSong(song.folder));
+  title.append(make("span", song.title(), "name"), make("span", song.byline(), "also"));
+  title.title = song.title();
+  icons.append(
+    rowIcon("edit", `Edit “${song.title()}”`, "", () => openEdit(song.folder)),
+    rowIcon("remove", `Remove “${song.title()}”`, "danger", (control) => perform(control, byId("library-result"), () => removeSong(song.folder))),
+  );
+  icons.hidden = !canChange();
+  item.append(play, make("span", song.number("track"), "number"), title, make("span", song.artist(), "artist"),
+    make("span", song.album(), "album"), make("span", formatDuration(song.details.duration_seconds), "duration"), icons);
+  return item;
+}
+
+function rowIcon(name, label, className, action) {
+  const control = make("button", null, `icon ${className}`);
+  control.type = "button";
+  control.title = label;
+  control.setAttribute("aria-label", label);
+  control.append(icon(name));
+  control.addEventListener("click", () => action(control));
+  return control;
+}
+
+// Shows, in the row of `row`'s song, whether it plays, is paused, or cannot
+// be played, and whether it is the song chosen.
+function paintRow(row) {
+  const { song, item } = row;
+  const play = item.querySelector("button.play");
+  const current = song.folder === state.current;
+  const playing = current && !byId("audio").paused;
+  const failed = state.failed.has(song.folder);
+  const refused = song.refused();
+  const name = song.title();
+  let shown = ["play", `Play “${name}”`];
+
+  if (refused) {
+    shown = ["warn", `This browser cannot play “${name}”`];
+  } else if (failed) {
+    shown = ["warn", `“${name}” could not be played. Try it again`];
+  } else if (playing) {
+    shown = ["pause", `Pause “${name}”`];
+  }
+
+  if (play.dataset.icon !== shown[0]) {
+    play.dataset.icon = shown[0];
+    play.replaceChildren(icon(shown[0]));
+  }
+
+  play.classList.toggle("warn", refused || failed);
+  play.title = shown[1];
+  play.setAttribute("aria-label", shown[1]);
+  item.classList.toggle("playing", current);
+  item.classList.toggle("chosen", song.folder === state.chosen);
+
+  if (current) {
+    item.setAttribute("aria-current", "true");
+  } else {
+    item.removeAttribute("aria-current");
+  }
+}
+
+function showRow(folder) {
+  const row = folder === null ? null : rows.get(folder);
+
+  if (row) {
+    paintRow(row);
+  }
+}
+
+// Chooses the song in `folder` in the list, to edit or remove.
+function markChosen(folder) {
+  const before = state.chosen;
+  state.chosen = folder;
+  showRow(before);
+  showRow(folder);
+}
+
+// The folder of the song whose row has focus, or null.
+function focusedFolder() {
+  const active = document.activeElement;
+  const item = active && byId("songs").contains(active) ? active.closest("li") : null;
+  return item ? item.dataset.folder : null;
+}
+
+// The folders of the songs the filters show, in the order shown.
+function shownFolders() {
+  return [...rows.values()].filter((row) => !row.item.hidden).map((row) => row.song.folder);
+}
+
+// The names of `names` each once, ignoring case, as each is first given, in
+// order: but none.
+function distinct(names) {
+  const named = new Map();
+
+  for (const name of names.filter(isText)) {
+    if (!named.has(nameKey(name))) {
+      named.set(nameKey(name), name);
+    }
+  }
+
+  return [...named.values()].sort((one, other) => COLLATOR.compare(one, other));
+}
+
+// Offers `names` in `select`, after `every`, which chooses none, and chooses
+// `wanted`, if it is offered. Returns what is chosen.
+function offer(select, names, every, wanted) {
+  const options = names.map((name) => {
+    const option = make("option", name);
+    option.value = nameKey(name);
+    return option;
+  });
+  const none = make("option", every);
+  none.value = "";
+  select.replaceChildren(none, ...options);
+  select.value = options.some((option) => option.value === wanted) ? wanted : "";
+  return select.value;
+}
+
+// Whether `song` is by the artist `artist`, as nameKey gives it: as its
+// artist or its album artist.
+function byArtist(song, artist) {
+  return nameKey(song.artist()) === artist || nameKey(song.albumArtist()) === artist;
+}
+
+// Offers every artist of the library, and every album of the artist chosen,
+// or of the library, keeping those chosen while they are offered.
+function renderFilters() {
+  const songs = [...rows.values()].map((row) => row.song);
+  const artist = offer(byId("artist-filter"), distinct(songs.flatMap((song) => [song.artist(), song.albumArtist()])),
+    "Every artist", state.filters.artist);
+  const albums = distinct(songs.filter((song) => !artist || byArtist(song, artist)).map((song) => song.album()));
+  const album = offer(byId("album-filter"), albums, "Every album", state.filters.album);
+
+  if (artist !== state.filters.artist || album !== state.filters.album) {
+    state.filters = { artist, album };
+    rememberFilters();
+  }
+
+  applyFilters();
+}
+
+// Shows only the songs the three filters together match, and says how many
+// it shows, or why none are.
+function applyFilters() {
+  const { artist, album } = state.filters;
+  const filter = byId("song-filter").value.trim();
+  const words = wordsOf(filter);
+  const count = rows.size;
+  let shown = 0;
+
+  for (const { song, item } of rows.values()) {
+    const matched = (!artist || byArtist(song, artist)) && (!album || nameKey(song.album()) === album) && song.matches(words);
+    item.hidden = !matched;
+    shown += matched ? 1 : 0;
+  }
+
+  const filtering = Boolean(artist || album || words.length);
+  const songs = plural(count, "song", "songs");
+  byId("library-count").textContent = filtering ? `${shown} of ${songs}` : (count ? songs : "");
+  byId("filters").hidden = count === 0;
+  byId("songs-head").hidden = shown === 0;
+
+  if (count === 0) {
+    show(byId("library-state"), canChange()
+      ? "Your library holds no songs yet. Add some from a file, or every song in a folder, with the icon in the upper right corner."
+      : "No song of your library can be read here.");
+  } else if (shown === 0) {
+    show(byId("library-state"), words.length ? `No song of those chosen has every word of “${filter}”.` : "No song is of the artist and the album chosen.");
+  } else {
+    show(byId("library-state"), "");
+  }
+}
+
+// Filters by the artist chosen, offering only that artist's albums.
+function chooseArtist() {
+  state.filters = { ...state.filters, artist: byId("artist-filter").value };
+  renderFilters();
+  rememberFilters();
+}
+
+function chooseAlbum() {
+  state.filters = { ...state.filters, album: byId("album-filter").value };
+  rememberFilters();
+  applyFilters();
+}
+
+// Opens the filter of free text, emptied of any kept before, so that the
+// songs the artist and album chosen match are shown until words are typed,
+// and Enter alone keeps none.
+function openFilter() {
+  const field = byId("song-filter");
+
+  if (byId("library").hidden) {
+    return;
+  }
+
+  field.value = "";
+  field.hidden = false;
+  applyFilters();
+  field.focus();
+}
+
+// Keeps the filter as typed, out of the way, with focus on the first song it
+// shows, or, if it shows none, on opening it again.
+function keepFilter() {
+  byId("song-filter").hidden = true;
+  focusSong(null);
+}
+
+// Gives focus to the song in `folder` of those listed, or to the first
+// listed, if it lists no such song, or, if it lists none, to opening the
+// filter, or to adding one.
+function focusSong(folder) {
+  const row = folder === null ? null : rows.get(folder);
+  const first = [...rows.values()].find((each) => !each.item.hidden);
+  const target = row && !row.item.hidden ? row : first;
+  const fallback = [byId("filter-songs"), byId("add-file")].find((control) => !control.hidden);
+  const control = target ? target.item.querySelector("button.play") : fallback;
+
+  if (control) {
+    control.focus();
+  }
+}
+
+// The button of `buttons` in the row above `from`, or below it if `below`,
+// nearest it across; or null, if there is no such row.
+function across(buttons, from, below) {
+  const origin = from.getBoundingClientRect();
+  const middle = (rect) => rect.left + rect.width / 2;
+  const beyond = buttons.map((button) => ({ button, rect: button.getBoundingClientRect() }))
+    .filter(({ rect }) => (below ? rect.top >= origin.bottom : rect.bottom <= origin.top));
+  const tops = beyond.map(({ rect }) => rect.top);
+  const row = below ? Math.min(...tops) : Math.max(...tops);
+  const distance = ({ rect }) => Math.abs(middle(rect) - middle(origin));
+  const nearest = beyond.filter(({ rect }) => Math.abs(rect.top - row) < 1)
+    .sort((one, other) => distance(one) - distance(other))[0];
+  return nearest ? nearest.button : null;
+}
+
+// Moves focus through the buttons shown of `list` that `selector` matches,
+// from the keyboard, and only from one of them: the arrow keys to the one
+// beside, above, or below, as they are laid out, and Home and End to the
+// first and the last.
+function arrowKeys(list, selector = "button") {
+  list.addEventListener("keydown", (event) => {
+    const buttons = [...list.querySelectorAll(selector)].filter((button) => button.getClientRects().length > 0);
+    const at = buttons.indexOf(event.target);
+    const moves = {
+      ArrowLeft: () => buttons[at - 1],
+      ArrowRight: () => buttons[at + 1],
+      ArrowUp: () => across(buttons, event.target, false),
+      ArrowDown: () => across(buttons, event.target, true),
+      Home: () => buttons[0],
+      End: () => buttons[buttons.length - 1],
+    };
+    const move = moves[event.key];
+
+    if (at < 0 || !move || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      return;
+    }
+
+    event.preventDefault();
+    const next = move();
+
+    if (next) {
+      next.focus();
+    }
+  });
+}
+
+function noCover() {
+  const placeholder = make("span", "♪", "cover");
+  placeholder.setAttribute("aria-hidden", "true");
+  return placeholder;
+}
+
+// The picture at `url`, asked for again a few times if the node is still
+// fetching it; a placeholder if `url` is null.
+function coverImage(url) {
+  if (!url) {
+    return noCover();
+  }
+
+  const image = make("img", null, "cover");
+  let tries = 1;
+  image.alt = "";
+  image.addEventListener("error", () => {
+    if (tries >= POSTER_TRIES) {
+      image.replaceWith(noCover());
+      return;
+    }
+
+    tries += 1;
+    setTimeout(() => { image.src = url; }, DEFAULT_RETRY_SECONDS * 1000);
+  });
+  image.src = url;
+  return image;
+}
+
+// The song playing.
+
+// Shows the song chosen to play: its cover, title, artist, and album; or
+// that none is.
+function showPlaying() {
+  const song = state.current === null ? null : state.library.songs.get(state.current) || null;
+  const frame = byId("cover");
+  const cover = song && isText(song.details.cover) ? state.library.url(song.path(song.details.cover)) : "";
+  byId("song-title").textContent = song ? song.title() : "Nothing is playing";
+  byId("song-from").textContent = song ? song.byline() : (rows.size ? "Choose a song to play." : "");
+  byId("edit-playing").hidden = !song || !canChange();
+
+  if (frame.dataset.cover !== cover || !frame.firstElementChild) {
+    frame.dataset.cover = cover;
+    frame.replaceChildren(coverImage(cover || null));
+  }
+}
+
+// Whether the song in `folder` is played: it is held, this browser does not
+// say it cannot play it, and it has not failed as it loaded.
+function playable(folder) {
+  const song = state.library.songs.get(folder);
+  return Boolean(song) && !song.refused() && !state.failed.has(folder);
+}
+
+// `list`, in an order chosen at random.
+function shuffled(list) {
+  const order = [...list];
+
+  for (let at = order.length - 1; at > 0; at -= 1) {
+    const other = Math.floor(Math.random() * (at + 1));
+    [order[at], order[other]] = [order[other], order[at]];
+  }
+
+  return order;
+}
+
+// The songs to play from the one in `folder`, of those `listed`, in the
+// order shown: in that order, or with Shuffle on, in an order chosen at
+// random, each once, starting with it.
+function queueFrom(listed, folder) {
+  const shown = listed.includes(folder) ? listed : [folder, ...listed];
+  const order = state.shuffle ? [folder, ...shuffled(shown.filter((each) => each !== folder))] : shown;
+  return { listed: shown, order, at: order.indexOf(folder) };
+}
+
+// Plays the song in `folder`, and then the songs after it in the list as it
+// is shown; or, if it is the song chosen already, plays it or pauses it. One
+// this browser says it cannot play is not played, and one that failed as it
+// loaded is tried again.
+function chooseSong(folder) {
+  const song = state.library.songs.get(folder);
+  markChosen(folder);
+  show(byId("player-result"), "");
+
+  if (!song) {
+    return;
+  }
+
+  if (folder === state.current && byId("audio").getAttribute("src")) {
+    playOrPause();
+    return;
+  }
+
+  if (song.refused()) {
+    show(byId("player-result"), `This browser cannot play “${song.title()}”.`, true);
+    return;
+  }
+
+  state.failed.delete(folder);
+  state.queue = queueFrom(shownFolders(), folder);
+  playSong(folder);
+}
+
+// Plays the song in `folder`. The same song of a newer version of the
+// library plays on where it was.
+function playSong(folder) {
+  const audio = byId("audio");
+  const song = state.library.songs.get(folder);
+  const source = song.path(song.details.audio);
+  const before = state.current;
+  state.current = folder;
+
+  if (audio.dataset.source !== source) {
+    audio.dataset.source = source;
+    audio.src = state.library.url(source);
+  }
+
+  showRow(before);
+  showRow(folder);
+  showPlaying();
+  audio.play().catch((error) => console.warn(`“${song.title()}” did not play: ${error.message}`));
+}
+
+// Plays the song `delta` from the one chosen, in the order the songs chosen
+// play in, passing over those that cannot be played. After the last, or
+// before the first, the page stays where it is: unless the song chosen
+// failed, when the page stops, and says so.
+function advance(delta, failing = false) {
+  const queue = state.queue;
+
+  for (let at = queue.at + delta; at >= 0 && at < queue.order.length; at += delta) {
+    if (playable(queue.order[at])) {
+      queue.at = at;
+      playSong(queue.order[at]);
+      return;
+    }
+  }
+
+  if (failing) {
+    const song = state.library.songs.get(state.current);
+    const every = queue.order.every((folder) => !playable(folder));
+    stopPlaying();
+    show(byId("player-result"), every ? "None of the songs listed can be played in this browser."
+      : `No song after “${song ? song.title() : ""}” can be played in this browser.`, true);
+  }
+}
+
+// Plays the song `delta` from the one chosen; or, if none is, from the one
+// with focus in the list, or the first or the last listed, with the songs
+// listed as they are shown.
+function stepSong(delta) {
+  if (state.queue && state.current !== null) {
+    show(byId("player-result"), "");
+    advance(delta);
+    return;
+  }
+
+  const listed = shownFolders();
+  const from = focusedFolder();
+  const start = from !== null && listed.includes(from) ? listed.indexOf(from) + delta : (delta > 0 ? 0 : listed.length - 1);
+
+  for (let at = start; at >= 0 && at < listed.length; at += delta) {
+    if (playable(listed[at])) {
+      chooseSong(listed[at]);
+      return;
+    }
+  }
+}
+
+// Plays the song chosen, or pauses it; or, if none is, plays the one with
+// focus in the list, or else the first listed.
+function playOrPause() {
+  const audio = byId("audio");
+
+  if (!audio.getAttribute("src")) {
+    const from = focusedFolder();
+    const folder = from !== null && playable(from) ? from : shownFolders().find(playable);
+
+    if (folder) {
+      chooseSong(folder);
+    }
+
+    return;
+  }
+
+  if (audio.paused) {
+    audio.play().catch((error) => console.warn(`The song did not play: ${error.message}`));
+  } else {
+    audio.pause();
+  }
+}
+
+// Stops the song chosen, and chooses none.
+function stopPlaying() {
+  const audio = byId("audio");
+  const before = state.current;
+  audio.pause();
+  audio.removeAttribute("src");
+  delete audio.dataset.source;
+  audio.load();
+  state.current = null;
+  state.queue = null;
+  showRow(before);
+  showPlaying();
+}
+
+// A song that fails as it loads is marked so from then on, and passed over
+// for the next.
+function songFailed() {
+  const audio = byId("audio");
+  const folder = state.current;
+
+  if (!audio.getAttribute("src") || folder === null) {
+    return;
+  }
+
+  const said = audio.error && audio.error.message ? `: ${audio.error.message}` : ".";
+  console.warn(`The song in ${folder} could not be played${said}`);
+  state.failed.add(folder);
+  showRow(folder);
+
+  if (state.queue) {
+    advance(1, true);
+  } else {
+    stopPlaying();
+  }
+}
+
+function showShuffle() {
+  byId("shuffle").setAttribute("aria-pressed", String(state.shuffle));
+  byId("shuffle").title = state.shuffle ? "Shuffle is on" : "Shuffle";
+}
+
+// Turns Shuffle on or off. The songs chosen to play go on, after the one
+// playing, in an order chosen at random, or in the order they were listed.
+function toggleShuffle() {
+  const queue = state.queue;
+  state.shuffle = !state.shuffle;
+  rememberShuffle();
+  showShuffle();
+
+  if (queue && state.current !== null) {
+    const others = queue.listed.filter((folder) => folder !== state.current);
+    const order = state.shuffle ? [state.current, ...shuffled(others)] : queue.listed;
+    state.queue = { listed: queue.listed, order, at: order.indexOf(state.current) };
+  }
+}
+
+// What the browser draws on the audio to control it keeps every key pressed
+// on it from the page, so that the keys above do nothing there. Focus is kept
+// on the audio itself, then: Tab goes past those controls, to what is next on
+// the page.
+const TABBABLE = "a[href], button, input, select, textarea, summary, audio[controls], [tabindex]";
+
+function tabPastControls(event) {
+  const audio = byId("audio");
+
+  if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) {
+    return;
+  }
+
+  const stops = [...document.querySelectorAll(TABBABLE)].filter((each) => each === audio
+    || (each.tabIndex >= 0 && !each.disabled && each.getClientRects().length > 0));
+  const next = stops[stops.indexOf(audio) + (event.shiftKey ? -1 : 1)];
+
+  if (next) {
+    event.preventDefault();
+    next.focus();
+  }
+}
+
+// Focus that came to the audio, or that its controls kept as they played or
+// paused the song, goes from them to the audio itself.
+function focusPastControls() {
+  const audio = byId("audio");
+
+  if (document.activeElement === audio) {
+    audio.focus();
+  }
+}
+
+// Editing what is known of a song.
+
+// The folder of the song the dialog editing a song is open on.
+let editing = null;
+
+// The fields editing a song, each with the detail it edits, and, of those
+// that are numbers, what each is.
+const TEXT_FIELDS = [
+  ["edit-title", "title"], ["edit-artist", "artist"], ["edit-album-artist", "album_artist"],
+  ["edit-album", "album"], ["edit-genre", "genre"], ["edit-composer", "composer"],
+];
+const NUMBER_FIELDS = [
+  ["edit-track", "track", "A track"], ["edit-tracks", "tracks", "How many tracks a disc holds"],
+  ["edit-disc", "disc", "A disc"], ["edit-discs", "discs", "How many discs an album holds"],
+  ["edit-year", "year", "A year"],
+];
+
+function openEdit(folder) {
+  const song = state.library.songs.get(folder);
+
+  if (!song) {
+    return;
+  }
+
+  editing = folder;
+  markChosen(folder);
+  byId("song-form").reset();
+  byId("song-heading").textContent = `Edit “${song.title()}”`;
+
+  for (const [field, key] of [...TEXT_FIELDS, ...NUMBER_FIELDS]) {
+    byId(field).value = isShown(song.details[key]) ? String(song.details[key]) : "";
+  }
+
+  show(byId("song-result"), "");
+  byId("song-dialog").showModal();
+}
+
+// A number typed into `field`, which is `what`: undefined for none.
+function typedNumber(field, what) {
+  const text = byId(field).value.trim();
+
+  if (text && !/^\d{1,4}$/.test(text)) {
+    byId(field).focus();
+    throw new Error(`${what} is a number, such as 2.`);
+  }
+
+  return text ? Number(text) : undefined;
+}
+
+// Keeps what is known of the song edited, as the dialog now says, in its
+// info.json and its entry in the index, with whatever else they held.
+async function saveSong() {
+  const folder = editing;
+  const changes = {};
+
+  for (const [field, key] of TEXT_FIELDS) {
+    changes[key] = byId(field).value.trim() || undefined;
+  }
+
+  for (const [field, key, what] of NUMBER_FIELDS) {
+    changes[key] = typedNumber(field, what);
+  }
+
+  await changeLibrary((library) => {
+    const song = library.songs.get(folder);
+
+    if (!song) {
+      throw new Error("This song is no longer in your library.");
+    }
+
+    const edited = song.with(defined({ ...song.details, ...changes }));
+    return { add: { [song.path(INFO_FILE)]: { text: edited.infoText() } }, set: new Map([[folder, edited]]) };
+  });
+
+  byId("song-dialog").close();
+  return null;
+}
+
+// Removing a song.
+
+// Removes the song in `folder`: its folder of the library, and its entry in
+// the index. Focus goes to the song after it in the list, or the one before.
+async function removeSong(folder) {
+  const song = state.library.songs.get(folder);
+
+  if (!song || !window.confirm(`Remove “${song.title()}” from your library?`)) {
+    return null;
+  }
+
+  const listed = shownFolders();
+  const at = listed.indexOf(folder);
+  const beside = listed[at + 1] || listed[at - 1] || null;
+  await changeLibrary((library) => (library.songs.has(folder) ? { remove: [`${SONGS}/${folder}`], drop: [folder] } : null));
+  focusSong(beside);
+  return [`Removed “${song.title()}”.`, false];
+}
+
+// Adding songs from the folders the node offers.
+
+// `title`, each word capitalized, if it is all of one case, as a file's name
+// often is.
+function cased(title) {
+  if (title !== title.toLowerCase() && title !== title.toUpperCase()) {
+    return title;
+  }
+
+  return title.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (word, before, letter) => before + letter.toUpperCase());
+}
+
+// A name as a song's detail: underscores as spaces, and spaces as one.
+function named(text) {
+  const cleaned = text.replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  return cleaned ? cased(cleaned) : undefined;
+}
+
+// What the song at `segments`, the folder offered, the folders below it, and
+// then its file's name, gives of itself, until its tags are read: its title,
+// from its file's name, less a leading track number, which is its track, and
+// a disc's number before that; its album from the folder holding it, and its
+// year, if that folder's name ends in one in brackets; and its artist from
+// the folder above that. A folder named for a disc, CD1 or Disc 1, gives
+// its disc, and the folders above it the album and the artist. The folder
+// offered gives none of them: only those below it do.
+function detailsFromPath(segments) {
+  const name = segments[segments.length - 1];
+  const bare = name.replace(/\.[^.]*$/, "") || name;
+  const folders = segments.slice(1, -1);
+  const numbered = TRACK_NAME.exec(bare);
+  const details = {};
+  let at = folders.length - 1;
+
+  if (numbered) {
+    details.disc = numbered[1] === undefined ? undefined : Number(numbered[1]);
+    details.track = Number(numbered[2]);
+  }
+
+  details.title = named(numbered ? numbered[3] : bare) || bare;
+  const disc = at >= 0 ? DISC_FOLDER.exec(folders[at]) : null;
+
+  if (disc) {
+    details.disc = details.disc === undefined ? Number(disc[1]) : details.disc;
+    at -= 1;
+  }
+
+  if (at >= 0) {
+    const dated = DATED_ALBUM.exec(folders[at]);
+    details.album = named(dated ? dated[1] : folders[at]);
+    details.year = dated ? Number(dated[2]) : undefined;
+    at -= 1;
+  }
+
+  if (at >= 0) {
+    details.artist = named(folders[at]);
+  }
+
+  return defined(details);
+}
+
+function crumb(text, segments) {
+  const control = make("button", text, "secondary small");
+  control.type = "button";
+  control.addEventListener("click", () => browse(segments));
+  return control;
+}
+
+function entryRow(text, detail, action) {
+  const item = make("li");
+  const control = make("button");
+  control.type = "button";
+  control.append(make("span", text), make("span", detail, "note"));
+  control.addEventListener("click", action);
+  item.append(control);
+  return item;
+}
+
+// What a folder the node offers holds: the folders and the songs in it, each
+// as [name, what the node says of it], in order of name, and how many other
+// files.
+class Folder {
+  constructor(segments, folders, songs, others) {
+    this.segments = segments;
+    this.folders = folders;
+    this.songs = songs;
+    this.others = others;
+  }
+
+  // The folder at `segments`, the folders it is in and then its name, or,
+  // if they are none, the folders the node offers.
+  static async list(segments) {
+    const path = segments.length ? `${DIRECTORY}/${encodedPath(segments.join("/"))}` : DIRECTORY;
+    const result = await call("GET", path);
+
+    if (!result.ok || !isObject(result.value) || !isObject(result.value.entries)) {
+      throw new Refusal(result);
+    }
+
+    const entries = Object.entries(result.value.entries).filter(([, entry]) => isObject(entry))
+      .sort(([one], [other]) => COLLATOR.compare(one, other));
+    const folders = entries.filter(([, entry]) => entry.type === "directory");
+    const songs = entries.filter(([name, entry]) => entry.type === "file" && isSongFile(name, entry));
+    return new Folder(segments, folders, songs, entries.length - folders.length - songs.length);
+  }
+
+  // Adds to `found` the songs in it, and in the folders within it, each as
+  // the segments of its path, and counts the other files, and the folders
+  // not looked in: those FOLDER_DEPTH below it, and those that could not be
+  // read. `told` is called as each folder is read.
+  async gather(found, told, depth = 0) {
+    found.songs.push(...this.songs.map(([name]) => [...this.segments, name]));
+    found.others += this.others;
+    told(found);
+
+    for (const [name] of this.folders) {
+      let folder = null;
+
+      try {
+        folder = depth < FOLDER_DEPTH ? await Folder.list([...this.segments, name]) : null;
+      } catch (error) {
+        console.warn(`“${[...this.segments, name].join("/")}” could not be read: ${error.message}`);
+      }
+
+      if (folder) {
+        await folder.gather(found, told, depth + 1);
+      } else {
+        found.passed += 1;
+      }
+    }
+  }
+}
+
+async function browse(segments) {
+  const list = byId("folder-entries");
+  const status = byId("folder-state");
+  const every = byId("folder-all");
+  const crumbs = [crumb("Folders", [])];
+
+  segments.forEach((segment, index) => {
+    crumbs.push(make("span", "›", "note"), crumb(segment, segments.slice(0, index + 1)));
+  });
+
+  byId("folder-path").replaceChildren(...crumbs);
+  crumbs[crumbs.length - 1].focus();
+  list.replaceChildren();
+  list.hidden = true;
+  every.hidden = true;
+  show(status, "Asking the node…");
+  let listed;
+
+  try {
+    listed = await Folder.list(segments);
+  } catch (error) {
+    show(status, error.message, true);
+    return;
+  }
+
+  const { folders, songs, others } = listed;
+  browsing = listed;
+
+  list.replaceChildren(
+    ...folders.map(([name]) => entryRow(`${name}/`, "", () => browse([...segments, name]))),
+    ...songs.map(([name, entry]) => entryRow(name, formatSize(entry.size), () => {
+      byId("file-dialog").close();
+      addFile([...segments, name]);
+    })),
+  );
+  list.hidden = folders.length + songs.length === 0;
+
+  // Every song is added from a folder, not from all the folders offered.
+  every.hidden = segments.length === 0 || list.hidden;
+
+  if (list.firstElementChild) {
+    list.querySelector("button").focus();
+  }
+
+  if (segments.length === 0 && folders.length + songs.length + others === 0) {
+    show(status, "This node offers no folders. Its operator chooses them, in local.folders.");
+  } else if (folders.length + songs.length === 0) {
+    show(status, "This folder holds no songs.");
+  } else {
+    show(status, others ? `${plural(others, "other file", "other files")} here, not songs.` : "");
+  }
+}
+
+// The folder the dialog adding from files shows, a Folder, and the songs
+// found in it, each a FoundSong, while they are chosen.
+let browsing = null;
+let foundSongs = [];
+
+// Shows the folders, in the dialog adding from files, rather than the songs
+// found in one.
+function showFolders() {
+  foundSongs = [];
+  byId("file-heading").textContent = "Add songs from files";
+  byId("found-form").hidden = true;
+  byId("folder-browse").hidden = false;
+}
+
+// A song found in a folder, listed for the person to leave out, or not: the
+// segments of its path, and the row that lists it, showing as much of its
+// path as is below the folder chosen, `from` segments in.
+class FoundSong {
+  constructor(segments, from) {
+    const check = make("label", null, "check");
+    this.segments = segments;
+    this.source = segments.join("/");
+    this.box = make("input");
+    this.note = make("span", "", "note");
+    this.item = make("li");
+    this.box.type = "checkbox";
+    this.box.checked = true;
+    check.append(this.box, make("span", segments.slice(from).join("/")));
+    this.item.append(check, this.note);
+    this.refresh();
+  }
+
+  chosen() {
+    return this.box.checked;
+  }
+
+  // Says whether the library holds the song imported from its path already,
+  // and leaves it out if it does.
+  refresh() {
+    const held = state.library.holdingSource(this.source);
+    show(this.note, held ? `In your library already, as “${held.title()}”, so it is left out.` : "");
+
+    if (held) {
+      this.box.checked = false;
+      this.box.disabled = true;
+    } else if (this.box.disabled) {
+      this.box.disabled = false;
+      this.box.checked = true;
+    }
+  }
+}
+
+// Looks for every song in the folder shown, and in the folders within it, and
+// lists each found, for the person to leave out any before any is added.
+async function findEvery() {
+  const folder = browsing;
+  const status = byId("folder-state");
+  const gathered = { songs: [], others: 0, passed: 0 };
+  await folder.gather(gathered, (so) => show(status, `Looking for songs… ${so.songs.length} found so far.`));
+  const notes = [];
+
+  if (gathered.others) {
+    notes.push(`${plural(gathered.others, "other file", "other files")} found, not songs.`);
+  }
+
+  if (gathered.passed) {
+    notes.push(`${plural(gathered.passed, "folder was", "folders were")} not looked in, as they could not be read, or are more than ${FOLDER_DEPTH} below this one.`);
+  }
+
+  if (gathered.songs.length === 0) {
+    return [["No songs are here, nor in the folders within it.", ...notes].join(" "), false];
+  }
+
+  const sorted = gathered.songs.sort((one, other) => COLLATOR.compare(one.join("/"), other.join("/")));
+  foundSongs = sorted.map((segments) => new FoundSong(segments, folder.segments.length));
+  const held = foundSongs.filter((each) => !each.chosen()).length;
+
+  if (held) {
+    notes.unshift(`${plural(held, "song is", "songs are")} in your library already.`);
+  }
+
+  byId("found-list").replaceChildren(...foundSongs.map((each) => each.item));
+  show(byId("found-note"), [`${plural(foundSongs.length, "song", "songs")} found.`, ...notes].join(" "));
+  show(byId("found-result"), "");
+  byId("file-heading").textContent = `Add every song in “${folder.segments[folder.segments.length - 1]}”`;
+  byId("folder-browse").hidden = true;
+  byId("found-form").hidden = false;
+  (byId("found-list").querySelector("input:not(:disabled)") || byId("found-back")).focus();
+  return null;
+}
+
+// Imports each song found that is chosen, and adds those of each folder to
+// the library together, once each of them is imported.
+async function addFound() {
+  const folders = new Map();
+
+  // A song added since they were listed is left out.
+  for (const each of foundSongs) {
+    each.refresh();
+  }
+
+  for (const each of foundSongs.filter((song) => song.chosen())) {
+    const folder = each.segments.slice(0, -1).join("/");
+    folders.set(folder, [...(folders.get(folder) || []), each.segments]);
+  }
+
+  if (folders.size === 0) {
+    throw new Error("No song is chosen to add.");
+  }
+
+  byId("file-dialog").close();
+
+  for (const paths of folders.values()) {
+    addSongs(paths);
+  }
+
+  return null;
+}
+
+// Adds the song at `segments`, unless the library holds the one imported from
+// there already.
+function addFile(segments) {
+  const held = state.library.holdingSource(segments.join("/"));
+
+  if (held) {
+    show(byId("library-result"), `“${segments[segments.length - 1]}” is in your library already, as “${held.title()}”, so it was not added.`);
+    return;
+  }
+
+  addSongs([segments]);
+}
+
+// The imports followed until each is done, by id, each with what is told how
+// it is doing, and what is told when it is done, or has failed; and whether
+// the node is being asked after them. It is asked after them all at once,
+// however many there are.
+const followed = new Map();
+let askingAfterImports = false;
+
+// What the node says of an import, until it is done: the file bundle it stored.
+function followImport(importId, progress) {
+  return new Promise((resolve, reject) => {
+    followed.set(importId, { progress, resolve, reject });
+
+    if (!askingAfterImports) {
+      askingAfterImports = true;
+      askAfterImports();
+    }
+  });
+}
+
+// Asks the node how the imports followed are doing, until none is. If it
+// cannot say, every one followed fails.
+async function askAfterImports() {
+  try {
+    while (followed.size > 0) {
+      const result = await call("GET", IMPORTS);
+
+      if (result.status === 503) {
+        await sleep(retryAfter(result.headers));
+        continue;
+      }
+
+      if (!result.ok) {
+        throw new Refusal(result);
+      }
+
+      const imports = isObject(result.value) && isObject(result.value.imports) ? result.value.imports : {};
+
+      for (const [importId, { progress, resolve, reject }] of followed) {
+        const record = imports[importId];
+
+        if (!isObject(record)) {
+          continue;
+        }
+
+        if (record.status === "done" && isText(record.file)) {
+          followed.delete(importId);
+          resolve(record.file);
+        } else if (record.status === "failed") {
+          followed.delete(importId);
+          reject(new Error(record.error || "The node did not say why the import failed."));
+        } else {
+          progress(record);
+        }
+      }
+
+      await sleep(IMPORT_POLL_SECONDS);
+    }
+  } catch (error) {
+    for (const { reject } of followed.values()) {
+      reject(error);
+    }
+
+    followed.clear();
+  } finally {
+    // At once, so that an import followed from now on is asked after again.
+    askingAfterImports = false;
+  }
+}
+
+// A song being added, as the activity list shows it: the segments of its
+// path, and the item showing how it is doing.
+class Adding {
+  constructor(segments) {
+    this.segments = segments;
+    this.name = segments[segments.length - 1];
+    this.source = segments.join("/");
+    this.item = make("li");
+    this.label = make("span", `Importing “${this.name}”`);
+    this.bar = make("progress");
+    this.note = make("span", "", "note");
+    this.bar.setAttribute("aria-label", `How much of “${this.name}” is imported`);
+    this.item.append(this.label, this.bar, this.note);
+    byId("activity").append(this.item);
+  }
+
+  progress(record) {
+    if (typeof record.size === "number" && record.size > 0 && typeof record.bytes_read === "number") {
+      this.bar.max = record.size;
+      this.bar.value = record.bytes_read;
+      this.note.textContent = `${formatSize(record.bytes_read)} of ${formatSize(record.size)}`;
+    } else {
+      this.note.textContent = record.status === "waiting" ? "Waiting its turn." : "";
+    }
+  }
+
+  // Imports the song, and makes a song bundle of it, holding its audio under
+  // the name of its file, and its info.json, with what its path gives of it.
+  // Returns the bundle, its audio's file bundle, and the Song it is in the
+  // library; or null, if it failed, which its item then says.
+  async import(together) {
+    try {
+      const started = await call("POST", IMPORTS, { body: { path: this.source } });
+
+      if (started.status !== 202 || !isObject(started.value) || !isText(started.value.import_id)) {
+        throw new Refusal(started);
+      }
+
+      const file = await followImport(started.value.import_id, (record) => this.progress(record));
+      const details = { ...detailsFromPath(this.segments), audio: this.name };
+      const add = { [this.name]: { file }, [INFO_FILE]: { text: jsonText(INFO_KEYS, details) } };
+      const bundle = await makeBundle({ add });
+      this.bar.remove();
+      this.note.remove();
+      this.label.textContent = together ? `“${this.name}” is imported, and is added with the rest of its folder.` : `Adding “${this.name}”…`;
+      return { adding: this, bundle, file, song: new Song(folderOf(bundle), { ...details, source: this.source, file }) };
+    } catch (error) {
+      this.ended(`“${this.name}” was not added: ${error.message}`, true);
+      return null;
+    }
+  }
+
+  ended(text, isError) {
+    const dismiss = make("button", "Dismiss", "secondary small");
+    dismiss.type = "button";
+    dismiss.addEventListener("click", () => this.item.remove());
+    this.label.textContent = text;
+    this.label.className = isError ? "error" : "";
+    this.bar.remove();
+    this.note.remove();
+    this.item.append(dismiss);
+  }
+
+  done() {
+    this.item.remove();
+  }
+}
+
+// Asks before the page is left while a song is imported, since leaving it
+// leaves that song out of the library. It is listened for only while one
+// is, as some browsers do not keep a page that listens for it to go back to.
+function warnOfLeaving(event) {
+  event.preventDefault();
+  // Chrome and Edge before 119 ask only when this is set.
+  event.returnValue = true;
+}
+
+// Imports the songs at `paths`, each the segments of a song's path, those of
+// one folder, each in turn, and shown in the activity list while it is; then
+// adds those imported to the library together, in one version. One whose
+// file the library holds already, or another of them holds, is not added,
+// and the activity list says so. The page stays where it is.
+async function addSongs(paths) {
+  const songs = paths.map((segments) => new Adding(segments));
+
+  if (state.imports++ === 0) {
+    window.addEventListener("beforeunload", warnOfLeaving);
+  }
+
+  try {
+    const made = (await Promise.all(songs.map((each) => each.import(songs.length > 1)))).filter(Boolean);
+    let held = new Map();
+
+    if (made.length === 0) {
+      return;
+    }
+
+    try {
+      await changeLibrary((library) => {
+        const fresh = new Map();
+        const files = new Map();
+        held = new Map();
+
+        for (const each of made) {
+          const already = library.holdingFile(each.file) || library.songs.get(each.song.folder) || files.get(each.file);
+
+          if (already) {
+            held.set(each, already);
+          } else {
+            fresh.set(each.song.folder, each);
+            files.set(each.file, each.song);
+          }
+        }
+
+        if (fresh.size === 0) {
+          return null;
+        }
+
+        const add = Object.fromEntries([...fresh].map(([folder, each]) => [`${SONGS}/${folder}`, { from: each.bundle, path: "" }]));
+        return { add, set: new Map([...fresh].map(([folder, each]) => [folder, each.song])) };
+      });
+    } catch (error) {
+      for (const each of made) {
+        each.adding.ended(`“${each.adding.name}” was imported, but not added: ${error.message}`, true);
+      }
+
+      return;
+    }
+
+    for (const each of made) {
+      const already = held.get(each);
+
+      if (already) {
+        each.adding.ended(`“${each.adding.name}” is in your library already, as “${already.title()}”, so it was not added.`, false);
+      } else {
+        each.adding.done();
+      }
+    }
+  } finally {
+    if (--state.imports === 0) {
+      window.removeEventListener("beforeunload", warnOfLeaving);
+    }
+  }
+}
+
+// Runs `action` with `control` disabled, and says what it returned in
+// `message`. An action returns [text, isError], or nothing to say nothing.
+async function perform(control, message, action) {
+  const focused = document.activeElement === control;
+  control.disabled = true;
+
+  try {
+    const outcome = await action();
+
+    if (outcome) {
+      show(message, ...outcome);
+    } else {
+      show(message, "");
+    }
+  } catch (error) {
+    show(message, error.message, true);
+
+    // The song it was said of is gone, and with it, where it was said.
+    if (message.parentElement.closest("[hidden]")) {
+      show(byId("library-result"), error.message, true);
+    }
+  } finally {
+    control.disabled = false;
+
+    if (focused) {
+      regainFocus(control);
+    }
+  }
+}
+
+// Whether nothing on the page has focus: the page itself has it, or what
+// had it is no longer shown.
+function focusLost() {
+  const active = document.activeElement;
+  return !active || active === document.body || active.getClientRects().length === 0;
+}
+
+// Gives focus back to `control`, which lost it as it was disabled, unless
+// something else has taken it: or, if `control` cannot take it, to the song
+// chosen, or the first listed. If `control` opened a dialog, once the dialog
+// closes.
+function regainFocus(control) {
+  const opened = [...document.querySelectorAll("dialog[open]")].find((dialog) => !dialog.contains(control));
+
+  if (opened) {
+    opened.addEventListener("close", () => regainFocus(control), { once: true });
+    return;
+  }
+
+  if (!focusLost()) {
+    return;
+  }
+
+  control.focus();
+
+  if (document.activeElement !== control) {
+    focusSong(state.chosen);
+  }
+}
+
+function onClick(id, message, action) {
+  const control = byId(id);
+  control.addEventListener("click", () => perform(control, byId(message), action));
+}
+
+function onSubmit(id, message, action) {
+  const form = byId(id);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    perform(form.querySelector("button[type=submit]"), byId(message), action);
+  });
+}
+
+async function askClient() {
+  try {
+    const result = await call("GET", CLIENT);
+    return result.ok && isObject(result.value) && result.value.local === true;
+  } catch (error) {
+    console.warn(error.message);
+    return false;
+  }
+}
+
+// Who is signed in, as the node says (HttpApi 11.4); null if no one is, or
+// this client cannot say. Only a local client is signed in.
+async function askSession() {
+  try {
+    const result = await call("GET", SESSION);
+    const signed = result.ok && isObject(result.value) && isText(result.value.id) && CONTENT_ID.test(result.value.id);
+    return signed ? result.value : null;
+  } catch (error) {
+    console.warn(error.message);
+    return null;
+  }
+}
+
+async function start() {
+  state.local = await askClient();
+  state.owner = state.local ? await askSession() : null;
+  state.library = Library.empty();
+  state.shuffle = recallShuffle();
+  state.filters = recallFilters();
+  showShuffle();
+
+  // Only whoever is signed in keeps a library; for everyone else there is
+  // none. Signed in with a fallback password, it is not changed.
+  for (const element of document.querySelectorAll(".signed-in-only")) {
+    element.hidden = !state.owner;
+  }
+
+  for (const element of document.querySelectorAll(".changes-only")) {
+    element.hidden = !canChange();
+  }
+
+  if (!state.owner) {
+    byId("client-note").textContent = state.local
+      ? "This browser is on the node's own machine, but no one is signed in, so it keeps no library. Sign in on the home page to keep music of your own."
+      : "This browser is not on the node's own machine, so no one is signed in on it, and it keeps no library. A person signs in on the home page, on the node's own machine.";
+    return;
+  }
+
+  show(byId("client-note"), canChange() ? "" : "Signed in with your fallback password, nothing you keep is changed until your fallback takes over, and your library is kept for your own key, which signing in as your fallback does not open.");
+  const status = byId("page-state");
+  show(status, "Reading your library…");
+
+  try {
+    state.library = await Library.open((await Kept.read()).entries);
+  } catch (error) {
+    show(status, `Your library could not be read: ${error.message}`, true);
+    return;
+  }
+
+  show(status, "");
+  renderLibrary();
+  focusSong(null);
+}
+
+const audio = byId("audio");
+audio.addEventListener("play", () => showRow(state.current));
+audio.addEventListener("pause", () => showRow(state.current));
+audio.addEventListener("error", songFailed);
+
+// As a song ends, the next plays at once. After the last, the page stays on it.
+audio.addEventListener("ended", () => {
+  if (state.queue) {
+    advance(1);
+  }
+});
+audio.addEventListener("keydown", tabPastControls);
+
+for (const type of ["focus", "play", "pause"]) {
+  audio.addEventListener(type, focusPastControls);
+}
+
+// Keys, as music players have, anywhere but in a field, and while no dialog
+// is open. Each is heard before the element with focus hears it, so that the
+// audio's own controls do not act on it too.
+const SHORTCUTS = {
+  g: playOrPause,
+  n: () => stepSong(1),
+  p: () => stepSong(-1),
+  s: toggleShuffle,
+  "`": openFilter,
+  "?": () => byId("keys-dialog").showModal(),
+  "/": () => byId("keys-dialog").showModal(),
+};
+
+window.addEventListener("keydown", (event) => {
+  const target = event.target instanceof Element ? event.target : document.body;
+  const ignored = event.altKey || event.ctrlKey || event.metaKey || event.isComposing || event.repeat
+    || document.querySelector("dialog[open]") || target.closest("input, select, textarea");
+
+  if (ignored) {
+    return;
+  }
+
+  // Space presses a button or link that has focus, and scrolls when no song is chosen.
+  const pressed = target.closest("button, a[href], summary") || state.current === null;
+  const key = event.key === " " ? (pressed ? "" : "g") : String(event.key).toLowerCase();
+
+  if (!Object.hasOwn(SHORTCUTS, key)) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  SHORTCUTS[key]();
+}, true);
+
+// The keyboard's media keys, as the browser passes them on. Play and pause
+// it handles itself.
+const MEDIA_KEYS = { previoustrack: () => stepSong(-1), nexttrack: () => stepSong(1) };
+
+for (const [action, handler] of Object.entries(MEDIA_KEYS)) {
+  try {
+    navigator.mediaSession.setActionHandler(action, handler);
+  } catch (error) {
+    console.warn(`This browser passes on no ${action} key: ${error.message}`);
+  }
+}
+
+arrowKeys(byId("songs"), "button.play");
+arrowKeys(byId("folder-entries"));
+
+// The song whose row has focus is the one chosen, to edit or remove.
+byId("songs").addEventListener("focusin", () => {
+  const folder = focusedFolder();
+
+  if (folder !== null && folder !== state.chosen) {
+    markChosen(folder);
+  }
+});
+
+for (const control of document.querySelectorAll("[data-close]")) {
+  control.addEventListener("click", () => control.closest("dialog").close());
+}
+
+byId("show-keys").addEventListener("click", () => byId("keys-dialog").showModal());
+byId("add-file").addEventListener("click", () => {
+  showFolders();
+  byId("file-dialog").showModal();
+  browse([]);
+});
+byId("found-back").addEventListener("click", () => {
+  showFolders();
+  byId("folder-all").focus();
+});
+byId("previous").addEventListener("click", () => stepSong(-1));
+byId("next").addEventListener("click", () => stepSong(1));
+byId("shuffle").addEventListener("click", toggleShuffle);
+byId("edit-playing").addEventListener("click", () => openEdit(state.current));
+byId("artist-filter").addEventListener("change", chooseArtist);
+byId("album-filter").addEventListener("change", chooseAlbum);
+byId("filter-songs").addEventListener("click", openFilter);
+byId("song-filter").addEventListener("input", applyFilters);
+
+// Enter keeps the filter as typed, and Escape empties it, showing every song
+// the artist and album chosen match.
+byId("song-filter").addEventListener("keydown", (event) => {
+  if (event.isComposing || (event.key !== "Enter" && event.key !== "Escape")) {
+    return;
+  }
+
+  event.preventDefault();
+
+  if (event.key === "Escape") {
+    event.target.value = "";
+    applyFilters();
+  }
+
+  keepFilter();
+});
+
+onClick("folder-all", "folder-state", findEvery);
+onSubmit("found-form", "found-result", addFound);
+onSubmit("song-form", "song-result", saveSong);
+
+start();
+</script>
+</body>
+</html>

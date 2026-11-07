@@ -30,7 +30,7 @@ serves as `application/octet-stream`.
 
 ## 2. What It Adds
 
-Six steps, the last built only if it is needed:
+Six steps, the first built, and the last built only if it is needed:
 
 - **The music application.** A person's library, with songs added from a
   file or from a whole folder, played one after another, and filtered by
@@ -68,7 +68,7 @@ The conventions of [TV App](TV%20App.md) §3 carry over. In addition:
 
 ---
 
-## Step 149 — The Music Application
+## Step 149 — The Music Application ✅
 
 **Issue:** to be made (§4), from #479. **Depends on:** Phase 3 Steps 67 to
 74; Phase 4 Steps 78, 79; Improve Movie Web App Steps 83, 88; TV App Steps
@@ -279,6 +279,68 @@ opened and filtered, to see that it is quick enough.
   and Firefox play audio whatever its type, but Safari may not, and `.m4a`
   is the format of most music bought from Apple. If Safari does not play
   them, Step 154 is built.
+
+Built, in two change sets: the TV page copied to `applications/music/` as
+it is, with the application registered and its tests; then the changes
+songs make. It was checked on a node of its own in headless Chromium, with
+songs made by `ffmpeg` and kept out of the repository: a folder of two
+artists' albums, one in disc folders, added, and added again; a song added
+from a file, and one already held refused; every song played on from one
+chosen, and the page staying on the last; Shuffle on and off; a `.wma`,
+which Chromium says it cannot play, and an `.mp3` that fails as it loads,
+passed over, and a list of only those two stopping; each filter, alone
+and together, and those chosen remembered; editing and removing; every
+key; versions made apart, merged as they are read; and a phone's width. A
+library of 4,000 songs, in 256 files of its index, was read in about two
+seconds, listed in under one, and filtered in a few milliseconds. Safari is
+yet to be checked, and with it whether Step 154 is needed.
+
+Calls made while building it, not yet reviewed:
+
+- **The folder offered names nothing.** A song's album and artist come only
+  from folders below the one the node offers, so that a song directly in
+  `Music/` has no album named "Music".
+- **Disc folders and years.** A folder named for a disc, `CD1` or
+  `Disc 2`, gives the song's disc, and the folders above it its album and
+  artist. An album's folder ending in a year in brackets, as
+  `Abbey Road (1969)`, gives the year, and the album without it. A file's
+  name starting `1-03` gives disc 1, track 3. A name all of one case is
+  capitalized, and underscores are spaces, as the TV page cleans a title.
+- **No duration until Step 150.** The list has its column, empty until the
+  tags or the audio give one (Step 150). The browser's own controls show
+  the duration of the song playing.
+- **Edit and Remove are in each song's row**, shown for the song playing,
+  the one chosen, by focus or a click, and one pointed at, so that a song
+  that cannot be played can still be edited and removed. The player has
+  Edit too, for the song playing.
+- **Choosing a song this browser cannot play** says so, rather than playing
+  the next. One that failed as it loaded is tried again when chosen.
+- **The Album filter keeps its album** when the artist chosen is changed,
+  while the albums offered still hold it.
+- **The filter of free text is not remembered**, as it starts empty each
+  time it is opened. `music.filters` holds the artist and the album.
+- **One version for each folder holding songs**, among those found below
+  the folder chosen, so that adding a few albums places a version for each
+  album as its last song is imported.
+- **`N` and `P` with nothing playing** play from the song with focus, or
+  from the first or the last listed, as the TV page's do; `G` or Space
+  plays the song with focus, or the first listed.
+- **A song not merged whole keeps its version.** A version whose index
+  could not all be read, or whose songs fall in a part of the newest's
+  index that could not be read, is not replaced by the next version kept,
+  so that none of its songs is lost. A part of the index that could not be
+  read is not written again until it can be.
+- **No media keys but Previous and Next.** The TV page's Stop is left out,
+  as a song is paused, not stopped.
+
+**Open questions:**
+
+- **Signed in with a fallback password**, the library is not read: the
+  page searches the fallback's own drop, and each version is encrypted for
+  the person's key, which the session does not hold, as the TV App's
+  Step 144 found of series. The page says so, and the library is empty.
+  The plan has such a person's library read and played. Whether the node
+  should open a person's versions in such a session.
 
 ---
 
@@ -584,8 +646,8 @@ a bad one, and `{"from"}` keeping it; and, by hand, an `.m4a` and a
 `.flac` played in Safari.
 
 The node's part is built: the specifications, the model, serving, and
-`POST /data/bundles`, each tested as above. The music page's part waits
-for Step 149, which makes the page, and Safari is yet to be checked.
+`POST /data/bundles`, each tested as above. The music page's part, now
+that Step 149 has made the page, and checking Safari, are yet to be done.
 
 Calls made while building it, not yet reviewed:
 
