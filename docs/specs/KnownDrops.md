@@ -612,20 +612,25 @@ the person watches of a series kept offline is kept nowhere.
 **Target:** `music library:{id}`
 
 A person's library of music names its newest bundle, and when it last
-changed: `{"library": {"bundle", "changed"}}`. The bundle is encrypted, so
-that only whoever is given its id can read it. It holds `songs/`, each song
-in a folder named by the first 16 hex digits of its own bundle's hash, and
-`index/`, what is known of every song, in files each holding the songs
-whose folders begin with the same two hex digits. It is kept in versions,
-so that it follows the person from node to node, and versions made apart,
-on two nodes say, are merged as they are read. The node keeps no library
-for a client no one is signed in on.
+changed, and holds their playlists: `{"library": {"bundle", "changed"},
+"playlists": [{"id", "name", "songs": ["<song folder>", …], "changed"},
+…]}`. The bundle is encrypted, so that only whoever is given its id can
+read it. It holds `songs/`, each song in a folder named by the first 16 hex
+digits of its own bundle's hash, and `index/`, what is known of every song,
+in files each holding the songs whose folders begin with the same two hex
+digits. A playlist names songs of the library by their folders, each once,
+in its order; its `id` is made at random as it is, and `changed` is when it
+last changed. It is kept in versions, so that it follows the person from
+node to node, and versions made apart, on two nodes say, are merged as they
+are read. The node keeps no library for a client no one is signed in on.
 
 - **Placed by** the music application, with `POST /data/signed`, given
-  `encrypt: {for: id}`, whenever the person's library changes: once for
-  each song added from a file, once for each folder of songs added
-  together, once every song of it is imported, and once for each song
-  whose tags gave no duration, as it first plays.
+  `encrypt: {for: id}`, whenever the person's library or a playlist
+  changes: once for each song added from a file, once for each folder of
+  songs added together, once every song of it is imported, once for each
+  song whose tags gave no duration, as it first plays, and once for each
+  playlist made, renamed, removed, added to, reordered, or removed from. A
+  change of the playlists alone names the bundle the library has already.
 - **Signed** by the person, then **encrypted** for the person.
 - **Bits:** placed matching at least 24, searched for 1 second.
 - **Reading:** a reader passes over every version that does not open for
@@ -634,7 +639,13 @@ for a client no one is signed in on.
   of two changed in the same moment, the one whose drop's id comes first,
   with each song the others hold and it does not, and their entries in
   `index/`, added to it. Merging adds songs, and never removes any. Each
-  change places a version naming the merged library's newest bundle, and
-  shuns the versions read, which it replaces, as for movie collections
-  (§3.12), but for any it could not merge whole.
-- **Defined in:** [Music App](../implementation/Music%20App.md) Step 149.
+  playlist, found by its `id`, is the one of the version that changed it
+  last, by its own `changed`, apart from the library, and a playlist one
+  version holds and another does not is kept. A reader passes over a
+  playlist that is not such an object, and over any of its songs that is
+  not a song's folder. Each change places a version naming the merged
+  library's newest bundle, and holding every playlist merged, and shuns the
+  versions read, which it replaces, as for movie collections (§3.12), but
+  for any it could not merge whole.
+- **Defined in:** [Music App](../implementation/Music%20App.md) Steps 149
+  and 151.

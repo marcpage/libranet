@@ -211,13 +211,19 @@ can be added again as it grows. Your library lists every song you have
 added, by artist, album, disc, and track, and is filtered by artist, by
 album, or by the whole words of any detail of a song.
 
+Make playlists of the songs of your library, each in an order of its own:
+add a song to one, or every song the filters show, move each earlier or
+later, and choose, with **Playlists**, the library or a playlist to show.
+A folder added with a playlist open is added to it too.
+
 Play a song, and the songs after it in the list play on, or, with Shuffle
 on, the songs of the list in an order chosen at random. The list stays shown
 while one plays. A song the browser cannot play, such as a `.wma` in Chrome,
 or one that fails as it loads, is marked, and passed over. The keys are the
-TV application's, with `S` for Shuffle. Your library is kept for you alone,
-as your series are, so the music application keeps none for a browser no
-one is signed in on.
+TV application's, with `S` for Shuffle, `L` for the playlists, and `[` and
+`]` to move a song of a playlist. Your library, and its playlists, are kept
+for you alone, as your series are, so the music application keeps none for
+a browser no one is signed in on.
 
 ### Use and share applications
 
@@ -409,7 +415,7 @@ you say so on `/config`.
 | [Phase 11 Plan](docs/implementation/Phase%2011.md) | Bonus features: steps 16 and 50, planned |
 | [Movie App Plan](docs/implementation/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 83, 85–88, and 115, all built |
 | [TV App Plan](docs/implementation/TV%20App.md) | The TV application: steps 144–148, all built |
-| [Music App Plan](docs/implementation/Music%20App.md) | The music application: steps 149–154, steps 149 and 150 built |
+| [Music App Plan](docs/implementation/Music%20App.md) | The music application: steps 149–154, steps 149 to 151 built |
 | [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |
 | [File Layout](docs/implementation/File%20Layout.md) | Every file a node reads or writes, and the settings that move them |
 | [Database Schema](docs/implementation/Database%20Schema.md) | The statistics database's tables, and what reads and writes them |

@@ -30,7 +30,7 @@ serves as `application/octet-stream`.
 
 ## 2. What It Adds
 
-Six steps, the first two built, and the last built only if it is needed:
+Six steps, the first three built, and the last built only if it is needed:
 
 - **The music application.** A person's library, with songs added from a
   file or from a whole folder, played one after another, and filtered by
@@ -482,9 +482,9 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 151 — Playlists
+## Step 151 — Playlists ✅
 
-**Issue:** to be made (§4), from #479. **Depends on:** Step 149.
+**Issue:** #641, from #479. **Depends on:** Step 149.
 
 Settled with the user:
 
@@ -545,6 +545,78 @@ song removed from the library and from each playlist; a folder added with
 a playlist open; a playlist played with Shuffle on and off; and a playlist
 changed on one node while another is renamed on another, both kept once
 merged.
+
+Built, as one change set. It was checked on a node of its own in headless
+Chromium, with songs made by `ffmpeg` and kept out of the repository: a
+playlist made from the chooser, and a second of the same name, ignoring
+case, refused; a song added to it from the library, and every song shown,
+filtered by an album and by an artist, those it held already not added
+again; the playlist shown in its order, its first song's Earlier and its
+last's Later disabled; a song moved with its arrows, and with `[` and `]`,
+and within the songs a filter shows; a song removed from the playlist and
+kept in the library; the playlist renamed, played in its order, and played
+shuffled; a song removed from the library, and so from the playlist; a
+folder added with a new playlist open, the songs the library held added to
+the playlist alone and the rest imported, all in the order of their paths;
+a song added from a file with a playlist open, and one it held already; the
+playlist remembered across a reload; a playlist renamed in a version placed
+apart while another was changed on the page, both kept once merged, and the
+two versions replaced by one; a playlist removed, its songs left in the
+library; a playlist made by a person whose library held no songs yet; a
+version too large refused; the chooser from the keyboard; and a phone's
+width. Safari is yet to be checked.
+
+Calls made while building it, not yet reviewed:
+
+- **Playlists is a button in the header**, as the movie page's Collections
+  is, and the chooser a dialog over the player and the list, rather than in
+  their place, so that what plays stays shown. Making a playlist there opens
+  it.
+- **The playlist's Rename and Remove playlist**, and the library's Add every
+  song shown, are icons in the upper right corner of the list, beside its
+  heading.
+- **In a playlist, Remove from playlist takes Remove's place**, and Add is
+  not shown: a song is removed from the library, and added to a playlist,
+  from the library. Edit is in both.
+- **Earlier and Later are arrows up and down**, as the songs run down the
+  page, where movies run across it. A song moves past the one shown beside
+  it, as a movie does in a collection the filter narrows, so that the first
+  shown moves no earlier, and the last shown no later.
+- **Moves are made one at a time**, each from where the one before left the
+  song, so that an arrow, or `]`, pressed again and again moves it on. Each
+  places a version.
+- **Focus stays where it was** as the list is shown again: on the arrow
+  pressed, say, or, once that arrow is disabled, on its song.
+- **On a phone, a song's icons are on a line of their own**, below it, for
+  the song playing or chosen alone, as four no longer fit beside its title.
+- **Adding into a playlist.** A song the library holds already, by its path,
+  is added to the playlist open alone, and not imported again, and the songs
+  found say so before any is added. A song added from a file that the
+  library holds is added to the playlist alone, or said to be in it
+  already. The songs of each folder are added once those of the folders
+  before it are, so that the playlist holds them in the order of their
+  paths, however their imports end. Without a playlist open, each folder is
+  added as its last song is imported, as before.
+- **A playlist made before any song** makes the library's first bundle,
+  empty, since a version names one.
+- **Too large is the node's to say.** The page does not count: the node
+  refuses a version larger than it keeps an object, `413`, and the page says
+  so, changing nothing. As the node compresses what it stores, that is more
+  than the 50,000 songs the plan supposed: 60,000 folders named in order were
+  kept, and 150,000 named at random refused.
+- **Names merged may repeat.** Two playlists made apart may be of the same
+  name once merged. Both are kept, and only a name made or renamed to one
+  held is refused.
+- **A song a playlist names that the library does not hold**, as one whose
+  part of the index could not be read, is neither shown nor counted, but is
+  kept in the playlist.
+- **The Artist and Album chosen are kept** as another list is shown, as
+  `music.filters` holds them, while the filter of free text is emptied.
+- **Removing a song from a playlist asks nothing**, as it stays in the
+  library. Removing a playlist, or a song from the library, asks first.
+- **`music.list`** holds the playlist's id, or `""` for the library. A
+  playlist remembered that is no longer kept is forgotten, and the library
+  shown.
 
 ---
 
@@ -739,7 +811,7 @@ step, and this table then given their numbers.
 | #479 | Implementing the music application, split into the issues below | 149 to 154 |
 | *to be made* | The music application: a library, added from a file or a folder, played, and filtered | 149 |
 | #640 | Reading a song's tags on the page | 150 |
-| *to be made* | Playlists | 151 |
+| #641 | Playlists | 151 |
 | *to be made* | Sharing a song or a playlist | 152 |
 | *to be made* | Keeping a playlist offline | 153 |
 | #644 | A file's content type, given by its bundle | 154 |
