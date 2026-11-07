@@ -162,12 +162,14 @@
   .filters { margin: 0.75rem 0 0; }
   .filter { display: block; width: 100%; margin: 0 0 0.75rem; }
 
-  /* The list of songs: a play icon, the cover, track number, title, artist, album, and duration of each, and its Edit and Remove. */
+  /* The list of songs: a play icon, the cover, track number, title, artist, album, and duration of each, and its icons:
+     in the library, Add, Edit, and Remove; in a playlist, Earlier, Later, Edit, and Remove from playlist. */
   .songs { list-style: none; margin: 0.5rem 0 0; padding: 0; }
 
   .song {
+    --row-icons: 6.25rem;
     display: grid;
-    grid-template-columns: 2.25rem 2rem 2.25rem minmax(0, 3fr) minmax(0, 2fr) minmax(0, 2fr) 3.5rem 4.25rem;
+    grid-template-columns: 2.25rem 2rem 2.25rem minmax(0, 3fr) minmax(0, 2fr) minmax(0, 2fr) 3.5rem var(--row-icons);
     align-items: center;
     gap: 0 0.5rem;
     padding: 0.1rem 0.25rem;
@@ -186,17 +188,25 @@
   .song .thumb .cover { border-radius: 3px; }
   .song .thumb span.cover { font-size: 1rem; }
 
-  /* A song's Edit and Remove are shown for the song playing or chosen, and for one pointed at. */
+  /* A song's icons are shown for the song playing or chosen, and for one pointed at. */
   .row-icons { display: flex; justify-content: flex-end; gap: 0.1rem; visibility: hidden; }
   .song.playing .row-icons, .song.chosen .row-icons, .song:hover .row-icons, .song:focus-within .row-icons { visibility: visible; }
+
+  /* What is shown only in the library, and only in a playlist. */
+  .in-playlist .song { --row-icons: 8.5rem; }
+  #library:not(.in-playlist) .playlist-only, #library.in-playlist .library-only { display: none; }
 
   @media (max-width: 44rem) {
     .player { align-items: flex-start; }
     .cover-frame { flex-basis: 5rem; width: 5rem; }
-    .song { grid-template-columns: 2.25rem 2rem minmax(0, 1fr) 3.5rem 4.25rem; }
+    .song { grid-template-columns: 2.25rem 2rem minmax(0, 1fr) 3.5rem; }
     .song .number, .song .artist, .song .album { display: none; }
     .song .title span { display: block; overflow: hidden; text-overflow: ellipsis; }
     .song .also { color: var(--muted); font-size: 0.85em; }
+
+    /* A song's icons, on a line of their own below it, for the song playing or chosen alone, as nothing is pointed at. */
+    .row-icons { grid-column: 1 / -1; display: none; }
+    .song.playing .row-icons, .song.chosen .row-icons, .song:focus-within .row-icons { display: flex; }
   }
 
   /* Lists of choices: folders, and songs found in one. */
@@ -226,6 +236,9 @@
   }
 
   .entries button span:first-child { overflow-wrap: anywhere; }
+
+  /* The library, or the playlist, shown, among those to choose from. */
+  .entries button[aria-current="true"] span:first-child { color: var(--accent); font-weight: 600; }
   .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; margin: 0 0 0.5rem; }
   .crumbs button { padding: 0.1rem 0.4rem; }
 
@@ -272,6 +285,7 @@
     <p class="subtitle" id="client-note">Asking the node&hellip;</p>
   </div>
   <div class="toolbar">
+    <button type="button" class="secondary signed-in-only" id="choose-list" hidden>Playlists</button>
     <button type="button" class="icon changes-only" id="add-file" title="Add from a file" aria-label="Add from a file" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 4H5v17h12v-8 M18 3v6 M15 6h6 M8 13h6 M8 17h6"/></svg>
     </button>
@@ -319,9 +333,22 @@
   </section>
 
   <section id="library" aria-labelledby="library-heading" hidden>
-    <div class="heading">
-      <h2 id="library-heading">Library</h2>
-      <span class="note" id="library-count"></span>
+    <div class="title-row">
+      <div class="heading">
+        <h2 id="library-heading">Library</h2>
+        <span class="note" id="library-count"></span>
+      </div>
+      <div class="icons changes-only" hidden>
+        <button type="button" class="icon library-only" id="add-shown" title="Add every song shown" aria-label="Add every song shown to a playlist">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h12 M4 12h12 M4 18h7 M18 14v7 M14.5 17.5h7"/></svg>
+        </button>
+        <button type="button" class="icon playlist-only" id="rename-list" title="Rename" aria-label="Rename this playlist">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
+        </button>
+        <button type="button" class="icon danger playlist-only" id="remove-list" title="Remove playlist" aria-label="Remove this playlist">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16 M9 7V4h6v3 M6 7l1 14h10l1-14 M10 11v6 M14 11v6"/></svg>
+        </button>
+      </div>
     </div>
     <div class="fields filters" id="filters">
       <label>Artist <select id="artist-filter"><option value="">Every artist</option></select></label>
@@ -334,7 +361,7 @@
     <p class="state" id="library-state" hidden></p>
     <div class="song head" id="songs-head" aria-hidden="true">
       <span></span><span></span><span class="number">#</span><span>Title</span><span class="artist">Artist</span>
-      <span class="album">Album</span><span class="duration">Time</span><span></span>
+      <span class="album">Album</span><span class="duration">Time</span><span class="row-icons"></span>
     </div>
     <ol class="songs" id="songs"></ol>
   </section>
@@ -346,13 +373,17 @@
   <svg data-icon="warn" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l10 18H2z M12 10v4 M12 17.5v.01"/></svg>
   <svg data-icon="edit" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
   <svg data-icon="remove" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16 M9 7V4h6v3 M6 7l1 14h10l1-14 M10 11v6 M14 11v6"/></svg>
+  <svg data-icon="add" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14 M5 12h14"/></svg>
+  <svg data-icon="earlier" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 19V5 M6 11l6-6 6 6"/></svg>
+  <svg data-icon="later" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14 M6 13l6 6 6-6"/></svg>
+  <svg data-icon="unlist" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>
 </template>
 
 <dialog id="file-dialog" aria-labelledby="file-heading">
   <h3 id="file-heading">Add songs from files</h3>
   <div id="folder-browse">
     <p class="hint">The folders this node offers. Choose a song, and it is imported into the
-    network, and added to your library. Its title, artist, album, and the rest come from its tags,
+    network, and added to your library, and to the playlist open, if one is. Its title, artist, album, and the rest come from its tags,
     once it is imported. What they do not give comes from its path: its title from its file's name,
     less a track number it starts with, its album from the folder it is in, and its artist from the
     folder above that, as a library laid out as Artist/Album/01 Title.mp3 gives. Its cover is the
@@ -368,8 +399,8 @@
   </div>
   <form id="found-form" hidden>
     <p class="hint">Each song found. Leave out any you choose. Those your library holds already are
-    left out. Your library is kept at a drop of yours, signed by you and encrypted for you alone,
-    so that you find it on any node you sign in on.</p>
+    left out, or, with a playlist open, added to it alone. Your library is kept at a drop of yours,
+    signed by you and encrypted for you alone, so that you find it on any node you sign in on.</p>
     <p class="hint" id="found-note" hidden></p>
     <ul class="entries found" id="found-list"></ul>
     <p class="result" id="found-result" role="status" hidden></p>
@@ -413,6 +444,45 @@
   </form>
 </dialog>
 
+<dialog id="lists-dialog" aria-labelledby="lists-heading">
+  <h3 id="lists-heading">Playlists</h3>
+  <p class="hint">Your library holds every song you have added. A playlist holds songs of it, in an
+  order of its own.</p>
+  <ul class="entries" id="list-choices"></ul>
+  <div class="buttons">
+    <button type="button" class="secondary" data-close>Close</button>
+    <button type="button" class="changes-only" id="new-list" hidden>New playlist</button>
+  </div>
+</dialog>
+
+<dialog id="add-dialog" aria-labelledby="add-heading">
+  <h3 id="add-heading"></h3>
+  <p class="hint">Choose the playlist to add to, or make a new one. A song a playlist holds already
+  is not added to it again.</p>
+  <ul class="entries" id="add-choices"></ul>
+  <p class="result" id="add-result" role="status" hidden></p>
+  <div class="buttons">
+    <button type="button" class="secondary" data-close>Cancel</button>
+    <button type="button" id="add-new">New playlist</button>
+  </div>
+</dialog>
+
+<dialog id="name-dialog" aria-labelledby="name-heading">
+  <form id="name-form">
+    <h3 id="name-heading"></h3>
+    <div class="fields">
+      <label class="wide">Name <input id="list-name" required autocomplete="off"></label>
+    </div>
+    <p class="hint">No two of your playlists are of the same name. They are kept with your library,
+    at a drop of yours, signed by you and encrypted for you alone.</p>
+    <p class="result" id="name-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit" id="name-save"></button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="keys-dialog" aria-labelledby="keys-heading">
   <h3 id="keys-heading">Keys</h3>
   <p class="hint">Anywhere on the page but in a field, and while no other dialog is open.</p>
@@ -430,6 +500,10 @@
     <dd>Play the next song, or the one before.</dd>
     <dt><kbd>S</kbd></dt>
     <dd>Shuffle on, or off.</dd>
+    <dt><kbd>L</kbd></dt>
+    <dd>Choose the library, or a playlist, to show.</dd>
+    <dt><kbd>[</kbd> <kbd>]</kbd></dt>
+    <dd>In a playlist, move the song chosen earlier, or later.</dd>
     <dt><kbd>`</kbd></dt>
     <dd>Filter the songs, as the magnifying glass does, to those with every whole word typed in any
     of their details. Enter keeps the filter, and Escape empties it. It starts empty each time, so `
@@ -459,19 +533,24 @@ const ENCRYPTED = "/data/encrypted/";
 
 // Where a person's library is kept, "music library:{id}": in versions at the
 // drop, each signed by them and encrypted for them (HttpApi 9, 11.5, 11.6),
-// each naming the library's newest bundle. The node keeps no library for
-// whoever is not signed in.
+// each naming the library's newest bundle, and holding their playlists. The
+// node keeps no library for whoever is not signed in.
 const LIBRARY_PREFIX = "music library:";
+
+// How many bytes, made at random, a playlist's id holds, as hex digits.
+const PLAYLIST_ID_BYTES = 16;
 
 // What each version placed asks the node to search for its nonce, matching as
 // many bits as a node's search returns by default, so that it is found.
 const DROP_SECONDS = 1;
 const DROP_MINIMUM_BITS = 24;
 
-// Where this browser remembers whether Shuffle is on, and the artist and the
-// album last chosen to filter the library by.
+// Where this browser remembers whether Shuffle is on, the artist and the
+// album last chosen to filter the library by, and the playlist last open, by
+// its id, or "" for the library.
 const REMEMBERED_SHUFFLE = "music.shuffle";
 const REMEMBERED_FILTERS = "music.filters";
+const REMEMBERED_LIST = "music.list";
 
 // Why nothing is changed for whoever is signed in with their fallback
 // password, before the fallback takes over: nothing they keep is signed
@@ -688,15 +767,18 @@ const state = {
   // Whoever is signed in (HttpApi 11.4), whose own library is kept, or null,
   // for whom none is.
   owner: null,
-  // Their library, a Library.
+  // Their library, a Library, and their playlists, a Playlists.
   library: null,
+  playlists: null,
+  // The id of the playlist shown, or null for the library.
+  list: null,
   // The folder of the song chosen to play, playing or paused, or null; and
   // the songs chosen to play: the folders of those listed as it was chosen,
   // in the order shown, those in the order they play in, and where in that
   // order the song chosen is.
   current: null,
   queue: null,
-  // The folder of the song chosen in the list, to edit or remove.
+  // The folder of the song chosen in the list, to edit, remove, or move.
   chosen: null,
   // The folders of the songs that failed as they loaded, since the page opened.
   failed: new Set(),
@@ -1234,8 +1316,13 @@ class Library {
   // A new version of this library, with `edit` made: the entries `add` names
   // added, those `remove` names removed, each song `set` holds, by folder,
   // set, and those in the folders `drop` names dropped. The file of the index
-  // of each song set or dropped is written again.
+  // of each song set or dropped is written again. An edit of nothing makes no
+  // bundle, but of a library that has none yet, which it makes empty.
   async edited({ add = {}, remove = [], set = new Map(), drop = [] }) {
+    if (this.bundle && Object.keys(add).length + remove.length + set.size + drop.length === 0) {
+      return this;
+    }
+
     const songs = new Map(this.songs);
     const prefixes = new Set([...set.keys(), ...drop].map(prefixOf));
     const additions = { ...add };
@@ -1279,6 +1366,155 @@ class Library {
   }
 }
 
+// One of a person's playlists: its id, made at random as it is, so that one
+// renamed on one node and changed on another stays one; its name; the
+// folders of its songs in the library, in its order, each once; and when it
+// changed. It is kept in the versions of the library, not in its bundle.
+class Playlist {
+  constructor(id, name, songs, changed) {
+    this.id = id;
+    this.name = name;
+    this.songs = songs;
+    this.changed = changed;
+  }
+
+  // A new playlist named `name`, holding the songs in `songs`.
+  static made(name, songs) {
+    const bytes = crypto.getRandomValues(new Uint8Array(PLAYLIST_ID_BYTES));
+    const id = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    return new Playlist(id, name, [...new Set(songs)], new Date().toISOString());
+  }
+
+  // The playlist `value` is, as a version holds it, or null if it is none.
+  static read(value) {
+    const read = isObject(value) && isText(value.id) && isText(value.name) && Array.isArray(value.songs)
+      && isText(value.changed);
+
+    if (!read) {
+      console.warn("Passing over a playlist this page does not read.");
+      return null;
+    }
+
+    const songs = value.songs.filter((folder) => typeof folder === "string" && SONG_FOLDER.test(folder));
+    return new Playlist(value.id, value.name, [...new Set(songs)], value.changed);
+  }
+
+  // As a version holds it.
+  value() {
+    return { id: this.id, name: this.name, songs: this.songs, changed: this.changed };
+  }
+
+  holds(folder) {
+    return this.songs.includes(folder);
+  }
+
+  // Its songs that `library` holds, each a Song, in its order.
+  songsOf(library) {
+    return this.songs.map((folder) => library.songs.get(folder)).filter(Boolean);
+  }
+
+  // As changed now, named `name`, and holding `songs`.
+  with({ name = this.name, songs = this.songs }) {
+    return new Playlist(this.id, name, songs, new Date().toISOString());
+  }
+
+  // As changed now, with the songs in `folders` added at its end, in their
+  // order: but those it holds already, which are not added again.
+  adding(folders) {
+    const songs = [...this.songs];
+    const held = new Set(songs);
+
+    for (const folder of folders) {
+      if (!held.has(folder)) {
+        held.add(folder);
+        songs.push(folder);
+      }
+    }
+
+    return this.with({ songs });
+  }
+
+  // As changed now, without the song in `folder`.
+  without(folder) {
+    return this.with({ songs: this.songs.filter((each) => each !== folder) });
+  }
+
+  // As changed now, with the song in `folder` moved past the one in `past`:
+  // after it, if `delta` is 1, or before it, if -1.
+  moving(folder, past, delta) {
+    const songs = this.songs.filter((each) => each !== folder);
+    songs.splice(songs.indexOf(past) + (delta > 0 ? 1 : 0), 0, folder);
+    return this.with({ songs });
+  }
+}
+
+// A person's playlists, in order of name, ignoring case.
+class Playlists {
+  constructor(list = []) {
+    this.list = [...list].sort((one, other) => COLLATOR.compare(one.name, other.name) || (one.id < other.id ? -1 : 1));
+  }
+
+  // The playlists `sets` hold, each a Playlists, merged: each, found by its
+  // id, as it was changed last, or, of those changed in the same moment, as
+  // the first set holding it holds it. A playlist one set holds and another
+  // does not is kept, so that one removed while it was changed elsewhere
+  // comes back.
+  static merged(sets) {
+    const merged = new Map();
+
+    for (const set of sets) {
+      for (const playlist of set.list) {
+        const held = merged.get(playlist.id);
+
+        if (!held || playlist.changed > held.changed) {
+          merged.set(playlist.id, playlist);
+        }
+      }
+    }
+
+    return new Playlists(merged.values());
+  }
+
+  // The playlists the version `contents` holds.
+  static read(contents) {
+    const list = Array.isArray(contents.playlists) ? contents.playlists : [];
+    return new Playlists(list.map((value) => Playlist.read(value)).filter(Boolean));
+  }
+
+  // The playlist whose id is `id`, or null.
+  find(id) {
+    return this.list.find((playlist) => playlist.id === id) || null;
+  }
+
+  // The playlist named `name`, ignoring case, or null.
+  named(name) {
+    return this.list.find((playlist) => nameKey(playlist.name) === nameKey(name)) || null;
+  }
+
+  // With `playlist`, in place of the one of its id, if there is one.
+  with(playlist) {
+    return new Playlists([...this.list.filter((each) => each.id !== playlist.id), playlist]);
+  }
+
+  without(id) {
+    return new Playlists(this.list.filter((playlist) => playlist.id !== id));
+  }
+
+  // Each without the song in `folder`, as removing it from the library does.
+  withoutSong(folder) {
+    return new Playlists(this.list.map((playlist) => (playlist.holds(folder) ? playlist.without(folder) : playlist)));
+  }
+
+  // As a version holds them.
+  value() {
+    return this.list.map((playlist) => playlist.value());
+  }
+
+  sameAs(other) {
+    return JSON.stringify(this.value()) === JSON.stringify(other.value());
+  }
+}
+
 // The ids a search of the drop `target` finds (HttpApi 9.7). The node finds
 // only what shares enough leading bits with its hash to have been placed there.
 async function foundAt(target) {
@@ -1311,13 +1547,14 @@ function newestFirst(one, other) {
 }
 
 // The versions of the library kept for whoever is signed in: each the bundle
-// it names, when it changed, and the id of the version at their drop, the
-// newest first. There are more than one where they were made apart, on two
-// nodes say, which Library.open merges. No library is kept for whoever is
-// not signed in.
+// it names, when it changed, the playlists it holds, and the id of the
+// version at their drop, the newest first; and their playlists, merged.
+// There are more than one where they were made apart, on two nodes say,
+// which Library.open merges. No library is kept for whoever is not signed in.
 class Kept {
-  constructor(entries = []) {
+  constructor(entries = [], playlists = new Playlists()) {
     this.entries = entries;
+    this.playlists = playlists;
   }
 
   static async read() {
@@ -1328,7 +1565,8 @@ class Kept {
     const ids = await foundAt(Kept.target());
     const opened = await Promise.all(ids.map((id) => Kept.version(id)));
     const entries = ids.map((id, index) => (opened[index] ? { ...opened[index], id } : null)).filter(Boolean);
-    return new Kept(entries.sort(newestFirst));
+    entries.sort(newestFirst);
+    return new Kept(entries, Playlists.merged(entries.map((entry) => entry.playlists)));
   }
 
   // The drop of whoever is signed in.
@@ -1348,16 +1586,17 @@ class Kept {
       return null;
     }
 
-    return { bundle: library.bundle, changed: library.changed };
+    return { bundle: library.bundle, changed: library.changed, playlists: Playlists.read(contents) };
   }
 
-  // Places a version naming `bundle` as the person's library, signed by them
-  // and encrypted for them, then blocks the versions it replaces (HttpApi
-  // 5.5), those of the bundles `from` names, so that they do not push the
-  // newest out of a search. Returns when it changed.
-  async place(bundle, from) {
+  // Places a version naming `bundle` as the person's library, and holding
+  // `playlists`, signed by them and encrypted for them, then blocks the
+  // versions it replaces (HttpApi 5.5), those of the bundles `from` names,
+  // so that they do not push the newest out of a search. Returns when it
+  // changed.
+  async place(bundle, from, playlists) {
     const changed = new Date().toISOString();
-    await placeVersion(Kept.target(), { library: { bundle, changed } });
+    await placeVersion(Kept.target(), { library: { bundle, changed }, playlists: playlists.value() });
 
     for (const { id } of this.entries.filter((entry) => from.has(entry.bundle))) {
       const shunned = await call("DELETE", `${DATA}${id}`);
@@ -1391,6 +1630,12 @@ async function placeVersion(target, contents) {
 
   if (result.status === 403) {
     throw new Error(FALLBACK_REFUSAL);
+  }
+
+  // A version is a drop, which holds so much at most, as the node stores it.
+  // Only the playlists it holds grow so large, at tens of thousands of songs.
+  if (result.status === 413) {
+    throw new Error("Your playlists together hold more songs than one version of your library can keep, so this is not changed. Remove some songs from them, or a playlist, and try again.");
   }
 
   if (!result.ok || !isObject(result.value) || !isText(result.value.id)) {
@@ -1442,11 +1687,14 @@ function serially(action) {
   return run;
 }
 
-// Makes the change `change` gives of the library, and keeps it, in turn with
-// every other change. The versions kept are read again for it, and any made
-// elsewhere since this page read the library, on another node say, are
-// merged into it first. `change` is given the library so made, and gives the
-// edit to make of it, as Library.edited takes it, or null to make none.
+// Makes the change `change` gives of the library, and of the playlists, and
+// keeps it, in turn with every other change. The versions kept are read again
+// for it, and any made elsewhere since this page read the library, on
+// another node say, are merged into it first. `change` is given the library
+// so made, and the playlists, merged as well, and gives the edit to make of
+// the library, as Library.edited takes it, with `playlists`, the playlists
+// to keep, if they change; or null to make none. A change of the playlists
+// alone makes no bundle.
 async function changeLibrary(change) {
   if (!canChange()) {
     throw new Error(state.owner ? FALLBACK_REFUSAL : "No one is signed in, so no library is kept. Sign in on the home page.");
@@ -1458,16 +1706,21 @@ async function changeLibrary(change) {
     const elsewhere = kept.entries.filter((entry) => !ours.from.has(entry.bundle));
     const candidates = ours.bundle ? [...elsewhere, { bundle: ours.bundle, changed: ours.changed, id: "" }] : elsewhere;
     const library = elsewhere.length ? await Library.open(candidates.sort(newestFirst), ours) : ours;
-    const edit = change(library);
+    const playlists = Playlists.merged([kept.playlists, state.playlists]);
+    const edit = change(library, playlists);
     let next = library;
+    let lists = playlists;
 
     if (edit) {
-      const made = await library.edited(edit);
-      next = made.placed(await kept.place(made.bundle, library.from));
+      const { playlists: changed = playlists, ...rest } = edit;
+      const made = await library.edited(rest);
+      next = made.placed(await kept.place(made.bundle, library.from, changed));
+      lists = changed;
     }
 
-    if (next !== ours) {
+    if (next !== ours || !lists.sameAs(state.playlists)) {
       state.library = next;
+      state.playlists = lists;
       renderLibrary();
     }
   });
@@ -1507,18 +1760,53 @@ function rememberFilters() {
   }
 }
 
+// The id of the playlist last open, or null for the library.
+function recallList() {
+  try {
+    return localStorage.getItem(REMEMBERED_LIST) || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function rememberList() {
+  try {
+    localStorage.setItem(REMEMBERED_LIST, state.list || "");
+  } catch (error) {
+    console.warn(`This browser cannot remember the playlist open: ${error.message}`);
+  }
+}
+
 // The library, and its songs.
 
-// The rows of the list, by their songs' folders, in the library's order:
-// each the song it shows, and the item showing it, made once for each song.
+// The rows of the list, by their songs' folders, in the order shown: the
+// library's, or the playlist's. Each holds the song it shows, and the item
+// showing it, made once for each song, whichever of them shows it.
 let rows = new Map();
 
+// The playlist shown, or null if the library is. One no longer kept, as one
+// removed on another node, is forgotten, and the library shown.
+function shownPlaylist() {
+  const playlist = state.list === null ? null : state.playlists.find(state.list);
+
+  if (state.list !== null && !playlist) {
+    state.list = null;
+    rememberList();
+  }
+
+  return playlist;
+}
+
+// Shows the library, or the playlist it holds, by its songs. Focus stays on
+// what had it in the list, or, if that is not shown, goes to its song.
 function renderLibrary() {
   const library = state.library;
   const list = byId("songs");
+  const active = document.activeElement;
   const focused = focusedFolder();
   const before = rows;
-  const songs = [...library.songs.values()].sort(compareSongs);
+  const playlist = shownPlaylist();
+  const songs = playlist ? playlist.songsOf(library) : [...library.songs.values()].sort(compareSongs);
 
   rows = new Map(songs.map((song) => {
     const held = before.get(song.folder);
@@ -1526,6 +1814,8 @@ function renderLibrary() {
   }));
 
   list.replaceChildren(...[...rows.values()].map((row) => row.item));
+  byId("library").classList.toggle("in-playlist", playlist !== null);
+  byId("library-heading").textContent = playlist ? playlist.name : "Library";
   byId("library").hidden = false;
   byId("player-section").hidden = false;
 
@@ -1537,26 +1827,42 @@ function renderLibrary() {
   renderFilters();
   showPlaying();
 
-  if (focused !== null) {
+  if (focused === null) {
+    return;
+  }
+
+  if (list.contains(active)) {
+    active.focus();
+  }
+
+  if (document.activeElement !== active) {
     focusSong(focused);
   }
 }
 
+// The row showing `song`, with its icons: in the library, Add, Edit, and
+// Remove; and in a playlist, Earlier, Later, Edit, and Remove from playlist.
 function songRow(song) {
   const item = make("li", null, "song");
   const play = make("button", null, "icon play");
   const title = make("span", null, "title");
   const icons = make("span", null, "row-icons changes-only");
   const cover = make("span", null, "thumb");
+  const name = song.title();
+  const removing = (control, action) => perform(control, byId("library-result"), action);
   item.dataset.folder = song.folder;
   play.type = "button";
   play.addEventListener("click", () => chooseSong(song.folder));
   cover.append(coverImage(isText(song.details.cover) ? state.library.url(song.path(song.details.cover)) : null, true));
-  title.append(make("span", song.title(), "name"), make("span", song.byline(), "also"));
-  title.title = song.title();
+  title.append(make("span", name, "name"), make("span", song.byline(), "also"));
+  title.title = name;
   icons.append(
-    rowIcon("edit", `Edit “${song.title()}”`, "", () => openEdit(song.folder)),
-    rowIcon("remove", `Remove “${song.title()}”`, "danger", (control) => perform(control, byId("library-result"), () => removeSong(song.folder))),
+    rowIcon("add", `Add “${name}” to a playlist`, "library-only", () => openAdd([song.folder])),
+    rowIcon("earlier", `Move “${name}” earlier`, "earlier playlist-only", () => moveSong(song.folder, -1)),
+    rowIcon("later", `Move “${name}” later`, "later playlist-only", () => moveSong(song.folder, 1)),
+    rowIcon("edit", `Edit “${name}”`, "", () => openEdit(song.folder)),
+    rowIcon("remove", `Remove “${name}”`, "danger library-only", (control) => removing(control, () => removeSong(song.folder))),
+    rowIcon("unlist", `Remove “${name}” from the playlist`, "danger playlist-only", (control) => removing(control, () => unlistSong(song.folder))),
   );
   icons.hidden = !canChange();
   item.append(play, cover, make("span", song.number("track"), "number"), title, make("span", song.artist(), "artist"),
@@ -1712,8 +2018,14 @@ function applyFilters() {
   byId("library-count").textContent = filtering ? `${shown} of ${songs}` : (count ? songs : "");
   byId("filters").hidden = count === 0;
   byId("songs-head").hidden = shown === 0;
+  byId("add-shown").disabled = shown === 0;
+  paintArrows();
 
-  if (count === 0) {
+  if (count === 0 && state.list !== null) {
+    show(byId("library-state"), canChange()
+      ? "This playlist holds no songs yet. Add some from your library, with the Add icon beside each song, or every song in a folder, with the icon in the upper right corner."
+      : "This playlist holds no song of your library that can be read here.");
+  } else if (count === 0) {
     show(byId("library-state"), canChange()
       ? "Your library holds no songs yet. Add some from a file, or every song in a folder, with the icon in the upper right corner."
       : "No song of your library can be read here.");
@@ -1722,6 +2034,21 @@ function applyFilters() {
   } else {
     show(byId("library-state"), "");
   }
+}
+
+// In a playlist, a song moves past the one shown beside it, so the first
+// shown moves no earlier, and the last shown no later.
+function paintArrows() {
+  if (state.list === null) {
+    return;
+  }
+
+  const shown = [...rows.values()].filter((row) => !row.item.hidden);
+
+  shown.forEach(({ item }, at) => {
+    item.querySelector("button.earlier").disabled = at === 0;
+    item.querySelector("button.later").disabled = at === shown.length - 1;
+  });
 }
 
 // Filters by the artist chosen, offering only that artist's albums.
@@ -2184,21 +2511,269 @@ async function saveSong() {
 
 // Removing a song.
 
-// Removes the song in `folder`: its folder of the library, and its entry in
-// the index. Focus goes to the song after it in the list, or the one before.
+// Removes the song in `folder`: its folder of the library, its entry in the
+// index, and its place in every playlist. Focus goes to the song after it in
+// the list, or the one before.
 async function removeSong(folder) {
   const song = state.library.songs.get(folder);
 
-  if (!song || !window.confirm(`Remove “${song.title()}” from your library?`)) {
+  if (!song || !window.confirm(`Remove “${song.title()}” from your library, and from every playlist?`)) {
     return null;
   }
 
-  const listed = shownFolders();
-  const at = listed.indexOf(folder);
-  const beside = listed[at + 1] || listed[at - 1] || null;
-  await changeLibrary((library) => (library.songs.has(folder) ? { remove: [`${SONGS}/${folder}`], drop: [folder] } : null));
+  const beside = besideShown(folder);
+  await changeLibrary((library, playlists) => (library.songs.has(folder)
+    ? { remove: [`${SONGS}/${folder}`], drop: [folder], playlists: playlists.withoutSong(folder) } : null));
   focusSong(beside);
   return [`Removed “${song.title()}”.`, false];
+}
+
+// The folder of the song shown after the one in `folder`, or else before it,
+// or null, which focus goes to once it is no longer shown.
+function besideShown(folder) {
+  const listed = shownFolders();
+  const at = listed.indexOf(folder);
+  return listed[at + 1] || listed[at - 1] || null;
+}
+
+// Playlists.
+
+// Shows the playlist whose id is `id`, or the library, if `id` is null, with
+// every song the artist and album chosen match, and remembers which.
+function showList(id) {
+  state.list = id;
+  rememberList();
+  byId("song-filter").value = "";
+  byId("song-filter").hidden = true;
+  show(byId("library-result"), "");
+  renderLibrary();
+  focusSong(null);
+}
+
+// One choice of the chooser, the library or a playlist: named `name`,
+// holding `count` songs, doing `action` when chosen, and marked if it is the
+// one shown, as `shown` says.
+function listChoice(name, count, shown, action) {
+  const item = entryRow(name, plural(count, "song", "songs"), action);
+
+  if (shown) {
+    item.querySelector("button").setAttribute("aria-current", "true");
+  }
+
+  return item;
+}
+
+// The chooser: the library, then each playlist, by name, with how many songs
+// each holds, and New playlist below.
+function showLists() {
+  const list = byId("list-choices");
+  const choose = (id) => () => {
+    byId("lists-dialog").close();
+    showList(id);
+  };
+
+  // Not until the library is read.
+  if (byId("library").hidden) {
+    return;
+  }
+
+  list.replaceChildren(
+    listChoice("Library", state.library.songs.size, state.list === null, choose(null)),
+    ...state.playlists.list.map((playlist) => listChoice(playlist.name, playlist.songsOf(state.library).length,
+      playlist.id === state.list, choose(playlist.id))),
+  );
+  byId("lists-dialog").showModal();
+  (list.querySelector("[aria-current=true]") || list.querySelector("button")).focus();
+}
+
+// What the dialog naming a playlist does once it is named: renames the
+// playlist whose id is `id`; or, if `id` is null, makes one holding the songs
+// in `songs`, and shows it, if `open`.
+let naming = null;
+
+function openNaming(how) {
+  const playlist = how.id === null ? null : state.playlists.find(how.id);
+  naming = how;
+  byId("name-form").reset();
+  byId("name-heading").textContent = playlist ? `Rename “${playlist.name}”` : "New playlist";
+  byId("name-save").textContent = playlist ? "Rename" : "Make";
+  byId("list-name").value = playlist ? playlist.name : "";
+  show(byId("name-result"), "");
+  byId("name-dialog").showModal();
+}
+
+// Makes the playlist named, or renames the one named again, as `naming`
+// says. No two playlists are of the same name, ignoring case.
+async function saveName() {
+  const { id, songs = [], open = false } = naming;
+  const name = byId("list-name").value.trim();
+  let made = null;
+
+  if (!name) {
+    throw new Error("Give the playlist a name.");
+  }
+
+  await changeLibrary((library, playlists) => {
+    const named = playlists.named(name);
+    const playlist = id === null ? null : playlists.find(id);
+
+    if (named && named.id !== id) {
+      throw new Error(`You have a playlist named “${named.name}” already.`);
+    }
+
+    if (id !== null && !playlist) {
+      throw new Error("This playlist is no longer kept.");
+    }
+
+    if (playlist) {
+      return playlist.name === name ? null : { playlists: playlists.with(playlist.with({ name })) };
+    }
+
+    made = Playlist.made(name, songs.filter((folder) => library.songs.has(folder)));
+    return { playlists: playlists.with(made) };
+  });
+
+  byId("name-dialog").close();
+
+  if (made && open) {
+    showList(made.id);
+  } else if (made) {
+    show(byId("library-result"), `Made the playlist “${made.name}”, holding ${addedText(made.songs)}.`);
+  }
+
+  return null;
+}
+
+// The songs in `folders`, as said of them: the title of one, or how many.
+function addedText(folders) {
+  const song = folders.length === 1 ? state.library.songs.get(folders[0]) : null;
+  return song ? `“${song.title()}”` : plural(folders.length, "song", "songs");
+}
+
+// Adds the songs in `folders` to the playlist whose id is `id`, at its end,
+// in their order: but those it holds already, which are not added again.
+// Returns what is said of it.
+async function addToPlaylist(id, folders) {
+  let said = null;
+
+  await changeLibrary((library, playlists) => {
+    const playlist = playlists.find(id);
+
+    if (!playlist) {
+      throw new Error("This playlist is no longer kept.");
+    }
+
+    const songs = folders.filter((folder) => library.songs.has(folder));
+    const grown = playlist.adding(songs);
+    const added = songs.filter((folder) => !playlist.holds(folder));
+    const held = songs.length - added.length;
+
+    if (added.length === 0) {
+      said = songs.length === 1 ? `${addedText(songs)} is in “${playlist.name}” already.`
+        : `Every one of those songs is in “${playlist.name}” already.`;
+      return null;
+    }
+
+    said = `Added ${addedText(added)} to “${playlist.name}”.`;
+
+    if (held) {
+      said += ` ${plural(held, "song was", "songs were")} in it already.`;
+    }
+
+    return { playlists: playlists.with(grown) };
+  });
+
+  return [said, false];
+}
+
+// The folders of the songs the dialog adding to a playlist adds.
+let toAdd = [];
+
+// Asks which playlist to add the songs in `folders` to, or a new one.
+function openAdd(folders) {
+  const choices = byId("add-choices");
+  toAdd = folders;
+  byId("add-heading").textContent = `Add ${addedText(folders)} to a playlist`;
+
+  choices.replaceChildren(...state.playlists.list.map((playlist) => {
+    const item = entryRow(playlist.name, plural(playlist.songsOf(state.library).length, "song", "songs"),
+      () => perform(item.querySelector("button"), byId("add-result"), async () => {
+        const said = await addToPlaylist(playlist.id, toAdd);
+        byId("add-dialog").close();
+        show(byId("library-result"), ...said);
+        return null;
+      }));
+    return item;
+  }));
+
+  choices.hidden = state.playlists.list.length === 0;
+  show(byId("add-result"), choices.hidden ? "You have no playlists yet. Make one." : "");
+  byId("add-dialog").showModal();
+}
+
+// Removes the song in `folder` from the playlist shown, leaving it in the
+// library. Focus goes to the song after it in the list, or the one before.
+async function unlistSong(folder) {
+  const playlist = shownPlaylist();
+  const song = state.library.songs.get(folder);
+
+  if (!playlist || !song) {
+    return null;
+  }
+
+  const beside = besideShown(folder);
+  await changeLibrary((library, playlists) => {
+    const held = playlists.find(playlist.id);
+    return held && held.holds(folder) ? { playlists: playlists.with(held.without(folder)) } : null;
+  });
+  focusSong(beside);
+  return [`Removed “${song.title()}” from “${playlist.name}”. It is still in your library.`, false];
+}
+
+// Moves the song in `folder` past the one shown beside it in the playlist
+// shown: earlier, if `delta` is -1, or later, if 1; saying why, if it is not
+// moved. Each move is made in turn, from where the one before it left the
+// song, so that one pressed again and again moves it on.
+async function moveSong(folder, delta) {
+  const id = state.list;
+
+  try {
+    await changeLibrary((library, playlists) => {
+      const playlist = id === null || state.list !== id ? null : playlists.find(id);
+      const shown = new Set(shownFolders());
+      const listed = playlist ? playlist.songs.filter((each) => shown.has(each)) : [];
+      const at = listed.indexOf(folder);
+      const past = at < 0 ? undefined : listed[at + delta];
+      return past === undefined ? null : { playlists: playlists.with(playlist.moving(folder, past, delta)) };
+    });
+    show(byId("library-result"), "");
+  } catch (error) {
+    show(byId("library-result"), error.message, true);
+  }
+}
+
+// Moves the song chosen in the playlist shown earlier, if `delta` is -1, or
+// later, if 1.
+function moveChosen(delta) {
+  const row = state.chosen === null ? null : rows.get(state.chosen);
+
+  if (state.list !== null && row && !row.item.hidden && canChange()) {
+    moveSong(state.chosen, delta);
+  }
+}
+
+// Removes the playlist shown, leaving its songs in the library, which is
+// shown then.
+async function removeList() {
+  const playlist = shownPlaylist();
+
+  if (!playlist || !window.confirm(`Remove the playlist “${playlist.name}”? Its songs stay in your library.`)) {
+    return null;
+  }
+
+  await changeLibrary((library, playlists) => (playlists.find(playlist.id) ? { playlists: playlists.without(playlist.id) } : null));
+  showList(null);
+  return [`Removed the playlist “${playlist.name}”.`, false];
 }
 
 // Reading a song's tags.
@@ -3449,12 +4024,25 @@ class FoundSong {
   }
 
   // Says whether the library holds the song imported from its path already,
-  // and leaves it out if it does.
+  // and leaves it out if it does: unless a playlist is open that does not
+  // hold it, which it is added to alone, not imported again.
   refresh() {
     const held = state.library.holdingSource(this.source);
-    show(this.note, held ? `In your library already, as “${held.title()}”, so it is left out.` : "");
+    const playlist = shownPlaylist();
+    const listed = Boolean(held) && (!playlist || playlist.holds(held.folder));
+    let note = "";
 
-    if (held) {
+    if (held && !playlist) {
+      note = `In your library already, as “${held.title()}”, so it is left out.`;
+    } else if (listed) {
+      note = `In your library, and in “${playlist.name}”, already, as “${held.title()}”, so it is left out.`;
+    } else if (held) {
+      note = `In your library already, as “${held.title()}”, so it is added to “${playlist.name}” alone.`;
+    }
+
+    show(this.note, note);
+
+    if (listed) {
       this.box.checked = false;
       this.box.disabled = true;
     } else if (this.box.disabled) {
@@ -3488,9 +4076,10 @@ async function findEvery() {
   const sorted = gathered.songs.sort((one, other) => COLLATOR.compare(one.join("/"), other.join("/")));
   foundSongs = sorted.map((segments) => new FoundSong(segments, folder.segments.length));
   const held = foundSongs.filter((each) => !each.chosen()).length;
+  const playlist = shownPlaylist();
 
   if (held) {
-    notes.unshift(`${plural(held, "song is", "songs are")} in your library already.`);
+    notes.unshift(`${plural(held, "song is", "songs are")} in your library${playlist ? `, and in “${playlist.name}”,` : ""} already.`);
   }
 
   byId("found-list").replaceChildren(...foundSongs.map((each) => each.item));
@@ -3504,9 +4093,12 @@ async function findEvery() {
 }
 
 // Imports each song found that is chosen, and adds those of each folder to
-// the library together, once each of them is imported.
+// the library together, once each of them is imported, and to the playlist
+// open, if one is.
 async function addFound() {
+  const into = state.list;
   const folders = new Map();
+  let added = Promise.resolve();
 
   // A song added since they were listed is left out.
   for (const each of foundSongs) {
@@ -3524,24 +4116,29 @@ async function addFound() {
 
   byId("file-dialog").close();
 
+  // Into a playlist, the songs of each folder are added once those of the
+  // folders before it are, so that they keep the order of their paths.
   for (const paths of folders.values()) {
-    addSongs(paths);
+    added = addSongs(paths, into, into === null ? Promise.resolve() : added);
   }
 
   return null;
 }
 
-// Adds the song at `segments`, unless the library holds the one imported from
-// there already.
+// Adds the song at `segments`, and to the playlist open, if one is, unless
+// the library holds the one imported from there already, which is then added
+// to that playlist alone.
 function addFile(segments) {
   const held = state.library.holdingSource(segments.join("/"));
+  const result = byId("library-result");
 
-  if (held) {
-    show(byId("library-result"), `“${segments[segments.length - 1]}” is in your library already, as “${held.title()}”, so it was not added.`);
-    return;
+  if (held && state.list !== null) {
+    addToPlaylist(state.list, [held.folder]).then((said) => show(result, ...said), (error) => show(result, error.message, true));
+  } else if (held) {
+    show(result, `“${segments[segments.length - 1]}” is in your library already, as “${held.title()}”, so it was not added.`);
+  } else {
+    addSongs([segments], state.list);
   }
-
-  addSongs([segments]);
 }
 
 // The imports followed until each is done, by id, each with what is told how
@@ -3713,13 +4310,16 @@ function warnOfLeaving(event) {
 
 // Imports the songs at `paths`, each the segments of a song's path, those of
 // one folder, each in turn, and shown in the activity list while it is; then
-// adds those imported to the library together, in one version. One whose
-// file the library holds already, or another of them holds, is not added,
-// and the activity list says so. The page stays where it is. A picture of
-// their cover beside them is imported once, for every song whose tags hold
-// none.
-async function addSongs(paths) {
-  const songs = paths.map((segments) => new Adding(segments));
+// adds those imported to the library together, in one version, and to the
+// playlist whose id is `into`, if it is not null, in the order of `paths`,
+// once `after` is done. One whose file the library holds already, or another
+// of them holds, is not added, and the activity list says so; that song is
+// added to the playlist all the same. So is one the library holds from its
+// path already, which is not imported again. The page stays where it is. A
+// picture of their cover beside them is imported once, for every song whose
+// tags hold none.
+async function addSongs(paths, into = null, after = Promise.resolve()) {
+  const songs = paths.filter((segments) => !state.library.holdingSource(segments.join("/"))).map((segments) => new Adding(segments));
   let beside = null;
   const besideCover = () => {
     beside = beside || folderCover(paths[0].slice(0, -1));
@@ -3733,15 +4333,18 @@ async function addSongs(paths) {
   try {
     const made = (await Promise.all(songs.map((each) => each.import(songs.length > 1, besideCover)))).filter(Boolean);
     let held = new Map();
+    await after;
 
-    if (made.length === 0) {
+    if (made.length === 0 && (into === null || songs.length === paths.length)) {
       return;
     }
 
     try {
-      await changeLibrary((library) => {
+      await changeLibrary((library, playlists) => {
         const fresh = new Map();
         const files = new Map();
+        const sourced = new Map();
+        const playlist = into === null ? null : playlists.find(into);
         held = new Map();
 
         for (const each of made) {
@@ -3753,18 +4356,35 @@ async function addSongs(paths) {
             fresh.set(each.song.folder, each);
             files.set(each.file, each.song);
           }
+
+          sourced.set(each.adding.source, (already || each.song).folder);
         }
 
-        if (fresh.size === 0) {
+        // The folder of the song at each path, in their order: one imported,
+        // or one the library holds from that path already.
+        const folders = paths.map((segments) => {
+          const source = segments.join("/");
+          const song = library.holdingSource(source);
+          return sourced.get(source) || (song ? song.folder : null);
+        }).filter(Boolean);
+        const listed = playlist ? playlist.adding(folders) : null;
+        const grown = listed && listed.songs.length > playlist.songs.length ? playlists.with(listed) : undefined;
+
+        if (fresh.size === 0 && !grown) {
           return null;
         }
 
         const add = Object.fromEntries([...fresh].map(([folder, each]) => [`${SONGS}/${folder}`, { from: each.bundle, path: "" }]));
-        return { add, set: new Map([...fresh].map(([folder, each]) => [folder, each.song])) };
+        return { add, set: new Map([...fresh].map(([folder, each]) => [folder, each.song])), playlists: grown };
       });
     } catch (error) {
       for (const each of made) {
         each.adding.ended(`“${each.adding.name}” was imported, but not added: ${error.message}`, true);
+      }
+
+      // Of those the library held already, none was imported to say so of.
+      if (made.length === 0) {
+        show(byId("library-result"), `The songs of your library in “${paths[0].slice(0, -1).join("/")}” were not added to the playlist: ${error.message}`, true);
       }
 
       return;
@@ -3886,6 +4506,8 @@ async function start() {
   state.local = await askClient();
   state.owner = state.local ? await askSession() : null;
   state.library = Library.empty();
+  state.playlists = new Playlists();
+  state.list = recallList();
   state.shuffle = recallShuffle();
   state.filters = recallFilters();
   showShuffle();
@@ -3912,7 +4534,9 @@ async function start() {
   show(status, "Reading your library…");
 
   try {
-    state.library = await Library.open((await Kept.read()).entries);
+    const kept = await Kept.read();
+    state.library = await Library.open(kept.entries);
+    state.playlists = kept.playlists;
   } catch (error) {
     show(status, `Your library could not be read: ${error.message}`, true);
     return;
@@ -3949,6 +4573,9 @@ const SHORTCUTS = {
   n: () => stepSong(1),
   p: () => stepSong(-1),
   s: toggleShuffle,
+  l: showLists,
+  "[": () => moveChosen(-1),
+  "]": () => moveChosen(1),
   "`": openFilter,
   "?": () => byId("keys-dialog").showModal(),
   "/": () => byId("keys-dialog").showModal(),
@@ -3990,8 +4617,10 @@ for (const [action, handler] of Object.entries(MEDIA_KEYS)) {
 
 arrowKeys(byId("songs"), "button.play");
 arrowKeys(byId("folder-entries"));
+arrowKeys(byId("list-choices"));
+arrowKeys(byId("add-choices"));
 
-// The song whose row has focus is the one chosen, to edit or remove.
+// The song whose row has focus is the one chosen, to edit, remove, or move.
 byId("songs").addEventListener("focusin", () => {
   const folder = focusedFolder();
 
@@ -4014,6 +4643,17 @@ byId("found-back").addEventListener("click", () => {
   showFolders();
   byId("folder-all").focus();
 });
+byId("choose-list").addEventListener("click", showLists);
+byId("new-list").addEventListener("click", () => {
+  byId("lists-dialog").close();
+  openNaming({ id: null, open: true });
+});
+byId("add-shown").addEventListener("click", () => openAdd(shownFolders()));
+byId("add-new").addEventListener("click", () => {
+  byId("add-dialog").close();
+  openNaming({ id: null, songs: toAdd });
+});
+byId("rename-list").addEventListener("click", () => openNaming({ id: state.list }));
 byId("previous").addEventListener("click", () => stepSong(-1));
 byId("next").addEventListener("click", () => stepSong(1));
 byId("shuffle").addEventListener("click", toggleShuffle);
@@ -4043,6 +4683,8 @@ byId("song-filter").addEventListener("keydown", (event) => {
 onClick("folder-all", "folder-state", findEvery);
 onSubmit("found-form", "found-result", addFound);
 onSubmit("song-form", "song-result", saveSong);
+onSubmit("name-form", "name-result", saveName);
+onClick("remove-list", "library-result", removeList);
 
 start();
 </script>

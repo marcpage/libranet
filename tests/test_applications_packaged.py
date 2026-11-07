@@ -729,6 +729,7 @@ def test_the_music_page_keeps_a_library_where_the_plan_names_it(music_page: str)
     assert 'const LIBRARY_PREFIX = "music library:";' in music_page
     assert 'const REMEMBERED_SHUFFLE = "music.shuffle";' in music_page
     assert 'const REMEMBERED_FILTERS = "music.filters";' in music_page
+    assert 'const REMEMBERED_LIST = "music.list";' in music_page
 
 
 def test_the_music_page_is_bright_where_the_movie_and_tv_pages_are_dark(
