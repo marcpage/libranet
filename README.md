@@ -181,9 +181,14 @@ episodes they lack, so you can share each new season as it comes. An
 episode can be shared alone too, and is added to a series by its id.
 
 When an episode ends, the next plays at once, on into the next season. The
-keys are the movie library's, with `[` and `]` for the season before and
-the next. Your series are kept for you alone, as your collections are, so
-the TV application keeps none for a browser no one is signed in on.
+TV application keeps which episodes you have watched, and where you stopped
+in the one you left part way, so that it plays on from there, on any node
+you sign in on. A series opens at the season of the next episode to watch,
+and an episode can be marked watched, or not, by hand. The keys are the
+movie library's, with `[` and `]` for the season before and the next. Your
+series, and what you have watched of them, are kept for you alone, as your
+collections are, so the TV application keeps none for a browser no one is
+signed in on.
 
 ### Use and share applications
 
