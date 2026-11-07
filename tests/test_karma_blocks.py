@@ -40,7 +40,7 @@ from libranet.karma.generations import GenerationTargets, new_kismet
 from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.messaging.events import EventType
 from libranet.protocol.karma_amounts import Kismet
-from libranet.protocol.karma_balances import Balance
+from libranet.protocol.karma_balances import Balance, LastWon
 from libranet.protocol.karma_stakes import SignedStake, Stake
 from libranet.protocol.karma_transactions import Payout, SignedTransaction, Transaction
 from tests.helpers import new_identity
@@ -160,7 +160,7 @@ def keys(alice: NodeIdentity, bob: NodeIdentity, builder: NodeIdentity) -> dict[
 @fixture(scope="module")
 def block(alice: NodeIdentity, bob: NodeIdentity) -> TransactionBlock:
     balances = {
-        alice.node_id: Balance(Kismet(1_250_000), 0),
+        alice.node_id: Balance(Kismet(1_250_000), LastWon.of(0)),
         CAROL: Balance(Kismet(500)),
         bob.node_id: Balance(Kismet(75), None),
     }

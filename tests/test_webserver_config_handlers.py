@@ -35,7 +35,7 @@ from libranet.protocol.backup_requests import (
 )
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.karma_amounts import Kismet
-from libranet.protocol.karma_balances import Balance, KarmaBalances
+from libranet.protocol.karma_balances import Balance, KarmaBalances, LastWon
 from libranet.protocol.karma_head import KarmaHead
 from libranet.webserver.app_registry import (
     CONFIG_APPLICATION,
@@ -1112,9 +1112,9 @@ def paying(
 
 def holding(karma_dir: Path, kismet: int) -> None:
     """As if the Karma module followed a chain, at whose head the node holds ``kismet``."""
-    KarmaBalances(KarmaHead(BUNDLE, 41, 96), {NODE_ID: Balance(Kismet(kismet), 40)}).write(
-        karma_dir
-    )
+    KarmaBalances(
+        KarmaHead(BUNDLE, 41, 96), {NODE_ID: Balance(Kismet(kismet), LastWon.of(40))}
+    ).write(karma_dir)
 
 
 @mark.parametrize(("held", "covered"), [(255, True), (254, False)])

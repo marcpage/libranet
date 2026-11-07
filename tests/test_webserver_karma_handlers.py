@@ -25,7 +25,7 @@ from libranet.modules import ModuleName
 from libranet.problems import SESSION_REQUIRED
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.karma_amounts import Kismet
-from libranet.protocol.karma_balances import Balance, KarmaBalances
+from libranet.protocol.karma_balances import Balance, KarmaBalances, LastWon
 from libranet.protocol.karma_carried import CarriedTransaction
 from libranet.protocol.karma_head import KARMA_HEAD_PATH, KarmaGeneration, KarmaHead
 from libranet.protocol.karma_payments import Payment, PaymentQueue
@@ -131,7 +131,7 @@ def following(karma_dir: Path) -> Path:
     KarmaBalances(
         head_at(NEWEST),
         {
-            NODE: Balance(Kismet(250), 139),
+            NODE: Balance(Kismet(250), LastWon.of(139)),
             ALICE: Balance(Kismet(10**28)),
             SPENT: Balance(Kismet(0)),
         },
@@ -156,7 +156,7 @@ def test_the_head_the_nodes_own_balance_and_how_many_hold_kismet_there_are_read(
             "generation": NEWEST,
             "weight": str(10 * (NEWEST + 1)),
             "node_id": str(NODE),
-            "balance": {"kismet": "250", "last_won": 139},
+            "balance": {"kismet": "250", "last_won": "139"},
             # The node and Alice; one that spent all it held holds none.
             "holders": 2,
         },
@@ -685,7 +685,7 @@ def test_the_operator_reads_the_chain_followed_and_the_nodes_balance_there(own: 
         NEWEST,
         str(10 * (NEWEST + 1)),
     )
-    assert read["balance"] == {"kismet": "250", "last_won": 139}
+    assert read["balance"] == {"kismet": "250", "last_won": "139"}
 
 
 @mark.usefixtures("following")

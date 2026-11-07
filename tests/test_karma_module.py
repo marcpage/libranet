@@ -705,7 +705,7 @@ def test_the_balances_the_root_made_states_are_written_with_its_reward_paid(
     # The node holds the root's reward, 20 Karma, as soon as it makes it (§7.4).
     assert loads((storage.karma_dir / "balances.json").read_bytes()) == {
         **head.head_value(),
-        "balances": {str(node): {"kismet": "2000000000000000", "last_won": 0}},
+        "balances": {str(node): {"kismet": "2000000000000000", "last_won": "0"}},
     }
 
 

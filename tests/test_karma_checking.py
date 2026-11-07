@@ -32,7 +32,7 @@ from libranet.karma.generations import GenerationTargets, new_kismet
 from libranet.karma.ledger import AGE_LIMIT_FLOOR, BalanceSheet, Reward, reach_of
 from libranet.karma.weight import ChainWeight, StakeBaseline
 from libranet.protocol.karma_amounts import Kismet
-from libranet.protocol.karma_balances import NO_BALANCE, Balance
+from libranet.protocol.karma_balances import NO_BALANCE, Balance, LastWon
 from libranet.protocol.karma_stakes import SignedStake, Stake
 from libranet.protocol.karma_transactions import (
     Payout,
@@ -359,9 +359,9 @@ def test_the_payout_and_balances_a_correct_block_states_are_the_rewards_and_thos
     assert block.payout.sources == {None: new_kismet(1), alice.node_id: Kismet(10)}
     assert block.payout.to == {alice.node_id: Kismet(new_kismet(1).count + 10)}
     assert block.balances == {
-        alice.node_id: Balance(Kismet(held - 300), 1),
+        alice.node_id: Balance(Kismet(held - 300), LastWon.of(1)),
         # What Bob is paid in block 2 counts as if he won generation 1.
-        bob.node_id: Balance(Kismet(300), 1),
+        bob.node_id: Balance(Kismet(300), LastWon.of(1)),
     }
 
 
@@ -372,7 +372,7 @@ def test_a_block_stating_every_holder_has_reach_0(
     block: TransactionBlock,
 ) -> None:
     stating_dave = replace(
-        block, balances={**block.balances, DAVE: Balance(Kismet(1_000), 0)}, reach=0
+        block, balances={**block.balances, DAVE: Balance(Kismet(1_000), LastWon.of(0))}, reach=0
     )
 
     check = checked(stating_dave, alice, chain, keys)
@@ -512,7 +512,10 @@ def test_a_block_paying_other_than_the_reward_is_false(
 @mark.parametrize(
     "stated",
     [
-        lambda balances, alice: {**balances, alice: Balance(balances[alice].kismet + Kismet(1), 1)},
+        lambda balances, alice: {
+            **balances,
+            alice: Balance(balances[alice].kismet + Kismet(1), LastWon.of(1)),
+        },
         lambda balances, alice: {**balances, alice: Balance(balances[alice].kismet)},
         lambda balances, alice: {**balances, DAVE: Balance(Kismet(999))},
     ],
@@ -785,7 +788,8 @@ def test_the_roots_block_is_correct_by_its_shape_though_not_full(
         lambda root: replace(root, weight=ChainWeight(1)),
         lambda root: replace(root, reach=1),
         lambda root: replace(
-            root, balances={identity: Balance(Kismet(1), 0) for identity in root.balances}
+            root,
+            balances={identity: Balance(Kismet(1), LastWon.of(0)) for identity in root.balances},
         ),
         lambda root: replace(root, age_limit=AGE_LIMIT_FLOOR + 1),
         lambda root: replace(root, stake_baseline=StakeBaseline(1)),

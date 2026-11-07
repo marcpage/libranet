@@ -12,7 +12,7 @@ to ``balances.json`` in ``storage.karma_dir``, with the head it read them
 at, as ``head.json`` names it (:mod:`libranet.protocol.karma_head`)::
 
     {"head": "sha256/…", "generation": 41, "weight": "…",
-     "balances": {"sha256/…": {"kismet": "250", "last_won": 40}}}
+     "balances": {"sha256/…": {"kismet": "250", "last_won": "39.125"}}}
 
 each of the head's members ``null``, and ``balances`` empty, while it
 follows no chain. An identity it does not name holds nothing:
@@ -25,11 +25,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from json import loads
 from pathlib import Path
+from re import compile as compile_pattern
 from typing import Any, Final, Mapping
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
-from libranet.json_fields import is_integer
 from libranet.json_format import compact_json
 from libranet.protocol.karma_amounts import Kismet
 from libranet.protocol.karma_head import KarmaHead
@@ -40,9 +40,96 @@ KARMA_BALANCES_FILE: Final = "balances.json"
 #: The member of ``balances.json`` stating each identity's balance.
 BALANCES_FIELD: Final = "balances"
 
+#: How many decimal places of a generation a ``last_won`` is stated to (KarmaLedger §5.3).
+LAST_WON_PLACES: Final = 3
+
+#: The parts of a generation a ``last_won``, and so a stake's age, is counted
+#: in: thousandths (KarmaLedger §5.3, §6.6).
+GENERATION_PARTS: Final = 10**LAST_WON_PLACES
+
 # The members of a balance (KarmaLedger §5.3).
 _KISMET: Final = "kismet"
 _LAST_WON: Final = "last_won"
+
+# A ``last_won`` as written: a generation in decimal digits, with no leading
+# zero unless it is 0, and up to LAST_WON_PLACES decimal places, the last of
+# them not 0, so that each is written one way only (KarmaLedger §5.3).
+_LAST_WON_FORMAT: Final = compile_pattern(
+    rf"(0|[1-9][0-9]*)(\.[0-9]{{0,{LAST_WON_PLACES - 1}}}[1-9])?"
+)
+
+
+@dataclass(frozen=True, order=True)
+class LastWon:
+    """The effective generation a balance last won, in ``thousandths`` of a generation.
+
+    It is written as a string of the generation in decimal digits, with up
+    to three decimal places, such as ``"40"`` or ``"39.125"`` (KarmaLedger
+    §5.3).
+
+    Raises:
+        ValueError: ``thousandths`` is negative.
+    """
+
+    thousandths: int
+
+    def __post_init__(self) -> None:
+        if self.thousandths < 0:
+            raise ValueError(
+                f'A balance\'s "{_LAST_WON}" must not be negative, '
+                f"got {self.thousandths} thousandths of a generation"
+            )
+
+    @classmethod
+    def of(cls, generation: int) -> LastWon:
+        """Generation ``generation``, whole: the ``last_won`` of a staker that won it.
+
+        Raises:
+            ValueError: ``generation`` is negative.
+        """
+        return cls(generation * GENERATION_PARTS)
+
+    @classmethod
+    def from_value(cls, value: object, *, named: str = 'A balance\'s "last_won"') -> LastWon:
+        """The ``last_won`` ``value``, a string of a generation to a thousandth, writes (§5.3).
+
+        Raises:
+            ValueError: ``value``, called ``named``, is not a string of
+                decimal digits, with no leading zero unless the generation is
+                0, and up to three decimal places, the last of them not 0.
+        """
+        if not isinstance(value, str) or _LAST_WON_FORMAT.fullmatch(value) is None:
+            raise ValueError(
+                f"{named} must be a generation or null, written as a string of decimal digits "
+                f"with up to {LAST_WON_PLACES} decimal places and no trailing zero, got {value!r}"
+            )
+
+        whole, _, places = value.partition(".")
+        return cls(int(whole) * GENERATION_PARTS + int(places.ljust(LAST_WON_PLACES, "0")))
+
+    def value(self) -> str:
+        """This ``last_won`` as a balance states it: the generation, to a thousandth (§5.3)."""
+        whole, part = divmod(self.thousandths, GENERATION_PARTS)
+
+        if part == 0:
+            return str(whole)
+
+        return f"{whole}.{part:0{LAST_WON_PLACES}d}".rstrip("0")
+
+    def moved(self, kept: Kismet, received: Kismet, generation: int) -> LastWon:
+        """This, held for ``kept``, moved toward ``generation`` by ``received``'s share (§5.3).
+
+        It is rounded up, to a thousandth of a generation, so that rounding
+        never makes what is held older, and costs it no more than a
+        thousandth of a generation of age: however little is received, it
+        moves this only by its share.
+        """
+        weighted = kept.count * self.thousandths + received.count * generation * GENERATION_PARTS
+        return LastWon(-(-weighted // (kept.count + received.count)))
+
+    def since(self, generation: int) -> int:
+        """The thousandths of a generation from this to generation ``generation``."""
+        return generation * GENERATION_PARTS - self.thousandths
 
 
 @dataclass(frozen=True)
@@ -54,22 +141,16 @@ class Balance:
     ``None`` for one holding nothing (KarmaLedger §5.3).
 
     Raises:
-        ValueError: ``last_won`` is negative, or given for a balance holding
-            nothing.
+        ValueError: ``last_won`` is given for a balance holding nothing.
     """
 
     kismet: Kismet
-    last_won: int | None = None
+    last_won: LastWon | None = None
 
     def __post_init__(self) -> None:
-        if self.last_won is not None and self.last_won < 0:
-            raise ValueError(
-                f'A balance\'s "{_LAST_WON}" must not be negative, got {self.last_won}'
-            )
-
         if self.last_won is not None and self.kismet == Kismet(0):
             raise ValueError(
-                f'A balance holding no Kismet has no "{_LAST_WON}", got {self.last_won}'
+                f'A balance holding no Kismet has no "{_LAST_WON}", got {self.last_won.value()}'
             )
 
     def sent(self, amount: Kismet) -> Balance:
@@ -88,8 +169,9 @@ class Balance:
         """This balance and ``amount``, received as if won in generation ``generation`` (§5.3).
 
         Its ``last_won`` moves toward ``generation`` by ``amount``'s share of
-        what it then holds, rounded up, so that rounding never makes what it
-        holds older. One holding nothing takes ``generation``.
+        what it then holds, rounded up to a thousandth of a generation, so
+        that rounding never makes what it holds older (:meth:`LastWon.moved`).
+        One holding nothing takes ``generation``.
 
         Raises:
             ValueError: it would hold more than there can be.
@@ -100,10 +182,9 @@ class Balance:
         held = self.kismet + amount
 
         if self.last_won is None:
-            return Balance(held, generation)
+            return Balance(held, LastWon.of(generation))
 
-        weighted = self.kismet.count * self.last_won + amount.count * generation
-        return Balance(held, -(-weighted // held.count))
+        return Balance(held, self.last_won.moved(self.kismet, amount, generation))
 
     @classmethod
     def from_value(cls, value: object, *, named: str = "A balance") -> Balance:
@@ -112,25 +193,27 @@ class Balance:
         Raises:
             ValueError: ``value``, called ``named``, is not an object, its
                 ``kismet`` is no amount, or its ``last_won`` is missing or is
-                neither a generation nor ``null``.
+                neither a generation, as :meth:`LastWon.from_value` reads one,
+                nor ``null``.
         """
         if not isinstance(value, dict):
             raise ValueError(f"{named} must be a JSON object, got {type(value).__name__}")
 
-        won = value.get(_LAST_WON)
-        last_won: int | None = None
-
-        if is_integer(won):
-            last_won = won
-
-        elif won is not None or _LAST_WON not in value:
+        if _LAST_WON not in value:
             raise ValueError(f'{named}\'s "{_LAST_WON}" must be a generation or null')
 
+        won = value[_LAST_WON]
+        last_won = (
+            None if won is None else LastWon.from_value(won, named=f'{named}\'s "{_LAST_WON}"')
+        )
         return cls(Kismet.from_value(value.get(_KISMET), named=f'{named}\'s "{_KISMET}"'), last_won)
 
     def value(self) -> dict[str, Any]:
         """This balance as a block states it (KarmaLedger §5.3)."""
-        return {_KISMET: self.kismet.value(), _LAST_WON: self.last_won}
+        return {
+            _KISMET: self.kismet.value(),
+            _LAST_WON: None if self.last_won is None else self.last_won.value(),
+        }
 
 
 #: The balance of an identity stated nowhere, and of every one holding

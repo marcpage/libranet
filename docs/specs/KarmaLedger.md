@@ -659,7 +659,7 @@ JSON object
  "age_limit": 10,
  "reach": 3,
  "transactions": [],
- "balances": {"sha256/0a1b…": {"kismet": "1250000", "last_won": 40}}}
+ "balances": {"sha256/0a1b…": {"kismet": "1250000", "last_won": "40.125"}}}
 ```
 
 - **`generation`** is g. A block placed at another generation's target is
@@ -745,10 +745,14 @@ A **balance** is the JSON object `{"kismet": amount, "last_won":
 generation}`: the Kismet an identity holds, and the effective generation it
 last won: the generation of the last validation block whose reward paid it
 a share as a staker (§6.6), moved later by the Kismet it has received since,
-by amount, as below. A balance holding no Kismet has a `last_won` of `null`,
-and only such a balance does, so an identity that sends all it holds loses
-its `last_won`, and one that holds nothing takes the `last_won` of what it
-next receives.
+by amount, as below. `last_won` is kept to a thousandth of a generation,
+and written as a string of the generation in decimal digits with up to
+three decimal places, the last of them not 0, and no leading zero unless the
+generation is 0, such as `"40"` or `"40.125"`, so that each is written one
+way only. A balance holding no Kismet has a `last_won` of `null`, and only
+such a balance does, so an identity that sends all it holds loses its
+`last_won`, and one that holds nothing takes the `last_won` of what it next
+receives.
 
 A block's `balances` states, as of the end of the block, the balance of
 every sender and every recipient of its transactions, the payout's among
@@ -785,13 +789,13 @@ identity's balance before the block, the latest stated before it or else
   `last_won` g − 1. Any other the payout pays, the builder paid what
   rounding leaves over, receives it: what it receives, R, moves its
   `last_won` L toward g − 1, by amount, from what it keeps, K, all it holds
-  less all the payout takes: ⌈(K × L + R × (g − 1)) ÷ (K + R)⌉, rounded
-  up, so that rounding never makes what it holds older. Then what the
-  identity receives in the block's transactions moves the `last_won` it
-  then has toward g − 1 in the same way, K being all it then holds less all
-  it sends. At either step, one keeping nothing takes g − 1, and one
-  receiving nothing keeps its `last_won`, or has `null` if it is left
-  holding nothing.
+  less all the payout takes: (K × L + R × (g − 1)) ÷ (K + R), rounded up
+  to a thousandth of a generation, so that rounding never makes what it
+  holds older. Then what the identity receives in the block's transactions
+  moves the `last_won` it then has toward g − 1 in the same way, K being
+  all it then holds less all it sends. At either step, one keeping nothing
+  takes g − 1, and one receiving nothing keeps its `last_won`, or has
+  `null` if it is left holding nothing.
 
 So Kismet received in block g counts as if it were won in generation g − 1,
 and is a generation old in validation block g. Sending moves no `last_won`,
@@ -801,6 +805,14 @@ identity that has never won, or to one of its sender's own, gains nothing,
 and loses its sender's age unless sent just after a win. The order of a
 block's transactions changes no `last_won`, as what is kept is weighed
 after all that is sent.
+
+`last_won` is kept to a thousandth of a generation so that receiving a
+little moves it only a little. Rounded up to a whole generation, any amount
+received in a block, even 1 Kismet, moved it a generation, so 1 Kismet paid
+to a staker every generation kept its age from growing at all, however much
+it held, and anyone could hold a rival's stake age down that way. Rounded up
+to a thousandth, receiving costs no more age than its share of what is
+held, and a thousandth of a generation at most besides.
 
 A `last_won` weighs an identity's stakes (§6.6), so one stated wrongly
 shifts the pot as surely as a wrong `kismet` shifts Kismet.
@@ -1067,8 +1079,10 @@ received all it holds in block g, has age 1, one that won g − 2 age 2, and
 so on to A. A staker holding nothing, whose `last_won` is `null`, has age
 0, as the root's creator does (§7.3); every other stake is of Kismet at
 least a generation old. All of one staker's stakes in a generation count
-alike, and an effective stake is a whole number of Kismet × generations,
-with no fraction to round. A transfer never adds to anyone's age (§5.3), so
+alike. An age is counted to a thousandth of a generation, as `last_won` is
+(§5.3), and each staker's effective stake, all its stakes times its age, is
+rounded down to a whole number of Kismet × generations, so that every node
+works out the same. A transfer never adds to anyone's age (§5.3), so
 an identity that has never won starts with none, and moving Kismet to a new
 identity gains nothing (Karma §23).
 

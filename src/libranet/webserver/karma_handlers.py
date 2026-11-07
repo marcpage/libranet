@@ -11,7 +11,7 @@ another node as well as a page, since what a chain states is public:
   through it, and the node's own balance, as the chain states it there::
 
       {"head": "sha256/…", "generation": 41, "weight": "…",
-       "node_id": "sha256/…", "balance": {"kismet": "250", "last_won": 40}}
+       "node_id": "sha256/…", "balance": {"kismet": "250", "last_won": "39.125"}}
 
 - ``GET /data/karma/balances/{algorithm}/{hash}``: one identity's balance,
   as the chain states it at the same head, ``{"kismet": "0", "last_won":
@@ -90,7 +90,7 @@ it stakes, served as every endpoint beneath ``/config/api`` is (Phase 6 Step
   transactions carried; and the share the node stakes::
 
       {"head": "sha256/…", "generation": 41, "weight": "…",
-       "node_id": "sha256/…", "balance": {"kismet": "250", "last_won": 40},
+       "node_id": "sha256/…", "balance": {"kismet": "250", "last_won": "39.125"},
        "payments": [{"to": "sha256/…", "kismet": "200"}],
        "payments_due": "2026-10-27T10:00:00Z",
        "carried": [{"hash": "…", "transaction": {"from": "sha256/…", …},

@@ -10,7 +10,8 @@ every staker on the winning side.
 
 The pot is shared among the winning block's stakers by effective stake:
 each stake's Kismet times its staker's age, the generations since its
-``last_won``, up to the age limit its transaction block states. Every node
+``last_won``, to a thousandth, up to the age limit its transaction block
+states, rounded down to whole Kismet × generations. Every node
 divides a pot alike, to the Kismet, since a payout is known by the hash of
 what it states: each share is rounded down, and the Kismet left over go to
 the block's builder (§6.6).
@@ -24,7 +25,7 @@ from libranet.cas.content_id import ContentId
 from libranet.karma.blocks import TransactionBlock, ValidationBlock
 from libranet.karma.generations import new_kismet
 from libranet.protocol.karma_amounts import Kismet
-from libranet.protocol.karma_balances import NO_BALANCE, Balance
+from libranet.protocol.karma_balances import GENERATION_PARTS, NO_BALANCE, Balance, LastWon
 from libranet.protocol.karma_transactions import Payout
 
 #: The age limit while every stake fits in a validation block: the most
@@ -42,20 +43,22 @@ STAKES_PER_BLOCK: Final = 5_000
 
 @dataclass(frozen=True, order=True)
 class StakeAge:
-    """How many generations a staker's stakes count for: ``generations``, up to the age limit.
+    """How long a staker's stakes count for: ``thousandths`` of a generation, up to the age limit.
 
     It is 0 only for a staker holding nothing, as the root's creator does
     (§6.6, §7.3).
 
     Raises:
-        ValueError: ``generations`` is negative.
+        ValueError: ``thousandths`` is negative.
     """
 
-    generations: int
+    thousandths: int
 
     def __post_init__(self) -> None:
-        if self.generations < 0:
-            raise ValueError(f"A stake's age must not be negative, got {self.generations}")
+        if self.thousandths < 0:
+            raise ValueError(
+                f"A stake's age must not be negative, got {self.thousandths} thousandths"
+            )
 
     @classmethod
     def of(cls, balance: Balance, generation: int, limit: int) -> StakeAge:
@@ -63,26 +66,31 @@ class StakeAge:
 
         ``balance`` is the staker's as transaction block ``generation``
         leaves it, and ``limit`` the age limit that block states. A staker's
-        age is the generations since its ``last_won``, up to ``limit``: one
-        just after a win, or after receiving all it holds, two a generation
-        later, and so on (§6.6, Karma §23).
+        age is the generations since its ``last_won``, to a thousandth, up
+        to ``limit``: one just after a win, or after receiving all it holds,
+        two a generation later, and so on (§6.6, Karma §23).
 
         Raises:
-            ValueError: ``balance`` last won ``generation`` or later, which no
-                balance transaction block ``generation`` leaves has.
+            ValueError: ``balance`` last won less than a generation before
+                ``generation``, which no balance transaction block
+                ``generation`` leaves has.
         """
         if balance.last_won is None:
             return cls(0)
 
-        since = generation - balance.last_won
+        since = balance.last_won.since(generation)
 
-        if since < 1:
+        if since < GENERATION_PARTS:
             raise ValueError(
-                f"A staker in generation {generation} must have last won before it, "
-                f"got {balance.last_won}"
+                f"A staker in generation {generation} must have last won a generation or more "
+                f"before it, got {balance.last_won.value()}"
             )
 
-        return cls(min(since, limit))
+        return cls(min(since, limit * GENERATION_PARTS))
+
+    def effective(self, kismet: int) -> int:
+        """``kismet`` staked at this age, in Kismet × generations, rounded down (§6.6)."""
+        return kismet * self.thousandths // GENERATION_PARTS
 
     @staticmethod
     def limit(holders: int) -> int:
@@ -103,12 +111,12 @@ class StakeAge:
         That is all the staker's stakes in it, which count alike, times its
         age, from its balance in ``balances``, the latest stated through the
         transaction block ``validation`` validates, up to ``limit``, the age
-        limit that block states. A staker ``balances`` lacks holds nothing
-        (§5.3).
+        limit that block states, rounded down (:meth:`effective`). A staker
+        ``balances`` lacks holds nothing (§5.3).
 
         Raises:
-            ValueError: a staker's balance last won ``validation``'s
-                generation or later.
+            ValueError: a staker's balance last won less than a generation
+                before ``validation``'s.
         """
         staked: dict[ContentId, int] = {}
 
@@ -116,8 +124,9 @@ class StakeAge:
             staked[signed.staker] = staked.get(signed.staker, 0) + signed.stake.kismet.count
 
         return {
-            staker: count
-            * cls.of(balances.get(staker, NO_BALANCE), validation.generation, limit).generations
+            staker: cls.of(
+                balances.get(staker, NO_BALANCE), validation.generation, limit
+            ).effective(count)
             for staker, count in staked.items()
         }
 
@@ -282,7 +291,7 @@ class BalanceSheet:
 
         for identity, amount in payout.to.items():
             if identity in stakers:
-                held[identity] = Balance(held[identity].kismet + amount, won)
+                held[identity] = Balance(held[identity].kismet + amount, LastWon.of(won))
 
             else:
                 held[identity] = held[identity].received(amount, won)

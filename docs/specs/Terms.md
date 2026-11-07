@@ -281,9 +281,9 @@ it is lost, the node can no longer decrypt its backups.
 
 In the Karma ledger, the JSON object
 `{"kismet": amount, "last_won": generation}`: the Kismet an identity holds, and
-the effective generation it last won, or `null` when it holds nothing. A
-transaction block states, as of its end, the balance of every sender and
-recipient in it.
+the effective generation it last won, to a thousandth of a generation, or
+`null` when it holds nothing. A transaction block states, as of its end, the
+balance of every sender and recipient in it.
 
 - **Sources:** [Karma Ledger §5.3](KarmaLedger.md#53-balances-and-reach).
 - **See also:** [Amount](#amount), [Kismet](#kismet), [Last Won](#last-won),
@@ -886,9 +886,9 @@ node's HTTP message signatures, and the bundles it signs, use it.
 ### Effective Stake
 
 A stake's Kismet times its staker's stake age: the generations since its
-`last_won`, up to the age limit, in Kismet × generations. It ranks validation
-blocks after proof of work, counted against the stake baseline, and divides the
-pot whole.
+`last_won`, up to the age limit, in Kismet × generations, rounded down. It
+ranks validation blocks after proof of work, counted against the stake
+baseline, and divides the pot whole.
 
 - **Sources:** [Karma §23](Karma.md#23-stake-and-recent-winners),
   [Karma Ledger §6.6](KarmaLedger.md#66-the-reward).
@@ -1446,12 +1446,13 @@ nothing places it yet.
 
 ### Last Won
 
-A Karma balance's `last_won`: the effective generation the identity last won.
-It is the generation of the last validation block whose reward paid it a share
-as a staker, moved later by the Kismet it has received since, by amount, as if
-each were won in the generation before the block paying it; `null` when it
-holds nothing. It sets the stake age of the identity's stakes, so a transfer
-never adds to anyone's.
+A Karma balance's `last_won`: the effective generation the identity last won,
+to a thousandth of a generation, written like `"40.125"`. It is the generation
+of the last validation block whose reward paid it a share as a staker, moved
+later by the Kismet it has received since, by amount, as if each were won in
+the generation before the block paying it; `null` when it holds nothing. It
+sets the stake age of the identity's stakes, so a transfer never adds to
+anyone's.
 
 - **Sources:** [Karma Ledger §5.3](KarmaLedger.md#53-balances-and-reach),
   [§6.6](KarmaLedger.md#66-the-reward).
@@ -2627,7 +2628,8 @@ candidate blocks.
 ### Stake Age
 
 How many generations a Karma staker's stakes count for: the generations since
-its `last_won`, up to the age limit, and 0 for one holding nothing. Distinct
+its `last_won`, to a thousandth, up to the age limit, and 0 for one holding
+nothing. Distinct
 from a transaction's age.
 
 - **Sources:** [Karma Ledger §6.6](KarmaLedger.md#66-the-reward).

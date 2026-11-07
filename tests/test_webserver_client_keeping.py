@@ -11,7 +11,7 @@ from libranet.cas.content_id import ContentId
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.protocol.karma_amounts import Kismet
-from libranet.protocol.karma_balances import Balance, KarmaBalances
+from libranet.protocol.karma_balances import Balance, KarmaBalances, LastWon
 from libranet.protocol.karma_head import KarmaHead
 from libranet.webserver.client_keeping import ClientKeeping, HeldKarma, SoughtContent
 
@@ -55,9 +55,10 @@ def keeping(storage: StorageConfig, clock: Clock) -> ClientKeeping:
 
     :data:`NODE`, this node, holds more than either.
     """
-    KarmaBalances(HEAD, {RICH: Balance(Kismet(250), 3), NODE: Balance(Kismet(1_000), 3)}).write(
-        storage.karma_dir
-    )
+    KarmaBalances(
+        HEAD,
+        {RICH: Balance(Kismet(250), LastWon.of(3)), NODE: Balance(Kismet(1_000), LastWon.of(3))},
+    ).write(storage.karma_dir)
     seek_list(storage, data=[str(SOUGHT)])
     keeping = ClientKeeping(
         GRACE_REQUESTS,
@@ -93,7 +94,7 @@ def keeping_of(
     KarmaBalances(
         HEAD,
         {
-            client: Balance(Kismet(kismet), 3 if kismet else None)
+            client: Balance(Kismet(kismet), LastWon.of(3) if kismet else None)
             for client, kismet in {NODE: 1_000, **held}.items()
         },
     ).write(storage.karma_dir)
@@ -411,7 +412,11 @@ def test_keeping_follows_the_configuration(storage: StorageConfig, clock: Clock)
     )
     identity = NodeIdentity.load_or_create(config)
     KarmaBalances(
-        HEAD, {RICH: Balance(Kismet(250), 3), identity.node_id: Balance(Kismet(1_000), 3)}
+        HEAD,
+        {
+            RICH: Balance(Kismet(250), LastWon.of(3)),
+            identity.node_id: Balance(Kismet(1_000), LastWon.of(3)),
+        },
     ).write(storage.karma_dir)
     keeping = ClientKeeping.of(config, clock=clock)
     keeping.connected(POOR)

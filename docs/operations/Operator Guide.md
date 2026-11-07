@@ -433,7 +433,7 @@ seconds. A script reads the same with `GET /config/api/karma`:
 
 ```json
 {"head": "sha256/9f8e…", "generation": 41, "weight": "1208",
- "node_id": "sha256/0a1b…", "balance": {"kismet": "250", "last_won": 40},
+ "node_id": "sha256/0a1b…", "balance": {"kismet": "250", "last_won": "39.5"},
  "payments": [{"to": "sha256/4c2d…", "kismet": "200"}],
  "payments_due": "2026-10-27T10:00:00Z",
  "carried": [{"hash": "7d3f…", "transaction": {"from": "sha256/0a1b…", …},
