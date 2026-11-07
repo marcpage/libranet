@@ -3218,7 +3218,7 @@ My calls, not yet reviewed:
 ## Step 142 — Keeping Clients by Karma ✅
 
 **Kind:** improvement in behavior. **Issue:** #460, under #87.
-**Depends on:** Step 128; [Phase 8](Phase%208.md) Step 84, which
+**Depends on:** Step 128; [Phase 10](Phase%2010.md) Step 84, which
 has a server close a working connection by choice.
 
 A server keeps a client of higher Karma connected longer, and may close
@@ -3230,8 +3230,8 @@ Work this implies:
   first `network.client_grace_requests` (12) requests, one whose Karma is
   below the median of the clients connected, and that has pushed nothing
   this node seeks for `network.client_value_seconds` (600), is closed. One
-  of higher Karma is kept, and is the last Phase 8 Step 84's limit closes.
-- Phase 8 Step 84's rule stands for clients of equal Karma, as its plan
+  of higher Karma is kept, and is the last Phase 10 Step 84's limit closes.
+- Phase 10 Step 84's rule stands for clients of equal Karma, as its plan
   said it would until Karma was built.
 
 **Testable in isolation:** web server tests with fake peers and a fake
@@ -3265,11 +3265,11 @@ What was built:
   configuration.
 - HandshakeProtocol §5.2, HighLevelDesign §4.6, the Operator Guide's §3 and
   §4.8, the example configuration, the Module System and File Layout
-  documents, Phase 8 Step 84, and the README.
+  documents, Phase 10 Step 84, and the README.
 
 My calls, not yet reviewed:
 
-- **Built before Phase 8 Step 84**: the rule stands without the limit, and
+- **Built before Phase 10 Step 84**: the rule stands without the limit, and
   closing by choice is a `Connection: close` on the response. That one of
   higher Karma "is the last Step 84's limit closes" is left to Step 84.
 - **The request is answered, then the connection closed**, rather than
@@ -3477,7 +3477,7 @@ built (§3). In all, about 7,900.
 | 25 | 139 | Improvement in UI | About 20, shipping it; and the page | Needs 128's reads and 137's payments and stakes. |
 | 26 | 140 | Improvement in UI | None; the pages alone | Needs 128's reads, and 139's application to link to. |
 | 27 | 141 | Improvement in behavior | About 150 | Needs 128's balances file. |
-| 28 | 142 | Improvement in behavior | About 250 | Needs 128's balances, and Phase 8 Step 84's closing of a connection by choice. |
+| 28 | 142 | Improvement in behavior | About 250 | Needs 128's balances, and Phase 10 Step 84's closing of a connection by choice. |
 | 29 | 143 (#519) | Improvement in behavior | About 70 | Needs 141's order and 142's closing, which it answers. |
 
 The shun list the steps that build Karma use to let go of what a merge
@@ -3515,7 +3515,7 @@ ones that cut across more than one step:
   blocks at all unless its operator says so is open with Step 136's
   question of whether it stakes, which it built as recommended: 10% by
   default, not yet ruled.
-- **Keeping clients by Karma** (Step 142) — it was to wait on Phase 8
+- **Keeping clients by Karma** (Step 142) — it was to wait on Phase 10
   Step 84's closing of a connection by choice, and was built first, closing
   one itself. Step 84, still to be built, limits how many peers connect,
   and whether Karma decides which it keeps is open there.

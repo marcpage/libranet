@@ -112,8 +112,9 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   Phases 3 and 4 until this phase took the place of the first; after
   [Phase 4](Phase%204.md), user accounts, took the place of the next,
   and [Phase 5](Phase%205.md), the trust network, the place after that,
-  they are now [Phase 6](Phase%206.md) and [Phase 7](Phase%207.md), and
-  their steps kept their numbers.
+  they are now [Phase 6](Phase%206.md) and, after the Chaos and web
+  endpoints took Phases 7 and 8, [Phase 9](Phase%209.md), and their steps
+  kept their numbers.
 - **A step of an earlier phase is named with its phase**, as Phase 2
   names Phase 1's. A step number alone is a step of this document.
 - **What was asked, and what was chosen.** What was ruled when asked

@@ -1,24 +1,22 @@
-# Libranet Python Implementation Plan — Phase 7
+# Libranet Python Implementation Plan — Phase 11
 
-Version 0.5 • October 2026
+Version 0.1 • November 2026
 
 ---
 
 ## 1. Purpose
 
-This document plans what goes beyond a basic Libranet node: what a node
-can do without and still be a good citizen of the network, but which
-makes it easier to run where it runs. So far that is finding peers on the
-local network without being told of them, backing up from what the
-filesystem reports rather than by looking, reaching peers over IPv6, and
-letting go of blocks no one asks for any more.
+This document plans what a node can do without, but which some who run
+one would like it to have: finding peers on the local network without
+being told of them, backing up from what the filesystem reports rather
+than by looking, keeping content in AWS S3, and starting a node, or a
+local network of them, with a double-click.
 
 Every step below comes from an issue in the GitHub
-**Phase 7 - Enhancements** milestone, and each step names its issues.
+**Phase 11 - Bonus Features** milestone, and each step names its issues.
 Every issue in the milestone is either a step or accounted for in §4. As
 in the phases before it, this is an implementation plan, not a protocol
-specification — see [High-Level Design](../specs/HighLevelDesign.md),
-[HTTP API](../specs/HttpApi.md), and
+specification — see [High-Level Design](../specs/HighLevelDesign.md) and
 [Backup Specification](../specs/BackupSpecification.md) for the
 normative behavior this code implements.
 
@@ -26,9 +24,9 @@ Nothing here changes the architecture of Phase 1 §2: the same supervisor,
 the same dispatcher, the same module processes, the same filesystem CAS,
 and the same invariant that only the stats module opens SQLite.
 
-## 2. What Phase 7 Adds
+## 2. What Phase 11 Adds
 
-So far, four steps, each independent of the others:
+So far, two steps, independent of each other:
 
 - **Finding peers on the local network.** A node advertises itself over
   mDNS/DNS-SD and browses for others, and dials what it finds as it would
@@ -36,26 +34,21 @@ So far, four steps, each independent of the others:
 - **Backing up on notification.** Backup learns that a directory may have
   changed from the filesystem, rather than by polling and walking it.
   Step 50.
-- **IPv6.** A node listens, dials, and advertises over IPv6 as well as
-  IPv4. Step 57.
-- **Shunnings that age out.** A shunned content id that has not been seen
-  for a while leaves the shunned list, so that the list does not grow
-  without end. Step 95.
+
+Keeping content in AWS S3, and starting a node or a local network with a
+double-click, have issues, not yet planned (§4).
 
 ## 3. How to Read the Steps Below
 
 The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
 
 - **Step numbers stay stable.** Steps 16 and 50 were planned in Phase 2
-  and moved here unbuilt, with their issues, keeping their numbers. Step
-  16 had moved to Phase 2 from Phase 1 the same way. This plan was
-  Phase 4 until video playback became Phase 3 and Karma moved to Phase
-  4, Phase 5 until user accounts became Phase 4 and Karma moved to
-  Phase 5, and Phase 6 until the trust network became Phase 5 and Karma
-  moved to Phase 6. Each time it moved with its milestone, its steps
-  keeping their numbers too. New steps take the next free number: Step
-  57 was the first, and Step 95, added after the trust network's Step 94
-  ([Phase 5](Phase%205.md)), the next.
+  and moved unbuilt, with their issues, to the enhancements plan, which
+  was Phase 4 then, and Phase 7 by the time the Chaos endpoint took that
+  number. That plan is now [Phase 9](Phase%209.md), Polish, and the two
+  steps came here when their issues moved to this milestone, keeping
+  their numbers. Step 16 had moved to Phase 2 from Phase 1 the same way.
+  New steps take the next free number.
 - **A step of an earlier phase is named with its phase**, as Phase 2
   names Phase 1's. A step number alone is a step of this document.
 
@@ -186,146 +179,32 @@ against the real library in a temp directory checks the wiring.
 
 ---
 
-## Step 57 — IPv6
-
-**Issue:** #133, which names the goal and no more. **Depends on:** Phase
-1 Steps 5, 9, 10, 11; Phase 2 Step 23.
-
-Much of the node already copes with IPv6 when it meets it:
-
-- The web server listens on IPv6 and IPv4 by default: `listen_address`
-  is `::`, on a socket made dual-stack explicitly, and `0.0.0.0` on a
-  host with no IPv6 (#394, `webserver/server.py`). A client's IPv4-mapped
-  address is unwrapped before it is checked for loopback
-  (`webserver/client_origin.py`) or written into a resolved `localhost`
-  entry (`webserver/localhost_resolution.py`), which brackets an IPv6
-  host as RFC 3986 requires.
-- A bracketed endpoint parses (`PeerAddress.of`), and dialing it, or a
-  name with only IPv6 addresses, works: `PeerConnection.open` uses
-  `create_connection`, which tries every address a name resolves to.
-- A peer's IP is read from an IPv6 socket as from an IPv4 one, and
-  reverse DNS looks it up the same way.
-- A node with no `external_address` advertises `localhost`, and the
-  receiver fills in the address the connection came from, IPv6 or not,
-  so a node need not know its own global address.
-
-What is missing:
-
-- **Advertising an IPv6 address.** `advertised_endpoint()` writes
-  `external_address` into the endpoint as it is, so an IPv6 address comes
-  out unbracketed, and no peer can parse it.
-- **The specification.** HttpApi §10.1 and §10.6 give endpoints as
-  `scheme://host:port` and say nothing of IPv6 literals, nor what a
-  receiver resolving `localhost` writes for an IPv6 source address.
-- **A way to try it.** The local network script listens at `::` by
-  default, but tells its nodes of each other at `127.0.0.1`. Given an
-  IPv6 `--host`, it tells them of each other at it, bracketed, but
-  no test runs a network that way.
-
-**Open questions:**
-
-- What a node list names for a node reachable both ways. HttpApi §10.6,
-  as Phase 2 Step 23 ruled, names each node at its last known good
-  address. If that is an IPv6 address, a peer with no IPv6 is given
-  nothing it can use for that node. The last good address of each family
-  would fix that, and changes §10.6.
-- Whether a node with no IPv6 route leaves IPv6 addresses out of what it
-  dials, rather than dialing each until Phase 2 Step 23's failure count
-  drops it.
-- Whether local discovery (Step 16) advertises and reads AAAA records,
-  which it leaves out to match an IPv4 listener.
-
-**Testable in isolation:** tests on `::1`, skipped where the host has no
-IPv6 loopback: a node list POSTed from `::1` resolves `localhost` to a
-bracketed endpoint, a fixture peer at a bracketed endpoint is dialed and
-completes the handshake, and an IPv6 `external_address` is advertised
-bracketed. Config tests cover the listen default and its fallback.
-
----
-
-## Step 95 — Aging Out Shunned Data
-
-**Issue:** #279. **Depends on:** Phase 4 Step 30.
-
-Phase 4 Step 30 ruled that **a shunning is permanent**: it never expires,
-nothing lifts it, and only deleting the database resets it. Every shunning
-is a `data_stats` row with `shunned_at` set, and every one is written to
-`lists/shunned.json`, uncapped, which the web server, the validator, and
-the fetcher each read. A node that shuns each directory bundle a newer
-one replaces (Phase 4 Step 92), and later each block Karma's merges
-supersede ([Phase 6](Phase%206.md) Step 56), adds to it for as long as it
-runs.
-
-Settled in the issue, tentatively ("maybe"):
-
-- A shunned id that has not been seen for a period of time can be removed
-  from the list.
-
-Work this implies:
-
-- **It reverses a ruling.** Step 30's "a shunning is permanent" becomes "a
-  shunning lasts while its content is still seen", and HighLevelDesign §4.11
-  and HttpApi §5.5, which say what a node does with shunned content, say
-  so too.
-- **Stats needs to know when a shunned id was last seen.** `data_stats`
-  has `last_requested` and `shunned_at`, but no time a shunned id was
-  last pushed or named in a peer's search answer: the validator discards
-  a shunned push unannounced, and the fetcher never asks for one.
-- **The derivation drops what has aged out** of `lists/shunned.json`, as
-  it already derives the list each minute, and the readers pick the
-  change up as they do any rewrite of the file.
-
-**Open questions:**
-
-- What "seen" is: a request for the id, a push of it, a peer's search
-  answer naming it, or each of these.
-- Whether an aged-out id is unshunned, its `shunned_at` cleared, or kept
-  in the database and left out of the list file only, so that a node
-  that meets it again can shun it again without being told.
-- How long the period is, whether it is a setting, and whether it counts
-  from the shunning or from the last time the id was seen.
-- What a node does with an aged-out id that comes back. Unshunned, it is
-  fetched, kept, and served again, and the content a merge superseded
-  returns to the network, unless whatever shunned it shuns it again.
-
-**Testable in isolation:** stats tests over a temp database with a fake
-clock, asserting a shunned id seen within the period stays in the list,
-and one not seen ages out of it at the next derivation.
-
----
-
 ## 4. Issues in the Milestone
 
-Every issue in the **Phase 7 - Enhancements** milestone, by number, and
-where it went.
+Every issue in the **Phase 11 - Bonus Features** milestone, by number,
+and where it went.
 
 | Issue | Asks for | Step |
 | --- | --- | --- |
-| #20 | mDNS/DNS-SD local discovery | 16, moved from Phase 2 |
-| #85 | Filesystem notifications for backup | 50, moved from Phase 2 |
-| #133 | IPv6 | 57 |
+| #20 | mDNS/DNS-SD local discovery | 16, moved from Phase 9 |
+| #85 | Filesystem notifications for backup | 50, moved from Phase 9 |
 | #149 | AWS S3 as another CAS store | None yet: not planned |
-| #159 | Windows support | None yet: not planned |
-| #160 | Releasing on PyPI | None yet: not planned |
-| #181 | HTTPS | None yet: not planned |
-| #279 | Aging out shunned data | 95 |
 | #399 | A macOS node started with a double-click | None yet: not planned |
 | #400 | A macOS local network started with a double-click | None yet: not planned |
 | #401 | A Windows node started with a double-click | None yet: not planned |
 | #402 | A Windows local network started with a double-click | None yet: not planned |
 
-[Phase 8](Phase%208.md), the seed node, depends on #149: its milestone
+[Phase 10](Phase%2010.md), the seed node, depends on #149: its milestone
 asks for content to be kept in AWS S3.
 
 ## 5. Suggested Build Order
 
-The four steps are independent of each other; what orders them is what
+The two steps are independent of each other; what orders them is what
 each waits on.
 
 | Tier | Steps | Why here |
 | --- | --- | --- |
-| A | 16 (#20), 57 (#133) | 16 is ready: Phase 2 Step 23 is built, and its specification change is made. It is optional throughout. 57 needs its node-list question ruled first, since the answer changes HttpApi §10.6. Whichever lands second handles the other's address family (§6). |
-| A | 95 (#279) | Phase 4 Step 30 is built. It needs what "seen" is ruled first, and the change to HighLevelDesign §4.11 and HttpApi §5.5 written. |
+| A | 16 (#20) | 16 is ready: Phase 2 Step 23 is built, and its specification change is made. It is optional throughout. Whichever of it and [Phase 9](Phase%209.md) Step 57 lands second handles the other's address family (§6). |
 | B | 50 (#85) | Waits on Phase 2 Steps 48 and 49: 48's record lets a run look at only the paths a notification names, and 49 turns the change detector into "look now" or "look at these paths". |
 
 ## 6. Open Items Not Yet Decided
@@ -333,10 +212,10 @@ each waits on.
 The per-step **Open questions** above are the substance of this list; the
 ones that cut across more than one step:
 
-- **Local discovery and IPv6** (Steps 16 and 57) — Step 16 takes addresses
-  from A records alone, to match an IPv4 listener. If Step 57 comes
-  first, discovery can advertise and read AAAA records from the start;
-  if second, Step 57 adds them.
+- **Local discovery and IPv6** (Step 16 and [Phase 9](Phase%209.md) Step
+  57) — Step 16 takes addresses from A records alone, to match an IPv4
+  listener. If Step 57 comes first, discovery can advertise and read AAAA
+  records from the start; if second, Step 57 adds them.
 - **New dependencies** (Steps 16 and 50) — Step 16 makes `zeroconf` a
   required dependency, LGPL-2.1-or-later and the project's first copyleft
   one, and Step 50 would most likely add `watchdog`. Each brings threads

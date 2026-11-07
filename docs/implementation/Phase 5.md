@@ -92,10 +92,11 @@ The conventions of [Phase 2](Phase%202.md) §3 and
 - **Step numbers stay stable**, and new steps take the next free number.
   The Karma, enhancement, and seed node plans were Phases 5, 6, and 7
   until this phase took the place of the first; they are now
-  [Phase 6](Phase%206.md), [Phase 7](Phase%207.md), and
-  [Phase 8](Phase%208.md), and their steps kept their numbers. Step 93
+  [Phase 6](Phase%206.md) and, after the Chaos and web endpoints took
+  Phases 7 and 8, [Phase 9](Phase%209.md) and [Phase 10](Phase%2010.md),
+  and their steps kept their numbers. Step 93
   ([Phase 4](Phase%204.md)) was the last number taken, so this phase
-  starts at Step 94. Step 95 was taken by [Phase 7](Phase%207.md) (#279)
+  starts at Step 94. Step 95 was taken by [Phase 9](Phase%209.md) (#279)
   before the steps that build the trust network were written, so they
   start at Step 96.
 - **A step of an earlier phase is named with its phase**, as Phase 2
