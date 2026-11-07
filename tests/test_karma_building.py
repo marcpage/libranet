@@ -28,7 +28,7 @@ from libranet.karma.placing import BlockPlacing
 from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
 from libranet.messaging.events import EventType
 from libranet.protocol.karma_amounts import Kismet
-from libranet.protocol.karma_balances import Balance
+from libranet.protocol.karma_balances import Balance, LastWon
 from libranet.protocol.karma_carried import CarriedTransaction
 from libranet.protocol.karma_transactions import SignedTransaction, Transaction
 from libranet.protocol.search import LocalSearch
@@ -467,7 +467,7 @@ def test_balances_are_stated_to_shorten_the_reach_within_the_cap(
     taking = sent(alice, {bob.node_id: 1}, 2)
     block = CombinedBlock.of([taking], third.head, chain, bounds=ROOMY).block(1)
 
-    assert block.balances[PAID[0]] == Balance(Kismet(5), 1)
+    assert block.balances[PAID[0]] == Balance(Kismet(5), LastWon.of(1))
     assert block.reach == 0
     data = signed_at(third.targets.transaction, carol, block)
     hold(truth, data)
@@ -838,7 +838,7 @@ def test_with_nothing_to_take_a_block_of_the_payout_alone_is_built_once(
     block = BlockDrop.parsed(data, TransactionBlock).block
     assert block == root.block_after()
     # The root's reward, 20 Karma, for Alice to spend in it (§7.4).
-    assert block.balances[alice.node_id] == Balance(Kismet(2_000_000_000_000_000), 0)
+    assert block.balances[alice.node_id] == Balance(Kismet(2_000_000_000_000_000), LastWon.of(0))
     assert checked(reader, history, root.head, data).is_correct
 
 

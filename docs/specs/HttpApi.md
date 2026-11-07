@@ -1794,7 +1794,7 @@ GET /data/karma
 
 ```json
 {"head": "sha256/…", "generation": 41, "weight": "1208",
- "node_id": "sha256/…", "balance": {"kismet": "250", "last_won": 40},
+ "node_id": "sha256/…", "balance": {"kismet": "250", "last_won": "39.125"},
  "holders": 12}
 ```
 
@@ -1804,10 +1804,11 @@ and `weight` the chain's weight through it, in decimal digits (Karma Ledger
 it at that head, its reward paid: `kismet` is the Kismet it holds, in
 decimal digits, and `last_won` the effective generation it last won, the
 generation whose reward last paid it a share as a staker, moved later by the
-Kismet it has received since (Karma Ledger §5.3), or `null` if it holds
-nothing. `holders` is how many identities hold Kismet in those
-balances, which sets how large a block of the next generation must be to be
-full (Karma Ledger §5.4).
+Kismet it has received since, as a string of decimal digits with up to three
+decimal places (Karma Ledger §5.3), or `null` if it holds nothing.
+`holders` is how many identities hold Kismet in those balances, which sets
+how large a block of the next generation must be to be full (Karma Ledger
+§5.4).
 
 ```http
 GET /data/karma/balances/{algorithm}/{hash}

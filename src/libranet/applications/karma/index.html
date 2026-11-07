@@ -264,6 +264,11 @@ const BITS_PER_HEX_DIGIT = 4;
 // zero unless it is "0" (KarmaLedger 4.1).
 const KISMET = /^(?:0|[1-9][0-9]*)$/;
 
+// The generation a balance has aged since, as the chain writes it: decimal
+// digits, with up to three decimal places, the last of them not 0
+// (KarmaLedger 5.3).
+const LAST_WON = /^(?:0|[1-9][0-9]*)(?:\.[0-9]{0,2}[1-9])?$/;
+
 // An amount of Karma as a person types it: whole Karma, then a point and up
 // to KARMA_DECIMALS decimals, either of them left out.
 const TYPED_KARMA = /^\s*([0-9]*)(?:\.([0-9]*))?\s*$/;
@@ -517,7 +522,7 @@ function isBalance(value) {
     isObject(value) &&
     typeof value.kismet === "string" &&
     KISMET.test(value.kismet) &&
-    (value.last_won === null || Number.isSafeInteger(value.last_won))
+    (value.last_won === null || (typeof value.last_won === "string" && LAST_WON.test(value.last_won)))
   );
 }
 

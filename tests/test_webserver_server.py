@@ -59,7 +59,7 @@ from libranet.problems import (
 )
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE, REQUEST_PATH_HEADER
 from libranet.protocol.karma_amounts import Kismet
-from libranet.protocol.karma_balances import Balance, KarmaBalances
+from libranet.protocol.karma_balances import Balance, KarmaBalances, LastWon
 from libranet.protocol.karma_head import KarmaGeneration, KarmaHead
 from libranet.protocol.search import SEARCH_RELAYS_HEADER
 from libranet.stats.module import StatsModule
@@ -836,7 +836,10 @@ def test_a_peer_of_low_karma_that_adds_nothing_is_answered_then_closed(
 
     KarmaBalances(
         KarmaHead(ContentId("sha256", "c1" * 32), 1, 96),
-        {rich.node_id: Balance(Kismet(250), 0), SERVER_IDENTITY.node_id: Balance(Kismet(1_000), 0)},
+        {
+            rich.node_id: Balance(Kismet(250), LastWon.of(0)),
+            SERVER_IDENTITY.node_id: Balance(Kismet(1_000), LastWon.of(0)),
+        },
     ).write(storage.karma_dir)
     path = f"/data/{CONTENT_ID}"
     host, port = keeping_server.server_address[:2]
@@ -3290,7 +3293,9 @@ def test_any_client_reads_what_the_karma_chain_followed_states(
 ) -> None:
     unfollowed, _ = _get(local_connection, "/data/karma")
     head = KarmaHead(ContentId("sha256", "c1" * 32), 1, 96)
-    KarmaBalances(head, {SERVER_IDENTITY.node_id: Balance(Kismet(250), 0)}).write(storage.karma_dir)
+    KarmaBalances(head, {SERVER_IDENTITY.node_id: Balance(Kismet(250), LastWon.of(0))}).write(
+        storage.karma_dir
+    )
     (storage.karma_dir / "head.json").write_text(dumps(head.value()), encoding="utf-8")
 
     for generation in (0, 1):
@@ -3308,7 +3313,7 @@ def test_any_client_reads_what_the_karma_chain_followed_states(
     assert unfollowed.status == 503
     assert unfollowed.getheader("Retry-After") == str(RETRY_AFTER_SECONDS)
     assert karma.status == 200
-    assert loads(karma_body)["balance"] == {"kismet": "250", "last_won": 0}
+    assert loads(karma_body)["balance"] == {"kismet": "250", "last_won": "0"}
     assert balance.status == 200
     assert loads(balance_body) == {"kismet": "0", "last_won": None}
     assert generations.status == 200

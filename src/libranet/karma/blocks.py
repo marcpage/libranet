@@ -8,7 +8,7 @@ its builder, whose ``contents`` is JSON (§5.1, §6.1)::
     {"generation": 42, "previous": "sha256/…", "weight": "1288490188800",
      "stake_baseline": "52000", "age_limit": 10, "reach": 3,
      "transactions": […], "balances": {"sha256/0a1b…":
-     {"kismet": "1250000", "last_won": 40}}}
+     {"kismet": "1250000", "last_won": "39.125"}}}
 
     {"generation": 42, "runner_up": "sha256/…", "stakes": […],
      "witnessed": ["…"]}

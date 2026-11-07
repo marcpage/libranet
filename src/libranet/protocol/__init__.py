@@ -72,10 +72,13 @@ from libranet.protocol.identity_requests import (
 from libranet.protocol.karma_amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet
 from libranet.protocol.karma_balances import (
     BALANCES_FIELD,
+    GENERATION_PARTS,
     KARMA_BALANCES_FILE,
+    LAST_WON_PLACES,
     NO_BALANCE,
     Balance,
     KarmaBalances,
+    LastWon,
 )
 from libranet.protocol.karma_carried import CARRIED_FILE, CarriedTransaction
 from libranet.protocol.karma_head import (
@@ -153,6 +156,7 @@ __all__ = [
     "DEFAULT_PORTS",
     "FROM_MEMBER",
     "GENERATION_FIELD",
+    "GENERATION_PARTS",
     "GENERATIONS_DIR",
     "HEAD_FIELD",
     "IDENTIFIER_LENGTH",
@@ -161,6 +165,7 @@ __all__ = [
     "KARMA_HEAD_FILE",
     "KARMA_HEAD_PATH",
     "KISMET_PER_KARMA",
+    "LAST_WON_PLACES",
     "LOCALHOST",
     "MAX_KISMET",
     "MIN_PASSWORD_CHARACTERS",
@@ -206,6 +211,7 @@ __all__ = [
     "KarmaGeneration",
     "KarmaHead",
     "Kismet",
+    "LastWon",
     "LocalSearch",
     "NodeListSender",
     "NodeMetadataRequest",

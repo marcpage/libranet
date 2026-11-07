@@ -12,7 +12,7 @@ from libranet.config.models import StorageConfig
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import ConnectionDirection, EventType
 from libranet.protocol.karma_amounts import Kismet
-from libranet.protocol.karma_balances import Balance, KarmaBalances
+from libranet.protocol.karma_balances import Balance, KarmaBalances, LastWon
 from libranet.protocol.karma_head import KarmaHead
 from libranet.webserver.client_keeping import ClientKeeping, HeldKarma, SoughtContent
 from libranet.webserver.inbound_peers import InboundPeers
@@ -138,9 +138,10 @@ def kept_peers(tmp_path: Path, published: Recorder, clock: Clock) -> InboundPeer
     """
     storage = StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache")
     head = KarmaHead(ContentId("sha256", "c1" * 32), 4, 96)
-    KarmaBalances(head, {OTHER: Balance(Kismet(250), 3), NODE: Balance(Kismet(1_000), 3)}).write(
-        storage.karma_dir
-    )
+    KarmaBalances(
+        head,
+        {OTHER: Balance(Kismet(250), LastWon.of(3)), NODE: Balance(Kismet(1_000), LastWon.of(3))},
+    ).write(storage.karma_dir)
     storage.seek_list_path.parent.mkdir(parents=True)
     storage.seek_list_path.write_text(dumps({"data": [str(SOUGHT)]}))
     keeping = ClientKeeping(

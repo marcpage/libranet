@@ -1438,7 +1438,7 @@ follows, its own balance there, and how many identities hold Kismet:
 
 ```json
 {"head": "sha256/…", "generation": 41, "weight": "1208",
- "node_id": "sha256/…", "balance": {"kismet": "250", "last_won": 40},
+ "node_id": "sha256/…", "balance": {"kismet": "250", "last_won": "39.125"},
  "holders": 12}
 ```
 
@@ -1446,9 +1446,11 @@ follows, its own balance there, and how many identities hold Kismet:
 digits, since a JavaScript number holds no whole number above 2^53 exactly:
 read it with `BigInt`. `last_won` is the generation its Kismet has aged
 since: the generation whose reward last paid it a share as a staker, moved
-later by what it has received since, or `null` when it holds nothing. Each balance is the chain's at the head, with the head's
-reward paid, so whoever that reward pays holds it at once, the creator of a
-root its 20 Karma among them. `GET /data/karma/balances/{id}` gives anyone's
+later by what it has received since, written as a string to a thousandth of
+a generation, like `"39.125"`, or `null` when it holds nothing. Each balance
+is the chain's at the head, with the head's reward paid, so whoever that
+reward pays holds it at once, the creator of a root its 20 Karma among them.
+`GET /data/karma/balances/{id}` gives anyone's
 balance, as the chain states it at the same head,
 `{"kismet": "0", "last_won": null}` for someone it does not name.
 `GET /data/karma/generations` lists the newest 100

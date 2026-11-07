@@ -98,7 +98,7 @@ def test_the_roots_creator_is_written_holding_the_roots_reward_once_for_the_head
         "head": str(chain.head),
         "generation": 0,
         "weight": chain.weight().value(),
-        "balances": {str(alice.node_id): {"kismet": "2000000000000000", "last_won": 0}},
+        "balances": {str(alice.node_id): {"kismet": "2000000000000000", "last_won": "0"}},
     }
     assert not balances.write()
 
@@ -126,7 +126,7 @@ def test_every_balance_stated_at_the_head_is_written_with_the_heads_reward_paid(
     # she paid him, in block 2, as if he won generation 1.
     assert written(storage)["balances"] == {
         str(alice.node_id): chain.block_after().balances[alice.node_id].value(),
-        str(bob.node_id): {"kismet": "7", "last_won": 1},
+        str(bob.node_id): {"kismet": "7", "last_won": "1"},
     }
 
 

@@ -9,7 +9,7 @@ from pytest import mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.protocol.karma_amounts import Kismet
-from libranet.protocol.karma_balances import Balance, KarmaBalances
+from libranet.protocol.karma_balances import Balance, KarmaBalances, LastWon
 from libranet.protocol.karma_head import KarmaHead
 
 HEAD = KarmaHead(ContentId("sha256", "c1" * 32), 41, 1208)
@@ -22,7 +22,7 @@ def test_balances_are_written_and_read_back_with_the_head_they_were_read_at(
     tmp_path: Path,
 ) -> None:
     balances = KarmaBalances(
-        HEAD, {BOB: Balance(Kismet(7), 40), ALICE: Balance(Kismet(10**28), None)}
+        HEAD, {BOB: Balance(Kismet(7), LastWon.of(40)), ALICE: Balance(Kismet(10**28), None)}
     )
 
     balances.write(tmp_path)
@@ -33,16 +33,16 @@ def test_balances_are_written_and_read_back_with_the_head_they_were_read_at(
         "weight": "1208",
         "balances": {
             str(ALICE): {"kismet": str(10**28), "last_won": None},
-            str(BOB): {"kismet": "7", "last_won": 40},
+            str(BOB): {"kismet": "7", "last_won": "40"},
         },
     }
     assert KarmaBalances.read(tmp_path) == balances
 
 
 def test_an_identity_not_stated_holds_nothing_and_has_no_last_won() -> None:
-    balances = KarmaBalances(HEAD, {ALICE: Balance(Kismet(250), 40)})
+    balances = KarmaBalances(HEAD, {ALICE: Balance(Kismet(250), LastWon.of(40))})
 
-    assert balances.balance(ALICE) == Balance(Kismet(250), 40)
+    assert balances.balance(ALICE) == Balance(Kismet(250), LastWon.of(40))
     assert balances.balance(CAROL) == Balance(Kismet(0), None)
     assert balances.balance(CAROL).value() == {"kismet": "0", "last_won": None}
 
@@ -81,12 +81,12 @@ def test_a_node_following_no_chain_states_no_balances(tmp_path: Path) -> None:
             f'The balance of {ALICE}\'s "kismet" must be a string',
         ),
         (
-            {**HEAD.value(), "balances": {str(ALICE): {"kismet": "1", "last_won": "2"}}},
+            {**HEAD.value(), "balances": {str(ALICE): {"kismet": "1", "last_won": 2}}},
             '"last_won" must be a generation or null',
         ),
         (
-            {**HEAD.value(), "balances": {str(ALICE): {"kismet": "1", "last_won": -2}}},
-            '"last_won" must not be negative',
+            {**HEAD.value(), "balances": {str(ALICE): {"kismet": "1", "last_won": "-2"}}},
+            '"last_won" must be a generation or null',
         ),
         ({**HEAD.value(), "balances": {str(ALICE): "1"}}, "must be a JSON object"),
         (
@@ -117,10 +117,10 @@ def test_a_balance_must_say_when_it_last_won(tmp_path: Path) -> None:
 
 
 def test_a_balance_reads_back_as_written() -> None:
-    balance = Balance(Kismet(1_250_000), 40)
+    balance = Balance(Kismet(1_250_000), LastWon.of(40))
 
     assert Balance.from_value(balance.value()) == balance
-    assert balance.value() == {"kismet": "1250000", "last_won": 40}
+    assert balance.value() == {"kismet": "1250000", "last_won": "40"}
 
 
 def test_a_balance_holding_nothing_is_stated_with_null() -> None:
@@ -129,31 +129,35 @@ def test_a_balance_holding_nothing_is_stated_with_null() -> None:
 
 def test_a_balance_holding_nothing_stating_a_last_won_is_refused() -> None:
     with raises(ValueError, match='A balance holding no Kismet has no "last_won", got 40'):
-        Balance.from_value({"kismet": "0", "last_won": 40})
+        Balance.from_value({"kismet": "0", "last_won": "40"})
 
 
 def test_sending_leaves_last_won_as_it_was() -> None:
-    assert Balance(Kismet(300), 20).sent(Kismet(100)) == Balance(Kismet(200), 20)
+    assert Balance(Kismet(300), LastWon.of(20)).sent(Kismet(100)) == Balance(
+        Kismet(200), LastWon.of(20)
+    )
 
 
 def test_sending_all_a_balance_holds_leaves_it_holding_nothing_with_no_last_won() -> None:
-    assert Balance(Kismet(300), 20).sent(Kismet(300)) == Balance(Kismet(0))
+    assert Balance(Kismet(300), LastWon.of(20)).sent(Kismet(300)) == Balance(Kismet(0))
 
 
 def test_sending_more_than_a_balance_holds_is_refused() -> None:
     with raises(ValueError, match="from 0 to"):
-        Balance(Kismet(300), 20).sent(Kismet(301))
+        Balance(Kismet(300), LastWon.of(20)).sent(Kismet(301))
 
 
 @mark.parametrize(
     ("balance", "amount", "generation", "after"),
     [
-        # (300 × 20 + 100 × 41) ÷ 400 = 25.25, rounded up.
-        (Balance(Kismet(300), 20), 100, 41, Balance(Kismet(400), 26)),
+        # (300 × 20 + 100 × 41) ÷ 400 = 25.25, exactly.
+        (Balance(Kismet(300), LastWon.of(20)), 100, 41, Balance(Kismet(400), LastWon(25_250))),
         # (100 × 20 + 100 × 40) ÷ 200 = 30, exactly.
-        (Balance(Kismet(100), 20), 100, 40, Balance(Kismet(200), 30)),
-        (Balance(Kismet(0)), 100, 41, Balance(Kismet(100), 41)),
-        (Balance(Kismet(300), 20), 0, 41, Balance(Kismet(300), 20)),
+        (Balance(Kismet(100), LastWon.of(20)), 100, 40, Balance(Kismet(200), LastWon.of(30))),
+        # (2 × 20 + 1 × 40) ÷ 3 = 26.666…, rounded up to a thousandth.
+        (Balance(Kismet(2), LastWon.of(20)), 1, 40, Balance(Kismet(3), LastWon(26_667))),
+        (Balance(Kismet(0)), 100, 41, Balance(Kismet(100), LastWon.of(41))),
+        (Balance(Kismet(300), LastWon.of(20)), 0, 41, Balance(Kismet(300), LastWon.of(20))),
     ],
 )
 def test_receiving_moves_last_won_toward_the_generation_received_in_by_amount(
@@ -166,9 +170,9 @@ def test_receiving_moves_last_won_toward_the_generation_received_in_by_amount(
     "value, member",
     [
         ({"kismet": "0"}, "last_won"),
-        ({"kismet": "0", "last_won": "40"}, "last_won"),
-        ({"kismet": "0", "last_won": True}, "last_won"),
-        ({"kismet": "0", "last_won": 4.5}, "last_won"),
+        ({"kismet": "1", "last_won": 40}, "last_won"),
+        ({"kismet": "1", "last_won": True}, "last_won"),
+        ({"kismet": "1", "last_won": 4.5}, "last_won"),
         ({"kismet": "-1", "last_won": None}, "kismet"),
         ({"kismet": "1.5", "last_won": None}, "kismet"),
         ({"last_won": None}, "kismet"),
@@ -183,7 +187,50 @@ def test_a_balance_not_as_it_must_be_is_refused_naming_its_member(
 
 def test_a_balance_won_before_the_root_is_refused() -> None:
     with raises(ValueError, match='"last_won" must not be negative'):
-        Balance(Kismet(0), -1)
+        LastWon.of(-1)
+
+
+def test_a_little_received_moves_last_won_by_its_share_and_no_more_than_a_thousandth() -> None:
+    balance = Balance(Kismet(10**16), LastWon.of(20))
+
+    assert balance.received(Kismet(1), 40) == Balance(Kismet(10**16 + 1), LastWon(20_001))
+
+
+def test_a_little_received_each_generation_moves_last_won_a_thousandth_each_time() -> None:
+    balance = Balance(Kismet(10**16), LastWon.of(20))
+
+    for generation in range(40, 50):
+        balance = balance.received(Kismet(1), generation)
+
+    assert balance.last_won == LastWon(20_010)
+
+
+@mark.parametrize(
+    ("written", "thousandths"),
+    [
+        ("0", 0),
+        ("40", 40_000),
+        ("39.125", 39_125),
+        ("39.5", 39_500),
+        ("39.05", 39_050),
+        ("0.001", 1),
+        (str(10**30), 10**33),
+    ],
+)
+def test_a_last_won_is_written_as_a_generation_to_a_thousandth_and_reads_back(
+    written: str, thousandths: int
+) -> None:
+    assert LastWon.from_value(written) == LastWon(thousandths)
+    assert LastWon(thousandths).value() == written
+
+
+@mark.parametrize(
+    "written",
+    ["", "-1", "01", "1.", ".5", "1.50", "1.0", "1.0001", "1e3", " 1", "1 ", 1, 1.5, None, True],
+)
+def test_a_last_won_not_written_one_way_only_is_refused(written: object) -> None:
+    with raises(ValueError, match='"last_won" must be a generation or null'):
+        LastWon.from_value(written)
 
 
 def test_what_is_no_object_is_no_balance() -> None:

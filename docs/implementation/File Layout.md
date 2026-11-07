@@ -544,7 +544,7 @@ chain:
 
 ```json
 {"head": "sha256/9f8e…", "generation": 1, "weight": "1208",
- "balances": {"sha256/0a1b…": {"kismet": "250", "last_won": 0}}}
+ "balances": {"sha256/0a1b…": {"kismet": "250", "last_won": "0"}}}
 ```
 
 An identity it does not name holds nothing. The module writes it each time
