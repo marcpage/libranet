@@ -12,11 +12,13 @@ choose. Anyone may propose a bundle for a path, by placing a drop named
 for it. A node serving a path beneath `/chaos` looks at the drop for each
 part of the path, from the root down, and serves the newest bundle holding
 the rest of the path, preferring one signed by someone the viewer trusts.
-A path for which no bundle is found is answered with a page saying what
-was looked at. The same page, reached by ending any address with `?`,
-shows every bundle proposed for the path, lets the viewer trust or
-distrust whoever signed each, and lets them download a bundle or propose
-one of their own.
+For a person signed in, every request their browser makes for a Chaos
+path follows their trust: the page, its images and scripts, and each link
+followed from it. A path for which no bundle is found is answered with a
+page saying what was looked at. The same page, reached by ending any
+address with `?`, shows every bundle proposed for the path, lets the
+viewer trust or distrust whoever signed each, and lets them download a
+bundle or propose one of their own.
 
 Every step below comes from an issue in the GitHub **Phase 7 - Chaos
 endpoint** milestone. Issue #595 asks for this plan, and has no text of
@@ -31,9 +33,10 @@ and the steps after it build what it says.
 Nothing here changes the architecture of Phase 1 §2: the same supervisor,
 the same dispatcher, the same module processes, the same filesystem CAS,
 and the same invariant that only the stats module opens SQLite. The Chaos
-endpoint is served by the web server, from the building blocks it has: the
-search of a drop and of the node's peers, signed content checked, the
-trust scores of whoever is signed in and the node's own, reading into a
+endpoint is served by the web server, on its main port and, for whoever is
+signed in, on a port of its own (Step 157), from the building blocks it
+has: the search of a drop and of the node's peers, signed content checked,
+the trust scores of whoever is signed in and the node's own, reading into a
 bundle, and making bundles and drops.
 
 The web endpoint of Phase 8 (#596) is to work as this one does, but with
@@ -75,9 +78,10 @@ Five steps, each built on the one before it:
   endpoint, and Known Drops the drop a proposal is placed at. Step 155.
 - **Resolving a path.** Which bundle a path beneath `/chaos` names, for
   whom, and why each other proposal was passed over. Step 156.
-- **Serving `/chaos`.** The bundle chosen is served in a sandbox, at a
-  pinned path that keeps a page's images, scripts, and links in the bundle
-  the page came from. Step 157.
+- **Serving `/chaos`.** For whoever is signed in, on a port of the node's
+  own, where every request their browser makes carries their session, and
+  so follows their trust. For anyone else, on the main port, in a sandbox.
+  Step 157.
 - **The Chaos page.** What a path resolves to, and why, shown for a `404`
   and for any address ending in `?`, with Trust, Distrust, and Clear for
   each signer. Step 158.
@@ -102,20 +106,20 @@ A path ending in `/` names that directory's `index.html`, so the rest of
 
 ```mermaid
 flowchart TD
-    req["GET /chaos/a/b/c.html"] --> pinned{"Pinned: holds an<br/>element @sha256-…?"}
-    pinned -->|yes| serve["Serve the rest from that bundle,<br/>in a sandbox, cached for good"]
-    pinned -->|no| scores["Scores: those of the person signed in,<br/>or else the node's own"]
-    scores --> trusted["Pass 1: proposals whose signer is trusted,<br/>at chaos:/, chaos:/a, chaos:/a/b, chaos:/a/b/c.html"]
-    trusted -->|"at the shallowest level holding one,<br/>the newest holding the rest"| chosen{"A directory<br/>bundle?"}
+    req["GET /chaos/a/b/c.html"] --> session{"Carries a session?"}
+    session -->|"yes, on the main port"| moved["302 to the same path<br/>on the Chaos port"]
+    session -->|"yes, on the Chaos port"| person["Scores: the person's"]
+    session -->|no| node["Scores: the node's own"]
+    person --> trusted["Pass 1: proposals whose signer is trusted,<br/>at chaos:/, chaos:/a, chaos:/a/b, chaos:/a/b/c.html"]
+    node --> trusted
+    trusted -->|"at the shallowest level holding one,<br/>the newest holding the rest"| serve["Serve it: as it is on the Chaos port,<br/>in a sandbox on the main port"]
     trusted -->|none| unknown["Pass 2: proposals of no trust specified,<br/>at the same levels"]
-    unknown -->|"as in pass 1"| chosen
-    unknown -->|none| missing["404, with the Chaos page"]
-    chosen -->|yes| redirect["302 to the pinned path,<br/>/chaos/a/@sha256-…/b/c.html"]
-    chosen -->|"no: a file bundle"| file["Serve it, in a sandbox"]
-    redirect --> serve
+    unknown -->|"as in pass 1"| serve
+    unknown -->|none| missing["404, and the Chaos page"]
 ```
 
-Distrusted signers' proposals are never chosen. The order of the two
+Each request is resolved so, a page's images and scripts as much as the
+page. Distrusted signers' proposals are never chosen. The order of the two
 passes is this plan's, not the milestone's (Step 156, and §6).
 
 ## 3. How to Read the Steps Below
@@ -128,9 +132,10 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
 - **A step of another plan is named with its plan**, as Phase 2 names
   Phase 1's. A step number alone is a step of this document.
 - **Settled in the milestone** is what the milestone's description says.
-  **My calls, not yet reviewed** are what this plan chose without asking,
-  to be reviewed before the step is built. The milestone was not asked
-  about before this plan was written, so every call is listed in §6 too.
+  **Ruled** is what the user decided once this plan was written, with the
+  date. **My calls, not yet reviewed** are what this plan chose without
+  asking, to be reviewed before the step is built. Every call is listed in
+  §6 too.
 - **Change sets.** Each step is one change set, under the 500 new lines
   of Python (not counting tests) past which CLAUDE.md asks for a split.
   Step 158's page and Step 159 are HTML and script, not Python.
@@ -150,22 +155,28 @@ nothing.
 
 Settled in the milestone: everything quoted in §2.1.
 
+Ruled (2026-11-07): what a person signed in sees at a Chaos path follows
+their trust, for every request their browser makes for one.
+
 What is written:
 
 - **HTTP API §13.6, The Chaos Endpoint** (new), with every rule Steps 156
   to 159 build: a path's levels and their drops; what a proposal is, signed
-  or not; whose scores choose, and how; pinned paths; what is served, with
-  what headers; the `404` and the page a bare `?` shows; and the report
-  that page reads, `GET /data/chaos/{path}`. A sequence diagram, as §9.6
-  has, of a page's first view: the `302` to the pinned path, and the
-  pinned path served.
-- **HTTP API §2 and §13**: `chaos` names the Chaos endpoint, rather than
-  being reserved for the future. It is still never an application's name.
-- **HTTP API §2.5**: a page beneath `/chaos` is the Chaos page's, which
-  counts as a trusted application's page, and the report is among the
-  endpoints meant only for the node's own pages, served to any client.
-- **HTTP API §21 and §25**: the levels a node searches, among the default
-  limits, and the two new endpoints in the summary.
+  or not; whose scores choose, and how; the Chaos port, and what each port
+  serves, with what headers; the `404` and the page a bare `?` shows; and
+  the report that page reads, `GET /data/chaos/{path}`. A sequence diagram,
+  as §9.6 has, of a person's first view: the `302` to the Chaos port, and
+  the page and its images served there, each carrying the session.
+- **HTTP API §2**: `chaos` names the Chaos endpoint, rather than being
+  reserved for the future, and is still never an application's name. The
+  Chaos port is the node's third, beside the main port and `/config`'s.
+- **HTTP API §2.5**: a page beneath `/chaos` on the main port is the Chaos
+  page's, which counts as a trusted application's page, and the report is
+  among the endpoints meant only for the node's own pages, served to any
+  client.
+- **HTTP API §13**, **§21**, and **§25**: the routing diagram's reserved
+  names, the levels a node searches among the default limits, and the new
+  endpoints in the summary.
 - **High-Level Design §3.3.1 and §8**: `/chaos` is in use.
 - **Known Drops**: a row in §1 and a section, §3.18, for `chaos:/{path}`.
 - **Terms**: `chaos` defined.
@@ -201,6 +212,9 @@ Settled in the milestone:
   the path is chosen, or else the newest of those with no trust specified.
 - **What each viewer sees depends on whom they trust.**
 
+Ruled (2026-11-07): **the person's trust.** A request carrying the session
+of a person signed in is resolved by their scores, whatever it asks for.
+
 What is built:
 
 - **A Chaos path** (`ChaosPath`, `protocol/chaos.py`): the path beneath
@@ -221,11 +235,12 @@ What is built:
   ```
 
   `bundle` names the bundle proposed, a directory bundle or a file bundle,
-  and `created` when it was proposed, in UTC, to the second. A **signed
-  proposal** is a signed bundle (BundleSpecification §5) whose `contents`
-  is a proposal, placed with `POST /data/signed`. An **unsigned proposal**
-  is the proposal itself, placed with `POST /data/drop`. Either is placed
-  at its level's drop, matching at least as many bits as a search returns
+  in either form a read into a bundle takes (HttpApi §12.1), and `created`
+  when it was proposed, in UTC, to the second. A **signed proposal** is a
+  signed bundle (BundleSpecification §5) whose `contents` is a proposal,
+  placed with `POST /data/signed`. An **unsigned proposal** is the proposal
+  itself, placed with `POST /data/drop`. Either is placed at its level's
+  drop, matching at least as many bits as a search returns
   (`storage.search_min_bits`).
 - **Reading a level** (`ChaosResolver`, `webserver/chaos_resolver.py`).
   The drop is searched as signing in searches one
@@ -237,8 +252,7 @@ What is built:
   over, with the reason kept, if:
   - it is neither (`not-a-proposal`), or its signature does not check
     (`bad-signature`);
-  - its bundle is shunned (`shunned`), or is named in its encrypted form
-    (`encrypted`);
+  - its bundle is shunned (`shunned`);
   - it is dated more than `chaos.future_seconds` ahead of the node's clock
     (`future`);
   - its signer placed a newer one at the same level (`superseded`). Of two
@@ -248,12 +262,15 @@ What is built:
   What is found and not held, a drop or a signer's key, is asked for, as
   any miss is (HttpApi §5.2), and named as missing. What a drop holds never
   changes, so a proposal read and checked is kept by its drop's id, for the
-  1,000 drops read last, and not read again.
+  1,000 drops read last, and not read again. What a level's search found
+  is kept for `chaos.search_seconds`, so that a page's images and scripts,
+  each resolved, do not each search every level again.
 - **Whose scores choose.** Those of the person signed in, if the request
-  carries a session (HttpApi §11.4), as `GET /data/trust` reads them, and
-  otherwise the node's own (Phase 5 Step 113). A signer scoring above 0 is
-  **trusted**, and one below 0 **distrusted**. A proposal that is unsigned,
-  or whose signer scores 0 or is not reached, is of **no trust specified**.
+  carries their session (HttpApi §11.4), as `GET /data/trust` reads them,
+  and otherwise the node's own (Phase 5 Step 113). A signer scoring above 0
+  is **trusted**, and one below 0 **distrusted**. A proposal that is
+  unsigned, or whose signer scores 0 or is not reached, is of **no trust
+  specified**.
 - **Choosing.** Two passes: first the trusted proposals at every level,
   from the root down, then those of no trust specified, the same way. At
   each level, its proposals of the pass are taken newest first, and the
@@ -277,8 +294,9 @@ What is built:
 - **Settings**, in a new `chaos` section of the configuration and of
   `examples/libranet.yaml`: `max_levels`, the levels searched, the
   shallowest first, 16 by default, so that a deeper path is served only
-  from a bundle at one of those levels; and `future_seconds`, how far ahead
-  of the clock a proposal may be dated, 300 by default.
+  from a bundle at one of those levels; `future_seconds`, how far ahead of
+  the clock a proposal may be dated, 300 by default; and `search_seconds`,
+  how long what a level's search found is kept, 5 by default.
 
 My calls, not yet reviewed:
 
@@ -303,8 +321,9 @@ My calls, not yet reviewed:
   path away: an older proposal still holding it would win.
 - **A proposal names a bundle**, rather than being one. A drop must fit
   in one object, and one bundle can then be proposed at many paths.
-- **Only a plain bundle.** What is at `/chaos` is public, and a pinned path
-  (Step 157) has no room for a key.
+- **What a level's search found is kept for 5 seconds**, so that a page of
+  many images searches each level once, not once for each image. A
+  proposal placed meanwhile is found up to 5 seconds later.
 - **`chaos:/` with a slash**, so that a level's drop reads as its path.
 - **The limits are settings**, as other policy numbers only this node uses
   are, with the specification's values as defaults.
@@ -313,7 +332,8 @@ My calls, not yet reviewed:
 resolver with a fake store, search, scores, and bundle entries: each pass,
 each level, each reason a proposal is passed over, a signer's newer
 proposal lacking the path, the node's scores for a request with no session,
-and what is still pending when the deadline passes.
+what a level's search found kept and then searched again, and what is still
+pending when the deadline passes.
 
 **Size:** about 450 new lines of Python.
 
@@ -322,91 +342,101 @@ and what is still pending when the deadline passes.
 ## Step 157 — Serving /chaos
 
 **Kind:** new node code. **Issue:** to be made (§7.3). **Depends on:**
-Step 156; Phase 3 Steps 65, 66, and 74.
+Step 156; Phase 2 Step 58; Phase 3 Steps 65, 66, and 74.
 
 Settled in the milestone: a path beneath `/chaos` is reached by a browser,
 and a `404` is shown if no bundle is found.
 
-What this step answers: the session cookie is `SameSite=Strict`
-(HttpApi §11.4), and a page served in a sandbox has an origin of its own
-(HttpApi §13.5). So a request such a page makes, for its images and
-scripts, and for a link followed from it, is another site's to the
-browser, and is expected to arrive without the cookie, as without a
-`Referer` (Phase 3 Step 74). Were each resolved afresh, it would be
-resolved by the node's scores rather than the person's, and could be
-served from another bundle than the page's, even one placed by a stranger
-at a shallower level. A pinned path keeps a page and what it loads in one
-bundle, and needs no cookie.
+Ruled (2026-11-07): what a person signed in sees follows their trust, for
+every request their browser makes for a Chaos path.
+
+Why a port of its own: the session cookie is `SameSite=Strict` (HttpApi
+§11.4). A Chaos page served on the main port must be served in a sandbox,
+since its scripts would otherwise have every power a trusted application
+has (HttpApi §13.5). But a sandboxed page has an origin of its own, which
+the browser takes to be another site. So each request it makes, for its
+images and scripts and for each link followed from it, would come without
+the cookie, as without a `Referer` (Phase 3 Step 74), and could not follow
+the person's trust. A page served from a port of the node's own is not the
+main port's origin, so it needs no sandbox, and can use nothing that serves
+only the node's own pages: HttpApi §2.4's checks refuse a request from
+another port of the machine, which the browser marks `same-site`. But the
+cookie is sent to every port of a host, and every request such a page makes
+of its own port is same-origin. So each one carries the person's session.
 
 What is built:
 
-- **`ChaosHandler`** (`webserver/chaos_handler.py`), routed for `GET`
-  and `HEAD` of `/chaos` and every path beneath it, the name matched
+- **The Chaos port**, `network.chaos_port`. Unset, it is the first port
+  free of `listen_port` + 50, + 150, + 250, and so on, found as `/config`'s
+  port is (Phase 2 Step 58), so that it is never one `/config` may take.
+  It listens where the main port does, `listen_address`, since a local
+  client reaches the node at any of the machine's addresses (HttpApi §2.4).
+  The web server module runs a third server for it, with a router that
+  serves `/chaos` and the paths beneath it, and nothing else. The local
+  network script gives each node a Chaos port of its own, as it gives each
+  its `/config` port.
+- **`ChaosHandler`** (`webserver/chaos_handler.py`), on both ports, for
+  `GET` and `HEAD` of `/chaos` and every path beneath it, the name matched
   ignoring case, as a reserved name is. `/chaos` is redirected to
   `/chaos/`. Any other method is `405 Method Not Allowed`.
-- **A pinned path**: `/chaos/{level}/@{algorithm}-{hash}/{rest}`, such as
-  `/chaos/a/@sha256-0a1b…/b/c.html`. The first element that is `@`, a hash
-  algorithm, `-`, and a hash names a bundle, mounted at the level the
-  elements before it name. The rest is served from that bundle at once,
-  with nothing resolved, as reading into a bundle serves it (HttpApi
-  §12.1): ranges, the content type, `503` while it is not held, a
-  directory's `index.html`, a directory without its `/` and a symbolic
-  link redirected within the pin, and `404` for a path the bundle does
-  not hold. What a pinned path names never changes, so it is cached as a
-  read into a bundle is (HttpApi §20).
-- **Any other path is resolved** (Step 156), by the scores of the person
-  whose session the request carries, or else the node's:
-  - a directory bundle chosen is `302 Found`, to the pinned path for the
-    rest at its level;
-  - a file bundle chosen is served at once, since it holds nothing else
-    for a pin to keep together;
-  - nothing chosen is `404 Not Found`, a plain problem until Step 158 gives
-    it the Chaos page.
-
-  Each answer carries `Cache-Control: no-store`, since it depends on who
-  asks.
-- **Every response from a bundle** carries the sandbox of an untrusted
-  application (`UNTRUSTED_APP_HEADERS`, HttpApi §13.5), so that its pages'
-  scripts run with an origin of their own, and are refused what serves
-  local clients.
+- **On the main port**, a request carrying a session is `302 Found` to the
+  same path, with its query, on the Chaos port, at the host the request
+  named. Any other is resolved by the node's scores (Step 156), and served
+  in the sandbox of an untrusted application (`UNTRUSTED_APP_HEADERS`,
+  HttpApi §13.5). Only a local client signs in, so a client elsewhere is
+  always served here, and needs nothing but the main port to reach the
+  node.
+- **On the Chaos port**, every request is resolved by the scores of the
+  person whose session it carries, or else the node's, and served as it
+  is, with `X-Content-Type-Options: nosniff` and no sandbox.
+- **Serving** is as reading into a bundle serves (HttpApi §12.1): ranges,
+  the content type, `503` while what is needed is not held, a directory's
+  `index.html`, and a directory named without its `/`, or a symbolic link,
+  redirected to the Chaos path it leads to, which is then resolved as any
+  other. Nothing chosen is `404 Not Found`, a plain problem until Step 158
+  gives it the Chaos page. Every answer carries `Cache-Control: no-store`,
+  since it depends on who asks.
 - **The App Developer Guide** gains §6.21, putting a site on Chaos: what to
-  place, links relative to the page, and that a link climbing above the
-  bundle's root from a pinned path lands a level deeper than it would
-  unpinned, since the pin is an element of the path. **The Operator
-  Guide** gains the `chaos` settings.
+  place, that each path is resolved on its own, and that its pages share
+  one origin with every other Chaos site's. **The Operator Guide** gains
+  `network.chaos_port` and the `chaos` settings.
 
 My calls, not yet reviewed:
 
-- **Pinned paths.** Each other way loses something. Resolving every
-  request afresh mixes bundles in one page, and resolves its images by the
-  node's scores. A port of its own for `/chaos` would give its pages an
-  origin that every request of theirs carries the cookie to, since a
-  cookie is sent to every port of a host. But Step 74 ruled out an origin
-  for each application, for now. Pinning also means that a page's images
-  and scripts are each served with no search at all.
-- **A pin is one element**, `@sha256-…`, so that `../` from the bundle's
-  root leaves the pin. The cost is the level it adds, which a link climbing
-  above the root feels. A bundle's own entry named in pin form can be
-  reached only pinned, as HttpApi §12.1 has for entries named like an
-  encryption algorithm.
-- **Scripts run** in Chaos pages, as in an untrusted application's,
-  rather than under the bare `sandbox` of a read into a bundle, since Chaos
-  is for sites.
-- **A pinned path serves any bundle**, proposed at that level or not, as
-  `GET /data/{hash-algorithm}/{hash}/{path}` does, so serving one needs no
-  search. The Chaos page of a pinned path says whether its bundle is
-  proposed there, and by whom (Step 158).
-- **The `302` is not cached**, since another viewer, or the same viewer
-  later, may be sent elsewhere.
+- **A port of its own**, which is how this plan follows the ruling. Phase
+  3 Step 74 ruled out an origin for each application, for now, and this is
+  one origin for all of Chaos, not one for each site. The other ways
+  found each leave some requests without the person's session: a path
+  naming the viewer is lost by a link written from the root, and a
+  `SameSite=Lax` session cookie reaches a link followed, but not a page's
+  images.
+- **One origin for every Chaos site.** They share the browser's storage,
+  and one can frame another and script it. That is Chaos, but the Guide
+  says so.
+- **Scripts on the Chaos port can set cookies for the host**, which every
+  port is sent. They cannot replace the session cookie, which is
+  `HttpOnly`, but could fill the browser's cookies for the host until its
+  requests are refused, until they are cleared.
+- **What a Chaos page's scripts read** of other Chaos paths shows them what
+  the person's trust chose. That is inherent in following the person's
+  trust. The scores themselves are only ever served on the main port.
+- **The main port serves without a session**, rather than sending everyone
+  to the Chaos port, so that a client elsewhere reaches Chaos without the
+  Chaos port being reachable.
+- **No `Host` check on the Chaos port.** What a request without the
+  session cookie is served is public, and a site pointing a name of its own
+  at the machine has no cookie for it.
 
 **Testable in isolation:** handler tests with a fake resolver and fake
-bundle paths: the redirect to the pin, a file bundle served, the `404`,
-a pinned path served with its headers and ranges, `no-store` on what is
-resolved and caching on what is pinned, and which elements are pins. Live:
-in Chrome and Safari, whether a sandboxed page's requests carry the
-cookie, and a site of several pages, images, and links on two nodes.
+bundle paths: the `302` from the main port with a session, what is served
+there without one and its sandbox, what the Chaos port serves with and
+without a session, ranges, the `404`, and `no-store`; and tests of the
+port's setting and of a third server bound. Live: in Chrome and Safari, a
+site of several pages, images, and links, signed in and not, checking that
+each request the Chaos port answers carries the session, and that a Chaos
+page's request to the main port's endpoints is refused.
 
-**Size:** about 300 new lines of Python.
+**Size:** about 400 new lines of Python.
 
 ---
 
@@ -428,24 +458,30 @@ What is built:
 
 - **A bare `?`.** `Request` (`webserver/http_types.py`) keeps whether its
   target held a `?`, even with nothing after it, since `urlsplit` reads
-  `/chaos/a?` as it reads `/chaos/a` (`webserver/server.py`). A `GET` or
-  `HEAD` of a path beneath `/chaos`, pinned or not, ending in a bare `?` is
-  answered `200` with the Chaos page, and nothing is resolved for it. A
-  query with anything in it is ignored, as an application's is. A `404`
-  from Step 157 carries the page too.
+  `/chaos/a?` as it reads `/chaos/a` (`webserver/server.py`). On the main
+  port, a `GET` or `HEAD` of a path beneath `/chaos` ending in a bare `?`
+  is answered `200` with the Chaos page, and nothing is resolved for it. On
+  the Chaos port, it is `302 Found` to the same address on the main port. A
+  query with anything in it is ignored, as an application's is.
+- **The `404`.** On the main port, a `404` from Step 157 carries the Chaos
+  page. On the Chaos port, a `404` for a page the browser is opening
+  (`Sec-Fetch-Dest: document`) is `302 Found` to the path with a bare `?`
+  on the main port, and any other is a plain problem.
 - **The page**, `applications/chaos/index.html`, one self-contained
   document, as each shipped page is. It is built with the shipped
   applications, and is not registered, since `chaos` is reserved. It is
-  served on the main port's origin, without a sandbox, under a policy like
-  `/config`'s: it loads only what the node serves, and no page may frame
-  it, so that no Chaos site can have a person click its buttons unseen.
-- **The report**, `GET /data/chaos/{path}`: Step 156's resolution of the
-  path, resolved as a request for the path would be, and waiting as long:
+  served only on the main port, on its origin, without a sandbox, under a
+  policy like `/config`'s: it loads only what the node serves, and no page
+  may frame it, so that no Chaos site can have a person click its buttons
+  unseen.
+- **The report**, `GET /data/chaos/{path}`, on the main port: Step 156's
+  resolution of the path, resolved as a request for the path would be, and
+  waiting as long, with where the path is served for whoever asks:
 
   ```json
   {"path": "a/b/c.html", "scores": "person", "complete": true,
-   "chosen": {"level": 1, "drop": "sha256/…",
-              "location": "/chaos/a/@sha256-…/b/c.html"},
+   "served_at": "http://localhost:8130/chaos/a/b/c.html",
+   "chosen": {"level": 1, "drop": "sha256/…"},
    "levels": [
      {"target": "chaos:/", "hash": "<target hash>", "rest": "a/b/c.html",
       "proposals": [
@@ -459,21 +495,24 @@ What is built:
   It is served to the node's own pages, from any client, as making a drop
   is (HttpApi §2.5), with `Cache-Control: no-store`. `scores` is `person`
   or `node`.
-- **A page beneath `/chaos` is the Chaos page's** to HttpApi §2.5's
-  `Referer` checks, and counts as a trusted application's
+- **A page beneath `/chaos` on the main port is the Chaos page's** to
+  HttpApi §2.5's `Referer` checks, and counts as a trusted application's
   (`webserver/own_pages.py`). So the page may change the person's trust
   list, sign, and make bundles (Step 159), on a local client. A Chaos site
-  cannot, whatever `Referer` it sends: it is sandboxed, and its requests
-  are refused by HttpApi §2.4's checks of `Origin` and `Sec-Fetch-Site`,
-  which is what §2.5 already relies on to keep out an untrusted
-  application.
+  cannot, whatever `Referer` it sends: on the Chaos port its requests come
+  from another origin, and on the main port from a sandbox, and either way
+  HttpApi §2.4's checks of `Origin` and `Sec-Fetch-Site` refuse them, as
+  §2.5 already relies on them to keep out an untrusted application.
 - **What the page shows**: the path, whose scores chose and whether they
-  are complete, and the bundle chosen, with a link to it. For each level:
-  its drop, and each proposal, with its signer, their mark (⚪🟢🟡🔴, as
-  Phase 5 Step 106 shows them) and name, when it was proposed, its bundle,
-  whether it holds the rest, and why it was passed over, with a link to
-  its pinned path; then what is still missing. A **Reload** button reads
-  the report again.
+  are complete, and the bundle chosen, with a link to the path where it is
+  served. For each level: its drop, and each proposal, with its signer,
+  their mark (⚪🟢🟡🔴, as Phase 5 Step 106 shows them) and name, when it
+  was proposed, its bundle, whether it holds the rest, and why it was
+  passed over, with a link reading into its bundle at the rest (HttpApi
+  §12.1); then what is still missing. **Reload** asks for the path again,
+  so that what has been found since is served. While anything is pending,
+  or the scores are not complete, the page reads the report again every 2
+  seconds, as the user directory reads scores (Phase 5 Step 101).
 - **Trust, Distrust, and Clear** beside each signer, through
   `PUT /data/trust/{id}` and `DELETE /data/trust/{id}` (HttpApi §11.7),
   shown only to a client signed in on the node's own machine. The page
@@ -483,21 +522,27 @@ What is built:
 
 My calls, not yet reviewed:
 
-- **One page** for the `404` and the `?`, as the milestone says, served
-  with the status each calls for.
+- **One page** for the `404` and the `?`, as the milestone says, and only
+  on the main port: the Chaos port can use none of the endpoints it needs,
+  and every Chaos site's scripts could read a report served there.
+- **A page opened on the Chaos port that is not found** goes to the Chaos
+  page, rather than showing a page of its own, which could show no stats.
 - **The node reports, and the page shows**, so that the rule of Step 156
   is written once, rather than again in the page's script.
-- **Any `Referer` beneath `/chaos`** is the page's, rather than only one
-  ending in `?`. `RefererPage` drops the `?` as `urlsplit` does, and
-  browsers may not send it.
+- **Any `Referer` beneath `/chaos`** on the main port is the page's, rather
+  than only one ending in `?`. `RefererPage` drops the `?` as `urlsplit`
+  does, and browsers may not send it.
+- **A proposal not chosen is shown by reading into its bundle**, which is
+  sandboxed with no scripts, rather than at a path of the Chaos port.
 - **A signer's name** is the one they give themselves (Phase 4 Step 80),
   read as the user directory reads it, with their id beside it.
 - **No page may frame it.**
 
-**Testable in isolation:** tests of the `?` kept on a request, the
-report's handler, the `Referer` of a page beneath `/chaos`, and the page
-as shipped: built from its directory, reaching nothing beyond the node,
-and calling only endpoints the node serves. The page is checked by hand.
+**Testable in isolation:** tests of the `?` kept on a request, of the `?`
+and the `404` on each port, of the report's handler, of the `Referer` of a
+page beneath `/chaos`, and of the page as shipped: built from its
+directory, reaching nothing beyond the node, and calling only endpoints the
+node serves. The page is checked by hand.
 
 **Size:** about 250 new lines of Python, and the page, about 900 lines.
 
@@ -584,8 +629,14 @@ in §7, one for each step, and this table then given their numbers.
 
 ## 6. Open Items Not Yet Decided
 
-The milestone was not asked about before this plan was written, so each
-of these is this plan's call, to be ruled on before Step 155 writes it into
+Ruled on 2026-11-07, once this plan was written:
+
+- **The person's trust.** What a person signed in sees at a Chaos path
+  follows their trust, for every request their browser makes for one: the
+  page, its images and scripts, and each link followed from it (Steps 156
+  and 157).
+
+Still to be ruled on, each this plan's call, before Step 155 writes it into
 the specification:
 
 - **Trust before depth** (Step 156): two passes, every level's trusted
@@ -599,15 +650,13 @@ the specification:
 - **Newest** (Step 156): by the proposal's `created`, those dated more than
   5 minutes ahead passed over, and each signer's newest alone counting.
 - **What a drop holds** (Step 156): a proposal naming a bundle, rather
-  than the bundle, and only a plain one.
-- **Pinned paths** (Step 157): the largest call. Without them, a page's
-  images, scripts, and followed links come without the session cookie, and
-  so would be resolved by the node's scores, perhaps from other bundles.
-  The other ways are to accept that, or to give `/chaos` a port of its
-  own.
-- **How far a Chaos page's scripts go** (Step 157): an untrusted
-  application's sandbox, in which scripts run, or the bare `sandbox` of a
-  read into a bundle, in which none do.
+  than the bundle.
+- **A port of its own** (Step 157), the way this plan follows the ruling
+  above. What it costs: a third port; one origin shared by every Chaos
+  site; cookies for the host that a Chaos page's scripts can set; and what
+  those scripts can read of what the person's trust chose. Without it, a
+  page's images, or the links followed from it, would come without the
+  person's session.
 - **Download and upload** (Step 159): a `.zip` both ways, as well as files
   and folders, and the node's folders for large files.
 
@@ -638,15 +687,19 @@ on it, once the open items of the plan's §6 are ruled on:
 
 - HTTP API §13.6 (new), The Chaos Endpoint: a path's levels and their
   drops (`chaos:/`, `chaos:/a`, ...), what a proposal is, signed or not,
-  whose scores choose and how, pinned paths, what is served and with what
-  headers, the 404, the page a bare `?` shows, and the report,
+  whose scores choose and how, the Chaos port and what each port serves,
+  the 404, the page a bare `?` shows, and the report,
   `GET /data/chaos/{path}`.
-- HTTP API §2 and §13: `chaos` names the Chaos endpoint, no longer
-  reserved for the future, and still never an application's name.
-- HTTP API §2.5: a page beneath `/chaos` is the Chaos page's, a trusted
-  application's; the report serves the node's own pages.
-- HTTP API §21 and §25, High-Level Design §3.3.1 and §8, and Terms.
+- HTTP API §2: `chaos` names the Chaos endpoint, no longer reserved for
+  the future, and still never an application's name; the Chaos port is
+  the node's third.
+- HTTP API §2.5: a page beneath `/chaos` on the main port is the Chaos
+  page's, a trusted application's; the report serves the node's own pages.
+- HTTP API §13, §21, and §25, High-Level Design §3.3.1 and §8, and Terms.
 - Known Drops: a row and §3.18 for `chaos:/{path}`.
+
+What a person signed in sees follows their trust, for every request their
+browser makes for a Chaos path (ruled 2026-11-07).
 
 Done when the specifications say everything Steps 156 to 159 build, and
 nothing still calls `/chaos` reserved for the future.
@@ -667,16 +720,18 @@ every other proposal was passed over:
   `{"bundle": "sha256/…", "created": "…"}`, signed or not.
 - `ChaosResolver` (`webserver/chaos_resolver.py`): search each level's
   drop and the node's peers, check each signature, and pass over what is
-  not a proposal, is shunned, encrypted, dated ahead, superseded by its
-  signer's newer one, or distrusted.
-- Choose by the scores of the person signed in, or else the node's own:
-  trusted proposals at every level from the root down, then those of no
-  trust specified; at a level, the newest whose bundle holds the rest.
+  not a proposal, is shunned, dated ahead, superseded by its signer's
+  newer one, or distrusted.
+- Choose by the scores of the person whose session the request carries,
+  whatever it asks for, or else the node's own: trusted proposals at every
+  level from the root down, then those of no trust specified; at a level,
+  the newest whose bundle holds the rest.
 - Wait within `network.app_wait_seconds` for what could change the
   choice, and name what is still pending.
 - `ChaosResolution`, with every level, proposal, and reason, as the report
   will give it.
-- Settings `chaos.max_levels` (16) and `chaos.future_seconds` (300).
+- Settings `chaos.max_levels` (16), `chaos.future_seconds` (300), and
+  `chaos.search_seconds` (5).
 
 Done when the resolver's tests cover each pass, each level, and each
 reason a proposal is passed over.
@@ -684,30 +739,39 @@ reason a proposal is passed over.
 
 ### 7.3 Step 157
 
-**Title:** Serve /chaos
+**Title:** Serve /chaos, on a port of its own for whoever is signed in
 
 ```markdown
 Plan: docs/implementation/Phase 7.md, Step 157.
 
-Serve the bundle a Chaos path resolves to:
+Serve the bundle a Chaos path resolves to, following the trust of the
+person signed in for every request their browser makes:
 
+- `network.chaos_port`, the node's third port, listening where the main
+  port does; unset, the first free of `listen_port` + 50, + 150, and so
+  on. A third server serves `/chaos` there and nothing else. The local
+  network script gives each node one.
 - `ChaosHandler` (`webserver/chaos_handler.py`) for `GET` and `HEAD` of
-  `/chaos` and beneath it.
-- A path resolved to a directory bundle is a `302` to its pinned path,
-  `/chaos/{level}/@sha256-{hash}/{rest}`, which is served from that bundle
-  with nothing resolved, as reading into a bundle is, and cached for good.
-  A file bundle is served at once. Nothing found is a `404`.
-- Everything resolved carries `Cache-Control: no-store`, and everything
-  from a bundle the untrusted application's sandbox.
+  `/chaos` and beneath it, on both ports.
+- Main port: a request carrying a session is a `302` to the same path on
+  the Chaos port; any other is resolved by the node's scores and served in
+  the untrusted application's sandbox.
+- Chaos port: resolved by the scores of the person whose session the
+  request carries, or else the node's, and served without a sandbox.
+- Served as reading into a bundle is; nothing found is a `404`; everything
+  carries `Cache-Control: no-store`.
 - App Developer Guide §6.21, putting a site on Chaos; Operator Guide, the
-  `chaos` settings.
+  Chaos port and the `chaos` settings.
 
-Pins keep a page's images, scripts, and links in the bundle the page came
-from: a sandboxed page's requests come without the `SameSite=Strict`
-session cookie, so resolved afresh they would go by the node's scores.
+The session cookie is `SameSite=Strict`, so a sandboxed page's images,
+scripts, and followed links come without it. A port of its own is another
+origin, which needs no sandbox and is refused the main port's endpoints,
+and the cookie reaches every port of the host.
 
-Done when a site of several pages, images, and links is served from its
-proposal on two nodes, in Chrome and Safari, and the handler's tests pass.
+Done when, in Chrome and Safari, a site of several pages, images, and
+links is served by the person's trust on the Chaos port, signed in, and by
+the node's on the main port, signed out; a Chaos page's requests to the
+main port's endpoints are refused; and the handler's tests pass.
 ```
 
 ### 7.4 Step 158
@@ -720,14 +784,17 @@ Plan: docs/implementation/Phase 7.md, Step 158.
 Show what a Chaos path resolves to, and why, and let the viewer change it
 through whom they trust:
 
-- `Request` keeps a bare `?`, which `urlsplit` drops. A path beneath
-  `/chaos` ending in `?` is the Chaos page, `200`; a `404` carries it too.
+- `Request` keeps a bare `?`, which `urlsplit` drops. On the main port, a
+  path beneath `/chaos` ending in `?` is the Chaos page, `200`, and a
+  `404` carries it too. On the Chaos port, a `?`, or a `404` for a page
+  being opened, is a `302` to the Chaos page on the main port.
 - `applications/chaos/index.html`, built with the shipped applications but
-  not registered, served unsandboxed and unframeable.
-- `GET /data/chaos/{path}`: the resolution as JSON, for the node's own
-  pages, `no-store`.
-- A `Referer` beneath `/chaos` is the Chaos page's, a trusted
-  application's.
+  not registered, served on the main port alone, unsandboxed and
+  unframeable.
+- `GET /data/chaos/{path}`: the resolution as JSON, with where the path is
+  served for whoever asks, for the node's own pages, `no-store`.
+- A `Referer` beneath `/chaos` on the main port is the Chaos page's, a
+  trusted application's.
 - The page shows every level, proposal, signer (mark and name), date,
   whether it holds the rest, why it was passed over, and the one chosen,
   with Reload, and Trust, Distrust, and Clear beside each signer for a
