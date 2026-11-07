@@ -594,6 +594,46 @@ const FRONT_COVER = 3;
 // The size of an ID3v1 tag, at the end of an MP3.
 const ID3V1_SIZE = 128;
 
+// The items of MP4 metadata read, as iTunes writes them, each with the detail
+// it gives: those of text, and those of a number and how many there are.
+const MP4_ITEMS = {
+  "©nam": "title", "©ART": "artist", aART: "album_artist", "©alb": "album", "©day": "year",
+  "©gen": "genre", "©wrt": "composer",
+};
+const MP4_NUMBERS = { trkn: "track", disk: "disc" };
+
+// The kinds of picture MP4 metadata names by number, and the type of each.
+const MP4_PICTURES = { 13: "image/jpeg", 14: "image/png" };
+
+// The codecs an MP4's sample entries name, as this browser is asked whether
+// it can play them: AAC, Apple Lossless, FLAC, and Opus.
+const MP4_CODECS = { mp4a: "mp4a.40.2", alac: "alac", fLaC: "flac", Opus: "opus" };
+
+// The Vorbis comments read, in FLAC and in Ogg, each with the detail it gives.
+const VORBIS_FIELDS = {
+  TITLE: "title", ARTIST: "artist", ALBUMARTIST: "album_artist", ALBUM: "album",
+  TRACKNUMBER: "track", TRACKTOTAL: "tracks", DISCNUMBER: "disc", DISCTOTAL: "discs", DATE: "year",
+  GENRE: "genre", COMPOSER: "composer",
+};
+
+// The metadata blocks of a FLAC read, by their numbers.
+const FLAC_STREAMINFO = 0;
+const FLAC_COMMENT = 4;
+const FLAC_PICTURE = 6;
+
+// The codecs of Ogg read: how each one's first packet, its header, and its
+// second, its comment, begin, and the type this browser is asked of it.
+const OGG_CODECS = [
+  { header: "\x01vorbis", comment: "\x03vorbis", type: "audio/ogg; codecs=vorbis" },
+  { header: "OpusHead", comment: "OpusTags", type: AUDIO_TYPES.opus },
+];
+
+// The samples Opus plays in a second, however it was made (RFC 7845 4).
+const OPUS_RATE = 48000;
+
+// The fields of a WAV's RIFF INFO read, each with the detail it gives.
+const RIFF_INFO = { INAM: "title", IART: "artist", IPRD: "album", IPRT: "track", ICRD: "year", IGNR: "genre" };
+
 // The genres ID3v1 names by number, and ID3v2 after it, as Winamp extended
 // them.
 const GENRES = [
@@ -2297,6 +2337,15 @@ class Bytes {
   blob(type) {
     return new Blob([this.array], { type });
   }
+
+  // The bytes `text` gives in base64, or none if it is not base64.
+  static fromBase64(text) {
+    try {
+      return new Bytes(Uint8Array.from(atob(text.replace(/\s+/g, "")), (character) => character.charCodeAt(0)));
+    } catch (error) {
+      return Bytes.empty();
+    }
+  }
 }
 
 // A file the node holds as a file bundle, read a range at a time (HttpApi
@@ -2536,6 +2585,13 @@ class Tags {
     } else if (kind === "FORM" && (form === "AIFF" || form === "AIFC")) {
       this.keep("type", AUDIO_TYPES.aiff);
       await this.readChunks(source, false);
+    } else if (head.ascii(4, 4) === "ftyp") {
+      await this.readMp4(source);
+    } else if (kind === "fLaC") {
+      this.keep("type", AUDIO_TYPES.flac);
+      await this.readFlac(source);
+    } else if (kind === "OggS") {
+      await this.readOgg(source);
     } else if (Tags.id3Size(head, 0) || MpegFrame.at(head, 0) || extensionOf(name) === "mp3") {
       await this.readMpeg(source, head);
     }
@@ -2628,28 +2684,341 @@ class Tags {
 
   // The chunks of a WAV, whose sizes RIFF gives `little`-endian, or of an
   // AIFF, walked from its start a range at a time, since its audio most often
-  // comes before an ID3 chunk: the ID3v2 tag such a chunk holds.
+  // comes before an ID3 chunk: the ID3v2 tag such a chunk holds; and of a
+  // WAV, its RIFF INFO, and its duration, from how many bytes of audio its
+  // format plays in a second, and how many its data holds.
   async readChunks(source, little) {
     let at = 12;
+    let rate = 0;
+    let audio = 0;
 
     for (let count = 0; count < MOST_CHUNKS; count += 1) {
       const header = await source.at(at, 8);
 
       if (header.length < 8) {
-        return;
+        break;
       }
 
+      const id = header.ascii(0, 4);
       const size = header.u32(4, little);
 
-      if (header.ascii(0, 4).toUpperCase() === "ID3 " && size <= TAGS_MOST) {
+      if (id.toUpperCase() === "ID3 " && size <= TAGS_MOST) {
         const tag = await source.at(at + 8, size);
 
         if (Tags.id3Size(tag, 0)) {
           this.readId3v2(tag);
         }
+      } else if (little && id === "fmt " && size >= 16) {
+        rate = (await source.at(at + 8, 16)).u32(8, true);
+      } else if (little && id === "data") {
+        // A WAV written as it was recorded may say it holds more than it does.
+        audio = Math.min(size, (source.size ?? Infinity) - at - 8);
+      } else if (little && id === "LIST" && size <= TAGS_MOST) {
+        const list = await source.at(at + 8, size);
+
+        if (list.ascii(0, 4) === "INFO") {
+          this.readInfo(list.slice(4));
+        }
       }
 
       at += 8 + size + (size % 2);
+    }
+
+    if (rate && audio) {
+      this.keep("duration_seconds", wholeSeconds(audio / rate));
+    }
+  }
+
+  // The fields of a RIFF INFO list, `list`, after its type: each a chunk of
+  // its own, holding its text, ended by a null.
+  readInfo(list) {
+    for (let at = 0; list.holds(at, 8);) {
+      const id = list.ascii(at, 4);
+      const size = list.u32(at + 4, true);
+
+      if (Object.hasOwn(RIFF_INFO, id)) {
+        this.give(RIFF_INFO[id], [list.text("utf-8", at + 8, Math.min(at + 8 + size, list.length))]);
+      }
+
+      at += 8 + size + (size % 2);
+    }
+  }
+
+  // The boxes of an MP4 (ISO/IEC 14496-12 4.2) from `start` to `end` of
+  // `source`, walked a range at a time, each its type, where its body
+  // starts, and where it ends, given as it is reached, so that what is read
+  // of it is read before the next. A box of size 0 runs to `end`.
+  static async *boxes(source, start, end) {
+    for (let at = start, count = 0; at + 8 <= end && count < MOST_CHUNKS; count += 1) {
+      const header = await source.at(at, 16);
+      const small = header.length < 8 ? -1 : header.u32(0);
+      const long = small === 1 && header.length === 16;
+      const size = long ? header.u64(8) : (small === 0 ? end - at : small);
+      const body = at + (long ? 16 : 8);
+
+      if (small < 0 || (small === 1 && !long) || size < body - at) {
+        return;
+      }
+
+      yield { type: header.ascii(4, 4), body, end: Math.min(at + size, end) };
+      at += size;
+    }
+  }
+
+  // The first box of the type `type` within `box`, or null.
+  static async child(source, box, type) {
+    for await (const each of Tags.boxes(source, box.body, box.end)) {
+      if (each.type === type) {
+        return each;
+      }
+    }
+
+    return null;
+  }
+
+  // An MP4's metadata, as iTunes writes it, in moov/udta/meta/ilst; its
+  // duration, from moov/mvhd; and whether it is AAC or Apple Lossless, from
+  // the sample entry in moov/trak/mdia/minf/stbl/stsd. Its boxes are walked
+  // from its start, as moov may come after the audio.
+  async readMp4(source) {
+    const moov = await Tags.child(source, { body: 0, end: source.size ?? Infinity }, "moov");
+
+    for await (const box of moov ? Tags.boxes(source, moov.body, moov.end) : []) {
+      if (box.type === "mvhd") {
+        this.readMvhd(await source.at(box.body, 32));
+      } else if (box.type === "trak") {
+        await this.readTrak(source, box);
+      } else if (box.type === "udta") {
+        await this.readUdta(source, box);
+      }
+    }
+  }
+
+  // A movie's header, mvhd: its version, its time scale, the units of time
+  // in a second, and its duration in them, each four bytes long, or eight
+  // in version 1. A duration all of ones is not known.
+  readMvhd(header) {
+    const long = header.u8(0) === 1;
+    const scale = header.u32(long ? 20 : 12);
+    const duration = long ? header.u64(24) : header.u32(16);
+
+    if (scale && duration < (long ? 2 ** 64 : 2 ** 32 - 1)) {
+      this.keep("duration_seconds", wholeSeconds(duration / scale));
+    }
+  }
+
+  // The codec of a track's first sample entry, whose type is four bytes
+  // into it, after the version and flags of stsd and how many it holds.
+  async readTrak(source, trak) {
+    let box = trak;
+
+    for (const type of ["mdia", "minf", "stbl", "stsd"]) {
+      box = box && await Tags.child(source, box, type);
+    }
+
+    const entry = box ? (await source.at(box.body + 12, 4)).ascii(0, 4) : "";
+
+    if (Object.hasOwn(MP4_CODECS, entry)) {
+      this.keep("type", `audio/mp4; codecs="${MP4_CODECS[entry]}"`);
+    }
+  }
+
+  // The items of udta/meta/ilst, each holding its data. meta is a full box,
+  // with a version and flags before its boxes, but as QuickTime writes it.
+  async readUdta(source, udta) {
+    const meta = await Tags.child(source, udta, "meta");
+    const full = meta && (await source.at(meta.body, 8)).ascii(4, 4) !== "hdlr";
+    const ilst = meta && await Tags.child(source, { body: meta.body + (full ? 4 : 0), end: meta.end }, "ilst");
+
+    if (!ilst || ilst.end - ilst.body > TAGS_MOST) {
+      return;
+    }
+
+    // All of it at once, so that its items are not each asked for.
+    await source.at(ilst.body, ilst.end - ilst.body);
+
+    for await (const item of Tags.boxes(source, ilst.body, ilst.end)) {
+      for await (const data of Tags.boxes(source, item.body, item.end)) {
+        if (data.type === "data") {
+          this.readMp4Item(item.type, await source.at(data.body, data.end - data.body));
+        }
+      }
+    }
+  }
+
+  // The data of an item of MP4 metadata, `type`: the kind of data it is, in
+  // the last three of its first four bytes, a locale, and the data. A
+  // number and how many there are are each two bytes, after two others; and
+  // gnre is ID3v1's genre, numbered from 1.
+  readMp4Item(type, value) {
+    const kind = value.u32(0) & 0xffffff;
+    const data = value.slice(8);
+
+    if (Object.hasOwn(MP4_ITEMS, type)) {
+      this.give(MP4_ITEMS[type], [data.text("utf-8")]);
+    } else if (Object.hasOwn(MP4_NUMBERS, type) && data.length >= 6) {
+      this.keep(MP4_NUMBERS[type], counted(String(data.u16(2))));
+      this.keep(`${MP4_NUMBERS[type]}s`, counted(String(data.u16(4))));
+    } else if (type === "gnre" && data.length >= 2) {
+      this.keep("genre", GENRES[data.u16(0) - 1]);
+    } else if (type === "covr") {
+      this.offerPicture(data, MP4_PICTURES[kind], false);
+    }
+  }
+
+  // The metadata blocks of a FLAC (xiph.org: FLAC format), walked a range at
+  // a time, each with a byte giving its kind, and whether it is the last,
+  // and three giving its size: its STREAMINFO, for its duration; its
+  // VORBIS_COMMENT; and its PICTUREs.
+  async readFlac(source) {
+    let at = 4;
+
+    for (let count = 0; count < MOST_CHUNKS; count += 1) {
+      const header = await source.at(at, 4);
+
+      if (header.length < 4) {
+        return;
+      }
+
+      const kind = header.u8(0) & 0x7f;
+      const size = header.u24(1);
+
+      if ([FLAC_STREAMINFO, FLAC_COMMENT, FLAC_PICTURE].includes(kind) && size <= TAGS_MOST) {
+        const block = await source.at(at + 4, size);
+
+        if (kind === FLAC_STREAMINFO) {
+          this.readStreamInfo(block);
+        } else if (kind === FLAC_COMMENT) {
+          this.readVorbisComment(block);
+        } else {
+          this.readPicture(block);
+        }
+      }
+
+      if (header.u8(0) & 0x80) {
+        return;
+      }
+
+      at += 4 + size;
+    }
+  }
+
+  // FLAC's STREAMINFO: how many samples it plays in a second, in 20 bits from
+  // its eleventh byte, and how many it holds, in 36 bits from four into its
+  // fourteenth.
+  readStreamInfo(block) {
+    const rate = block.u8(10) * 4096 + block.u8(11) * 16 + (block.u8(12) >> 4);
+    const samples = (block.u8(13) & 0x0f) * 2 ** 32 + block.u32(14);
+
+    if (rate) {
+      this.keep("duration_seconds", wholeSeconds(samples / rate));
+    }
+  }
+
+  // A Vorbis comment (xiph.org: Vorbis I 5.2), as FLAC and Ogg hold one: its
+  // vendor, how many fields it has, and each field, "NAME=value", in UTF-8,
+  // its name any case, each with its length before it, little-endian. A
+  // picture is a METADATA_BLOCK_PICTURE, a FLAC PICTURE in base64.
+  readVorbisComment(block) {
+    const fields = new Map();
+    let at = 4 + block.u32(0, true);
+    const count = block.u32(at, true);
+    at += 4;
+
+    for (let index = 0; index < count && block.holds(at, 4); index += 1) {
+      const end = Math.min(at + 4 + block.u32(at, true), block.length);
+      const field = block.text("utf-8", at + 4, end);
+      const equals = field.indexOf("=");
+      at = end;
+
+      if (equals > 0) {
+        const name = field.slice(0, equals).toUpperCase();
+        fields.set(name, [...(fields.get(name) || []), field.slice(equals + 1)]);
+      }
+    }
+
+    for (const [name, key] of Object.entries(VORBIS_FIELDS)) {
+      this.give(key, fields.get(name) || []);
+    }
+
+    for (const picture of fields.get("METADATA_BLOCK_PICTURE") || []) {
+      this.readPicture(Bytes.fromBase64(picture));
+    }
+  }
+
+  // A FLAC PICTURE (xiph.org: FLAC format): the kind of picture it is, its
+  // type, its description, its width, height, depth, and colors, and the
+  // picture itself, each length before what it measures.
+  readPicture(block) {
+    const typed = 8 + block.u32(4);
+    const described = typed + 4 + block.u32(typed);
+    const picture = block.slice(described + 20, described + 20 + block.u32(described + 16));
+    this.offerPicture(picture, block.text("latin1", 8, typed), block.u32(0) === FRONT_COVER);
+  }
+
+  // An Ogg Vorbis, or Opus (xiph.org: Ogg, Vorbis I 4.2; RFC 7845): the first
+  // two packets of its first stream, the codec's header and its comment,
+  // each read from the pages that hold it, a page at a time; and its
+  // duration, from the position of its last page, in its last 64 KiB. A page
+  // gives the length of each of its segments, and a packet ends with the
+  // first shorter than 255.
+  async readOgg(source) {
+    const packets = [];
+    let parts = [];
+    let serial = null;
+
+    for (let at = 0, count = 0; packets.length < 2 && count < MOST_CHUNKS; count += 1) {
+      const page = await source.at(at, 27);
+
+      if (page.ascii(0, 4) !== "OggS" || !page.holds(0, 27)) {
+        break;
+      }
+
+      const lacing = await source.at(at + 27, page.u8(26));
+      const data = await source.at(at + 27 + lacing.length, lacing.array.reduce((total, length) => total + length, 0));
+      serial = serial ?? page.u32(14, true);
+      at += 27 + lacing.length + data.length;
+
+      for (let offset = 0, index = 0; page.u32(14, true) === serial && index < lacing.length; index += 1) {
+        parts.push(data.slice(offset, offset + lacing.array[index]));
+        offset += lacing.array[index];
+
+        if (lacing.array[index] < 255) {
+          packets.push(Bytes.joined(parts));
+          parts = [];
+        }
+      }
+    }
+
+    const [header, comment] = packets;
+    const codec = header && OGG_CODECS.find((each) => header.ascii(0, each.header.length) === each.header);
+
+    if (!codec) {
+      return;
+    }
+
+    const opus = codec.header === "OpusHead";
+    const rate = opus ? OPUS_RATE : header.u32(12, true);
+    const skip = opus ? header.u16(10, true) : 0;
+    this.keep("type", codec.type);
+
+    if (comment && comment.ascii(0, codec.comment.length) === codec.comment) {
+      this.readVorbisComment(comment.slice(codec.comment.length));
+    }
+
+    const tail = await source.tail(TAGS_HEAD);
+
+    for (let at = tail.length - 27; at >= 0; at -= 1) {
+      if (tail.array[at] === 0x4f && tail.ascii(at, 4) === "OggS" && tail.u32(at + 14, true) === serial) {
+        const position = tail.u64(at + 6, true);
+
+        // A position of all ones is not known.
+        if (rate && position < 2 ** 63) {
+          this.keep("duration_seconds", wholeSeconds((position - skip) / rate));
+        }
+
+        return;
+      }
     }
   }
 

@@ -623,8 +623,9 @@ for a client no one is signed in on.
 
 - **Placed by** the music application, with `POST /data/signed`, given
   `encrypt: {for: id}`, whenever the person's library changes: once for
-  each song added from a file, and once for each folder of songs added
-  together, once every song of it is imported.
+  each song added from a file, once for each folder of songs added
+  together, once every song of it is imported, and once for each song
+  whose tags gave no duration, as it first plays.
 - **Signed** by the person, then **encrypted** for the person.
 - **Bits:** placed matching at least 24, searched for 1 second.
 - **Reading:** a reader passes over every version that does not open for
