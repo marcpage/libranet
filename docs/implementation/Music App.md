@@ -30,7 +30,7 @@ serves as `application/octet-stream`.
 
 ## 2. What It Adds
 
-Six steps, the first built, and the last built only if it is needed:
+Six steps, the first two built, and the last built only if it is needed:
 
 - **The music application.** A person's library, with songs added from a
   file or from a whole folder, played one after another, and filtered by
@@ -344,9 +344,9 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 150 — Reading a Song's Tags
+## Step 150 — Reading a Song's Tags ✅
 
-**Issue:** to be made (§4), from #479. **Depends on:** Step 149.
+**Issue:** #640, from #479. **Depends on:** Step 149.
 
 Settled with the user:
 
@@ -421,6 +421,64 @@ each made with its tags and a cover by a tool such as `ffmpeg`, and kept
 out of the repository; an `.m4a` whose `moov` comes after the audio; tags
 in ID3v2.2, v2.3, v2.4, and ID3v1 alone; a folder with its cover as an
 image beside its songs; and a file with no tags, named from its path.
+
+Built, in two change sets: ID3 and the cover found in a folder; then MP4,
+Vorbis comments, and RIFF. The page's own reading of tags was checked in
+headless Chromium, against a stand-in for the node that serves ranges, with
+songs made by `ffmpeg` and `mutagen`, and by hand, and kept out of the
+repository: ID3v2.2, v2.3, unsynchronised v2.3, and v2.4, with several
+values, each encoding, and a back cover before the front; ID3v1.1 alone; a
+tag of 2 MB, read on from the first 64 KiB; an MP3 with a Xing header, and
+one with none; a WAV and an AIFF with an ID3 chunk after their audio; an
+`.m4a` whose `moov` comes first, one whose `moov` comes after the audio, and
+an hour-long `.m4b` of each, read in two or three ranges; Apple Lossless;
+FLAC, Ogg Vorbis, and Opus, each with its picture; a WAV's RIFF INFO; a
+file that is not audio; and a node that sends a whole file rather than the
+range asked for. Then, on a node of its own: two folders of songs added,
+of every format read, a folder's `Folder.JPG` kept as the cover of each of
+its songs whose tags hold none, the covers listed small, loaded as they are
+scrolled to, Apple Lossless marked as one Chromium cannot play while AAC is
+not, the durations of an MP3 with no Xing header and of a WAV with no RIFF
+format kept once each played, and a phone's width. Safari is yet to be
+checked.
+
+Calls made while building it, not yet reviewed:
+
+- **`type`, in `info.json` and `index/`**: the type of the audio the tags
+  give, such as `audio/mp4; codecs="alac"`, which the browser is asked
+  whether it can play, in place of the type of its file's extension. It is
+  kept, as the tags are not read again.
+- **A format is known by its first bytes**, not by its file's name, but
+  that a file named `.mp3` is read as an MP3, for an ID3v1 tag, whatever it
+  starts with.
+- **AAC is asked of as `mp4a.40.2`**, AAC-LC, whatever profile it is. FLAC
+  and Opus in an MP4 are named too.
+- **The first of a detail given twice is kept**, as of two frames, or of an
+  ID3 chunk and RIFF INFO in one WAV. MP4's `covr` does not name a front
+  cover, so its first picture is kept.
+- **Numbers.** A track, a disc, or how many of either, of 0 or more than
+  9999 is taken as absent, as is a year of 0000. A year is the four digits
+  a date starts with. A duration is in whole seconds, as the movie and TV
+  pages keep one.
+- **A duration from the audio** is kept as its metadata loads, once for
+  each song whose tags gave none, in a version of the library of its own.
+- **What is read at the end:** the last 128 bytes, for ID3v1, and the last
+  64 KiB only of an Ogg, for its last page.
+- **16 MiB in all**, with the 64 KiB at each end, is read of a file. A
+  file is read until what it holds is not what its format says it should
+  be, or for 256 of its chunks, blocks, boxes, or pages at most, and what
+  was read until then is kept. A node that sends a whole file rather than
+  the range asked for is not read, and the song is named from its path.
+- **ID3v2.4 frame sizes** are read as syncsafe, unless a byte of one has
+  its top bit set, when it is read plain, as some tools write them.
+- **Not read:** ID3v2 frames compressed or encrypted, ID3v2.2's
+  compression, FLAC in Ogg, and an AIFF's duration, which comes from its
+  audio as it plays.
+- **The cover beside the songs** is looked for once for each folder added,
+  `cover` preferred, then `folder`, `front`, and `album`. A picture the
+  tags hold that the browser cannot draw is passed over for it.
+- **Drawn on white**, as a JPEG has no transparency.
+- **Genre 133 is named Afro-Punk**, not the name Winamp first gave it.
 
 ---
 
@@ -680,7 +738,7 @@ step, and this table then given their numbers.
 | #478 | Defining the music application | None: this plan |
 | #479 | Implementing the music application, split into the issues below | 149 to 154 |
 | *to be made* | The music application: a library, added from a file or a folder, played, and filtered | 149 |
-| *to be made* | Reading a song's tags on the page | 150 |
+| #640 | Reading a song's tags on the page | 150 |
 | *to be made* | Playlists | 151 |
 | *to be made* | Sharing a song or a playlist | 152 |
 | *to be made* | Keeping a playlist offline | 153 |

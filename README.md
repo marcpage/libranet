@@ -199,10 +199,14 @@ Every node also ships a music application, at `/music/` on the node, which
 is bright where the movie library and TV are dark. Signed in, in a browser
 on the node's own computer, add songs from audio files of any kind, one at
 a time, or every song in a folder, and in the folders within it, at once.
-A song's title comes from its file's name, less a track number it starts
-with, its album from the folder it is in, and its artist from the folder
-above that, as a library laid out as `Artist/Album/01 Title.mp3` gives, and
-each can be edited. A song added already is not added again, so a folder
+A song's title, artist, album, and the rest come from its tags, read once
+it is imported, of an MP3, an MP4, a FLAC, an Ogg, a WAV, or an AIFF, and
+its cover is the picture its tags hold, or one beside it named `cover`,
+`folder`, `front`, or `album`. What its tags do not give comes from its
+path: its title from its file's name, less a track number it starts with,
+its album from the folder it is in, and its artist from the folder above
+that, as a library laid out as `Artist/Album/01 Title.mp3` gives. Each can
+be edited. A song added already is not added again, so a folder
 can be added again as it grows. Your library lists every song you have
 added, by artist, album, disc, and track, and is filtered by artist, by
 album, or by the whole words of any detail of a song.
@@ -401,7 +405,7 @@ you say so on `/config`.
 | [Phase 8 Plan](docs/implementation/Phase%208.md) | A seed node: step 84, planned |
 | [Movie App Plan](docs/implementation/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 83, 85–88, and 115, all built |
 | [TV App Plan](docs/implementation/TV%20App.md) | The TV application: steps 144–148, all built |
-| [Music App Plan](docs/implementation/Music%20App.md) | The music application: steps 149–154, step 149 built |
+| [Music App Plan](docs/implementation/Music%20App.md) | The music application: steps 149–154, steps 149 and 150 built |
 | [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |
 | [File Layout](docs/implementation/File%20Layout.md) | Every file a node reads or writes, and the settings that move them |
 | [Database Schema](docs/implementation/Database%20Schema.md) | The statistics database's tables, and what reads and writes them |
