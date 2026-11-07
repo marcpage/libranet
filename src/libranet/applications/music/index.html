@@ -162,12 +162,12 @@
   .filters { margin: 0.75rem 0 0; }
   .filter { display: block; width: 100%; margin: 0 0 0.75rem; }
 
-  /* The list of songs: a play icon, the track number, title, artist, album, and duration of each, and its Edit and Remove. */
+  /* The list of songs: a play icon, the cover, track number, title, artist, album, and duration of each, and its Edit and Remove. */
   .songs { list-style: none; margin: 0.5rem 0 0; padding: 0; }
 
   .song {
     display: grid;
-    grid-template-columns: 2.25rem 2.25rem minmax(0, 3fr) minmax(0, 2fr) minmax(0, 2fr) 3.5rem 4.25rem;
+    grid-template-columns: 2.25rem 2rem 2.25rem minmax(0, 3fr) minmax(0, 2fr) minmax(0, 2fr) 3.5rem 4.25rem;
     align-items: center;
     gap: 0 0.5rem;
     padding: 0.1rem 0.25rem;
@@ -182,6 +182,10 @@
   .song.playing .name { color: var(--accent); font-weight: 600; }
   .song.chosen { box-shadow: inset 3px 0 0 var(--accent); }
 
+  /* Each song's cover, small, loaded only as it is scrolled to. */
+  .song .thumb .cover { border-radius: 3px; }
+  .song .thumb span.cover { font-size: 1rem; }
+
   /* A song's Edit and Remove are shown for the song playing or chosen, and for one pointed at. */
   .row-icons { display: flex; justify-content: flex-end; gap: 0.1rem; visibility: hidden; }
   .song.playing .row-icons, .song.chosen .row-icons, .song:hover .row-icons, .song:focus-within .row-icons { visibility: visible; }
@@ -189,7 +193,7 @@
   @media (max-width: 44rem) {
     .player { align-items: flex-start; }
     .cover-frame { flex-basis: 5rem; width: 5rem; }
-    .song { grid-template-columns: 2.25rem minmax(0, 1fr) 3.5rem 4.25rem; }
+    .song { grid-template-columns: 2.25rem 2rem minmax(0, 1fr) 3.5rem 4.25rem; }
     .song .number, .song .artist, .song .album { display: none; }
     .song .title span { display: block; overflow: hidden; text-overflow: ellipsis; }
     .song .also { color: var(--muted); font-size: 0.85em; }
@@ -329,7 +333,7 @@
     <p class="result" id="library-result" role="status" hidden></p>
     <p class="state" id="library-state" hidden></p>
     <div class="song head" id="songs-head" aria-hidden="true">
-      <span></span><span class="number">#</span><span>Title</span><span class="artist">Artist</span>
+      <span></span><span></span><span class="number">#</span><span>Title</span><span class="artist">Artist</span>
       <span class="album">Album</span><span class="duration">Time</span><span></span>
     </div>
     <ol class="songs" id="songs"></ol>
@@ -348,10 +352,12 @@
   <h3 id="file-heading">Add songs from files</h3>
   <div id="folder-browse">
     <p class="hint">The folders this node offers. Choose a song, and it is imported into the
-    network, and added to your library. Its title comes from its file's name, less a track number
-    it starts with, its album from the folder it is in, and its artist from the folder above that,
-    as a library laid out as Artist/Album/01 Title.mp3 gives. Each can be edited after. Or add every
-    song in the folder shown, and in the folders within it.</p>
+    network, and added to your library. Its title, artist, album, and the rest come from its tags,
+    once it is imported. What they do not give comes from its path: its title from its file's name,
+    less a track number it starts with, its album from the folder it is in, and its artist from the
+    folder above that, as a library laid out as Artist/Album/01 Title.mp3 gives. Its cover is the
+    picture its tags hold, or else one beside it named cover, folder, front, or album. Each can be
+    edited after. Or add every song in the folder shown, and in the folders within it.</p>
     <nav class="crumbs" id="folder-path" aria-label="Where in the folders"></nav>
     <ul class="entries" id="folder-entries"></ul>
     <p class="result" id="folder-state" role="status" hidden></p>
@@ -484,10 +490,11 @@ const INFO_FILE = "info.json";
 // entry in the index holds: the same, and the path it was imported from, and
 // its audio's file bundle, so that the same file is not added twice. Its
 // path is kept in the index alone, so that sharing a song does not tell
-// where it was on the person's machine.
+// where it was on the person's machine. `type` is the type of its audio, as
+// its tags give it, which this browser is asked whether it can play.
 const INFO_KEYS = [
   "title", "artist", "album_artist", "album", "track", "tracks", "disc", "discs", "year", "genre",
-  "composer", "duration_seconds", "audio", "cover",
+  "composer", "duration_seconds", "audio", "type", "cover",
 ];
 const INDEX_KEYS = [...INFO_KEYS, "source", "file"];
 
@@ -533,6 +540,89 @@ const DATED_ALBUM = /^(.*\S)\s*[([]((?:19|20)\d\d)[)\]]$/;
 // How many folders below the one chosen every song is looked for in, so
 // that a link back to a folder above does not lead the search on forever.
 const FOLDER_DEPTH = 8;
+
+// A song's cover, if one is found, beside its audio: a JPEG no wider than
+// this, as the TV page keeps a still.
+const COVER_FILE = "cover.jpg";
+const COVER_MAX_WIDTH = 600;
+const COVER_QUALITY = 0.85;
+
+// The names a picture of an album's cover is given beside its songs, the
+// first preferred, any case, as .jpg, .jpeg, or .png.
+const FOLDER_COVERS = ["cover", "folder", "front", "album"];
+const FOLDER_COVER = new RegExp(`^(${FOLDER_COVERS.join("|")})\\.(?:jpe?g|png)$`, "i");
+
+// How much of a song's file is read for its tags (HttpApi 12.1, 19): this
+// much at its start, and at its end where a format keeps something there;
+// and at most this much in all, as much as its tags say they hold.
+const TAGS_HEAD = 64 * 1024;
+const TAGS_MOST = 16 * 1024 * 1024;
+
+// How many chunks or blocks of a file are walked through for its tags, at
+// most, so that a file that is not what it seems is not read on forever.
+const MOST_CHUNKS = 256;
+
+// How far after an ID3v2 tag the first frame of an MP3's audio is looked for.
+const FRAME_SEARCH = 4096;
+
+// The ID3v2 frames read, by their names in ID3v2.3 and v2.4 and in ID3v2.2,
+// each with the detail it gives (id3.org: ID3v2.2, ID3v2.3.0, ID3v2.4.0).
+const ID3_FRAMES = {
+  TIT2: "title", TT2: "title",
+  TPE1: "artist", TP1: "artist",
+  TPE2: "album_artist", TP2: "album_artist",
+  TALB: "album", TAL: "album",
+  TRCK: "track", TRK: "track",
+  TPOS: "disc", TPA: "disc",
+  TDRC: "year", TYER: "year", TYE: "year",
+  TCON: "genre", TCO: "genre",
+  TCOM: "composer", TCM: "composer",
+};
+
+// The encodings an ID3v2 text names, by number: ISO-8859-1, UTF-16 with a
+// byte order mark, which is read for whichever it marks, UTF-16BE, and
+// UTF-8. Text in every other format is UTF-8.
+const ID3_ENCODINGS = ["latin1", "utf-16le", "utf-16be", "utf-8"];
+const ID3_UTF16 = 1;
+
+// The kinds of picture ID3v2.2 names, and the type of each.
+const ID3_PICTURES = { JPG: "image/jpeg", PNG: "image/png" };
+
+// The kind of picture that is an album's front cover, in ID3v2 and FLAC alike.
+const FRONT_COVER = 3;
+
+// The size of an ID3v1 tag, at the end of an MP3.
+const ID3V1_SIZE = 128;
+
+// The genres ID3v1 names by number, and ID3v2 after it, as Winamp extended
+// them.
+const GENRES = [
+  "Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop", "Jazz", "Metal",
+  "New Age", "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae", "Rock", "Techno", "Industrial",
+  "Alternative", "Ska", "Death Metal", "Pranks", "Soundtrack", "Euro-Techno", "Ambient", "Trip-Hop",
+  "Vocal", "Jazz+Funk", "Fusion", "Trance", "Classical", "Instrumental", "Acid", "House", "Game",
+  "Sound Clip", "Gospel", "Noise", "Alternative Rock", "Bass", "Soul", "Punk", "Space", "Meditative",
+  "Instrumental Pop", "Instrumental Rock", "Ethnic", "Gothic", "Darkwave", "Techno-Industrial",
+  "Electronic", "Pop-Folk", "Eurodance", "Dream", "Southern Rock", "Comedy", "Cult", "Gangsta",
+  "Top 40", "Christian Rap", "Pop/Funk", "Jungle", "Native American", "Cabaret", "New Wave",
+  "Psychedelic", "Rave", "Showtunes", "Trailer", "Lo-Fi", "Tribal", "Acid Punk", "Acid Jazz", "Polka",
+  "Retro", "Musical", "Rock & Roll", "Hard Rock", "Folk", "Folk-Rock", "National Folk", "Swing",
+  "Fast Fusion", "Bebop", "Latin", "Revival", "Celtic", "Bluegrass", "Avantgarde", "Gothic Rock",
+  "Progressive Rock", "Psychedelic Rock", "Symphonic Rock", "Slow Rock", "Big Band", "Chorus",
+  "Easy Listening", "Acoustic", "Humour", "Speech", "Chanson", "Opera", "Chamber Music", "Sonata",
+  "Symphony", "Booty Bass", "Primus", "Porn Groove", "Satire", "Slow Jam", "Club", "Tango", "Samba",
+  "Folklore", "Ballad", "Power Ballad", "Rhythmic Soul", "Freestyle", "Duet", "Punk Rock",
+  "Drum Solo", "A Cappella", "Euro-House", "Dance Hall", "Goa", "Drum & Bass", "Club-House",
+  "Hardcore", "Terror", "Indie", "BritPop", "Afro-Punk", "Polsk Punk", "Beat", "Christian Gangsta Rap",
+  "Heavy Metal", "Black Metal", "Crossover", "Contemporary Christian", "Christian Rock", "Merengue",
+  "Salsa", "Thrash Metal", "Anime", "JPop", "Synthpop", "Abstract", "Art Rock", "Baroque", "Bhangra",
+  "Big Beat", "Breakbeat", "Chillout", "Downtempo", "Dub", "EBM", "Eclectic", "Electro",
+  "Electroclash", "Emo", "Experimental", "Garage", "Global", "IDM", "Illbient", "Industro-Goth",
+  "Jam Band", "Krautrock", "Leftfield", "Lounge", "Math Rock", "New Romantic", "Nu-Breakz",
+  "Post-Punk", "Post-Rock", "Psytrance", "Shoegaze", "Space Rock", "Trop Rock", "World Music",
+  "Neoclassical", "Audiobook", "Audio Theatre", "Neue Deutsche Welle", "Podcast", "Indie Rock",
+  "G-Funk", "Dubstep", "Garage Rock", "Psybient",
+];
 
 // How often the imports are asked after.
 const IMPORT_POLL_SECONDS = 1;
@@ -874,11 +964,12 @@ class Song {
     return `${SONGS}/${this.folder}/${name}`;
   }
 
-  // The type this browser is asked whether it can play it as, or null if its
-  // file's name gives none.
+  // The type this browser is asked whether it can play it as: the one its
+  // tags gave, or else the one its file's name gives, or null if neither
+  // gives one.
   type() {
     const extension = extensionOf(this.text("audio"));
-    return Object.hasOwn(AUDIO_TYPES, extension) ? AUDIO_TYPES[extension] : null;
+    return this.text("type") || (Object.hasOwn(AUDIO_TYPES, extension) ? AUDIO_TYPES[extension] : null);
   }
 
   // Whether this browser says it cannot play it.
@@ -1416,9 +1507,11 @@ function songRow(song) {
   const play = make("button", null, "icon play");
   const title = make("span", null, "title");
   const icons = make("span", null, "row-icons changes-only");
+  const cover = make("span", null, "thumb");
   item.dataset.folder = song.folder;
   play.type = "button";
   play.addEventListener("click", () => chooseSong(song.folder));
+  cover.append(coverImage(isText(song.details.cover) ? state.library.url(song.path(song.details.cover)) : null, true));
   title.append(make("span", song.title(), "name"), make("span", song.byline(), "also"));
   title.title = song.title();
   icons.append(
@@ -1426,7 +1519,7 @@ function songRow(song) {
     rowIcon("remove", `Remove “${song.title()}”`, "danger", (control) => perform(control, byId("library-result"), () => removeSong(song.folder))),
   );
   icons.hidden = !canChange();
-  item.append(play, make("span", song.number("track"), "number"), title, make("span", song.artist(), "artist"),
+  item.append(play, cover, make("span", song.number("track"), "number"), title, make("span", song.artist(), "artist"),
     make("span", song.album(), "album"), make("span", formatDuration(song.details.duration_seconds), "duration"), icons);
   return item;
 }
@@ -1695,8 +1788,9 @@ function noCover() {
 }
 
 // The picture at `url`, asked for again a few times if the node is still
-// fetching it; a placeholder if `url` is null.
-function coverImage(url) {
+// fetching it; a placeholder if `url` is null. If `lazy`, it is loaded only
+// as it is scrolled to.
+function coverImage(url, lazy = false) {
   if (!url) {
     return noCover();
   }
@@ -1704,6 +1798,7 @@ function coverImage(url) {
   const image = make("img", null, "cover");
   let tries = 1;
   image.alt = "";
+  image.loading = lazy ? "lazy" : "eager";
   image.addEventListener("error", () => {
     if (tries >= POSTER_TRIES) {
       image.replaceWith(noCover());
@@ -2066,6 +2161,697 @@ async function removeSong(folder) {
   return [`Removed “${song.title()}”.`, false];
 }
 
+// Reading a song's tags.
+
+// Bytes of a song's file, as its tags are read from them. Reading a number
+// past their end throws.
+class Bytes {
+  constructor(array) {
+    this.array = array;
+    this.view = new DataView(array.buffer, array.byteOffset, array.byteLength);
+    this.length = array.length;
+  }
+
+  static empty() {
+    return new Bytes(new Uint8Array(0));
+  }
+
+  // `parts`, each Bytes, one after another.
+  static joined(parts) {
+    const array = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
+    let at = 0;
+
+    for (const part of parts) {
+      array.set(part.array, at);
+      at += part.length;
+    }
+
+    return new Bytes(array);
+  }
+
+  // Whether the `count` bytes from `at` are held.
+  holds(at, count) {
+    return at >= 0 && count >= 0 && at + count <= this.length;
+  }
+
+  u8(at) {
+    return this.view.getUint8(at);
+  }
+
+  u16(at, little = false) {
+    return this.view.getUint16(at, little);
+  }
+
+  u24(at) {
+    return this.view.getUint8(at) * 0x10000 + this.view.getUint16(at + 1);
+  }
+
+  u32(at, little = false) {
+    return this.view.getUint32(at, little);
+  }
+
+  // A 64-bit number, as nearly as a Number holds it.
+  u64(at, little = false) {
+    const [high, low] = little ? [this.u32(at + 4, true), this.u32(at, true)] : [this.u32(at), this.u32(at + 4)];
+    return high * 2 ** 32 + low;
+  }
+
+  // An ID3v2 size: 28 bits, the low seven of each of four bytes.
+  syncsafe(at) {
+    return [0, 1, 2, 3].reduce((size, index) => size * 128 + (this.u8(at + index) & 0x7f), 0);
+  }
+
+  // The `count` bytes from `at`, each as a character, as the name of a
+  // frame, a chunk, or a box is given; or "" if they are not all held.
+  ascii(at, count) {
+    return this.holds(at, count) ? String.fromCharCode(...this.array.subarray(at, at + count)) : "";
+  }
+
+  // The bytes from `start` to `end` as text, in `encoding`.
+  text(encoding, start = 0, end = this.length) {
+    return new TextDecoder(encoding).decode(this.array.subarray(start, end));
+  }
+
+  // Where the text from `at`, ended by a null of one byte or, if `wide`, of
+  // two, ends: at its null, or at the end of the bytes.
+  ending(at, wide = false) {
+    const step = wide ? 2 : 1;
+
+    for (let end = at; end + step <= this.length; end += step) {
+      if (this.array[end] === 0 && (!wide || this.array[end + 1] === 0)) {
+        return end;
+      }
+    }
+
+    return this.length;
+  }
+
+  slice(start, end = this.length) {
+    return new Bytes(this.array.subarray(start, end));
+  }
+
+  // The bytes, each 0xFF 0x00 that ID3v2's unsynchronisation made of an
+  // 0xFF made one again.
+  resynchronized() {
+    const array = new Uint8Array(this.length);
+    let length = 0;
+
+    for (let at = 0; at < this.length; at += 1) {
+      array[length] = this.array[at];
+      length += 1;
+
+      if (this.array[at] === 0xff && this.array[at + 1] === 0) {
+        at += 1;
+      }
+    }
+
+    return new Bytes(array.subarray(0, length));
+  }
+
+  // The texts of an ID3v2 text frame, the bytes after its encoding, which
+  // `encoding` names: one, or several, as ID3v2.4 allows, each ended by a
+  // null.
+  id3Texts(encoding) {
+    const wide = encoding === 1 || encoding === 2;
+    const texts = [];
+
+    for (let at = 0; at < this.length;) {
+      const end = this.ending(at, wide);
+      texts.push(this.slice(at, end).id3Text(encoding));
+      at = end + (wide ? 2 : 1);
+    }
+
+    return texts;
+  }
+
+  // The bytes as one ID3v2 text, in the encoding `encoding` names.
+  id3Text(encoding) {
+    if (encoding === ID3_UTF16 && this.length >= 2 && this.u16(0) === 0xfeff) {
+      return this.text("utf-16be", 2);
+    }
+
+    return this.text(ID3_ENCODINGS[encoding] || ID3_ENCODINGS[0]);
+  }
+
+  // The bytes as a picture of the type `type`.
+  blob(type) {
+    return new Blob([this.array], { type });
+  }
+}
+
+// A file the node holds as a file bundle, read a range at a time (HttpApi
+// 12.1, 19), and no more of it in all than its tags, at most TAGS_MOST, and
+// TAGS_HEAD at each end. What was read last is kept, so that what is read
+// next within it, or on from it, is not asked for again; and at least
+// TAGS_HEAD is read at once, so that the chunks, boxes, or pages of a format
+// are not asked for one at a time.
+class StoredFile {
+  constructor(file) {
+    this.url = `${DATA}${file}/`;
+    // Its size, once a range of it says it.
+    this.size = null;
+    this.kept = { start: 0, bytes: Bytes.empty() };
+    this.left = TAGS_MOST + 2 * TAGS_HEAD;
+  }
+
+  // The node's answer to a GET of the file with `headers`, waiting out the
+  // 503s it answers while it fetches what it lacks.
+  async fetched(headers = {}) {
+    for (let waits = 0; ; waits += 1) {
+      let response;
+
+      try {
+        response = await fetch(this.url, { headers, cache: "no-store" });
+      } catch (error) {
+        throw new Unreachable(`The node could not be reached: ${error.message}`);
+      }
+
+      if (response.status !== 503 || waits >= MAX_WAITS) {
+        return response;
+      }
+
+      await response.body?.cancel();
+      await sleep(retryAfter(response.headers));
+    }
+  }
+
+  // Why `response` is not the range of the file asked for.
+  static async refusal(response) {
+    let value = null;
+
+    if (response.ok) {
+      await response.body?.cancel();
+      return new Error("The node sent the whole file, not the part of it asked for.");
+    }
+
+    try {
+      value = await response.json();
+    } catch (error) {
+      value = null;
+    }
+
+    return new Refusal({ status: response.status, value });
+  }
+
+  // The whole file, as a picture.
+  async blob() {
+    const response = await this.fetched();
+
+    if (!response.ok) {
+      throw await StoredFile.refusal(response);
+    }
+
+    return response.blob();
+  }
+
+  // The `count` bytes from `start`, or as many as the file holds from there.
+  async at(start, count) {
+    const { start: from, bytes } = this.kept;
+    const end = from + bytes.length;
+    const size = this.size === null ? Infinity : this.size;
+
+    if (start >= from && Math.min(start + count, size) <= end) {
+      return bytes.slice(start - from, Math.min(start + count, size) - from);
+    }
+
+    if (start >= size) {
+      return Bytes.empty();
+    }
+
+    const resumed = start >= from && start <= end;
+    const first = resumed ? end : start;
+    const more = await this.read(first, Math.max(start + count - first, TAGS_HEAD));
+    const held = resumed ? Bytes.joined([bytes.slice(start - from), more]) : more;
+    this.kept = { start, bytes: held };
+    return held.slice(0, count);
+  }
+
+  // The `count` bytes from `first`, or as many as the file holds from there.
+  read(first, count) {
+    return this.ranged(`bytes=${first}-${first + count - 1}`, count);
+  }
+
+  // The last `count` bytes of the file, or all of it, if it is shorter.
+  tail(count) {
+    return this.ranged(`bytes=-${count}`, count);
+  }
+
+  async ranged(range, count) {
+    if (count > this.left) {
+      throw new Error(`Its tags hold more than the ${formatSize(TAGS_MOST)} read of them.`);
+    }
+
+    const response = await this.fetched({ Range: range });
+    const sized = /\/(\d+)$/.exec(response.headers.get("Content-Range") || "");
+
+    if (sized) {
+      this.size = Number(sized[1]);
+    }
+
+    if (response.status === 416) {
+      await response.body?.cancel();
+      return Bytes.empty();
+    }
+
+    if (response.status !== 206) {
+      throw await StoredFile.refusal(response);
+    }
+
+    const bytes = new Bytes(new Uint8Array(await response.arrayBuffer()));
+    this.left -= bytes.length;
+    return bytes;
+  }
+}
+
+// `seconds`, a duration, to the nearest second; or undefined for none.
+function wholeSeconds(seconds) {
+  const whole = Math.round(seconds);
+  return Number.isFinite(whole) && whole > 0 ? whole : undefined;
+}
+
+// The number `digits` give of a track, a disc, or how many of either; or
+// undefined for none.
+function counted(digits) {
+  const number = Number(digits);
+  return isText(digits) && Number.isInteger(number) && number > 0 && number < 10000 ? number : undefined;
+}
+
+// The header of a frame of MPEG audio, the bytes `bytes` hold at `at`
+// (ISO/IEC 11172-3 2.4.1.3, and ISO/IEC 13818-3 for MPEG-2): its version,
+// 3 for MPEG-1, 2 for MPEG-2, and 0 for MPEG-2.5; its layer, 1 for Layer
+// III, 2 for II, and 3 for I; whether it is of one channel; how many samples
+// it holds; and how many it plays in a second.
+class MpegFrame {
+  constructor(bytes, at, header) {
+    this.bytes = bytes;
+    this.at = at;
+    this.version = (header >>> 19) & 3;
+    this.layer = (header >>> 17) & 3;
+    this.mono = ((header >>> 6) & 3) === 3;
+    this.samples = this.layer === 3 ? 384 : (this.layer === 2 || this.version === 3 ? 1152 : 576);
+    this.sampleRate = [44100, 48000, 32000][(header >>> 10) & 3] / { 3: 1, 2: 2, 0: 4 }[this.version];
+  }
+
+  // The frame whose header is at `at` in `bytes`, or null if none is.
+  static at(bytes, at) {
+    if (!bytes.holds(at, 4)) {
+      return null;
+    }
+
+    const header = bytes.u32(at);
+    const bitrate = (header >>> 12) & 15;
+    const valid = header >>> 21 === 0x7ff && ((header >>> 19) & 3) !== 1 && ((header >>> 17) & 3) !== 0
+      && bitrate !== 0 && bitrate !== 15 && ((header >>> 10) & 3) !== 3;
+    return valid ? new MpegFrame(bytes, at, header) : null;
+  }
+
+  // The first frame among `bytes`, or null if they hold none.
+  static find(bytes) {
+    for (let at = bytes.array.indexOf(0xff); at >= 0; at = bytes.array.indexOf(0xff, at + 1)) {
+      const frame = MpegFrame.at(bytes, at);
+
+      if (frame) {
+        return frame;
+      }
+    }
+
+    return null;
+  }
+
+  // The duration of the audio, as the frames that a Xing header, or an Info
+  // header, as LAME writes one, or a VBRI header in this frame counts give it,
+  // in seconds; or undefined if it holds none.
+  duration() {
+    const { bytes, at } = this;
+    const xing = at + 4 + (this.version === 3 ? (this.mono ? 17 : 32) : (this.mono ? 9 : 17));
+    const vbri = at + 4 + 32;
+    let frames = 0;
+
+    if (["Xing", "Info"].includes(bytes.ascii(xing, 4)) && bytes.holds(xing, 12) && bytes.u32(xing + 4) & 1) {
+      frames = bytes.u32(xing + 8);
+    } else if (bytes.ascii(vbri, 4) === "VBRI" && bytes.holds(vbri, 18)) {
+      frames = bytes.u32(vbri + 14);
+    }
+
+    return wholeSeconds((frames * this.samples) / this.sampleRate);
+  }
+}
+
+// What the tags of a song's file give of it: its details, as its info.json
+// holds them, but its audio and its cover, any that its tags give empty
+// left out; and the picture its cover is made of, a Blob, or null. Where
+// a detail is given more than once, the first is kept.
+class Tags {
+  constructor() {
+    this.details = {};
+    this.picture = null;
+    // Whether the picture kept is the front cover.
+    this.front = false;
+  }
+
+  // The tags of the song whose file is the file bundle `file`, named `name`:
+  // as much of them as could be read.
+  static async read(file, name) {
+    const tags = new Tags();
+
+    try {
+      await tags.readFile(new StoredFile(file), name);
+    } catch (error) {
+      console.warn(`The tags of “${name}” were not all read: ${error.message}`);
+    }
+
+    return tags;
+  }
+
+  // Reads the tags of `source`, the file of the song named `name`, as the
+  // format its first bytes show. Of a format it does not read, nothing is.
+  async readFile(source, name) {
+    const head = await source.at(0, TAGS_HEAD);
+    const kind = head.ascii(0, 4);
+    const form = head.ascii(8, 4);
+
+    if (kind === "RIFF" && form === "WAVE") {
+      this.keep("type", AUDIO_TYPES.wav);
+      await this.readChunks(source, true);
+    } else if (kind === "FORM" && (form === "AIFF" || form === "AIFC")) {
+      this.keep("type", AUDIO_TYPES.aiff);
+      await this.readChunks(source, false);
+    } else if (Tags.id3Size(head, 0) || MpegFrame.at(head, 0) || extensionOf(name) === "mp3") {
+      await this.readMpeg(source, head);
+    }
+  }
+
+  // Keeps `value` as the detail `key`, unless it is undefined or empty, or
+  // one is kept already.
+  keep(key, value) {
+    if (value !== undefined && value !== "" && !Object.hasOwn(this.details, key)) {
+      this.details[key] = value;
+    }
+  }
+
+  // Keeps what `texts`, each what a tag gives for the detail `key`, give of
+  // it, those empty left out: a track's or a disc's number, as "n" or
+  // "n/N", which gives how many there are too; the year a date starts with;
+  // a genre's name; or else the texts, joined.
+  give(key, texts) {
+    const given = texts.map((text) => text.replace(/\0+$/, "").trim()).filter(isText);
+
+    if (given.length === 0) {
+      return;
+    }
+
+    if (key === "track" || key === "disc") {
+      const [, number, total] = /^(\d+)\s*(?:\/\s*(\d+))?/.exec(given[0]) || [];
+      this.keep(key, counted(number));
+      this.keep(`${key}s`, counted(total));
+    } else if (key === "tracks" || key === "discs") {
+      this.keep(key, counted(given[0]));
+    } else if (key === "year") {
+      this.keep(key, counted((/^(\d{4})/.exec(given[0]) || [])[1]));
+    } else if (key === "genre") {
+      this.keep(key, [...new Set(given.map((text) => Tags.genre(text)))].join(" / "));
+    } else {
+      this.keep(key, given.join(" / "));
+    }
+  }
+
+  // The name of the genre `text` gives: ID3v1's numbers named, as ID3v2.3
+  // gives one, "(17)", or "(17)Rock", and ID3v2.4, "17"; Remix and Cover,
+  // as "(RX)" and "(CR)"; or else the text, a "((" at its start a "(".
+  static genre(text) {
+    const coded = /^\((\d+|RX|CR)\)(.*)$/s.exec(text);
+
+    if (coded) {
+      return Tags.genre(coded[2].trim() || coded[1]);
+    }
+
+    if (/^\d+$/.test(text)) {
+      return GENRES[Number(text)] || text;
+    }
+
+    return { RX: "Remix", CR: "Cover" }[text] || text.replace(/^\(\(/, "(");
+  }
+
+  // Keeps `bytes`, a picture of the type `type`, as the one the cover is made
+  // of: if it is the front cover, `front`, and no front cover is kept, or if
+  // no picture is.
+  offerPicture(bytes, type, front) {
+    if (bytes.length === 0 || this.front || (this.picture && !front)) {
+      return;
+    }
+
+    this.picture = bytes.blob(isText(type) && type.startsWith("image/") ? type : "");
+    this.front = front;
+  }
+
+  // An MP3: its ID3v2 tag, at its start, or else its ID3v1 tag, in its last
+  // 128 bytes; and its duration, from a Xing or VBRI header in its first
+  // frame, which shows that it is MPEG audio.
+  async readMpeg(source, head) {
+    const size = Tags.id3Size(head, 0);
+
+    if (size) {
+      this.readId3v2(await source.at(0, Math.min(size, TAGS_MOST)));
+    }
+
+    const frame = MpegFrame.find(await source.at(size, FRAME_SEARCH));
+
+    if (frame) {
+      this.keep("type", AUDIO_TYPES.mp3);
+      this.keep("duration_seconds", frame.duration());
+    }
+
+    if (!size) {
+      this.readId3v1(await source.tail(ID3V1_SIZE));
+    }
+  }
+
+  // The chunks of a WAV, whose sizes RIFF gives `little`-endian, or of an
+  // AIFF, walked from its start a range at a time, since its audio most often
+  // comes before an ID3 chunk: the ID3v2 tag such a chunk holds.
+  async readChunks(source, little) {
+    let at = 12;
+
+    for (let count = 0; count < MOST_CHUNKS; count += 1) {
+      const header = await source.at(at, 8);
+
+      if (header.length < 8) {
+        return;
+      }
+
+      const size = header.u32(4, little);
+
+      if (header.ascii(0, 4).toUpperCase() === "ID3 " && size <= TAGS_MOST) {
+        const tag = await source.at(at + 8, size);
+
+        if (Tags.id3Size(tag, 0)) {
+          this.readId3v2(tag);
+        }
+      }
+
+      at += 8 + size + (size % 2);
+    }
+  }
+
+  // The size of the ID3v2 tag at `at` in `bytes`, its header and any footer
+  // with it, or 0 if none starts there.
+  static id3Size(bytes, at) {
+    if (bytes.ascii(at, 3) !== "ID3" || !bytes.holds(at, 10)) {
+      return 0;
+    }
+
+    const major = bytes.u8(at + 3);
+    const sized = [6, 7, 8, 9].every((index) => bytes.u8(at + index) < 0x80);
+
+    if (major < 2 || major > 4 || !sized) {
+      return 0;
+    }
+
+    return 10 + bytes.syncsafe(at + 6) + (major === 4 && bytes.u8(at + 5) & 0x10 ? 10 : 0);
+  }
+
+  // The frames of the ID3v2 tag `tag`, from its header on, that give a
+  // song's details, and its pictures (id3.org: ID3v2.2, ID3v2.3.0, and
+  // ID3v2.4.0). Its three-letter names in ID3v2.2 give the same.
+  readId3v2(tag) {
+    const major = tag.u8(3);
+    const flags = tag.u8(5);
+    const short = major === 2;
+    const header = short ? 6 : 10;
+    let body = tag.slice(10, Math.min(tag.length, 10 + tag.syncsafe(6)));
+    let at = 0;
+
+    // ID3v2.2 named a compression, but never said what it was.
+    if (short && flags & 0x40) {
+      return;
+    }
+
+    // Before ID3v2.4, the whole tag is unsynchronised, or none of it is.
+    if (major < 4 && flags & 0x80) {
+      body = body.resynchronized();
+    }
+
+    if (!short && flags & 0x40) {
+      at = major === 3 ? 4 + body.u32(0) : body.syncsafe(0);
+    }
+
+    while (body.holds(at, header)) {
+      const id = body.ascii(at, short ? 3 : 4);
+      const plain = short ? body.u24(at + 3) : body.u32(at + 4);
+      // ID3v2.4 gives a frame's size syncsafe, but some tags give it plain.
+      const size = major === 4 && (plain & 0x80808080) === 0 ? body.syncsafe(at + 4) : plain;
+      const start = at + header;
+      at = start + size;
+
+      // Padding, of nulls, or what is not a frame, ends the frames.
+      if (!/^[A-Z0-9]+$/.test(id) || at > body.length) {
+        return;
+      }
+
+      const data = Tags.id3Data(body.slice(start, at), major, short ? 0 : body.u8(start - 1), flags);
+
+      if (data && (id === "APIC" || id === "PIC")) {
+        this.readId3Picture(data, short);
+      } else if (data && data.length > 0 && Object.hasOwn(ID3_FRAMES, id)) {
+        this.give(ID3_FRAMES[id], data.slice(1).id3Texts(data.u8(0)));
+      }
+    }
+  }
+
+  // What the data of an ID3v2 frame, `data`, holds, as its format flags,
+  // `format`, and the flags of its tag, `flags`, give it: less what they add
+  // before it, and resynchronised; or null if it is compressed or encrypted.
+  static id3Data(data, major, format, flags) {
+    if (major === 3) {
+      return format & 0xc0 ? null : data.slice(format & 0x20 ? 1 : 0);
+    }
+
+    if (major === 4) {
+      const held = data.slice((format & 0x40 ? 1 : 0) + (format & 0x01 ? 4 : 0));
+      return format & 0x0c ? null : (format & 0x02 || flags & 0x80 ? held.resynchronized() : held);
+    }
+
+    return data;
+  }
+
+  // The picture of an APIC frame, `data`, or of a PIC frame, in ID3v2.2,
+  // after the encoding of its description: its type, or ID3v2.2's three
+  // letters for it, the kind of picture it is, its description, and itself.
+  readId3Picture(data, short) {
+    const encoding = data.u8(0);
+    const wide = encoding === 1 || encoding === 2;
+    const typed = short ? 4 : data.ending(1) + 1;
+    const type = short ? ID3_PICTURES[data.ascii(1, 3).toUpperCase()] : data.text("latin1", 1, typed - 1);
+    const described = data.ending(typed + 1, wide) + (wide ? 2 : 1);
+    this.offerPicture(data.slice(described), type, data.u8(typed) === FRONT_COVER);
+  }
+
+  // An ID3v1 tag, in the last 128 bytes of a file, `tail`: its title, artist,
+  // album, and year, in ISO-8859-1, its track, as ID3v1.1 gives one, and its
+  // genre, by number.
+  readId3v1(tail) {
+    const at = tail.length - ID3V1_SIZE;
+
+    if (at < 0 || tail.ascii(at, 3) !== "TAG") {
+      return;
+    }
+
+    const field = (start, length) => tail.text("latin1", at + start, Math.min(tail.ending(at + start), at + start + length));
+    this.give("title", [field(3, 30)]);
+    this.give("artist", [field(33, 30)]);
+    this.give("album", [field(63, 30)]);
+    this.give("year", [field(93, 4)]);
+
+    if (tail.u8(at + 125) === 0) {
+      this.keep("track", counted(String(tail.u8(at + 126))));
+    }
+
+    this.keep("genre", GENRES[tail.u8(at + 127)]);
+  }
+}
+
+function base64Of(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",", 2)[1]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+// A JPEG of the picture `blob`, on white, and no wider than COVER_MAX_WIDTH,
+// as the TV page takes a still, as base64; or null if this browser cannot
+// draw it.
+async function jpegCover(blob) {
+  let picture;
+
+  try {
+    picture = await createImageBitmap(blob);
+  } catch (error) {
+    console.warn(`A cover could not be drawn: ${error.message}`);
+    return null;
+  }
+
+  const scale = Math.min(1, COVER_MAX_WIDTH / picture.width);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(picture.width * scale));
+  canvas.height = Math.max(1, Math.round(picture.height * scale));
+  const context = canvas.getContext("2d");
+  context.fillStyle = "white";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.imageSmoothingQuality = "high";
+  context.drawImage(picture, 0, 0, canvas.width, canvas.height);
+  picture.close();
+  const jpeg = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", COVER_QUALITY));
+  return jpeg ? base64Of(jpeg) : null;
+}
+
+// The cover made of the picture beside the songs in the folder at
+// `segments` named as FOLDER_COVER names, imported, as base64; or null if
+// there is none, or it could not be imported or drawn.
+async function folderCover(segments) {
+  try {
+    const [name] = (await Folder.list(segments)).covers;
+
+    if (!name) {
+      return null;
+    }
+
+    const file = await importFile([...segments, name].join("/"), () => undefined);
+    return await jpegCover(await new StoredFile(file).blob());
+  } catch (error) {
+    console.warn(`The cover beside the songs in “${segments.join("/")}” was not imported: ${error.message}`);
+    return null;
+  }
+}
+
+// The duration of the song playing, once its audio gives it, kept in its
+// info.json and its entry in the index, if its tags gave none.
+async function keepDuration() {
+  const folder = state.current;
+  const song = folder === null ? null : state.library.songs.get(folder);
+  const seconds = wholeSeconds(byId("audio").duration);
+
+  if (!song || typeof song.details.duration_seconds === "number" || seconds === undefined || !canChange()) {
+    return;
+  }
+
+  try {
+    await changeLibrary((library) => {
+      const held = library.songs.get(folder);
+
+      if (!held || typeof held.details.duration_seconds === "number") {
+        return null;
+      }
+
+      const timed = held.with({ ...held.details, duration_seconds: seconds });
+      return { add: { [held.path(INFO_FILE)]: { text: timed.infoText() } }, set: new Map([[folder, timed]]) };
+    });
+  } catch (error) {
+    console.warn(`The duration of “${song.title()}” was not kept: ${error.message}`);
+  }
+}
+
 // Adding songs from the folders the node offers.
 
 // `title`, each word capitalized, if it is all of one case, as a file's name
@@ -2085,7 +2871,7 @@ function named(text) {
 }
 
 // What the song at `segments`, the folder offered, the folders below it, and
-// then its file's name, gives of itself, until its tags are read: its title,
+// then its file's name, gives of itself, for what its tags do not: its title,
 // from its file's name, less a leading track number, which is its track, and
 // a disc's number before that; its album from the folder holding it, and its
 // year, if that folder's name ends in one in brackets; and its artist from
@@ -2145,14 +2931,16 @@ function entryRow(text, detail, action) {
 }
 
 // What a folder the node offers holds: the folders and the songs in it, each
-// as [name, what the node says of it], in order of name, and how many other
-// files.
+// as [name, what the node says of it], in order of name, how many other
+// files, and the names of the pictures of an album's cover in it, the one
+// preferred first.
 class Folder {
-  constructor(segments, folders, songs, others) {
+  constructor(segments, folders, songs, others, covers) {
     this.segments = segments;
     this.folders = folders;
     this.songs = songs;
     this.others = others;
+    this.covers = covers;
   }
 
   // The folder at `segments`, the folders it is in and then its name, or,
@@ -2169,7 +2957,10 @@ class Folder {
       .sort(([one], [other]) => COLLATOR.compare(one, other));
     const folders = entries.filter(([, entry]) => entry.type === "directory");
     const songs = entries.filter(([name, entry]) => entry.type === "file" && isSongFile(name, entry));
-    return new Folder(segments, folders, songs, entries.length - folders.length - songs.length);
+    const rank = (name) => FOLDER_COVERS.indexOf(FOLDER_COVER.exec(name)[1].toLowerCase());
+    const covers = entries.filter(([name, entry]) => entry.type === "file" && FOLDER_COVER.test(name))
+      .map(([name]) => name).sort((one, other) => rank(one) - rank(other));
+    return new Folder(segments, folders, songs, entries.length - folders.length - songs.length, covers);
   }
 
   // Adds to `found` the songs in it, and in the folders within it, each as
@@ -2391,6 +3182,19 @@ function addFile(segments) {
 const followed = new Map();
 let askingAfterImports = false;
 
+// Imports the file at `path`, a folder offered and the path below it, and
+// returns the file bundle the node stores it as, telling `progress` how the
+// import is doing until then.
+async function importFile(path, progress) {
+  const started = await call("POST", IMPORTS, { body: { path } });
+
+  if (started.status !== 202 || !isObject(started.value) || !isText(started.value.import_id)) {
+    throw new Refusal(started);
+  }
+
+  return followImport(started.value.import_id, progress);
+}
+
 // What the node says of an import, until it is done: the file bundle it stored.
 function followImport(importId, progress) {
   return new Promise((resolve, reject) => {
@@ -2479,21 +3283,29 @@ class Adding {
     }
   }
 
-  // Imports the song, and makes a song bundle of it, holding its audio under
-  // the name of its file, and its info.json, with what its path gives of it.
-  // Returns the bundle, its audio's file bundle, and the Song it is in the
-  // library; or null, if it failed, which its item then says.
-  async import(together) {
+  // Imports the song, reads its tags, and makes a song bundle of it, holding
+  // its audio under the name of its file; its info.json, with what its tags
+  // give of it, and what they do not from its path; and its cover, if one is
+  // found: made of the picture its tags hold, or else the one `besideCover`
+  // gives, from beside it in its folder. Returns the bundle, its audio's file
+  // bundle, and the Song it is in the library; or null, if it failed, which
+  // its item then says.
+  async import(together, besideCover) {
     try {
-      const started = await call("POST", IMPORTS, { body: { path: this.source } });
+      const file = await importFile(this.source, (record) => this.progress(record));
+      this.bar.removeAttribute("value");
+      this.note.textContent = "Reading its tags…";
+      const tags = await Tags.read(file, this.name);
+      const cover = (tags.picture && await jpegCover(tags.picture)) || await besideCover();
+      const details = defined({
+        ...detailsFromPath(this.segments), ...tags.details, audio: this.name, cover: cover ? COVER_FILE : undefined,
+      });
+      const add = { [this.name]: { file }, [INFO_FILE]: { text: jsonText(INFO_KEYS, details) } };
 
-      if (started.status !== 202 || !isObject(started.value) || !isText(started.value.import_id)) {
-        throw new Refusal(started);
+      if (cover) {
+        add[COVER_FILE] = { base64: cover };
       }
 
-      const file = await followImport(started.value.import_id, (record) => this.progress(record));
-      const details = { ...detailsFromPath(this.segments), audio: this.name };
-      const add = { [this.name]: { file }, [INFO_FILE]: { text: jsonText(INFO_KEYS, details) } };
       const bundle = await makeBundle({ add });
       this.bar.remove();
       this.note.remove();
@@ -2534,16 +3346,23 @@ function warnOfLeaving(event) {
 // one folder, each in turn, and shown in the activity list while it is; then
 // adds those imported to the library together, in one version. One whose
 // file the library holds already, or another of them holds, is not added,
-// and the activity list says so. The page stays where it is.
+// and the activity list says so. The page stays where it is. A picture of
+// their cover beside them is imported once, for every song whose tags hold
+// none.
 async function addSongs(paths) {
   const songs = paths.map((segments) => new Adding(segments));
+  let beside = null;
+  const besideCover = () => {
+    beside = beside || folderCover(paths[0].slice(0, -1));
+    return beside;
+  };
 
   if (state.imports++ === 0) {
     window.addEventListener("beforeunload", warnOfLeaving);
   }
 
   try {
-    const made = (await Promise.all(songs.map((each) => each.import(songs.length > 1)))).filter(Boolean);
+    const made = (await Promise.all(songs.map((each) => each.import(songs.length > 1, besideCover)))).filter(Boolean);
     let held = new Map();
 
     if (made.length === 0) {
@@ -2739,6 +3558,7 @@ const audio = byId("audio");
 audio.addEventListener("play", () => showRow(state.current));
 audio.addEventListener("pause", () => showRow(state.current));
 audio.addEventListener("error", songFailed);
+audio.addEventListener("loadedmetadata", keepDuration);
 
 // As a song ends, the next plays at once. After the last, the page stays on it.
 audio.addEventListener("ended", () => {

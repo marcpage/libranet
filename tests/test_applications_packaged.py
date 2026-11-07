@@ -687,7 +687,7 @@ def test_the_music_application_is_built_from_its_directory(music_page: str) -> N
 def test_the_music_page_is_one_self_contained_document(music_page: str) -> None:
     assert music_page.startswith("<!doctype html>")
     # Nothing is loaded from a file of its own, or from anywhere else: a
-    # song's details come from its path.
+    # song's details come from its tags, read from the node, and its path.
     assert "<link" not in music_page
     assert findall(r"<script[^>]*\bsrc", music_page) == []
     assert "url(" not in music_page.split("<style>", 1)[1].split("</style>", 1)[0]
