@@ -1,5 +1,5 @@
 """Tests for the applications shipped with the node, and the root, ``/config``, movie,
-TV, directory, mail, nodes, and Karma pages.
+TV, music, directory, mail, nodes, and Karma pages.
 
 Which way they were shipped, built into a wheel or run from source, is known
 only to the layered source, and is tested through it.
@@ -90,10 +90,12 @@ MAIL_APPLICATION = "mail"
 NODES_APPLICATION = "nodes"
 KARMA_APPLICATION = "karma"
 TV_APPLICATION = "tv"
+MUSIC_APPLICATION = "music"
 ROOT_PAGE_SOURCE = PACKAGED_APPLICATIONS / "root" / "index.html"
 CONFIG_PAGE_SOURCE = PACKAGED_APPLICATIONS / "config" / "index.html"
 MOVIE_PAGE_SOURCE = PACKAGED_APPLICATIONS / "movie" / "index.html"
 TV_PAGE_SOURCE = PACKAGED_APPLICATIONS / "tv" / "index.html"
+MUSIC_PAGE_SOURCE = PACKAGED_APPLICATIONS / "music" / "index.html"
 DIRECTORY_PAGE_SOURCE = PACKAGED_APPLICATIONS / "directory" / "index.html"
 MAIL_PAGE_SOURCE = PACKAGED_APPLICATIONS / "mail" / "index.html"
 NODES_PAGE_SOURCE = PACKAGED_APPLICATIONS / "nodes" / "index.html"
@@ -178,6 +180,11 @@ def tv_page(content: LayeredSource, built: PackagedApplications) -> str:
 
 
 @fixture
+def music_page(content: LayeredSource, built: PackagedApplications) -> str:
+    return index_page(built.bundles[MUSIC_APPLICATION], content).decode("utf-8")
+
+
+@fixture
 def directory_page(content: LayeredSource, built: PackagedApplications) -> str:
     return index_page(built.bundles[DIRECTORY_APPLICATION], content).decode("utf-8")
 
@@ -250,7 +257,7 @@ def router_for(
     )
 
 
-def test_the_node_ships_the_root_config_movie_tv_directory_mail_nodes_and_karma_applications(
+def test_the_node_ships_the_root_config_movie_tv_music_directory_mail_nodes_and_karma_applications(
     built: PackagedApplications,
 ) -> None:
     assert (
@@ -265,6 +272,7 @@ def test_the_node_ships_the_root_config_movie_tv_directory_mail_nodes_and_karma_
             NODES_APPLICATION,
             KARMA_APPLICATION,
             TV_APPLICATION,
+            MUSIC_APPLICATION,
         }
     )
 
@@ -467,6 +475,7 @@ def test_each_page_showing_a_node_offers_the_details_the_issue_names(
         "mail_page",
         "movie_page",
         "tv_page",
+        "music_page",
         "karma_page",
     ],
 )
@@ -483,7 +492,8 @@ def test_each_page_reading_drops_reads_whatever_the_node_finds_there(
 
 
 @mark.parametrize(
-    "page_fixture", ["config_page", "directory_page", "mail_page", "movie_page", "tv_page"]
+    "page_fixture",
+    ["config_page", "directory_page", "mail_page", "movie_page", "tv_page", "music_page"],
 )
 def test_each_page_placing_drops_places_them_where_a_nodes_search_finds_them(
     request: FixtureRequest, page_fixture: str
@@ -661,6 +671,41 @@ def test_the_tv_page_looks_up_with_the_key_the_movie_page_keeps(
 
     # So that a key given in either application serves both.
     assert tv_drop == movie_drop == "movie tmdb:"
+
+
+def test_the_music_application_is_built_from_its_directory(music_page: str) -> None:
+    assert music_page == MUSIC_PAGE_SOURCE.read_text(encoding="utf-8")
+
+
+def test_the_music_page_is_one_self_contained_document(music_page: str) -> None:
+    assert music_page.startswith("<!doctype html>")
+    # Nothing is loaded from a file of its own, or from anywhere else but
+    # TMDB, as the TV page it is copied from loads nothing else.
+    assert "<link" not in music_page
+    assert findall(r"<script[^>]*\bsrc", music_page) == []
+    assert "url(" not in music_page.split("<style>", 1)[1].split("</style>", 1)[0]
+    assert "http:" not in music_page
+    assert set(findall(r"https:[^\"`\s]*", music_page)) == {
+        "https://api.themoviedb.org/3",
+        "https://image.tmdb.org/t/p",
+    }
+
+
+def test_the_music_page_calls_only_endpoints_the_node_serves(music_page: str) -> None:
+    called = set(findall(r'"(/data/[^"]*)"', music_page))
+
+    # No store: the node keeps no music for whoever is not signed in.
+    assert called == {
+        CLIENT_PATH,
+        "/data/directory",
+        IMPORTS_PATH,
+        BUNDLES_PATH,
+        "/data/",
+        SESSION_PATH,
+        SIGNED_PATH,
+        DROP_PATH,
+        f"{ENCRYPTED_PATH}/",
+    }
 
 
 def test_the_directory_application_is_built_from_its_directory(directory_page: str) -> None:
