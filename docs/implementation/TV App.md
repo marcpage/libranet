@@ -25,7 +25,7 @@ of applications shipped, and its tests.
 
 ## 2. What It Adds
 
-Five steps, the first four built:
+Five steps, all built:
 
 - **The TV application.** A person's series, each looked up at TMDB, with
   episodes added from files and played one after another. Step 144.
@@ -633,7 +633,7 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 148 — Keeping Series Offline
+## Step 148 — Keeping Series Offline ✅
 
 **Issue:** #618, from #592. **Depends on:** Steps 144, 146; Improve Movie
 Web App Step 115.
@@ -672,10 +672,67 @@ My calls, not yet reviewed:
 - Whether what is watched offline should be kept after all, and how: at a
   drop of its own, merged into the person's list once the node is online
   again, say.
+- **Two archives of one bundle**, found while building it. An encrypted
+  bundle is the same for the same content, so two people on one node who
+  keep the same seasons, made from the same files, keep the same bundle,
+  each in an archive of their own. `GET /data/archives` names an archive's
+  bundles but not its objects, so the page, as the movie page does, takes
+  the first archive holding the bundle to be the one keeping it: it shows
+  that archive's day, and Stop keeping removes that archive, which may be
+  the other person's. Whether the node should report each archive's
+  objects, so that a page finds the archive holding its own version.
 
 **Testable in isolation:** as Improve Movie Web App Step 115 was: kept on
 one node from another, and played with the other stopped and the first's
 store evicted, before and after a restart.
+
+Built. It was checked on a node of its own in headless Chrome, with no
+peers: Keep offline refused no season chosen and a day past, and kept both
+seasons of a series until the day chosen, placing one version at
+`tv offline:{id}`, and following the archive in the activity list until it
+was written; Kept offline listed it with its day; opened, it showed only
+Filter and the X of its icons, said that nothing watched of it is kept,
+was not remembered as the series open, and played, placing no version as
+it was paused and left, while the series it was made from, opened again,
+kept where it was stopped as before; Keep longer moved the same archive's
+day; and Stop keeping removed each archive and shunned each version, the
+heading going once none was left. Then, with the node stopped, everything
+the archives held moved out of its store, and the node started again, the
+person signed in from the identity block in the archive, the series was
+listed, and an episode of each season played. Safari is yet to be checked,
+and so is keeping on a node fetching what it lacks from another.
+
+Calls made while building it, not yet reviewed:
+
+- **The season chosen** in the series is chosen to start with, as the movie
+  page chooses the movie open, and the name is the series' with
+  `, offline`, as the movie page names a collection kept offline.
+- **Seasons that cannot be chosen**, whose `season.json` could not be read,
+  are listed and cannot be chosen, as for sharing part of a series. The
+  bundle is made as sharing part of a series makes one, with the same
+  method, so the same seasons kept offline and shared are one bundle.
+- **Watched is not shown either.** A series kept offline is opened with
+  nothing watched, so no card is marked, it opens at the season last chosen
+  in it, and each episode plays from its start. What the person's list
+  says of the series it was made from is not read, since offline it may
+  not be held, and the series kept offline is under a name of its own.
+- **Saying so.** A note under the series' name, and above an episode's
+  facts, says that it is only played here, and that nothing watched of it
+  is kept. Nothing else is said as an episode is paused.
+- **A series kept offline is never changed**, even if the person names it
+  as one they keep: a change, an import ending, or what is watched being
+  kept, is made only to the series of its name the person keeps, and shown
+  only while that is open.
+- **In the chooser**, each series kept offline is a card, with its backdrop
+  and how keeping it goes in place of its year, and **Keeping…** below it,
+  which opens Keep longer and Stop keeping. Its card is marked while it is
+  open, and the series of the same name the person keeps is not.
+- **Kept offline is read beside the backdrops** of the person's series,
+  rather than after them, so that it is not waited on behind a backdrop the
+  node has to fetch, as it may offline.
+- **Today.** As on the movie page, the date field starts at tomorrow, and
+  a day typed by hand is kept to its end, so that today is kept until
+  midnight, and only a day past is refused.
 
 ---
 
@@ -710,3 +767,5 @@ Every issue in the **TV app** milestone, by number, and where it went.
   an episode, given its id.
 - Whether a whole season can be marked watched at once (Step 147).
 - Whether what is watched offline is kept (Step 148).
+- Whether the node reports each archive's objects, so that a page tells its
+  own archive from another's of the same bundle (Step 148).

@@ -640,6 +640,7 @@ def test_the_tv_page_calls_only_endpoints_the_node_serves(tv_page: str) -> None:
         SIGNED_PATH,
         DROP_PATH,
         f"{ENCRYPTED_PATH}/",
+        ARCHIVES_PATH,
     }
     # The folders, and an episode's file in its season of a series.
     assert fullmatch(DIRECTORY_PATTERN, "/data/directory/TV/Season 1")
@@ -649,6 +650,11 @@ def test_the_tv_page_calls_only_endpoints_the_node_serves(tv_page: str) -> None:
     assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{target}")
     lookup = quote(f"movie tmdb:sha256/{hex_digits}", safe="")
     assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{lookup}")
+    # Those kept offline: searched at their drop of their own, and each archive
+    # stopped by its id.
+    offline = quote(f"tv offline:sha256/{hex_digits}", safe="")
+    assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{offline}")
+    assert fullmatch(ARCHIVE_PATTERN, f"{ARCHIVES_PATH}/{hex_digits[:16]}")
     assert fullmatch(ENCRYPTED_PATTERN, f"{ENCRYPTED_PATH}/sha256/{hex_digits}")
     assert fullmatch(DATA_PATTERN, f"/data/sha256/{hex_digits}")
     assert fullmatch(
@@ -659,6 +665,7 @@ def test_the_tv_page_calls_only_endpoints_the_node_serves(tv_page: str) -> None:
 
 def test_the_tv_page_keeps_series_where_the_plan_names_them(tv_page: str) -> None:
     assert 'const SERIES_PREFIX = "tv series:";' in tv_page
+    assert 'const OFFLINE_PREFIX = "tv offline:";' in tv_page
     assert 'const REMEMBERED = "tv.series";' in tv_page
     assert 'const REMEMBERED_SEASONS = "tv.seasons";' in tv_page
 

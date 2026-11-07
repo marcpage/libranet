@@ -28,7 +28,8 @@ is placed at its target, and links to the documents that define it.
 | [`movie offline:{id}`](#313-movies-kept-offline) | A version for each collection a person keeps offline | The movie application | The person | For the person | In use |
 | [`movie tmdb:{id}`](#314-tmdb-keys) | The versions of the key a person looks things up at TMDB with | The movie and TV applications | The person | For the person | In use |
 | [`tv series:{id}`](#315-tv-series) | The versions of a person's list of TV series | The TV application | The person | For the person | In use |
-| [`music library:{id}`](#316-music-libraries) | The versions of a person's library of music | The music application | The person | For the person | In use |
+| [`tv offline:{id}`](#316-tv-series-kept-offline) | A version for each series a person keeps offline | The TV application | The person | For the person | In use |
+| [`music library:{id}`](#317-music-libraries) | The versions of a person's library of music | The music application | The person | For the person | In use |
 | [`node:{id}`](#39-what-a-node-says-of-itself) | The versions of what a node says of itself | The node | The node | No | In use |
 | [`karma transaction:{validation}`](#310-karma-transaction-blocks) | Karma's transaction blocks, and transactions put up for them | Anyone | Its builder; each transaction by its sender | No | In use |
 | [`karma validation:{validation}`](#311-karma-validation-blocks) | Karma's validation blocks | Anyone | Its builder; each stake by its staker | No | In use |
@@ -48,8 +49,8 @@ flowchart TB
         pid --> mail["mail:{id}:…<br/>mail sent:{id}:…<br/>mail address book:{id}<br/>mail state:{id}:…<br/>their mail (§3.5 to §3.8)"]
         pid --> movie["movie collections:{id}<br/>movie offline:{id}<br/>their movies (§3.12, §3.13)"]
         pid --> tmdb["movie tmdb:{id}<br/>their TMDB key (§3.14)"]
-        pid --> tv["tv series:{id}<br/>their TV series (§3.15)"]
-        pid --> music["music library:{id}<br/>their music (§3.16)"]
+        pid --> tv["tv series:{id}<br/>tv offline:{id}<br/>their TV series (§3.15, §3.16)"]
+        pid --> music["music library:{id}<br/>their music (§3.17)"]
     end
     subgraph node["A node"]
         direction LR
@@ -575,7 +576,38 @@ for a client no one is signed in on.
 - **Defined in:** [TV App](../implementation/TV%20App.md) Steps 144 and
   147.
 
-### 3.16 Music Libraries
+### 3.16 TV Series Kept Offline
+
+**Target:** `tv offline:{id}`
+
+Each series a person keeps offline has a version of its own here, as each
+collection kept offline has at `movie offline:{id}` (§3.13): `{"series":
+[{"name", "bundle", "changed", "block"}]}`, the name it is kept under, a
+series bundle of the seasons kept, when it was kept, and the identity block
+the person signed in with. The node keeps that bundle, the version, the
+identity block, and the person's public key in an archive of its own, so
+that the person can sign in and play the series with the node offline. The
+versions are kept apart from the person's list of series (§3.15), since
+each change there shuns the versions it replaces, and a node's search
+leaves out what it has shunned, archived or not. For the same reason, what
+the person watches of a series kept offline is kept nowhere.
+
+- **Placed by** the TV application, with `POST /data/signed`, given
+  `encrypt: {for: id}`, as the person keeps seasons of a series offline.
+- **Signed** by the person, then **encrypted** for the person.
+- **Bits:** placed matching at least 24, searched for 1 second.
+- **Reading:** as for movies kept offline (§3.13): a reader passes over
+  every version that does not open for the person, or that they did not
+  sign. Each series listed in a version left is kept offline while the node
+  reports an archive holding its bundle. A version older than a minute
+  whose bundle no archive holds, as once its archive expires, is shunned.
+- **Defined in:** [TV App](../implementation/TV%20App.md) Step 148.
+- **See also:**
+  [HTTP API §12.4](HttpApi.md#124-keeping-content-offline) for the
+  archives;
+  [App Developer Guide §6.19](../operations/App%20Developer%20Guide.md#619-keeping-content-offline).
+
+### 3.17 Music Libraries
 
 **Target:** `music library:{id}`
 
