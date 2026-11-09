@@ -148,7 +148,7 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
 
 ---
 
-## Step 155 — Specifying the Chaos Endpoint
+## Step 155 — Specifying the Chaos Endpoint ✅
 
 **Kind:** specification. **Issue:** #655 (§7.1). **Depends on:**
 nothing.
@@ -364,6 +364,79 @@ what a level's search found kept and then searched again, and what is still
 pending when the deadline passes.
 
 **Size:** about 450 new lines of Python.
+
+Built in three change sets, 1,021 added lines of non-test Python in all,
+and 1,414 of tests. That is over twice the estimate, and over 500, so it is
+split where it reads in three, each a commit of its own. Most of the lines
+are docstrings, comments, and blank lines.
+
+- **Set 1, paths, proposals, and settings** (253 lines, and 201 of tests):
+  `ChaosPath`, `ChaosLevel`, `ChaosProposal`, and the words of the report,
+  `PassedOver` and `ChoosingScores`, in `protocol/chaos.py`, and
+  `ChaosConfig`, the `chaos` section, with `examples/libranet.yaml`.
+- **Set 2, reading a level** (285 lines, and 386 of tests): `ChaosLevels`
+  and `DropRead`, in `webserver/chaos_levels.py`: what a level's search
+  finds, kept for `chaos.search_seconds`, and what each drop found is,
+  read and checked, kept for the 1,000 drops read last.
+- **Set 3, choosing** (483 lines, and 827 of tests): `ChaosScores`,
+  `ChaosResolver`, and the resolution, `ChaosResolution`, `LevelResolution`,
+  `ChaosCandidate`, and `ChaosChoice`, in `webserver/chaos_resolver.py`.
+
+Nothing serves it yet: Step 157 builds a `ChaosResolver` from the web
+server's search and bundle paths, `TrustBuilds` for people, and
+`PeerTrust.builds` for the node, and the Operator Guide gains the `chaos`
+settings with `network.chaos_port`, as that step says.
+
+Calls made in building it, not yet reviewed:
+
+- **Only what could change the choice is waited for.** The first pass
+  waits for each drop not held, which could hold anyone's proposal, and for
+  the key of each trusted proposer; the second, for the key of each
+  proposer of no trust specified. A distrusted proposer's key, and what a
+  level below the one chosen lacks, are asked for and named as missing,
+  but not waited for, so that a page's images are not each held up for
+  `network.app_wait_seconds` by what cannot change what they are served.
+- **A signed proposal whose proposer's key is not held is pending**, and
+  so is every other proposal of theirs, since none is checked. It shows its
+  proposer and their score in the report, unchecked.
+- **A bad signature names the signer it claims** where the signature fails
+  under their key, so that the page can show whom it claims to be from.
+  One whose `hash` is not of its `contents` names none. So Step 158's page
+  should offer no Trust or Distrust beside a bad signature.
+- **A proposer's key the node has shunned is a bad signature**, since it is
+  never fetched, rather than pending on every request.
+- **A signed bundle hashed under an algorithm this node lacks, or whose
+  signer is named under one**, is a bad signature, as its signer names no
+  key that can sign for it here (HttpApi §13.6.2), logged at warning.
+- **A proposal naming a bundle under an algorithm or a cipher this node
+  lacks is not a proposal**, logged at warning, rather than unusable, so
+  it does not supersede its proposer's older ones.
+- **A drop is read as UTF-8 alone**, though `json.loads` reads UTF-16 and
+  UTF-32 too, since JSON text is UTF-8 (RFC 8259 §8.1).
+- **What is held for a drop that is not what its id names** is not a
+  proposal, logged at warning.
+- **The reasons a drop is passed over for what it holds**, and for being
+  superseded or distrusted, are reported for every drop at every level,
+  even below the proposal chosen. Only the reasons found by looking into a
+  bundle, `lacks-path`, `unusable`, and a bundle's `pending`, are left
+  `null`, with `holds`, for the proposals after the one chosen. That is how
+  this reads HttpApi §13.6.7's "any that came after it": those taken in
+  the passes after it, not those passed over before the passes.
+- **A session whose person has no scores**, as when their last session
+  ends while a request is resolved, is resolved by the node's scores, and
+  reported as `node`.
+- **No scores at all**, as before the node's build starts, make every
+  proposer of no trust specified, and the scores not complete.
+- **A `%2F` ending a path names a directory**, as a `/` does, and a path
+  beneath `/chaos/` beginning with `/` names nothing, its first element
+  being empty, rather than naming the root.
+- **The choice keeps the entry found** (`ChaosChoice.entry`): the file's,
+  or the redirect to where the rest leads, so that Step 157 serves it
+  without asking the unbundler again.
+- **`ChaosResolution.value()` leaves out `served_at`**, which only the
+  handler knows, as it knows the ports and the `Host`; Step 158 adds it.
+- **A proposal's moment is read as a Karma member's is**
+  (`protocol/karma_members.py`), strictly as `2026-11-07T15:04:05Z`.
 
 ---
 
