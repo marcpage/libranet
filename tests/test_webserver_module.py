@@ -19,6 +19,7 @@ from libranet.bundle.parts import PartPath
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import (
+    CHAOS_PORT_OFFSET,
     CONFIG_PORT_STEP,
     IdentityConfig,
     LibranetConfig,
@@ -62,6 +63,22 @@ def _free_port(other_than: int = 0) -> int:
         return int(other.getsockname()[1])
 
 
+def _free_ports(count: int, other_than: int) -> list[int]:
+    """``count`` ports nothing listens on, for now, none of them ``other_than``."""
+    probes = [socket() for _ in range(count + 1)]
+
+    try:
+        for probe in probes:
+            probe.bind(("127.0.0.1", 0))
+
+        ports = [int(probe.getsockname()[1]) for probe in probes]
+        return [port for port in ports if port != other_than][:count]
+
+    finally:
+        for probe in probes:
+            probe.close()
+
+
 def _is_free(port: int) -> bool:
     """Whether ``port`` can be listened on at every address now."""
     with socket() as probe:
@@ -79,21 +96,24 @@ def _is_free(port: int) -> bool:
 NON_EPHEMERAL_PORTS = range(20_000, 32_768)
 
 
-def _port_with_room(steps: int) -> int:
-    """A free port, with the ``steps`` ports :data:`CONFIG_PORT_STEP` apart above it free too.
+def _port_with_room(steps: int, first_offset: int = CONFIG_PORT_STEP) -> int:
+    """A free port, with ``steps`` ports :data:`CONFIG_PORT_STEP` apart above it free too.
 
-    Each is below the ports the operating system hands out for connections,
-    which :func:`_free_port`'s are among. Any connection on this machine
-    could otherwise take one between finding it free and the module listening
-    on it, and the module's own check of a port could connect to itself,
-    either moving ``/config`` 100 further up.
+    The first of them is ``first_offset`` above it. Each is below the ports
+    the operating system hands out for connections, which
+    :func:`_free_port`'s are among. Any connection on this machine could
+    otherwise take one between finding it free and the module listening on
+    it, and the module's own check of a port could connect to itself, either
+    moving ``/config``, or the Chaos port, 100 further up.
     """
     for _ in range(100):
         port = randrange(
-            NON_EPHEMERAL_PORTS.start, NON_EPHEMERAL_PORTS.stop - CONFIG_PORT_STEP * steps
+            NON_EPHEMERAL_PORTS.start,
+            NON_EPHEMERAL_PORTS.stop - first_offset - CONFIG_PORT_STEP * steps,
         )
+        above = [port + first_offset + CONFIG_PORT_STEP * step for step in range(steps)]
 
-        if all(_is_free(port + CONFIG_PORT_STEP * step) for step in range(steps + 1)):
+        if all(_is_free(free) for free in [port, *above]):
             return port
 
     raise AssertionError("no port has room above it")
@@ -105,16 +125,18 @@ APP_BUNDLE_ID = ContentId.for_data(b"an application's directory bundle", "sha256
 def _config(
     tmp_path: Path, port: int, allow_unsigned_api_reads: bool = True, **network: Any
 ) -> LibranetConfig:
-    """A node listening at ``port``, with ``/config`` at another free port unless ``network`` says.
+    """A node listening at ``port``, with ``/config`` and the Chaos port at others free.
 
-    ``network`` may set ``config_port`` to ``None`` for the port the node
-    picks itself.
+    Unless ``network`` says: it may set ``config_port`` or ``chaos_port`` to
+    ``None`` for the port the node picks itself.
     """
+    config_port, chaos_port = _free_ports(2, other_than=port)
     settings = {
         "listen_address": "127.0.0.1",
         "listen_port": port,
         "retry_after_seconds": 11,
-        "config_port": _free_port(other_than=port),
+        "config_port": config_port,
+        "chaos_port": chaos_port,
         **network,
     }
     return with_node_key(
@@ -801,10 +823,13 @@ def test_bind_failure_propagates_so_the_supervisor_restarts(tmp_path: Path) -> N
         with raises(OSError):
             module.run(Event())
 
-    # /config's port, bound first, has been released.
+    # /config's port and the Chaos port, bound first, have been released.
     assert config.network.config_port is not None
+    assert config.network.chaos_port is not None
     assert _is_free(config.network.config_port)
+    assert _is_free(config.network.chaos_port)
     assert module.config_address is None
+    assert module.chaos_address is None
 
 
 def test_a_config_port_set_and_taken_stops_the_module(tmp_path: Path) -> None:
@@ -823,6 +848,109 @@ def test_a_config_port_set_and_taken_stops_the_module(tmp_path: Path) -> None:
 
     assert module.server_address is None
     assert _is_free(port)
+
+
+def test_a_chaos_port_set_and_taken_stops_the_module_releasing_config_s(tmp_path: Path) -> None:
+    port = _free_port()
+
+    with socket() as occupied:
+        occupied.bind(("127.0.0.1", 0))
+        occupied.listen()
+        taken = int(occupied.getsockname()[1])
+        config = _config(tmp_path, port, chaos_port=taken)
+        module = WebServerModule(ModuleName.WEBSERVER, _queues(), config)
+
+        with raises(OSError):
+            module.run(Event())
+
+    assert module.server_address is None
+    assert config.network.config_port is not None
+    assert _is_free(config.network.config_port)
+    assert _is_free(port)
+
+
+@mark.parametrize("taken_steps", [0, 1, 2])
+def test_the_chaos_port_is_50_above_the_main_port_or_the_next_100_up_that_is_free(
+    tmp_path: Path, taken_steps: int
+) -> None:
+    port = _port_with_room(taken_steps + 1, CHAOS_PORT_OFFSET)
+    queues = _queues()
+    module = WebServerModule(
+        ModuleName.WEBSERVER,
+        queues,
+        _config(tmp_path, port, chaos_port=None),
+        poll_interval_seconds=0.01,
+    )
+    stop = Event()
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
+    held = [socket() for _ in range(taken_steps)]
+
+    try:
+        # Taken at every address, as another node on its main port takes it.
+        for step, occupied in enumerate(held):
+            occupied.bind(("0.0.0.0", port + CHAOS_PORT_OFFSET + CONFIG_PORT_STEP * step))
+            occupied.listen()
+
+        thread.start()
+        _serving(module, queues)
+
+        assert module.chaos_address == (
+            "127.0.0.1",
+            port + CHAOS_PORT_OFFSET + CONFIG_PORT_STEP * taken_steps,
+        )
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+        for occupied in held:
+            occupied.close()
+
+    assert not thread.is_alive()
+
+
+def test_the_chaos_port_serves_chaos_alone_where_the_main_port_listens(tmp_path: Path) -> None:
+    queues = _queues()
+    module = WebServerModule(
+        ModuleName.WEBSERVER, queues, _config(tmp_path, _free_port()), poll_interval_seconds=0.01
+    )
+    stop = Event()
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
+    thread.start()
+
+    try:
+        host, port = _serving(module, queues)
+        chaos_address = module.chaos_address
+        assert chaos_address is not None
+        chaos_host, chaos_port = chaos_address
+
+        assert chaos_host == host
+        assert _chaos_status(host, port, "/chaos?tag=bread&new") == (302, "/chaos/?tag=bread&new")
+        assert _chaos_status(host, chaos_port, "/Chaos") == (302, "/Chaos/")
+        # Nothing is proposed anywhere.
+        assert _chaos_status(host, port, "/chaos/recipes/") == (404, None)
+        assert _chaos_status(host, chaos_port, "/chaos/recipes/") == (404, None)
+        assert _status(host, chaos_port, "/data/nodes") == (404, None)
+        assert _status(host, chaos_port, "/") == (404, None)
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert module.chaos_address is None
+    assert _is_free(chaos_port)
+
+
+def _chaos_status(host: str, port: int, path: str) -> tuple[int, str | None]:
+    """A GET of a Chaos path, with no session, which no cache may keep the answer to."""
+    connection = HTTPConnection(host, port, timeout=5)
+    connection.request("GET", path)
+    response = connection.getresponse()
+    response.read()
+    connection.close()
+    assert response.getheader("Cache-Control") == "no-store"
+    return response.status, response.getheader("Location")
 
 
 @mark.parametrize("taken_steps", [0, 1, 2])

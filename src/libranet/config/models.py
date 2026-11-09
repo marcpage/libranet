@@ -55,6 +55,12 @@ HIGHEST_PORT: Final = 65535
 #: /config ports 1 apart too, at a predictable distance (Phase 2 Step 58).
 CONFIG_PORT_STEP: Final = 100
 
+#: How far above listen_port the first port the Chaos port may listen on is.
+#: The rest are CONFIG_PORT_STEP apart above it, halfway between those
+#: /config may take, so that neither ever takes the other's (HttpApi
+#: §13.6.4, Phase 7 Step 157).
+CHAOS_PORT_OFFSET: Final = 50
+
 #: /config is served only to this machine (HttpApi §2.3), so it listens only
 #: where this machine reaches it.
 CONFIG_LISTEN_ADDRESS: Final = "127.0.0.1"
@@ -236,6 +242,13 @@ class NetworkConfig(_Section):
     # listen_port + 100, + 200, and so on; set, it is that port or none.
     config_port: int | None = Field(default=None, ge=1, le=HIGHEST_PORT)
 
+    # The port Chaos sites are served on to whoever is signed in, at
+    # listen_address, apart from listen_port so that no Chaos site shares the
+    # origin of the node's own pages (HttpApi §13.6.4, Phase 7 Step 157).
+    # Unset, it is the first port free of listen_port + 50, + 150, and so on;
+    # set, it is that port or none.
+    chaos_port: int | None = Field(default=None, ge=1, le=HIGHEST_PORT)
+
     @model_validator(mode="after")
     def _config_port_is_its_own(self) -> NetworkConfig:
         if self.config_port == self.listen_port:
@@ -251,6 +264,24 @@ class NetworkConfig(_Section):
 
         return self
 
+    @model_validator(mode="after")
+    def _chaos_port_is_its_own(self) -> NetworkConfig:
+        if self.chaos_port == self.listen_port:
+            raise ValueError(f"chaos_port must not be listen_port, got {self.chaos_port} for both")
+
+        if self.chaos_port in self.config_ports():
+            raise ValueError(
+                f"chaos_port must not be a port /config may take, got {self.chaos_port}"
+            )
+
+        if not self.chaos_ports():
+            raise ValueError(
+                f"listen_port ({self.listen_port}) leaves no port {CHAOS_PORT_OFFSET} above "
+                "it for the Chaos port, so chaos_port must be set"
+            )
+
+        return self
+
     def config_ports(self) -> range:
         """The ports ``/config`` may listen on, in the order they are tried.
 
@@ -261,6 +292,24 @@ class NetworkConfig(_Section):
             return range(self.config_port, self.config_port + 1)
 
         return range(self.listen_port + CONFIG_PORT_STEP, HIGHEST_PORT + 1, CONFIG_PORT_STEP)
+
+    def chaos_ports(self) -> tuple[int, ...]:
+        """The ports the Chaos port may listen on, in the order they are tried.
+
+        That is ``chaos_port`` alone when it is set, and otherwise every
+        :data:`CONFIG_PORT_STEP` above ``listen_port`` +
+        :data:`CHAOS_PORT_OFFSET`, up to the highest port, but ``config_port``.
+        """
+        if self.chaos_port is not None:
+            return (self.chaos_port,)
+
+        return tuple(
+            port
+            for port in range(
+                self.listen_port + CHAOS_PORT_OFFSET, HIGHEST_PORT + 1, CONFIG_PORT_STEP
+            )
+            if port != self.config_port
+        )
 
     def served_as(self) -> tuple[str, ...]:
         """The hosts ``/config``, and every endpoint serving only local clients, are served as.

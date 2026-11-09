@@ -8,7 +8,10 @@ it stands for every address, by posting a node list to its ``/data/nodes``
 puts the address it reached them at in its place (§10.2). Each node's
 ``/config`` is on its port plus 100, as a node's is by default, or plus the
 next multiple of 100 above every node's port when there are more than 100
-nodes. The first sixteen nodes are given keys whose
+nodes. Its Chaos port is on its port plus 50, as a node's is by default, or,
+when there are more than 50 nodes, plus the next 100 up that takes neither
+another node's port nor a ``/config`` port. The first sixteen nodes are
+given keys whose
 node ids start with the hex digits ``0`` to ``f`` in order, so every
 identifier bucket (HighLevelDesign §4.6) has a node in it; any further nodes
 get random keys. ``--max-storage-bytes`` limits the content each node holds.
@@ -53,6 +56,7 @@ from yaml import safe_dump
 from libranet.config.models import (
     ANY_ADDRESS,
     ANY_IPV4_ADDRESS,
+    CHAOS_PORT_OFFSET,
     CONFIG_PORT_STEP,
     HIGHEST_PORT,
     LOOPBACK_FOR_ANY,
@@ -138,6 +142,7 @@ class NodePlace:
     directory: Path
     port: int
     config_port: int
+    chaos_port: int
     debug: bool = False
     host: str = HOST
     max_storage_bytes: int | None = None
@@ -182,6 +187,7 @@ class NodePlace:
                 "listen_port": self.port,
                 # Stated, since the default could land on another node's port.
                 "config_port": self.config_port,
+                "chaos_port": self.chaos_port,
             },
             "storage": storage,
             "stats": {"derive_interval_seconds": _DERIVE_INTERVAL_SECONDS},
@@ -258,12 +264,14 @@ class LocalNetwork:
         ``max_storage_bytes`` of content when that is given.
         """
         offset = config_port_offset(count)
+        chaos_offset = chaos_port_offset(count)
         places = [
             NodePlace(
                 i,
                 root / f"node-{i:02d}",
                 base_port + i,
                 base_port + i + offset,
+                base_port + i + chaos_offset,
                 debug,
                 host=host,
                 max_storage_bytes=max_storage_bytes,
@@ -624,6 +632,21 @@ def config_port_offset(count: int) -> int:
     return CONFIG_PORT_STEP * -(-count // CONFIG_PORT_STEP)
 
 
+def chaos_port_offset(count: int) -> int:
+    """How far above its own port each of ``count`` nodes has its Chaos port.
+
+    That is the default 50, or the next 100 up, so that no node's Chaos
+    port takes the port another node listens on, nor any node's ``/config``.
+    """
+    config_offset = config_port_offset(count)
+    offset = CHAOS_PORT_OFFSET
+
+    while offset < count or (offset < config_offset + count and config_offset < offset + count):
+        offset += CONFIG_PORT_STEP
+
+    return offset
+
+
 def parse_args(argv: Sequence[str] | None = None) -> Namespace:
     """The command-line options."""
     parser = ArgumentParser(description="Run a local network of Libranet nodes.")
@@ -663,7 +686,9 @@ def parse_args(argv: Sequence[str] | None = None) -> Namespace:
     if args.count < 2:
         parser.error("--count must be at least 2")
 
-    if not 1 <= args.base_port <= HIGHEST_PORT + 1 - args.count - config_port_offset(args.count):
+    offset = max(config_port_offset(args.count), chaos_port_offset(args.count))
+
+    if not 1 <= args.base_port <= HIGHEST_PORT + 1 - args.count - offset:
         parser.error("--base-port leaves no room for that many ports")
 
     try:

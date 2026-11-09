@@ -361,6 +361,46 @@ def test_a_main_port_with_no_room_above_it_is_allowed_with_a_config_port_set() -
     assert NetworkConfig(listen_port=65436, config_port=8081).config_port == 8081
 
 
+def test_the_chaos_port_tries_every_100th_port_from_50_above_the_main_one_by_default() -> None:
+    ports = NetworkConfig(listen_port=8080).chaos_ports()
+
+    assert NetworkConfig().chaos_port is None
+    assert ports[:3] == (8130, 8230, 8330)
+    assert ports[-1] == 65530
+    assert len(ports) == 575
+
+
+def test_the_chaos_port_passes_over_a_config_port_set_among_its_own() -> None:
+    assert NetworkConfig(config_port=8130).chaos_ports()[:2] == (8230, 8330)
+
+
+def test_a_chaos_port_set_is_the_only_one_tried() -> None:
+    assert NetworkConfig(chaos_port=9000).chaos_ports() == (9000,)
+
+
+@mark.parametrize(
+    "settings",
+    [
+        {"listen_port": 9000, "chaos_port": 9000},
+        {"config_port": 9000, "chaos_port": 9000},
+        # A port /config may take, as none is set for it.
+        {"listen_port": 9000, "chaos_port": 9200},
+        {"listen_port": 65486, "config_port": 8081},
+        {"chaos_port": 0},
+        {"chaos_port": 65536},
+    ],
+)
+def test_a_chaos_port_that_cannot_be_its_own_is_refused(settings: dict[str, int]) -> None:
+    with raises(ValidationError):
+        NetworkConfig.model_validate(settings)
+
+
+def test_a_main_port_with_no_room_above_it_is_allowed_with_both_other_ports_set() -> None:
+    network = NetworkConfig(listen_port=65486, config_port=8081, chaos_port=8082)
+
+    assert network.chaos_ports() == (8082,)
+
+
 def test_a_restore_gives_up_after_a_day_with_nothing_arriving_by_default() -> None:
     assert BackupConfig().restore_stall_seconds == 86400.0
 

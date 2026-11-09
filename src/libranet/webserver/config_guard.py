@@ -72,7 +72,7 @@ from libranet.webserver.http_types import (
     status_response,
 )
 from libranet.webserver.own_pages import RefererPage
-from libranet.webserver.site_checks import HOST_HEADER, SITE_HEADER, SiteChecks, host_name
+from libranet.webserver.site_checks import SITE_HEADER, SiteChecks, origin_on_port
 
 _LOGGER = getLogger(__name__)
 
@@ -187,9 +187,8 @@ class MovedConfigGuard:
 
     def location(self, request: Request) -> str:
         """Where ``request``'s path is on ``config_port``, at the host its ``Host`` header names."""
-        name = host_name(request.header(HOST_HEADER) or "") or CONFIG_LISTEN_ADDRESS
-        host = f"[{name}]" if ":" in name else name
-        return f"http://{host}:{self.config_port}{request.path}"
+        origin = origin_on_port(request, self.config_port, unnamed=CONFIG_LISTEN_ADDRESS)
+        return f"{origin}{request.path}"
 
 
 def _is_page_navigation(request: Request) -> bool:

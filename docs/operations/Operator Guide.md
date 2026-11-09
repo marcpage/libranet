@@ -133,6 +133,7 @@ The settings an operator is most likely to change:
 | `network.listen_port` | `8080` | The port it listens on, for peers, applications, and `/data` |
 | `network.external_address`, `network.external_port` | `null` | The address and port it tells peers to reach it at, when they differ from what peers see |
 | `network.config_port` | `null` | `/config`'s port (§4.1) |
+| `network.chaos_port` | `null` | The port Chaos sites are served on to whoever is signed in (§6.7) |
 | `network.client_grace_requests` | `12` | How many requests a peer connected to the node is kept for, whatever its Karma (§4.8) |
 | `network.client_value_seconds` | `600.0` | How long a peer holding less Karma than both the median of those connected and the node is kept, after those requests, once it pushes nothing the node seeks (§4.8) |
 | `network.client_keep_count` | `16` | How many peers connected to the node it keeps, closing none for its Karma unless more are connected (§4.8) |
@@ -202,7 +203,7 @@ The node logs the address it took as it starts, to the terminal and in
 `libranet-webserver.log`:
 
 ```text
-Web server listening on :::8080, and /config at http://127.0.0.1:8180/config/
+Web server listening on :::8080, Chaos sites on port 8130, and /config at http://127.0.0.1:8180/config/
 ```
 
 `http://127.0.0.1:8080/config` sends a browser there.
@@ -1017,6 +1018,56 @@ Each step multiplies the lists read, and each list read is kept in memory
 for as long as the person is signed in, so raising either limit costs memory
 and searches. A list of which nothing is held when the wait is up is left
 out until the person signs in again.
+
+### 6.7 Chaos Sites
+
+Beneath `/chaos`, anyone may propose a bundle for any path, by placing a
+drop named for it, and each person is served what those they trust chose
+(HTTP API §13.6). The [App Developer Guide](App%20Developer%20Guide.md)
+§6.21 describes putting a site there. Nothing is registered: a path is
+resolved each time it is asked for, from the drops of the path and of each
+directory above it, which the node searches for among what it holds and
+asks its peers for.
+
+Whose trust chooses depends on who asks. A request from a browser where
+someone is signed in (§6.5) goes by that person's trust scores (§6.6). Any
+other, as every request from another machine is, goes by the node's own
+scores, built from its trust list (§4.7). So whom the node trusts decides
+what a stranger sees at a path, and a bundle proposed by someone it
+distrusts is never served to one.
+
+For whoever is signed in, Chaos sites are served on a port of their own,
+the Chaos port, so that every request their pages make carries the
+person's session, and none can use what serves only the node's own pages.
+It is `network.chaos_port` if that is set, and otherwise 50 above the
+node's port, or the next 100 up that was free as the node started: 8130 for
+a node on 8080, unless something else had that port. It listens where the
+node's port does, and the node logs it as it starts (§4.1). A browser
+signed in that asks the node's port for a path beneath `/chaos` is sent
+there. A client on another machine never signs in, so it is served on the
+node's port, in the sandbox an untrusted application is served in (§6.2),
+and needs nothing but that port. The Chaos port may be closed to other
+machines.
+
+Every Chaos site served on the Chaos port shares its origin, so one can
+read what another keeps in the browser. Their scripts can also set cookies
+for the node's host, which a browser sends to each of its ports. A cookie
+set so cannot sign anyone out, but enough of them can fill the browser's
+cookies for the host until it is refused, as too large, every request it
+makes of the node. Clearing the browser's cookies for the host, and signing
+in again, mends it.
+
+Three settings limit how a path is resolved:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `chaos.max_levels` | `16` | How many levels of a path are searched for proposals, the root's first; a deeper path is served only from a bundle proposed at one of them |
+| `chaos.future_seconds` | `300.0` | How far ahead of the node's clock a proposal may be dated and still be chosen |
+| `chaos.search_seconds` | `5.0` | How long what a level's search found is kept, so that a page's images and scripts do not each search again; a proposal placed meanwhile is found once it is up |
+
+A path is resolved within `network.app_wait_seconds`, 10 seconds by default,
+as an application's file is served within it. What has not arrived by then
+is passed over, and a request made once it has come chooses with it.
 
 ## 7. Watching a Running Node
 

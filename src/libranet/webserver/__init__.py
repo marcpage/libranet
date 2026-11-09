@@ -25,7 +25,9 @@ signed in pays, and stakes, through the node, which signs for them (Phase 6
 Step 137). A peer of lower Karma than the others connected, that pushes nothing
 the node seeks, is closed (Phase 6 Step 142). What a path beneath ``/chaos``
 resolves to, for whom, and why, is read from the bundles proposed at the
-drops of its levels, by the trust of whoever asks (Phase 7 Step 156).
+drops of its levels, by the trust of whoever asks (Phase 7 Step 156), and
+served on the main port, or, to whoever is signed in, on the Chaos port, a
+port of its own (Phase 7 Step 157).
 
 A few ``/data`` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
@@ -98,6 +100,14 @@ from libranet.webserver.bundle_paths import (
 )
 from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
 from libranet.webserver.byte_range import BYTES_UNIT, ByteRange
+from libranet.webserver.chaos_handler import (
+    CHAOS_METHODS,
+    CHAOS_PATTERN,
+    CHAOS_SEGMENT,
+    ChaosHandler,
+    ChaosPort,
+    PathResolver,
+)
 from libranet.webserver.chaos_levels import MAX_KEPT_DROPS, ChaosLevels, DropRead
 from libranet.webserver.chaos_resolver import (
     ChaosCandidate,
@@ -326,7 +336,13 @@ from libranet.webserver.signed_handlers import (
     SignedDrops,
 )
 from libranet.webserver.signed_versions import FoundVersions, SignedVersions, VersionParser
-from libranet.webserver.site_checks import HOST_HEADER, SITE_HEADER, SiteChecks, host_name
+from libranet.webserver.site_checks import (
+    HOST_HEADER,
+    SITE_HEADER,
+    SiteChecks,
+    host_name,
+    origin_on_port,
+)
 from libranet.webserver.trust_builds import (
     DEFAULT_TRUST_POLL_INTERVAL_SECONDS,
     TrustBuilds,
@@ -364,6 +380,9 @@ __all__ = [
     "BUNDLE_PATTERN",
     "BYTES_UNIT",
     "CACHED_FOR_GOOD",
+    "CHAOS_METHODS",
+    "CHAOS_PATTERN",
+    "CHAOS_SEGMENT",
     "CLIENT_PATH",
     "CONFIG_API_PATH",
     "CONFIG_API_SEGMENT",
@@ -471,7 +490,9 @@ __all__ = [
     "ByteRange",
     "ChaosCandidate",
     "ChaosChoice",
+    "ChaosHandler",
     "ChaosLevels",
+    "ChaosPort",
     "ChaosResolution",
     "ChaosResolver",
     "ChaosScores",
@@ -533,6 +554,7 @@ __all__ = [
     "OwnSiteOnly",
     "OwnUploads",
     "PartReader",
+    "PathResolver",
     "PeerTrust",
     "RefererPage",
     "RegisteredApplications",
@@ -608,6 +630,7 @@ __all__ = [
     "local_refusal",
     "names_config",
     "names_config_api",
+    "origin_on_port",
     "parsed_or_refusal",
     "peer_not_allowed_response",
     "percent_decoded",

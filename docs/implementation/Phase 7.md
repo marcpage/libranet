@@ -225,7 +225,7 @@ nothing still calls `/chaos` reserved.
 
 ---
 
-## Step 156 — Resolving a Chaos Path
+## Step 156 — Resolving a Chaos Path ✅
 
 **Kind:** new node code. **Issue:** #656 (§7.2). **Depends on:**
 Step 155; Phase 3 Steps 65 and 71; Phase 4 Steps 80, 89, and 93; Phase 5
@@ -538,6 +538,55 @@ each request the Chaos port answers carries the session, and that a Chaos
 page's request to the main port's endpoints is refused.
 
 **Size:** about 400 new lines of Python.
+
+Built as one change set: 428 added lines of non-test Python, and 654 of
+tests. `ChaosHandler` and `ChaosPort` are in `webserver/chaos_handler.py`;
+`network.chaos_port` and `NetworkConfig.chaos_ports()` in the configuration;
+the third server in the web server module; and the routes in
+`build_router`, which adds the Chaos port's to its router, so that both
+ports share who is signed in. It has not yet been checked live in Chrome
+and Safari.
+
+Calls made in building it, not yet reviewed:
+
+- **The Chaos port is bound after `/config`'s, and before the main
+  port's**, and its defaults pass over a `config_port` set among them. A
+  `chaos_port` set to `listen_port`, or to a port `/config` may take, is
+  refused as the configuration is read, and a `listen_port` with no port 50
+  above it needs `chaos_port` set, as one with none 100 above needs
+  `config_port`.
+- **The local network script** puts each node's Chaos port 50 above its
+  port, for 50 nodes or fewer, and otherwise at the next 100 up taking no
+  node's port and no `/config` port: 250 above, for 51 to 100 nodes.
+- **The query is passed on as it came.** `Request` keeps `query_text`, the
+  query string as sent, since the parameters parsed leave out one with no
+  value and keep one of a name given twice. `/chaos` keeps its spelling as
+  it is sent to `/chaos/`.
+- **On the main port, a session is looked for before the path is read**, so
+  a path naming nothing is sent to the Chaos port too, and is `404` there. A
+  session that has ended is no session. A request with no `Host` is sent to
+  the address its connection reached.
+- **A `405` is the router's**, with `Allow: GET, HEAD`, and carries no
+  `Cache-Control: no-store`, though HttpApi §13.6.5 asks it of every
+  answer. No cache keeps an answer to a method other than `GET` or `HEAD`
+  that says nothing of its freshness.
+- **The path is resolved, and its file's first part waited for, within one
+  `network.app_wait_seconds`**: `ChaosResolver.resolve` takes the handler's
+  deadline.
+- **Nothing chosen is `404`**, even while what is pending could change that,
+  as HttpApi §13.6.6 has it, rather than `503`.
+- **A file bundle's own file**, at the empty rest, is served with the
+  content type its last element's name gives, if its bundle gives none.
+- **A file the bundle chosen cannot serve from its parts is `500`**, as an
+  application's is, not the `400` of a read into a bundle, since the path
+  names no bundle. It is logged at debug, as anyone may propose any bundle,
+  or at warning for an algorithm or a cipher the node lacks. The next
+  proposal is not tried instead.
+- **A redirect names `/chaos` in lower case**, and each element above the
+  level percent-encoded.
+- **`/chaos` is routed only given `node`, `peers`, and the Chaos port** to
+  `build_router`, as the module always gives them. A router built without
+  them answers `/chaos` as a reserved name, `404`.
 
 ---
 

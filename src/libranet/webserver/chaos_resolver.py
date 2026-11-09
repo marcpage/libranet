@@ -316,14 +316,21 @@ class ChaosResolver:
         self._settings = settings
         self._wall_clock = wall_clock
 
-    def resolve(self, request: Request, path: ChaosPath) -> ChaosResolution:
-        """What ``path`` resolves to for ``request``, and why."""
+    def resolve(
+        self, request: Request, path: ChaosPath, *, deadline: float | None = None
+    ) -> ChaosResolution:
+        """What ``path`` resolves to for ``request``, and why.
+
+        What it lacks is waited for until ``deadline``, as :func:`monotonic`
+        tells it, or for as long as a request for a bundle's file waits, if
+        none is given.
+        """
         whose, scores = self._scores.of(request)
         parts = self._paths.parts
         latest = datetime.fromtimestamp(self._wall_clock(), UTC)
         resolving = _Resolving(
             scores,
-            self._paths.deadline(),
+            self._paths.deadline() if deadline is None else deadline,
             ContentWait(self._paths.publish, parts.ask_again_seconds, parts.poll_interval_seconds),
             latest + timedelta(seconds=self._settings.future_seconds),
         )

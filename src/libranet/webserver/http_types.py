@@ -121,7 +121,7 @@ class RequestBody:
 
 
 @dataclass(frozen=True)
-class Request:
+class Request:  # pylint: disable=too-many-instance-attributes
     """An incoming request, reduced to what handlers need.
 
     ``path`` excludes any query string; ``params`` holds the named groups the
@@ -130,7 +130,8 @@ class Request:
     checking the request's signature, once something has checked it.
     ``connection`` is the connection it arrived on, if the server keeps track
     of them. ``query`` holds the parameters of the query string, each by its
-    name, the last given of one named more than once.
+    name, the last given of one named more than once, and ``query_text`` the
+    query string as sent, without its ``?``.
     """
 
     method: str
@@ -143,6 +144,7 @@ class Request:
     authentication: AuthenticationResult | None = None
     connection: InboundConnection | None = None
     query: Mapping[str, str] = field(default_factory=dict)
+    query_text: str = ""
 
     def header(self, name: str) -> str | None:
         """The value of the header ``name``, however it is capitalized, or ``None`` if not sent."""

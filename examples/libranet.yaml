@@ -101,6 +101,14 @@ network:
   # A port set here is the only one tried.
   config_port: null
 
+  # The port Chaos sites are served on to whoever is signed in, listening
+  # at listen_address, kept apart from listen_port so that no Chaos site
+  # shares an origin with this node's own pages (HTTP API §13.6.4). null
+  # takes listen_port + 50, or the next 100 up that is free (8130, then 8230,
+  # and so on), none of which /config may take; the node logs the one it
+  # took. A port set here is the only one tried.
+  chaos_port: null
+
 peers:
   # At least one connection per 4-bit identifier bucket
   # (High-Level Design §4.6).

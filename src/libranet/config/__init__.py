@@ -4,6 +4,7 @@ from libranet.config.errors import ConfigError, SeedError
 from libranet.config.models import (
     ANY_ADDRESS,
     ANY_IPV4_ADDRESS,
+    CHAOS_PORT_OFFSET,
     CONFIG_LISTEN_ADDRESS,
     CONFIG_PORT_STEP,
     DAY_SECONDS,
@@ -62,6 +63,7 @@ __all__ = [
     "ANY_ADDRESS",
     "ANY_IPV4_ADDRESS",
     "APP_NAME",
+    "CHAOS_PORT_OFFSET",
     "CONFIG_FILE_NAME",
     "CONFIG_LISTEN_ADDRESS",
     "CONFIG_PORT_STEP",

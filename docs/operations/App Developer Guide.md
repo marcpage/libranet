@@ -1538,6 +1538,81 @@ carries its own copy of the code that does it: the directory shows each
 person's Karma beside their name (§6.12), and the nodes application each
 node's (§6.18); mail says it in what each mark says (§6.16).
 
+### 6.21 Putting a Site on Chaos
+
+Beneath `/chaos`, anyone may put a site at any path, with no operator
+registering it, and each person who opens it is served what those they
+trust put there (HTTP API §13.6). A site there is a directory bundle, or a
+file bundle for a single file, made as §6.5 makes one. It is **proposed** at
+a path by a drop naming it, which a page places as it places any other
+(§6.9, §6.13):
+
+```js
+const proposal = {
+  bundle: id,
+  created: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
+};
+const response = await fetch("/data/signed", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    target: "chaos:/recipes",
+    text: JSON.stringify(proposal),
+    seconds: 10,
+    minimum_bits: 24,
+  }),
+});
+```
+
+- **`bundle`** is the bundle's id, or, for one stored encrypted, the
+  encrypted id that carries its key (§6.1).
+- **`created`** is when it is proposed, in UTC, to the second, as
+  `2026-11-07T15:04:05Z`. The newest proposal is chosen, and one dated more
+  than 5 minutes ahead of a node's clock is passed over.
+- **`target`** is `chaos:/` and the path the bundle is mounted at, its
+  elements joined by `/`, with no `/` at the end: `chaos:/` for the root,
+  `chaos:/recipes` for `/chaos/recipes/`. Each element is spelled as it
+  reads decoded, so `/chaos/a%20cake/` is `chaos:/a cake`.
+- **`minimum_bits`** is at least as many as a node's search returns, 24 by
+  default, or no node finds the proposal.
+
+Placed with `POST /data/signed`, the proposal is signed by whoever is
+signed in, and is served first to those who trust them. Placed with
+`POST /data/drop`, it is unsigned, and is served only where nothing a
+viewer's trusted people proposed holds the path. Never give either
+`encrypt`: every viewer's node reads the proposal. A newer proposal of
+yours at a path replaces your older ones there, even where an older one
+holds a path the newer lacks, so propose again to change a site, or to
+take it down.
+
+A bundle proposed at a path serves each path beneath it that it holds:
+`/chaos/recipes/bread.html` is the `bread.html` of a bundle proposed at
+`chaos:/recipes`, or the `recipes/bread.html` of one proposed at
+`chaos:/`. A path ending in `/` serves its directory's `index.html`, and
+one naming a directory without its `/` is redirected to it. **Each path is
+resolved on its own**, the page and each image, script, and page it links
+to, so a file of your site may be served from another bundle, where
+someone the viewer trusts more proposed one holding it. At every level,
+from the root down, proposals by those the viewer trusts come first, then
+those of no trust specified; one by someone they distrust is never served.
+
+Whoever is signed in is served on the node's Chaos port, a port of its
+own, without a sandbox. Anyone else is served on the node's port, in the
+sandbox of an untrusted application (§4), where every `fetch` fails, so
+load scripts with a plain `<script src>`. Link to, and load, only paths
+relative to the page, or beginning `/chaos/`, which work on either port,
+and never write a port in. Nothing but `/chaos` is served on the Chaos
+port, and what serves only the node's own pages refuses a Chaos site, so a
+site shows what the network holds by holding it in its bundle, or by
+linking to another Chaos path.
+
+**Every Chaos site shares one origin**, the Chaos port's. There, one site
+can read any Chaos path and what another keeps in `localStorage`, and can
+frame another and script it. Keep no secrets there, and name what you keep
+with your site's path. Every answer beneath `/chaos` carries
+`Cache-Control: no-store`, since what is chosen depends on who asks, and
+when.
+
 ## 7. Patterns From the Movie Library
 
 The movie library, `src/libranet/applications/movie/index.html`, is one page
