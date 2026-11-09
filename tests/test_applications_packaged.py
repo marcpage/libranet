@@ -710,6 +710,7 @@ def test_the_music_page_calls_only_endpoints_the_node_serves(music_page: str) ->
         SIGNED_PATH,
         DROP_PATH,
         f"{ENCRYPTED_PATH}/",
+        ARCHIVES_PATH,
     }
     # The folders, and a song's audio in its folder of a person's library.
     assert fullmatch(DIRECTORY_PATTERN, "/data/directory/Music/Artist/Album")
@@ -717,6 +718,11 @@ def test_the_music_page_calls_only_endpoints_the_node_serves(music_page: str) ->
     # those replaced shunned.
     target = quote(f"music library:sha256/{hex_digits}", safe="")
     assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{target}")
+    # The playlists kept offline: searched at their drop of their own, and
+    # each archive stopped by its id.
+    offline = quote(f"music offline:sha256/{hex_digits}", safe="")
+    assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{offline}")
+    assert fullmatch(ARCHIVE_PATTERN, f"{ARCHIVES_PATH}/{hex_digits[:16]}")
     assert fullmatch(ENCRYPTED_PATTERN, f"{ENCRYPTED_PATH}/sha256/{hex_digits}")
     assert fullmatch(DATA_PATTERN, f"/data/sha256/{hex_digits}")
     assert fullmatch(
@@ -727,6 +733,7 @@ def test_the_music_page_calls_only_endpoints_the_node_serves(music_page: str) ->
 
 def test_the_music_page_keeps_a_library_where_the_plan_names_it(music_page: str) -> None:
     assert 'const LIBRARY_PREFIX = "music library:";' in music_page
+    assert 'const OFFLINE_PREFIX = "music offline:";' in music_page
     assert 'const REMEMBERED_SHUFFLE = "music.shuffle";' in music_page
     assert 'const REMEMBERED_FILTERS = "music.filters";' in music_page
     assert 'const REMEMBERED_LIST = "music.list";' in music_page
