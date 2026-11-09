@@ -1,5 +1,7 @@
 """Tests for the pydantic configuration models, and loading them from YAML."""
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from pathlib import Path
 
@@ -14,6 +16,7 @@ from libranet.config.models import (
     KIB,
     MIB,
     BackupConfig,
+    ChaosConfig,
     IdentityConfig,
     KarmaConfig,
     LibranetConfig,
@@ -415,6 +418,32 @@ def test_karma_stakes_a_tenth_by_default_and_from_nothing_up_to_all() -> None:
     for wrong in (-1, 100.5):
         with raises(ValidationError):
             KarmaConfig(stake_percent=wrong)
+
+
+def test_chaos_searches_sixteen_levels_by_default_and_always_the_root() -> None:
+    assert ChaosConfig().max_levels == 16
+    assert LibranetConfig.model_validate({"chaos": {"max_levels": 1}}).chaos == ChaosConfig(
+        max_levels=1
+    )
+
+    with raises(ValidationError):
+        ChaosConfig(max_levels=0)
+
+
+def test_chaos_allows_five_minutes_ahead_by_default_and_from_none() -> None:
+    assert ChaosConfig().future_seconds == 300.0
+    assert ChaosConfig(future_seconds=0).future_seconds == 0
+
+    with raises(ValidationError):
+        ChaosConfig(future_seconds=-1)
+
+
+def test_chaos_keeps_a_levels_search_five_seconds_by_default_and_from_not_at_all() -> None:
+    assert ChaosConfig().search_seconds == 5.0
+    assert ChaosConfig(search_seconds=0).search_seconds == 0
+
+    with raises(ValidationError):
+        ChaosConfig(search_seconds=-1)
 
 
 def test_the_karma_history_is_kept_in_the_data_directory(tmp_path: Path) -> None:
@@ -895,6 +924,13 @@ def test_the_example_config_states_the_default_keeping_of_clients() -> None:
     assert {name: stated[name] for name in settings} == {
         name: getattr(NetworkConfig(), name) for name in settings
     }
+
+
+def test_the_example_config_states_the_default_chaos_settings() -> None:
+    example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
+    stated = safe_load(example.read_text(encoding="utf-8"))["chaos"]
+
+    assert stated == ChaosConfig().model_dump()
 
 
 def test_the_example_config_states_the_default_person_key_sizes() -> None:

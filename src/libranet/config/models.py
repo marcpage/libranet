@@ -928,6 +928,25 @@ class KarmaConfig(_Section):
     stake_percent: float = Field(default=10.0, ge=0, le=100)
 
 
+class ChaosConfig(_Section):
+    """Resolving a path beneath ``/chaos`` (HttpApi §13.6, Phase 7 Step 156)."""
+
+    # How many of a path's levels are searched, the shallowest first, so
+    # that a deeper path is served only from a bundle proposed at one of
+    # them (HttpApi §13.6.1).
+    max_levels: int = Field(default=16, ge=1)
+
+    # How far ahead of the node's clock a proposal may be dated, so that one
+    # dated far ahead is not the newest for ever (HttpApi §13.6.2).
+    future_seconds: float = Field(default=300.0, ge=0)
+
+    # How long what a level's search found is kept, so that a page's images
+    # and scripts, each resolved on its own, do not each search every level
+    # again (HttpApi §13.6.3). A proposal placed meanwhile is found once it
+    # is up.
+    search_seconds: float = Field(default=5.0, ge=0)
+
+
 class LocalConfig(_Section):
     """What clients on this machine may reach of it (HttpApi §2.4, Phase 3 Step 68)."""
 
@@ -1011,6 +1030,7 @@ class LibranetConfig(_Section):
     stats: StatsConfig = Field(default_factory=StatsConfig)
     backup: BackupConfig = Field(default_factory=BackupConfig)
     karma: KarmaConfig = Field(default_factory=KarmaConfig)
+    chaos: ChaosConfig = Field(default_factory=ChaosConfig)
     local: LocalConfig = Field(default_factory=LocalConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
