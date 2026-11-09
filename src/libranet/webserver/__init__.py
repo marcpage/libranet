@@ -96,6 +96,7 @@ from libranet.webserver.bundle_paths import (
 )
 from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
 from libranet.webserver.byte_range import BYTES_UNIT, ByteRange
+from libranet.webserver.chaos_levels import MAX_KEPT_DROPS, ChaosLevels, DropRead
 from libranet.webserver.config_auth import (
     CONFIG_REALM,
     ConfigAuthGuard,
@@ -401,6 +402,7 @@ __all__ = [
     "MAX_DROP_BODY_BYTES",
     "MAX_GENERATIONS_LISTED",
     "MAX_JSON_BODY_BYTES",
+    "MAX_KEPT_DROPS",
     "MAX_OPENED_BYTES",
     "METADATA_PATH",
     "NODE_METADATA_KIND",
@@ -456,6 +458,7 @@ __all__ = [
     "BundlePaths",
     "BundleReadHandler",
     "ByteRange",
+    "ChaosLevels",
     "ClientKeeping",
     "ConfigAuthGuard",
     "ConfigCredential",
@@ -474,6 +477,7 @@ __all__ = [
     "DirectoryHandler",
     "DropEncryption",
     "DropHandler",
+    "DropRead",
     "EncryptedDrops",
     "FalseBlock",
     "FalseBuilders",
