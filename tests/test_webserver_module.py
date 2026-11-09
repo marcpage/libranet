@@ -1,5 +1,7 @@
 """Tests for the web server module's lifecycle."""
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from base64 import b64encode
 from http.client import HTTPConnection
