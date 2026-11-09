@@ -23,7 +23,9 @@ identity's balance, and its generations (Phase 6 Step 128). Peers tell the node
 the Karma heads they follow, and ask for its own (Phase 6 Step 130). A person
 signed in pays, and stakes, through the node, which signs for them (Phase 6
 Step 137). A peer of lower Karma than the others connected, that pushes nothing
-the node seeks, is closed (Phase 6 Step 142).
+the node seeks, is closed (Phase 6 Step 142). What a path beneath ``/chaos``
+resolves to, for whom, and why, is read from the bundles proposed at the
+drops of its levels, by the trust of whoever asks (Phase 7 Step 156).
 
 A few ``/data`` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
@@ -96,6 +98,16 @@ from libranet.webserver.bundle_paths import (
 )
 from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
 from libranet.webserver.byte_range import BYTES_UNIT, ByteRange
+from libranet.webserver.chaos_levels import MAX_KEPT_DROPS, ChaosLevels, DropRead
+from libranet.webserver.chaos_resolver import (
+    ChaosCandidate,
+    ChaosChoice,
+    ChaosResolution,
+    ChaosResolver,
+    ChaosScores,
+    LevelResolution,
+    ScoresReader,
+)
 from libranet.webserver.config_auth import (
     CONFIG_REALM,
     ConfigAuthGuard,
@@ -401,6 +413,7 @@ __all__ = [
     "MAX_DROP_BODY_BYTES",
     "MAX_GENERATIONS_LISTED",
     "MAX_JSON_BODY_BYTES",
+    "MAX_KEPT_DROPS",
     "MAX_OPENED_BYTES",
     "METADATA_PATH",
     "NODE_METADATA_KIND",
@@ -456,6 +469,12 @@ __all__ = [
     "BundlePaths",
     "BundleReadHandler",
     "ByteRange",
+    "ChaosCandidate",
+    "ChaosChoice",
+    "ChaosLevels",
+    "ChaosResolution",
+    "ChaosResolver",
+    "ChaosScores",
     "ClientKeeping",
     "ConfigAuthGuard",
     "ConfigCredential",
@@ -474,6 +493,7 @@ __all__ = [
     "DirectoryHandler",
     "DropEncryption",
     "DropHandler",
+    "DropRead",
     "EncryptedDrops",
     "FalseBlock",
     "FalseBuilders",
@@ -494,6 +514,7 @@ __all__ = [
     "KarmaRootHandler",
     "KarmaSigning",
     "KnownOutcome",
+    "LevelResolution",
     "LibranetHTTPServer",
     "ListFileHandler",
     "LocalFolders",
@@ -524,6 +545,7 @@ __all__ = [
     "ResponseCutShortError",
     "Route",
     "Router",
+    "ScoresReader",
     "SearchHandler",
     "SearchMatchesHandler",
     "SeekListHandler",
