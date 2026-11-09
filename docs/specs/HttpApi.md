@@ -2900,6 +2900,12 @@ Content-Type: application/json
 ```
 
 The path is a folder's name followed by a path beneath it, as above.
+`encrypted` may be given, as `true` or `false`, and left out is `false`:
+
+```json
+{"path": "Pictures/IMG_0001.HEIC", "encrypted": true}
+```
+
 Reading a large file takes time, so the request is answered `202 Accepted`
 at once, with what the import is known by:
 
@@ -2929,14 +2935,24 @@ the import was asked for, and `finished_at` when it was done or failed, or
 `null` until then, each in seconds since the Unix epoch. `bytes_read` is
 how much of the file has been read, `size` its size, or `null` until that
 is known, and `file` the file bundle's identifier, or `null` until it is
-stored. A node that cannot yet say how its imports are doing, as one just
-started may not, answers `503 Service Unavailable` with `Retry-After`.
+stored. For an import made encrypted, `file` is the encrypted form (§5),
+`sha256/…/AES256-CBC/…`, carrying the key it is read with. A node that
+cannot yet say how its imports are doing, as one just started may not,
+answers `503 Service Unavailable` with `Retry-After`.
 
 An import stores the file's parts and a file bundle
 ([Bundle Specification §2](BundleSpecification.md#2-raw-file-bundle)) that
-names them and records each one's size. An imported file is shared, not
-private, so its parts are pushed as they are stored (§7.4). Importing the
-same path again reads the file again.
+names them and records each one's size. An imported file is shared, so its
+parts are pushed as they are stored (§7.4). An import made encrypted stores
+each part, and then the file bundle, with per-entry encryption
+([Bundle Specification §7](BundleSpecification.md#7-per-entry-cas-encryption)),
+so that nothing of the file is stored, or pushed, in plaintext: whoever holds
+its objects, but not its identifier, cannot read it. Each key comes from the
+bytes it encrypts, so the same file imported encrypted on any node has the
+same identifier, which is not the one it has imported plain, and whoever
+holds the same file can tell that it is held. It is placed in a bundle
+(§12.3), and read (§12.1), by that identifier, as any file stored encrypted
+is. Importing the same path again, either way, reads the file again.
 
 Every request to these endpoints is from a local client, on a page of a
 trusted application, or refused (§2.4, §2.5).
@@ -2981,8 +2997,10 @@ base's identifier, as the request named it.
   ([Bundle Specification §4](BundleSpecification.md#4-directory-extensions)).
 - **`add`** maps each entry path to what goes there, replacing whatever
   the base held at that path:
-  - `{"file": id}`: the file bundle `id` names, as an import gives (§12.2).
-    With `"content_type"`, as `{"file": id, "content_type": "audio/flac"}`,
+  - `{"file": id}`: the file bundle `id` names, as an import gives (§12.2),
+    in the encrypted form, with its key, for one stored encrypted. Its parts
+    are named as that bundle names them, so an encrypted file stays
+    encrypted in a bundle that is not. With `"content_type"`, as `{"file": id, "content_type": "audio/flac"}`,
     the file is placed with that type in its metadata
     ([Bundle Specification §2.1](BundleSpecification.md#21-fields)), and
     is served with it. A type that is not a media type is

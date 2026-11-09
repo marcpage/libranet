@@ -12,13 +12,15 @@ server asks. It also imports a file a local client asks for (HttpApi §12.2)::
     backup.restore_requested  {"restore_id", "bundle", "directory", "on_conflict"}
     backup.build_requested    {"build_id", "directory", "password"}
     backup.export_requested   {"export_id", "bundle", "archive", "on_conflict", "password"}
-    backup.import_requested   {"import_id", "path", "local_path"}
+    backup.import_requested   {"import_id", "path", "encrypted", "local_path"}
     backup.archive_requested  {"archive_id", "bundles", "objects", "expires"}
     backup.archive_removed    {"archive_id"}
 
 ``password`` is ``null`` for none. It is never logged or reported. An
 import's ``path`` is the one the client asked for, a folder's name and a path
-beneath it, and ``local_path`` where the web server found that file. A kept
+beneath it, ``encrypted`` whether the file is to be stored encrypted, and
+``local_path`` where the web server found that file. The key an import
+stored encrypted is reported with its file bundle, but never logged. A kept
 archive's ``bundles`` may carry their keys, which are never logged, reported,
 or recorded either.
 
@@ -210,6 +212,7 @@ from libranet.backup.runs import AnnouncingStore, Backup, BuildSettings, back_up
 from libranet.backup.tasks import Task, TaskStatus, failure_reason
 from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.errors import BundleError
+from libranet.bundle.parts import PartPath
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore
@@ -553,7 +556,7 @@ class BackupModule(ModuleBase):
         self.logger.info("Exporting %s to %s", request.bundle, request.archive)
 
     def _on_import_requested(self, message: Message) -> None:
-        request = ImportRequest(message["path"])
+        request = ImportRequest.from_value(message)
         local_path: str = message["local_path"]
         check_path(local_path, "A file to import")
 
@@ -826,7 +829,9 @@ class BackupModule(ModuleBase):
             self.logger.exception("Importing %s failed", local_path)
 
         else:
-            self.logger.info("Imported %s as %s", local_path, task.file)
+            # The key is left out, since it is what keeps the file unread.
+            imported = PartPath.without_keys(str(task.file))
+            self.logger.info("Imported %s as %s", local_path, imported)
 
         self._log_wait(f"The import of {local_path}")
         self._report()

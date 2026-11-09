@@ -11,6 +11,14 @@ none of its times or permissions, nor its name. So one file imported on any
 machine has one content id, as a shipped application's files do
 (:mod:`libranet.applications.packaged`).
 
+A file may be imported encrypted instead (Step 160): each part, and then its
+file bundle, is stored with per-entry encryption (BundleSpecification §7), as
+a backup stores a file's parts, so that nothing of it is stored, or pushed,
+in plaintext. The file bundle is then named by its encrypted id, which
+carries the key it is read with. Every key comes from the bytes it encrypts
+(§7.2), so one file imported encrypted on any machine has one id too, but
+not the one it has imported plain.
+
 A file whose size or modification time changes while it is read fails to
 import, rather than record bytes the file never held all at once. Importing
 it again reads it again.
@@ -23,8 +31,8 @@ from typing import Any, Callable
 from libranet.backup.runs import BackupStore, BuildSettings
 from libranet.backup.tasks import Task
 from libranet.bundle.building import IgnoredPaths, build_file
-from libranet.bundle.storing import store_bundle
-from libranet.cas.content_id import ContentId
+from libranet.bundle.parts import PartPath, PartWriter
+from libranet.bundle.serialization import encode_bundle
 from libranet.protocol.backup_requests import ImportRequest
 
 
@@ -37,7 +45,7 @@ class Import(Task):
         self._local_path = local_path
         self._bytes_read = 0
         self._size_bytes: int | None = None
-        self._file: ContentId | None = None
+        self._file: PartPath | None = None
 
     @property
     def request(self) -> ImportRequest:
@@ -50,8 +58,8 @@ class Import(Task):
         return self._local_path
 
     @property
-    def file(self) -> ContentId | None:
-        """The file bundle stored, once it has been."""
+    def file(self) -> PartPath | None:
+        """What names the file bundle stored, with its key if it is encrypted, once it is stored."""
         return self._file
 
     def run(
@@ -63,6 +71,7 @@ class Import(Task):
     ) -> None:
         """Read the file into ``store`` as ``settings`` say, store its bundle, and finish.
 
+        Each part, and the bundle, is encrypted if the request asks for it.
         ``progressed`` is called each time a part has been read and stored.
         ``clock`` says when it finished.
 
@@ -80,8 +89,14 @@ class Import(Task):
             self._bytes_read += part_bytes
             progressed()
 
-        bundle = build_file(path, store, settings.max_object_bytes, read=read).content_only()
-        self._file = store_bundle(bundle, store, max_object_bytes=settings.max_object_bytes)
+        encrypted = self._request.encrypted
+        bundle = build_file(
+            path, store, settings.max_object_bytes, read=read, encrypt_parts=encrypted
+        ).content_only()
+        # Stored as one object, as any file bundle is, encrypted as a part is
+        # if it is to be.
+        writer = PartWriter(store, settings.max_object_bytes, encrypted)
+        self._file = writer.store(encode_bundle(bundle))
         self._size_bytes = bundle.metadata.size_bytes
         self._finish(clock())
 
@@ -89,7 +104,8 @@ class Import(Task):
         """What the import is doing, as ``GET /data/imports`` serves it.
 
         ``size`` is the file's, once it is known, ``bytes_read`` how much of
-        it has been read, and ``file`` the file bundle stored, once it is.
+        it has been read, and ``file`` the file bundle stored, once it is,
+        with its key if it is encrypted.
         """
         request = self._request
         return {

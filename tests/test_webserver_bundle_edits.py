@@ -1,5 +1,7 @@
 """Tests for making a bundle, or a new version of one, from the bundles a request names."""
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from base64 import b64encode
 from dataclasses import replace
@@ -286,6 +288,39 @@ def test_a_file_is_placed_with_the_content_type_given_and_keeps_it_when_copied(
     assert read(uploads, plain) == {"song.m4a": film(1)}
     assert read(uploads, retyped) == {"song.m4a": typed}
     assert read(uploads, copied) == {"copy.m4a": typed}
+
+
+@mark.parametrize("encrypted", [False, True])
+@mark.parametrize("content_type", [None, "image/heic"])
+def test_a_file_imported_encrypted_is_placed_by_its_id_with_its_parts_keys(
+    router: Router,
+    store: CasStore,
+    uploads: OwnUploads,
+    encrypted: bool,
+    content_type: str | None,
+) -> None:
+    data = POSTER * 8
+    # Stored as an encrypted import stores it (Step 160).
+    writer = PartWriter(store, MAX_BYTES, encrypted=True)
+    imported = writer.file(data)
+    file = writer.store(encode_bundle(imported))
+    given: dict[str, str] = {"file": str(file)}
+
+    if content_type is not None:
+        given["content_type"] = content_type
+
+    named = made(
+        router.dispatch(edit_request({"encrypted": encrypted, "add": {"IMG_0001.HEIC": given}}))
+    )
+
+    (entry,) = read(uploads, named).values()
+    assert isinstance(entry, FileBundle)
+    assert len(entry.parts) == 2
+    assert entry.parts == imported.parts
+    assert all(PartPath.parse(part_path).encrypted for part_path in entry.parts)
+    assert entry.metadata == replace(imported.metadata, content_type=content_type)
+    assert file_bytes(uploads, entry) == data
+    assert named.encrypted == encrypted
 
 
 def test_a_content_type_that_is_not_a_media_type_is_refused(

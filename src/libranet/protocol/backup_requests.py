@@ -8,9 +8,9 @@ that directory is not empty (§5). A build (Step 38) names a directory to make
 a bundle of, and an export a bundle and the archive to write it to; either
 may give a password protecting the bundle (BundleSpecification §6). An import
 (Phase 3 Step 69) names a file in a folder offered to local clients, as they
-name it (HttpApi §12.2). A kept archive (Step 115) names the bundles and the
-objects to keep in an archive of the node's own, and until when, if not until
-it is removed (HttpApi §12.4).
+name it (HttpApi §12.2), and whether it is stored encrypted. A kept archive
+(Step 115) names the bundles and the objects to keep in an archive of the
+node's own, and until when, if not until it is removed (HttpApi §12.4).
 
 Each request identifies itself, because the web server answers before any
 module has seen it and so cannot be told an identifier by the one that will
@@ -386,12 +386,15 @@ class ImportRequest:
 
     The path is a folder's name, then a path beneath it. Where that lies on
     this machine is for the web server to find, and is carried beside it.
+    ``encrypted`` says whether the file's parts, and its file bundle, are
+    stored with per-entry encryption (BundleSpecification §7; Step 160).
 
     Raises:
         ValueError: the path has an empty, ``.``, or ``..`` segment, or a NUL.
     """
 
     path: str
+    encrypted: bool = False
 
     def __post_init__(self) -> None:
         if not is_entry_path(self.path):
@@ -402,7 +405,10 @@ class ImportRequest:
 
     @classmethod
     def from_value(cls, value: object) -> ImportRequest:
-        """The import a ``{"path"}`` object asks for.
+        """The import a ``{"path", "encrypted"}`` object asks for.
+
+        ``encrypted`` may be left out, for ``false``. A message asking for
+        it is read the same way, its ``import_id`` and ``local_path`` aside.
 
         Raises:
             InvalidRequestError: it is not such an object, or what it asks
@@ -412,24 +418,37 @@ class ImportRequest:
             raise InvalidRequestError("An import must be a JSON object")
 
         path = value.get("path")
+        encrypted = value.get("encrypted", False)
 
         if not isinstance(path, str):
             raise InvalidRequestError('An import\'s "path" must be a string')
 
+        if not isinstance(encrypted, bool):
+            raise InvalidRequestError('An import\'s "encrypted" must be true or false')
+
         try:
-            return cls(path)
+            return cls(path, encrypted)
 
         except ValueError as error:
             raise InvalidRequestError(str(error)) from None
 
     @property
     def import_id(self) -> str:
-        """What names this import, derived from the path alone."""
+        """What names this import, derived from the path alone.
+
+        Whether it is encrypted is no part of it, so that importing a path
+        again, either way, reads the file again in its place.
+        """
         return identifier(self.path)
 
     def payload(self, local_path: Path) -> dict[str, Any]:
         """The message body asking for this import of the file found at ``local_path``."""
-        return {"import_id": self.import_id, "path": self.path, "local_path": str(local_path)}
+        return {
+            "import_id": self.import_id,
+            "path": self.path,
+            "encrypted": self.encrypted,
+            "local_path": str(local_path),
+        }
 
 
 @dataclass(frozen=True)

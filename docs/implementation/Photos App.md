@@ -77,7 +77,7 @@ The conventions of [Music App](Music%20App.md) §3 carry over. In addition:
 
 ## Step 160 — Importing a File Encrypted
 
-**Issue:** to be made (§4), from #477. **Depends on:** Phase 2 Step 60;
+**Issue:** #669, from #477. **Depends on:** Phase 2 Step 60;
 Phase 3 Steps 69, 72; Music App Step 154.
 
 Settled with the user:
@@ -786,7 +786,7 @@ and this table then given their numbers.
 | --- | --- | --- |
 | #476 | Defining the photos application | None: this plan |
 | #477 | Implementing the photos application, split into the issues below | 160 to 171 |
-| *to be made* | Step 160 — Importing a File Encrypted | 160 |
+| #669 | Importing a file encrypted | 160 |
 | *to be made* | Step 161 — The Photos Application and Its Albums | 161 |
 | *to be made* | Step 162 — Importing Photos into a New Album | 162 |
 | *to be made* | Step 163 — Viewing a Photo | 163 |

@@ -286,19 +286,35 @@ def test_an_import_names_a_file_as_asked_and_carries_where_it_was_found() -> Non
     asked = ImportRequest.from_value({"path": "Movies/Holidays/Film.mp4"})
 
     assert asked.path == "Movies/Holidays/Film.mp4"
+    assert not asked.encrypted
     assert asked.payload(Path("/Users/me/Movies/Holidays/Film.mp4")) == {
         "import_id": asked.import_id,
         "path": "Movies/Holidays/Film.mp4",
+        "encrypted": False,
         "local_path": "/Users/me/Movies/Holidays/Film.mp4",
     }
+
+
+@mark.parametrize("encrypted", [True, False])
+def test_an_import_says_whether_it_is_encrypted_and_is_read_back_from_its_message(
+    encrypted: bool,
+) -> None:
+    asked = ImportRequest.from_value({"path": "Pictures/IMG_0001.HEIC", "encrypted": encrypted})
+    payload = asked.payload(Path("/Users/me/Pictures/IMG_0001.HEIC"))
+
+    assert asked == ImportRequest("Pictures/IMG_0001.HEIC", encrypted)
+    assert payload["encrypted"] is encrypted
+    assert ImportRequest.from_value(payload) == asked
 
 
 def test_an_import_is_named_by_the_path_asked_for_alone() -> None:
     asked = ImportRequest.from_value({"path": "Movies/Film.mp4"})
     other = ImportRequest.from_value({"path": "Movies/Other.mp4"})
+    encrypted = ImportRequest.from_value({"path": "Movies/Film.mp4", "encrypted": True})
 
     assert asked.import_id == ImportRequest("Movies/Film.mp4").import_id
     assert asked.import_id != other.import_id
+    assert encrypted.import_id == asked.import_id
     assert len(asked.import_id) == IDENTIFIER_LENGTH
 
 
@@ -315,6 +331,9 @@ def test_an_import_is_named_by_the_path_asked_for_alone() -> None:
         {"path": "Movies/../Film.mp4"},
         {"path": "Movies/"},
         {"path": "Movies/Film\0.mp4"},
+        {"path": "Movies/Film.mp4", "encrypted": None},
+        {"path": "Movies/Film.mp4", "encrypted": 1},
+        {"path": "Movies/Film.mp4", "encrypted": "true"},
     ],
 )
 def test_an_import_this_node_cannot_act_on_is_refused(value: object) -> None:

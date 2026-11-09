@@ -7,7 +7,7 @@ from __future__ import annotations
 from hashlib import sha256
 from io import BytesIO
 from itertools import count
-from logging import ERROR, INFO, WARNING
+from logging import DEBUG, ERROR, INFO, WARNING
 from os import DirEntry, chmod, mkfifo, scandir, utime
 from pathlib import Path
 from threading import Timer
@@ -19,10 +19,14 @@ from xattr import xattr
 from libranet.backup.builds import Build, BuildRecord
 from libranet.backup.errors import JobFileError
 from libranet.backup.exports import Export
+from libranet.backup.imports import Import
 from libranet.backup.jobs import BackupJob, ExpandedBackups
 from libranet.backup.module import BackupModule
 from libranet.backup.restores import Restore
+from libranet.backup.runs import BuildSettings
 from libranet.bundle.building import build_directory, build_file
+from libranet.bundle.encryption import BLOCK_BYTES
+from libranet.bundle.errors import BundleError
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.layering import Layering, Superseded
 from libranet.bundle.loading import load_bundle
@@ -1872,8 +1876,14 @@ def imports(messages: list[Message]) -> list[list[dict[str, Any]]]:
     return [message["imports"] for message in of(messages, EventType.BACKUP_STATE)]
 
 
-def import_file(module: BackupModule, local_path: Path, path: str = "Movies/Film.mp4") -> str:
-    request = ImportRequest(path)
+def import_file(
+    module: BackupModule,
+    local_path: Path,
+    path: str = "Movies/Film.mp4",
+    *,
+    encrypted: bool = False,
+) -> str:
+    request = ImportRequest(path, encrypted)
     module.handle(asked(EventType.IMPORT_REQUESTED, **request.payload(local_path)))
     return request.import_id
 
@@ -1882,13 +1892,18 @@ def on_each_part(monkeypatch: MonkeyPatch, act: Callable[[Path], None]) -> None:
     """Has ``act`` called with a file's path each time an import reads a part of it."""
 
     def acting(
-        path: Path, sink: Any, max_object_bytes: int, *, read: Callable[[int], None]
+        path: Path,
+        sink: Any,
+        max_object_bytes: int,
+        *,
+        read: Callable[[int], None],
+        encrypt_parts: bool = False,
     ) -> FileBundle:
         def part_read(size: int) -> None:
             act(path)
             read(size)
 
-        return build_file(path, sink, max_object_bytes, read=part_read)
+        return build_file(path, sink, max_object_bytes, read=part_read, encrypt_parts=encrypt_parts)
 
     monkeypatch.setattr("libranet.backup.imports.build_file", acting)
 
@@ -1971,6 +1986,77 @@ def test_one_file_imported_from_anywhere_has_one_id(
     one, other = imports(published(queues))[-1]
     assert (one["status"], other["status"]) == ("done", "done")
     assert one["file"] == other["file"]
+
+
+def test_an_encrypted_import_stores_and_announces_nothing_of_the_file_in_plaintext(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tmp_path: Path,
+    store: CasStore,
+    caplog: LogCaptureFixture,
+) -> None:
+    module = start(small_parts(config), queues, now)
+    published(queues)
+    held = held_ids(store)
+
+    with caplog.at_level(DEBUG):
+        import_file(module, film(tmp_path / "Pictures", FILM), encrypted=True)
+
+    messages = published(queues)
+    final = imports(messages)[-1][0]
+    file = PartPath.parse(final["file"])
+    assert final["status"] == "done"
+    assert file.encrypted
+    bundle = load_bundle(file, store)
+    assert isinstance(bundle, FileBundle)
+    assert bundle.metadata == Metadata(
+        size_bytes=len(FILM), algorithm="sha256", hash=sha256(FILM).hexdigest()
+    )
+    # Each part a block short of the object limit, so that it fits once padded.
+    assert bundle.part_sizes_bytes == (PART_BYTES - BLOCK_BYTES,) * 4 + (64,)
+    parts = [PartPath.parse(part) for part in bundle.parts]
+    assert all(part.encrypted for part in parts)
+    output = BytesIO()
+    write_file(bundle, store, output)
+    assert output.getvalue() == FILM
+    # Every object stored, and pushed, is ciphertext a key names, and the
+    # bundle cannot be read without its key.
+    stored = {file.content_id, *(part.content_id for part in parts)}
+    assert held_ids(store) - held == stored
+    assert set(stored_ids(messages)) == stored
+
+    with raises(BundleError):
+        load_bundle(file.content_id, store)
+
+    assert str(file.content_id) in caplog.text
+    assert file.key is not None and file.key.hex() not in caplog.text
+    assert not any(part.key is not None and part.key.hex() in caplog.text for part in parts)
+
+
+def test_a_file_imported_encrypted_has_one_id_on_any_node_and_another_imported_plain(
+    tmp_path: Path,
+) -> None:
+    first = film(tmp_path / "Pictures", FILM)
+    second = film(tmp_path / "Downloads", FILM, "Copy of Film.mp4")
+    utime(second, ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
+    settings = BuildSettings(PART_BYTES, 0)
+
+    def imported(local_path: Path, node: str, *, encrypted: bool) -> PartPath | None:
+        path = f"{local_path.parent.name}/{local_path.name}"
+        task = Import(ImportRequest(path, encrypted), local_path, START)
+        task.run(CasStore(tmp_path / node, 2), settings, lambda: START, lambda: None)
+        return task.file
+
+    one = imported(first, "one", encrypted=True)
+    again = imported(first, "one", encrypted=True)
+    other = imported(second, "other", encrypted=True)
+    plain = imported(first, "one", encrypted=False)
+
+    assert one is not None and plain is not None
+    assert one.encrypted and not plain.encrypted
+    assert one == again == other
+    assert plain.content_id != one.content_id
 
 
 def test_how_far_an_import_has_read_is_reported_at_most_once_a_second(

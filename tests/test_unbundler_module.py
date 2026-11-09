@@ -3,6 +3,7 @@
 # pylint: disable=too-many-lines
 
 from __future__ import annotations
+from dataclasses import replace
 from hashlib import sha256
 from json import dumps, loads
 from logging import DEBUG, WARNING
@@ -14,11 +15,15 @@ from zlib import compress, decompress
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
+from libranet.backup.imports import Import
+from libranet.backup.runs import BuildSettings
 from libranet.bundle.errors import MalformedBundleError
+from libranet.bundle.loading import load_bundle
 from libranet.bundle.parsing import decode_bundle, parse_bundle
 from libranet.bundle.parts import PartPath, PartWriter
 from libranet.bundle.protection import protect
-from libranet.bundle.shapes import Bundle, DirectoryBundle
+from libranet.bundle.serialization import encode_bundle
+from libranet.bundle.shapes import Bundle, DirectoryBundle, FileBundle
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
 from libranet.cas.resolved_files import ResolvedFiles
@@ -29,12 +34,13 @@ from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import EventType, PathOutcome
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
+from libranet.protocol.backup_requests import ImportRequest
 from libranet.supervision.registry import default_module_specs
 from libranet.supervision.specs import ModuleSpec
 from libranet.unbundler.module import UnbundlerModule
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_registry import Application, ApplicationRegistry
-from libranet.webserver.http_types import Request
+from libranet.webserver.http_types import Request, Response
 from libranet.webserver.server import build_router
 
 from tests.stubs import StubModule
@@ -1074,3 +1080,74 @@ def test_the_web_server_reads_into_an_encrypted_bundle_the_unbundler_resolves(
     assert served.stream is not None
     assert b"".join(served.stream.chunks) == FIRST_HALF + SECOND_HALF
     assert served.headers["Content-Security-Policy"] == "sandbox"
+
+
+@mark.parametrize("encrypted", [False, True])
+def test_the_web_server_reads_a_file_imported_encrypted_whole_and_by_ranges(
+    unbundler: UnbundlerModule,
+    queues: ModuleQueues,
+    storage: StorageConfig,
+    store: CasStore,
+    tmp_path: Path,
+    encrypted: bool,
+) -> None:
+    """By its own id, and in a bundle holding it, plain or encrypted (Step 160)."""
+    # pylint: disable=too-many-locals
+    data = bytes(index % 251 for index in range(3000))
+    local_path = tmp_path / "Pictures" / "IMG_0001.HEIC"
+    local_path.parent.mkdir()
+    local_path.write_bytes(data)
+    task = Import(ImportRequest("Pictures/IMG_0001.HEIC", True), local_path, 0.0)
+    task.run(store, BuildSettings(1024, 0), lambda: 0.0, lambda: None)
+    file = task.file
+    assert file is not None and file.encrypted
+    imported = load_bundle(file, store)
+    assert isinstance(imported, FileBundle)
+    typed = replace(imported, metadata=replace(imported.metadata, content_type="image/heic"))
+    holding = PartWriter(store, encrypted=encrypted).store(
+        encode_bundle(DirectoryBundle({"IMG_0001.HEIC": typed}))
+    )
+    web_queues = ModuleQueues(inbox=Queue(), outbox=Queue())
+    outcomes = ApplicationOutcomes()
+    router = build_router(
+        storage,
+        5,
+        StubModule(ModuleName.WEBSERVER, web_queues).publish,
+        RequestAuthenticator.of(LibranetConfig(storage=storage)),
+        allow_unsigned_api_reads=True,
+        config_port=8180,
+        app_outcomes=outcomes,
+    )
+
+    def read(path: str, **headers: str) -> Response:
+        """``GET path``, once the unbundler has resolved what it asks for."""
+        browse = Request("GET", path, headers=headers, client_address="203.0.113.42")
+        router.dispatch(browse)
+
+        for asked in published(web_queues):
+            if asked["event"] == EventType.APP_PATH_NOT_FOUND:
+                unbundler.handle(asked)
+
+        for report in published(queues):
+            outcomes.remember(
+                PartPath.parse(report["bundle"]),
+                report["path"],
+                KnownOutcome(PathOutcome(report["outcome"]), report.get("location", "")),
+            )
+
+        return router.dispatch(browse)
+
+    # The range crosses from the first part into the second.
+    for path in (f"/data/{file}/", f"/data/{holding}/IMG_0001.HEIC"):
+        whole = read(path)
+        ranged = read(path, Range="bytes=1000-1019")
+
+        assert whole.status == 200
+        assert whole.stream is not None
+        assert b"".join(whole.stream.chunks) == data
+        assert ranged.status == 206
+        assert ranged.stream is not None
+        assert b"".join(ranged.stream.chunks) == data[1000:1020]
+        assert ranged.headers["Content-Range"] == f"bytes 1000-1019/{len(data)}"
+
+    assert read(f"/data/{holding}/IMG_0001.HEIC").headers["Content-Type"] == "image/heic"

@@ -6,7 +6,9 @@ beneath it, as ``/data/directory`` names them (HttpApi §12.2, Phase 3 Step
 
     POST /data/imports  {"path": "Movies/Film.mp4"}
 
-The file is found as a listing's directory is
+With ``"encrypted": true``, the file's parts and its file bundle are stored
+with per-entry encryption (BundleSpecification §7, Step 160), and left out,
+it is ``false``. The file is found as a listing's directory is
 (:meth:`~libranet.webserver.local_folders.LocalFolders.find_file`). A path
 naming a directory is ``400``, and one naming no file in a folder offered is
 ``404``, as is one naming anything else a listing leaves out. A file found is
@@ -14,10 +16,11 @@ imported by the backup module, which reads it, so the request is answered
 ``202`` at once, with what the import is known by. The web server publishes
 where the file lies beside the path asked for::
 
-    backup.import_requested  {"import_id", "path", "local_path"}
+    backup.import_requested  {"import_id", "path", "encrypted", "local_path"}
 
 ``GET /data/imports`` says how each import is doing, by id, from what the
-backup module last reported (:mod:`libranet.webserver.backup_state`,
+backup module last reported, and gives an encrypted import's ``file`` by its
+encrypted id, carrying its key (:mod:`libranet.webserver.backup_state`,
 :class:`~libranet.webserver.config_handlers.BackupReportHandler`)::
 
     {"imports": {"<import_id>": {"path": "Movies/Film.mp4", "status": "done",
