@@ -131,7 +131,9 @@ class Request:  # pylint: disable=too-many-instance-attributes
     ``connection`` is the connection it arrived on, if the server keeps track
     of them. ``query`` holds the parameters of the query string, each by its
     name, the last given of one named more than once, and ``query_text`` the
-    query string as sent, without its ``?``.
+    query string as sent, without its ``?``. ``has_query`` says whether the
+    target held a ``?``, even with nothing after it, which ``query_text``
+    alone cannot say.
     """
 
     method: str
@@ -145,6 +147,11 @@ class Request:  # pylint: disable=too-many-instance-attributes
     connection: InboundConnection | None = None
     query: Mapping[str, str] = field(default_factory=dict)
     query_text: str = ""
+    has_query: bool = False
+
+    def bare_query(self) -> bool:
+        """Whether its target ends in a ``?`` with nothing after it (HttpApi §13.6.6)."""
+        return self.has_query and not self.query_text
 
     def header(self, name: str) -> str | None:
         """The value of the header ``name``, however it is capitalized, or ``None`` if not sent."""

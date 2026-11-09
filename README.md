@@ -55,6 +55,7 @@ see [Project Status](#project-status).
     - [Watch TV](#watch-tv)
     - [Listen to music](#listen-to-music)
     - [Use and share applications](#use-and-share-applications)
+    - [Put a site at any path](#put-a-site-at-any-path)
   - [How It Works](#how-it-works)
   - [Getting Started](#getting-started)
   - [Project Status](#project-status)
@@ -256,6 +257,17 @@ again. The
 [App Developer Guide](docs/operations/App%20Developer%20Guide.md) describes
 what an application can do, and how to write one.
 
+### Put a site at any path
+
+Beneath `/chaos/` on your node, anyone may put a site at any path, with no
+one registering it, by proposing a bundle there. Each person who opens the
+path sees what those they trust proposed. Signed in, you are served by your
+own trust, and otherwise by your node's. End any address there with `?` to
+see every bundle proposed for it, who proposed each, when, and why one was
+chosen, and to trust or distrust whoever proposed one. The
+[App Developer Guide](docs/operations/App%20Developer%20Guide.md) shows how
+a page proposes a site.
+
 ---
 
 ## How It Works
@@ -352,7 +364,7 @@ applications, and running test networks and super nodes.
 | Phase 4 — user accounts, steps 30, 78–82, and 89–93 | Implemented |
 | Phase 5 — the trust network, steps 94 and 96–114 | Implemented |
 | Phase 6 — Karma, steps 56 and 116–143 | Implemented |
-| Phase 7 — the Chaos endpoint, steps 155–159 | Planned |
+| Phase 7 — the Chaos endpoint, steps 155–159 | Steps 155–158 implemented |
 | Phase 8 — the web endpoint | Not yet planned |
 | Phase 9 — polish, steps 57 and 95 | Planned |
 | Phase 10 — a seed node, step 84 | Planned |
@@ -376,8 +388,10 @@ and the node's own, which say which nodes it connects to),
 what nodes say of themselves, trusted and sandboxed applications, the Karma
 ledger's chain, followed, built, paid, and staked in, shown in the
 applications, ordering the nodes a node connects to and lists, and keeping
-the peers connected to it by Karma (steps 56 and 116–143), and the movie
-library, user directory, mail, nodes, and Karma applications.
+the peers connected to it by Karma (steps 56 and 116–143), the Chaos
+endpoint, where anyone may put a site at any path and each person sees what
+those they trust put there (steps 155–158), and the movie library, user
+directory, mail, nodes, and Karma applications.
 
 Deliberately deferred, and specified but not yet built:
 

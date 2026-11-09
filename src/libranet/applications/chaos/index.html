@@ -1,0 +1,822 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Chaos</title>
+<style>
+  :root {
+    --background: #f6f6f4;
+    --surface: #ffffff;
+    --text: #1d1d1b;
+    --muted: #5d5d58;
+    --border: #d8d8d2;
+    --accent: #2a5db0;
+    --good: #1f7a3d;
+    --bad: #b3261e;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: #161615;
+      --surface: #1f1f1d;
+      --text: #ececea;
+      --muted: #a8a8a2;
+      --border: #3a3a36;
+      --accent: #7ea9f0;
+      --good: #6cc98a;
+      --bad: #f2877e;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  main { max-width: 48rem; margin: 0 auto; padding: 2.5rem 1rem; }
+  h1 { font-size: 1.5rem; margin: 0; overflow-wrap: anywhere; }
+  h2 { font-size: 1.15rem; margin: 0 0 0.5rem; }
+  a { color: var(--accent); }
+
+  /* Home, the node's front page, in the upper right corner of every page. */
+  .home {
+    position: absolute;
+    top: 0.75rem;
+    right: 1rem;
+    font-size: 1.5rem;
+    line-height: 1;
+    text-decoration: none;
+  }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1.25rem 0;
+  }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    word-break: break-all;
+  }
+
+  /* An id: one click selects all of it. */
+  .id { user-select: all; }
+
+  .note, footer { color: var(--muted); }
+  .error { color: var(--bad); }
+  .chosen { color: var(--good); font-weight: 600; }
+  button { font: inherit; padding: 0.35rem 0.9rem; }
+  footer { font-size: 0.9rem; }
+  #status { margin: 0.5rem 0 0; padding: 0; list-style: none; }
+  #status li + li { margin-top: 0.15rem; }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin-top: 0.75rem; }
+
+  /* Each proposal at a level: its signer first, and what became of it in
+     the rows after. */
+  .proposals { margin: 0.5rem 0 0; padding-left: 1.75rem; }
+  .proposals > li + li { margin-top: 0.75rem; }
+  .signer { font-weight: 600; }
+  .rows { margin: 0.15rem 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.93rem; }
+  .rows li + li { margin-top: 0.1rem; }
+  .missing { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.93rem; }
+
+  /* A signer's trust: a mark to hover over, and the buttons changing it. */
+  .mark { margin-right: 0.4rem; cursor: help; }
+  .choices { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-left: 0.5rem; font-weight: normal; }
+  .choices button { padding: 0.1rem 0.55rem; }
+</style>
+</head>
+<body>
+<a class="home" href="/" title="Home" aria-label="Home">&#x1F3E0;</a>
+<main>
+  <h1>Chaos: <code id="path"></code></h1>
+  <ul id="status"><li class="note">Asking the node what this path resolves to&hellip;</li></ul>
+  <noscript><p class="note">Showing what this path resolves to needs JavaScript.</p></noscript>
+  <div class="actions">
+    <button id="reload" type="button">Reload</button>
+    <a id="served" hidden>Open it where it is served</a>
+  </div>
+
+  <section id="summary" hidden>
+    <h2 id="summary-title">What is served here</h2>
+    <p id="chosen"></p>
+    <p id="scores" class="note"></p>
+    <p id="trust-text" class="note" hidden></p>
+  </section>
+
+  <div id="levels"></div>
+
+  <footer>
+    Anyone may propose a bundle for any path beneath <code>/chaos</code>, by
+    placing a proposal at the drop of the path, or of a directory above it:
+    <code>chaos:/</code> for the root, then <code>chaos:/</code> and each
+    element of the path in turn. A bundle proposed at a level serves the
+    paths beneath it that it holds, so it must hold the rest of the path below
+    that level. The node first looks at every level for proposals signed by
+    someone trusted, from the root down, and then for those whose signer is
+    neither trusted nor distrusted, or that are unsigned. At each level it
+    takes the newest first, and serves the first whose bundle holds the rest.
+    A distrusted signer's proposal is never served. Whose trust chooses is
+    whoever is signed in, or else this node's.
+    Each signer's mark is from those scores: &#x1F7E2; above 0, trusted;
+    &#x1F7E1; 0, neither; &#x1F534; below 0, distrusted; and &#x26AA; where
+    there are no scores to show.
+    Ending any address beneath <code>/chaos</code> with <code>?</code> shows
+    this page for it.
+  </footer>
+</main>
+<script>
+"use strict";
+
+// The Chaos endpoint's own path, in any case (HttpApi 13.6), and where the
+// node reports what a path beneath it resolves to, and why, the path spelled
+// as it is beneath /chaos/ (HttpApi 13.6.7).
+const CHAOS_PREFIX = /^\/chaos(?:\/|$)/i;
+const REPORT_PREFIX = "/data/chaos/";
+
+// What marks each signer's trust (#322), by the scores that chose (HttpApi
+// 11.7): a score above 0, of 0, and below 0; and where there are no scores to
+// show.
+const TRUSTED = "\u{1F7E2}";
+const NEITHER = "\u{1F7E1}";
+const DISTRUSTED = "\u{1F534}";
+const UNKNOWN = "\u{26AA}";
+
+// How long the page waits to read the report again, while anything is
+// pending, or the scores that chose are still being built.
+const REPORT_AGAIN_SECONDS = 2;
+
+// What a 503 waits when it does not say, and how many are waited out.
+const DEFAULT_RETRY_SECONDS = 5;
+const MAX_WAITS = 1;
+
+// What a person says of themselves is kept at the drop "user:{id}", each
+// version signed by them (App Developer Guide 6.14), read back through its
+// history no further than this, and no more people's at once than this.
+const DETAILS_PREFIX = "user:";
+const HANDLE = "handle";
+const MAX_HISTORY = 1024;
+const DETAILS_AT_ONCE = 8;
+
+// An id: the only hash the node knows, in lower-case hex (HttpApi 5).
+const CONTENT_ID = /^sha256\/[0-9a-f]{64}$/;
+
+// Why a proposal was passed over, in words (HttpApi 13.6.7).
+const PASSED_OVER = {
+  "not-a-proposal": "Passed over: it is not a proposal.",
+  "bad-signature": "Passed over: it is signed, but its signature does not check.",
+  shunned: "Passed over: this node has shunned its bundle.",
+  future: "Passed over: it is dated too far ahead of this node's clock.",
+  superseded: "Passed over: its signer proposed a newer one here.",
+  distrusted: "Passed over: its signer is distrusted.",
+  "lacks-path": "Passed over: its bundle does not hold the rest of the path.",
+  unusable: "Passed over: its bundle cannot be read, or is password-protected.",
+  pending: "Passed over: what it needs had not arrived in time. It was asked for.",
+};
+
+function byId(id) {
+  return document.getElementById(id);
+}
+
+function make(tag, text, className) {
+  const element = document.createElement(tag);
+  element.textContent = text;
+
+  if (className) {
+    element.className = className;
+  }
+
+  return element;
+}
+
+function code(text, className) {
+  return make("code", text, className);
+}
+
+function sleep(seconds) {
+  return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+}
+
+// How long `headers` say to wait before asking again (HttpApi 5.2): at least a
+// second, and the default when they do not say.
+function retryAfter(headers) {
+  const seconds = Number.parseInt(headers.get("Retry-After") || "", 10);
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.max(seconds, 1) : DEFAULT_RETRY_SECONDS;
+}
+
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function plural(count, one, many) {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+// Runs no more than `limit` pieces of work at once.
+class Limiter {
+  constructor(limit) {
+    this.limit = limit;
+    this.running = 0;
+    this.waiting = [];
+  }
+
+  async run(work) {
+    while (this.running >= this.limit) {
+      await new Promise((resolve) => this.waiting.push(resolve));
+    }
+
+    this.running += 1;
+
+    try {
+      return await work();
+    } finally {
+      this.running -= 1;
+      this.waiting.shift()?.();
+    }
+  }
+}
+
+// The node could not be reached at all.
+class Unreachable extends Error {}
+
+// One request to the node, its body sent as JSON. `value` is the answer read
+// as JSON, or null.
+async function call(method, path, body) {
+  const init = { method, cache: "no-store", headers: {} };
+
+  if (body !== undefined) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+
+  let response;
+
+  try {
+    response = await fetch(path, init);
+  } catch (error) {
+    throw new Unreachable(`The node could not be reached: ${error.message}`);
+  }
+
+  const text = await response.text();
+  let value = null;
+
+  try {
+    value = text ? JSON.parse(text) : null;
+  } catch (error) {
+    value = null;
+  }
+
+  return { status: response.status, ok: response.ok, headers: response.headers, value };
+}
+
+// What the node said of a request it did not do.
+function refusal(result) {
+  const problem = isObject(result.value) ? result.value : {};
+  return problem.detail || problem.title || `The node answered ${result.status}.`;
+}
+
+// Each line saying what reading the report did, the first replacing what was
+// there before.
+const status = {
+  say(lines) {
+    byId("status").replaceChildren(...lines.map(([text, className]) => make("li", text, className || "note")));
+  },
+};
+
+// The Chaos path this page is for, as the address spells it beneath /chaos/;
+// and decoded, as far as it can be, until the report says.
+const encodedPath = location.pathname.replace(CHAOS_PREFIX, "");
+
+function decodedPath() {
+  try {
+    return decodeURIComponent(encodedPath);
+  } catch (error) {
+    return encodedPath;
+  }
+}
+
+// What the page shows: the last report, or null; who is signed in on this
+// machine, whose trust list the page may change, or null; what changing each
+// signer's trust last said; and what each signer says of themselves, as far as
+// it has been read.
+const view = {
+  report: null,
+  you: null,
+  changing: new Map(),
+  details: new Map(),
+};
+
+// Who is signed in, as the node says (HttpApi 11.4), if this client is on the
+// node's own machine, where alone a page may change their trust list; null
+// otherwise.
+async function signedInHere() {
+  const client = await call("GET", "/data/client");
+
+  if (!(client.ok && isObject(client.value) && client.value.local === true)) {
+    return null;
+  }
+
+  const session = await call("GET", "/data/session");
+  return session.ok && isObject(session.value) && CONTENT_ID.test(session.value.id) ? session.value : null;
+}
+
+// Where the node searches the drop `target` names (HttpApi 9.7): the target
+// string, as one path segment.
+function dropPath(target) {
+  return `/data/drop/${encodeURIComponent(target)}`;
+}
+
+// Where a read into `bundle` finds `rest` (HttpApi 12.1): each element of the
+// rest percent-encoded, and the empty rest, a file bundle's own file or a
+// directory bundle's root, with its "/".
+function bundlePath(bundle, rest) {
+  return `/data/${bundle}/${rest.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+// A link showing `content` to the page of the person `id` names, as any page
+// links a person (App Developer Guide 6.12).
+function personLink(id, content) {
+  const link = document.createElement("a");
+  link.href = `/directory/?id=${encodeURIComponent(id)}`;
+  link.append(content);
+  return link;
+}
+
+// The ids a search of the drop `target` finds (HttpApi 9.7).
+async function dropResults(target) {
+  const search = await call("GET", dropPath(target));
+
+  if (!(search.ok && isObject(search.value) && Array.isArray(search.value.results))) {
+    throw new Error(`${target} could not be searched for: ${refusal(search)}`);
+  }
+
+  return search.value.results.filter((id) => CONTENT_ID.test(id));
+}
+
+// What the node says of the signed drop `id` (HttpApi 11.5): what it holds and
+// who signed it, if it checks; `missing` while the node fetches it.
+async function checked(id) {
+  for (let waits = 0; ; waits += 1) {
+    let response;
+
+    try {
+      // A check that passes never changes, so the browser's cache may answer.
+      response = await fetch(`/data/signed/${id}`);
+    } catch (error) {
+      throw new Unreachable(`The node could not be reached: ${error.message}`);
+    }
+
+    if (response.status === 503) {
+      if (waits >= MAX_WAITS) {
+        return { missing: true };
+      }
+
+      await sleep(retryAfter(response.headers));
+      continue;
+    }
+
+    const value = response.ok ? await response.json().catch(() => null) : null;
+    return isObject(value) ? { signed: value } : { passed: true };
+  }
+}
+
+// The version of what someone says of themselves that `signed`, checked at
+// `id`, holds, and who signed it; null if it is not shaped as a version is.
+function versionOf(id, signed) {
+  if (!CONTENT_ID.test(signed.signer) || typeof signed.contents !== "string") {
+    return null;
+  }
+
+  let value;
+
+  try {
+    value = JSON.parse(signed.contents);
+  } catch (error) {
+    return null;
+  }
+
+  const versions = isObject(value) && value.versions !== undefined ? value.versions : [];
+  const isVersion =
+    isObject(value) &&
+    typeof value.created === "string" &&
+    isObject(value.fields) &&
+    Object.values(value.fields).every((field) => typeof field === "string") &&
+    Number.isSafeInteger(value.version) &&
+    value.version >= 1 &&
+    Array.isArray(versions) &&
+    versions.every((replaced) => CONTENT_ID.test(replaced));
+
+  if (!isVersion) {
+    return null;
+  }
+
+  return {
+    id,
+    signer: signed.signer,
+    fallback: CONTENT_ID.test(value.fallback) ? value.fallback : null,
+    compromised: value.compromised === true,
+    fields: value.fields,
+    version: value.version,
+    versions,
+  };
+}
+
+// The newest of `versions`: the one numbered highest, and the first by id of
+// those numbered as high.
+function newestOf(versions) {
+  return versions.reduce(
+    (best, found) =>
+      best === null ||
+      found.version > best.version ||
+      (found.version === best.version && found.id < best.id)
+        ? found
+        : best,
+    null,
+  );
+}
+
+// The newest of what `person` says, as the user directory judges it: theirs,
+// or their fallback's saying they are compromised (App Developer Guide 6.14);
+// and whether they are.
+function judged(person, versions) {
+  const own = versions.filter((version) => version.signer === person);
+
+  if (own.length === 0) {
+    return { newest: null, compromised: false };
+  }
+
+  const firsts = own.filter((version) => version.version === 1);
+  const named = new Set((firsts.length > 0 ? firsts : own).map((version) => version.fallback));
+  const fallback = named.size === 1 ? [...named][0] : null;
+  const notices = versions.filter(
+    (version) => fallback !== null && version.signer === fallback && version.compromised,
+  );
+  const compromised =
+    fallback === null ||
+    own.some((version) => version.fallback !== fallback) ||
+    notices.length > 0;
+  return { newest: newestOf([...own, ...notices]), compromised };
+}
+
+// What `person` says of themselves, read back through each version's history
+// as far as this node holds it, as the user directory reads it.
+async function readDetails(person) {
+  const ids = await dropResults(DETAILS_PREFIX + person);
+  const read = new Map();
+  let pending = ids;
+
+  while (pending.length > 0 && read.size < MAX_HISTORY) {
+    const fresh = [...new Set(pending)].filter((id) => !read.has(id));
+    const batch = fresh.slice(0, MAX_HISTORY - read.size);
+    const results = await Promise.all(batch.map(checked));
+    pending = [];
+
+    batch.forEach((id, index) => {
+      const result = results[index];
+      const version = result.signed ? versionOf(id, result.signed) : null;
+      read.set(id, version);
+
+      // Only their own are read back: anyone may place a version of their own
+      // at the drop, naming whatever it likes.
+      if (version !== null && version.signer === person) {
+        pending.push(...version.versions);
+      }
+    });
+  }
+
+  return judged(person, [...read.values()].filter((version) => version !== null));
+}
+
+const detailsLimiter = new Limiter(DETAILS_AT_ONCE);
+
+// Ask for what `person` says of themselves, once, and show the page again
+// once it is read.
+function askDetails(person) {
+  if (view.details.has(person)) {
+    return;
+  }
+
+  view.details.set(person, null);
+  detailsLimiter
+    .run(() => readDetails(person))
+    .then((details) => {
+      view.details.set(person, details);
+      render();
+    })
+    .catch((error) => console.warn(`What ${person} says could not be read: ${error.message}`));
+}
+
+// The name `person` gives themselves: their handle, or else their names; empty
+// if they give none, or none is read yet.
+function nameOf(person) {
+  const details = view.details.get(person);
+  const fields = details && details.newest ? details.newest.fields : {};
+  const names = [fields["first name"], fields["last name"]].filter((name) => name).join(" ");
+  return fields[HANDLE] || names;
+}
+
+// Whose scores chose, in words.
+function whose(report) {
+  return report.scores === "person" ? "your" : "this node's";
+}
+
+function markOf(score) {
+  if (!Number.isFinite(score)) {
+    return UNKNOWN;
+  }
+
+  return score > 0 ? TRUSTED : score < 0 ? DISTRUSTED : NEITHER;
+}
+
+// What a signer's score, reached at `step`, says, by the scores that chose.
+function trustText(report, score, step) {
+  const building = report.complete ? "" : " The scores are still being built.";
+
+  if (!Number.isFinite(score)) {
+    return `There are no scores to show.${building}`;
+  }
+
+  if (step === null) {
+    return `Not reached by ${whose(report)} trust scores. Score 0.${building}`;
+  }
+
+  return `Score ${score}, step ${step}, by ${whose(report)} trust scores.${building}`;
+}
+
+// Trust, Distrust, and Clear, changing the entry for `signer` on the trust
+// list of whoever is signed in, the one saying what the list holds disabled;
+// and what the last change said.
+function choicesFor(report, signer, score, step) {
+  const row = make("span", "", "choices");
+  const own = report.scores === "person" && step === 1;
+  const held = own ? score > 0 : null;
+  const change = view.changing.get(signer);
+
+  for (const [label, trusted] of [["Trust", true], ["Distrust", false], ["Clear", null]]) {
+    const button = make("button", label);
+    button.type = "button";
+    button.disabled = Boolean(change && change.busy) || (own ? held === trusted : false);
+    button.addEventListener("click", () => changeTrust(signer, trusted));
+    row.append(button);
+  }
+
+  if (change) {
+    row.append(make("span", change.text, change.className));
+  }
+
+  return row;
+}
+
+// Have the node trust `id`, distrust it (`trusted` false), or clear it (null)
+// on the list of whoever is signed in (HttpApi 11.7), waiting out a 503 while
+// it fetches a version of the list, then read the report again.
+async function changeTrust(id, trusted) {
+  const path = `/data/trust/${id}`;
+  view.changing.set(id, { busy: true, text: "Saving…", className: "note" });
+  render();
+
+  try {
+    for (let waits = 0; ; waits += 1) {
+      const result = trusted === null ? await call("DELETE", path) : await call("PUT", path, { trust: trusted });
+
+      if (result.ok) {
+        view.changing.delete(id);
+        break;
+      }
+
+      if (result.status !== 503 || waits >= MAX_WAITS) {
+        view.changing.set(id, { text: `Not changed: ${refusal(result)}`, className: "error" });
+        break;
+      }
+
+      await sleep(retryAfter(result.headers));
+    }
+  } catch (error) {
+    view.changing.set(id, { text: error.message, className: "error" });
+  }
+
+  render();
+  followReport();
+}
+
+// The signer of `proposal`, with their mark, name, and id, and the choices
+// changing their trust; or that it is unsigned.
+function signerRow(report, proposal) {
+  const row = make("div", "", "signer");
+  const signer = proposal.signer;
+
+  if (!CONTENT_ID.test(signer || "")) {
+    row.append(proposal.passed_over === "not-a-proposal" ? "Not a proposal" : "Unsigned");
+    return row;
+  }
+
+  askDetails(signer);
+  const text = trustText(report, proposal.score, proposal.step);
+  const mark = make("span", markOf(proposal.score), "mark");
+  mark.title = text;
+  mark.setAttribute("aria-label", text);
+  const name = nameOf(signer);
+  row.append(mark, personLink(signer, name ? `${name} ` : ""), code(signer, "id"));
+
+  if (view.you !== null) {
+    row.append(choicesFor(report, signer, proposal.score, proposal.step));
+  }
+
+  return row;
+}
+
+// When `created`, as a proposal gives it, was, as the viewer reads a time.
+function when(created) {
+  const time = new Date(created);
+  return Number.isNaN(time.getTime()) ? created : time.toLocaleString();
+}
+
+// What became of `proposal`, found at `level`, and whether it is the one
+// chosen.
+function proposalItem(report, level, proposal, chosen) {
+  const item = document.createElement("li");
+  const rows = make("ul", "", "rows");
+  item.append(signerRow(report, proposal), rows);
+
+  if (typeof proposal.bundle === "string") {
+    const bundle = make("li", "Bundle ");
+    const link = document.createElement("a");
+    link.href = bundlePath(proposal.bundle, level.rest);
+    link.title = "Read the rest of the path in this bundle";
+    link.append(code(proposal.bundle, "id"));
+    bundle.append(link);
+    rows.append(make("li", `Proposed ${when(proposal.created)}`), bundle);
+  }
+
+  const holds = proposal.holds === true ? "Its bundle holds the rest of the path." : proposal.holds === false ? "Its bundle does not hold the rest of the path." : "";
+
+  if (holds) {
+    rows.append(make("li", holds));
+  }
+
+  if (chosen) {
+    rows.append(make("li", "Chosen: this is what is served here.", "chosen"));
+  } else if (typeof proposal.passed_over === "string") {
+    const said = PASSED_OVER[proposal.passed_over] || `Passed over: ${proposal.passed_over}.`;
+    rows.append(make("li", said, proposal.passed_over === "pending" ? "note" : "error"));
+  } else {
+    rows.append(make("li", "Not looked at, since one was chosen before it."));
+  }
+
+  const drop = make("li", "Drop ");
+  drop.append(code(proposal.drop, "id"), ` matching ${plural(proposal.matching_bits, "bit", "bits")}`);
+  rows.append(drop);
+  return item;
+}
+
+// The level `level` of the report: its drop, each proposal found there, and
+// what is still missing.
+function levelSection(report, level, index) {
+  const section = document.createElement("section");
+  const title = make("h2", `Level ${index}: `);
+  title.append(code(level.target));
+  const rest = make("p", "Rest of the path, which a bundle proposed here must hold: ", "note");
+  rest.append(level.rest ? code(level.rest) : "nothing: a file bundle's own file, or a directory bundle's root");
+  const hash = make("p", "Drop target hash ", "note");
+  hash.append(code(level.hash, "id"));
+  section.append(title, rest, hash);
+  const proposals = Array.isArray(level.proposals) ? level.proposals : [];
+
+  if (proposals.length === 0) {
+    section.append(make("p", "Nothing proposed here has been found."));
+  } else {
+    const list = make("ol", "", "proposals");
+    const chosen = isObject(report.chosen) && report.chosen.level === index ? report.chosen.drop : null;
+
+    for (const proposal of proposals) {
+      list.append(proposalItem(report, level, proposal, proposal.drop === chosen));
+    }
+
+    section.append(list);
+  }
+
+  const missing = Array.isArray(level.missing) ? level.missing : [];
+
+  if (missing.length > 0) {
+    const said = make("p", `Still missing, and asked for: ${plural(missing.length, "item", "items")} `, "missing");
+    missing.forEach((id) => said.append(code(id, "id"), " "));
+    section.append(said);
+  }
+
+  return section;
+}
+
+// Whether anything the report shows could still change: a proposal pending,
+// something missing, or scores still being built.
+function unsettled(report) {
+  const levels = Array.isArray(report.levels) ? report.levels : [];
+  return (
+    !report.complete ||
+    levels.some(
+      (level) =>
+        (Array.isArray(level.missing) && level.missing.length > 0) ||
+        (Array.isArray(level.proposals) && level.proposals.some((proposal) => proposal.passed_over === "pending")),
+    )
+  );
+}
+
+function render() {
+  const report = view.report;
+
+  if (report === null) {
+    return;
+  }
+
+  byId("path").textContent = `/chaos/${report.path}`;
+  const levels = Array.isArray(report.levels) ? report.levels : [];
+  const chosen = isObject(report.chosen) ? report.chosen : null;
+  const served = byId("served");
+
+  if (chosen === null) {
+    byId("summary-title").textContent = "Nothing is served here";
+    byId("chosen").textContent = "No bundle proposed at this path, or at any directory above it, is chosen for it. What was found at each level is below.";
+    served.hidden = true;
+  } else {
+    byId("summary-title").textContent = "What is served here";
+    const said = make("span", `Served from the proposal at level ${chosen.level}, `);
+    said.append(code(levels[chosen.level] ? levels[chosen.level].target : "?"), ", drop ", code(chosen.drop, "id"), ".");
+    byId("chosen").replaceChildren(said);
+    served.href = report.served_at;
+    served.hidden = false;
+  }
+
+  const building = report.complete ? "" : " They are still being built, so this is read again until they are.";
+  byId("scores").textContent = `Chosen by ${whose(report)} trust scores.${building}`;
+  const trustNote = byId("trust-text");
+  trustNote.hidden = view.you === null;
+  trustNote.textContent = "Trust, Distrust, and Clear change your trust list, which is public: anyone can read whom you trust, and whom you distrust. Clear takes your own entry away, leaving their score to the lists of those you trust.";
+  byId("summary").hidden = false;
+  byId("levels").replaceChildren(...levels.map((level, index) => levelSection(report, level, index)));
+}
+
+// Read the report (HttpApi 13.6.7), and show it.
+async function readReport() {
+  const result = await call("GET", REPORT_PREFIX + encodedPath);
+
+  if (!(result.ok && isObject(result.value) && Array.isArray(result.value.levels))) {
+    status.say([[`What this path resolves to could not be read: ${refusal(result)}`, "error"]]);
+    return false;
+  }
+
+  view.report = result.value;
+  document.title = `Chaos: /chaos/${result.value.path}`;
+  status.say([]);
+  render();
+  return true;
+}
+
+let followingReport = false;
+
+// Read the report, and again every few seconds while anything in it could
+// still change.
+async function followReport() {
+  if (followingReport) {
+    return;
+  }
+
+  followingReport = true;
+
+  try {
+    while ((await readReport()) && unsettled(view.report)) {
+      await sleep(REPORT_AGAIN_SECONDS);
+    }
+  } catch (error) {
+    status.say([[error.message, "error"]]);
+  } finally {
+    followingReport = false;
+  }
+}
+
+async function start() {
+  byId("path").textContent = `/chaos/${decodedPath()}`;
+  // Asking for the path again serves what has been found since, or this page
+  // again, if still nothing is chosen.
+  byId("reload").addEventListener("click", () => location.assign(location.pathname));
+
+  try {
+    view.you = await signedInHere();
+  } catch (error) {
+    view.you = null;
+  }
+
+  await followReport();
+}
+
+start();
+</script>
+</body>
+</html>

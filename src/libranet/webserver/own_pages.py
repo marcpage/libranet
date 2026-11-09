@@ -9,6 +9,9 @@ request's ``Host`` header names (Phase 3 Step 74):
 - on ``/config``'s port, every endpoint beneath ``/config/api``
   (:mod:`libranet.webserver.config_guard`).
 
+The Chaos page's requests need it too, the report among them (HttpApi
+§13.6.7).
+
 Reading into a bundle is meant for browsers too, and asks for none: any
 client can have what it serves by the bundle's objects, and a page served in
 a sandbox sends no ``Referer``, so could show no file of a bundle otherwise.
@@ -17,9 +20,14 @@ On the main port, a page is an application's: the one its path belongs to,
 as the application route finds it
 (:meth:`~libranet.webserver.app_registry.RegisteredApplications.application_at`),
 but ``config``'s, which is not served there. A ``Referer`` of the origin
-alone is the root application's page. An application's store answers only
-its own application's pages (:mod:`libranet.webserver.app_store`), and the
-folders, imports, and making bundles only a trusted application's.
+alone is the root application's page. One beneath ``/chaos``, in any case, is
+the Chaos page's, which counts as a trusted application's, whatever follows
+its path, since a ``Referer`` may leave out a bare ``?`` (HttpApi §13.6.6,
+Phase 7 Step 158). A Chaos site is served either on the Chaos port, another
+origin, or in a sandbox, and the site checks refuse its requests either way.
+An application's store answers only its own application's pages
+(:mod:`libranet.webserver.app_store`), and so none of the Chaos page's, and
+the folders, imports, and making bundles only a trusted application's.
 
 A browser sends a page's full address with each request the page makes of
 its own origin, unless the page asks it not to, and a script or a
@@ -45,7 +53,11 @@ from urllib.parse import unquote, urlsplit
 
 from libranet.bundle.parts import PartPath
 from libranet.protocol.http_syntax import DEFAULT_PORTS
-from libranet.webserver.app_registry import CONFIG_APPLICATION, ApplicationRegistry
+from libranet.webserver.app_registry import (
+    CHAOS_SEGMENT,
+    CONFIG_APPLICATION,
+    ApplicationRegistry,
+)
 from libranet.webserver.errors import RegistryFileError
 from libranet.webserver.http_types import Request, Response, status_response
 from libranet.webserver.request_refusals import unreadable_registry_response
@@ -125,13 +137,17 @@ class OwnPages:
     registry: ApplicationRegistry
 
     def application(self, request: Request) -> str:
-        """The application whose page ``request``'s ``Referer`` names.
+        """The application whose page ``request``'s ``Referer`` names; ``chaos`` for the Chaos page.
 
         Raises:
             ValueError: it names no page of an application on this port.
             RegistryFileError: the registry cannot be read.
         """
         path = RefererPage.of(request).decoded()
+
+        if path is not None and path.partition("/")[0].casefold() == CHAOS_SEGMENT:
+            return CHAOS_SEGMENT
+
         name = None if path is None else self.registry.applications().application_at(path)
 
         if name is None or name == CONFIG_APPLICATION:
@@ -202,7 +218,7 @@ class OwnPages:
             # Not logged: the refusal is, where the request is refused.
             return f"This is served only to this node's own pages: {error}."
 
-        if named in self.registry.applications().trusted:
+        if named == CHAOS_SEGMENT or named in self.registry.applications().trusted:
             return None
 
         return (

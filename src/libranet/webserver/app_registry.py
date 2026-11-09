@@ -67,8 +67,12 @@ ROOT_APPLICATION: Final = "/"
 #: The application serving ``/config`` itself (HttpApi §2.3).
 CONFIG_APPLICATION: Final = "config"
 
+#: The name the Chaos endpoint is served at (HttpApi §13.6), whose pages on
+#: the main port are the node's own Chaos page's (Phase 7 Step 158).
+CHAOS_SEGMENT: Final = "chaos"
+
 #: Top-level names that are never an ordinary application's (HttpApi §2).
-RESERVED_APPLICATION_NAMES: Final = frozenset({"data", "web", "chaos", CONFIG_APPLICATION})
+RESERVED_APPLICATION_NAMES: Final = frozenset({"data", "web", CHAOS_SEGMENT, CONFIG_APPLICATION})
 
 #: The first segment beneath /config that is the API's, never
 #: the application's.
@@ -177,10 +181,19 @@ class RegisteredApplications:
     def shipped(cls, bundles: Mapping[str, ContentId]) -> RegisteredApplications:
         """The applications a node ships, as ``bundles`` names them, each trusted but ``config``.
 
+        A reserved name but ``config`` is left out: ``chaos`` names the Chaos
+        page, which is shipped, and served, but not registered (Phase 7 Step
+        158).
+
         Raises:
             ValueError: a name is not one an :class:`Application` may have.
         """
-        return cls(bundles, frozenset(bundles) - {CONFIG_APPLICATION})
+        registered = {
+            name: bundle
+            for name, bundle in bundles.items()
+            if name not in RESERVED_APPLICATION_NAMES or name == CONFIG_APPLICATION
+        }
+        return cls(registered, frozenset(registered) - {CONFIG_APPLICATION})
 
     @classmethod
     def from_value(cls, value: object) -> RegisteredApplications:

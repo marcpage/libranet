@@ -440,7 +440,7 @@ Calls made in building it, not yet reviewed:
 
 ---
 
-## Step 157 — Serving /chaos
+## Step 157 — Serving /chaos ✅
 
 **Kind:** new node code. **Issue:** #657 (§7.3). **Depends on:**
 Step 156; Phase 2 Step 58; Phase 3 Steps 65, 66, and 74.
@@ -696,6 +696,60 @@ node serves. The page is checked by hand.
 
 **Size:** about 250 new lines of Python, and the page, about 900 lines.
 
+Built as one change set: 262 added lines of non-test Python, 496 of tests,
+and the page, 822 lines. The bare `?` is `Request.has_query`, with
+`bare_query()`. `ChaosPage` and `ChaosReport` are in
+`webserver/chaos_handler.py`. The page is `applications/chaos/index.html`,
+shipped as `chaos` in `SHIPPED_APPLICATIONS`. It was checked live in
+headless Chrome on a throwaway node, with an unsigned proposal chosen:
+Chrome sends the bare `?` as the address has it. It has not been checked in
+Safari, nor signed in, nor with a signed proposal, so the Trust, Distrust,
+and Clear buttons have not been seen live.
+
+Calls made in building it, not yet reviewed:
+
+- **The page is shipped as an application is**, built and archived with
+  them, and left out of the registry a node starts with, since `chaos` is
+  reserved. So `/data/applications` does not list it, and an operator
+  cannot point it at another bundle. A router given no content ships none,
+  and answers a bare `?` and a `404` with a plain problem.
+- **The page is served from its bundle as an application's page is**:
+  reported used, `503` until the unbundler resolves its `index.html`, and
+  `500`, logged as an error, if it cannot be served. A `404` of a path on
+  the main port waits for that as an application's page does.
+- **Every `404` on the main port carries the page**, whether the path
+  names nothing or nothing is chosen. On the Chaos port, a `404` sent to
+  the page loses any query it had, since the page takes only the path.
+- **The Chaos port sends to the main port at `network.listen_port`**, the
+  port configured, at the host the request named, as the main port sends
+  to the Chaos port.
+- **A refusal of the report carries no `Cache-Control: no-store`**, though
+  HttpApi §13.6.7 asks it of every answer. The `403` is the checks' that
+  every endpoint for the node's own pages makes, and no cache keeps a
+  `403` that says nothing of its freshness.
+- **`served_at` follows the session**, not whose scores chose. A person
+  signed in whose scores are not being built is still sent to the Chaos
+  port, which is then where the path is served for them. The path is
+  spelled as the report's address spelled it.
+- **`chaos` is one of the names beneath `/data` that are not content**, so
+  `/data/chaos/...` is never read as a hash algorithm, and a method other
+  than `GET` is `405`.
+- **The mark is by the scores the report says chose**, from its `score`:
+  ⚪ only where none is given. An unsigned proposal has no mark, and is
+  shown as unsigned.
+- **The page reads the report again every 2 seconds while anything is
+  missing, or pending, or the scores are not complete**, and again after
+  each change of trust.
+- **Reload opens the path without its `?`**, so that it is served, by
+  whichever port the node sends it to, if anything is chosen for it now,
+  and shows this page again if not.
+- **A signer's name is their handle, or else their first and last names**,
+  as mail names a person, linked to their page in the user directory.
+- **A proposal's bundle is linked at the rest of its level**, the root with
+  its `/`.
+- **Trust, Distrust, and Clear disable the choice the person's own list
+  holds**, as the user directory does, only when the person's scores chose.
+
 ---
 
 ## Step 159 — Proposing and Downloading a Bundle
@@ -814,9 +868,9 @@ Not asked by the milestone, and not planned:
 - **Shunning an unsigned proposal.** A signer can be distrusted, but an
   unsigned proposal cannot, so the only way to keep one off a node is to
   shun its drop (HttpApi §5.5). The Chaos page could offer that.
-- **Whether a browser sends a bare `?`.** Chrome and Safari are to be
-  checked when Step 158 is built. If either drops it, a named query, such
-  as `?about`, would show the page instead.
+- **Whether a browser sends a bare `?`.** Chrome does (Step 158). Safari
+  is still to be checked. If it drops it, a named query, such as `?about`,
+  would show the page instead.
 - **Phase 8's reuse** of Step 156's resolution, for paths with owners.
 
 ## 7. Issues to Make

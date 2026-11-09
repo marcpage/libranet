@@ -107,6 +107,18 @@ def test_a_header_is_found_however_it_is_capitalized(name: str) -> None:
     assert request.header(name) == "none"
 
 
+@mark.parametrize(
+    ("has_query", "query_text", "bare"),
+    [(True, "", True), (True, "about", False), (True, "&", False), (False, "", False)],
+)
+def test_a_bare_query_is_a_question_mark_with_nothing_after_it(
+    has_query: bool, query_text: str, bare: bool
+) -> None:
+    request = Request("GET", "/chaos/a", has_query=has_query, query_text=query_text)
+
+    assert request.bare_query() == bare
+
+
 def test_a_header_not_sent_is_none() -> None:
     assert Request("GET", "/", headers={"Host": "localhost"}).header("Origin") is None
 

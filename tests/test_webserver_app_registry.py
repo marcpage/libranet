@@ -13,6 +13,7 @@ from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
 from libranet.config.models import StorageConfig
 from libranet.webserver.app_registry import (
+    CHAOS_SEGMENT,
     CONFIG_APPLICATION,
     ROOT_APPLICATION,
     Application,
@@ -435,6 +436,16 @@ def test_the_applications_a_node_ships_are_trusted_but_config() -> None:
     )
 
     assert shipped.trusted == {ROOT_APPLICATION, "movie"}
+
+
+def test_the_chaos_page_a_node_ships_is_not_registered() -> None:
+    shipped = RegisteredApplications.shipped(
+        {ROOT_APPLICATION: ROOT_BUNDLE, CHAOS_SEGMENT: WIKI_BUNDLE}
+    )
+
+    # Its name is reserved (Phase 7 Step 158).
+    assert shipped.bundles == {ROOT_APPLICATION: ROOT_BUNDLE}
+    assert shipped.trusted == {ROOT_APPLICATION}
 
 
 @mark.parametrize(

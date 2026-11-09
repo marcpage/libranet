@@ -1,5 +1,5 @@
 """Tests for the applications shipped with the node, and the root, ``/config``, movie,
-TV, music, directory, mail, nodes, and Karma pages.
+TV, music, directory, mail, nodes, and Karma pages, and the Chaos page.
 
 Which way they were shipped, built into a wheel or run from source, is known
 only to the layered source, and is tested through it.
@@ -46,6 +46,7 @@ from libranet.karma.generations import GenerationTargets
 from libranet.messaging.events import AddressSource, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
+from libranet.protocol.chaos import PassedOver
 from libranet.protocol.karma_amounts import KISMET_PER_KARMA
 from libranet.protocol.lists import NODES_PATH
 from libranet.stats.records import NodeAddress, NodeStats
@@ -55,6 +56,7 @@ from libranet.webserver.app_registry import CONFIG_APPLICATION, ROOT_APPLICATION
 from libranet.webserver.app_store import STORE_KEY_PATTERN, STORE_PATH
 from libranet.webserver.bundle_edits import BUNDLES_PATH
 from libranet.webserver.bundle_reads import BUNDLE_PATTERN
+from libranet.webserver.chaos_handler import CHAOS_REPORT_PATTERN
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import CONFIG_API_PATH, ENDPOINTS, NodeDescription
 from libranet.webserver.data_handler import DATA_PATTERN
@@ -89,6 +91,7 @@ DIRECTORY_APPLICATION = "directory"
 MAIL_APPLICATION = "mail"
 NODES_APPLICATION = "nodes"
 KARMA_APPLICATION = "karma"
+CHAOS_PAGE = "chaos"
 TV_APPLICATION = "tv"
 MUSIC_APPLICATION = "music"
 ROOT_PAGE_SOURCE = PACKAGED_APPLICATIONS / "root" / "index.html"
@@ -100,6 +103,7 @@ DIRECTORY_PAGE_SOURCE = PACKAGED_APPLICATIONS / "directory" / "index.html"
 MAIL_PAGE_SOURCE = PACKAGED_APPLICATIONS / "mail" / "index.html"
 NODES_PAGE_SOURCE = PACKAGED_APPLICATIONS / "nodes" / "index.html"
 KARMA_PAGE_SOURCE = PACKAGED_APPLICATIONS / "karma" / "index.html"
+CHAOS_PAGE_SOURCE = PACKAGED_APPLICATIONS / "chaos" / "index.html"
 # The details a person may give of themselves, as #259 names them, and those
 # an entry's first row shows, in order (Phase 4 Step 80).
 STANDARD_FIELDS = (
@@ -204,6 +208,11 @@ def karma_page(content: LayeredSource, built: PackagedApplications) -> str:
     return index_page(built.bundles[KARMA_APPLICATION], content).decode("utf-8")
 
 
+@fixture
+def chaos_page(content: LayeredSource, built: PackagedApplications) -> str:
+    return index_page(built.bundles[CHAOS_PAGE], content).decode("utf-8")
+
+
 def index_page(bundle_id: ContentId, content: LayeredSource) -> bytes:
     """The ``index.html`` of the application ``bundle_id``, read through ``content``."""
     bundle = load_bundle(bundle_id, content)
@@ -260,6 +269,7 @@ def router_for(
 def test_the_node_ships_the_root_config_movie_tv_music_directory_mail_nodes_and_karma_applications(
     built: PackagedApplications,
 ) -> None:
+    # And the Chaos page, built with them.
     assert (
         set(SHIPPED_APPLICATIONS)
         == set(built.bundles)
@@ -273,6 +283,7 @@ def test_the_node_ships_the_root_config_movie_tv_music_directory_mail_nodes_and_
             KARMA_APPLICATION,
             TV_APPLICATION,
             MUSIC_APPLICATION,
+            CHAOS_PAGE,
         }
     )
 
@@ -477,6 +488,7 @@ def test_each_page_showing_a_node_offers_the_details_the_issue_names(
         "tv_page",
         "music_page",
         "karma_page",
+        "chaos_page",
     ],
 )
 def test_each_page_reading_drops_reads_whatever_the_node_finds_there(
@@ -1067,7 +1079,15 @@ def test_the_config_page_links_its_node_to_its_page_on_the_main_port(config_page
 
 @mark.parametrize(
     "page_fixture",
-    ["movie_page", "tv_page", "directory_page", "mail_page", "nodes_page", "karma_page"],
+    [
+        "movie_page",
+        "tv_page",
+        "directory_page",
+        "mail_page",
+        "nodes_page",
+        "karma_page",
+        "chaos_page",
+    ],
 )
 def test_each_page_on_the_main_port_links_home_from_its_upper_right_corner(
     request: FixtureRequest, page_fixture: str
@@ -1315,10 +1335,12 @@ def test_a_new_node_lists_the_applications_it_ships_to_any_client(
     )
 
     assert response.status == 200
-    # Each is trusted but config, which is served only on its own port.
+    # Each is trusted but config, which is served only on its own port. The
+    # Chaos page is not registered, since its name is reserved.
+    registered = {name: bundle for name, bundle in built.bundles.items() if name != CHAOS_PAGE}
     assert loads(response.body) == {
-        "applications": {name: str(bundle) for name, bundle in built.bundles.items()},
-        "trusted": sorted(name for name in built.bundles if name != CONFIG_APPLICATION),
+        "applications": {name: str(bundle) for name, bundle in registered.items()},
+        "trusted": sorted(name for name in registered if name != CONFIG_APPLICATION),
     }
     assert not storage.applications_path.exists()
 
@@ -1336,3 +1358,76 @@ def test_a_router_given_no_content_ships_no_applications(
     response = router.dispatch(Request("GET", path, headers=headers, client_address="127.0.0.1"))
 
     assert response.status == 404
+
+
+def test_the_chaos_page_is_built_from_its_directory(chaos_page: str) -> None:
+    assert chaos_page == CHAOS_PAGE_SOURCE.read_text(encoding="utf-8")
+
+
+def test_the_chaos_page_is_one_self_contained_document(chaos_page: str) -> None:
+    assert chaos_page.startswith("<!doctype html>")
+    # Nothing is loaded from a file of its own, or from anywhere else, as the
+    # policy it is served under allows nothing else (HttpApi 13.6.6).
+    assert "<link" not in chaos_page
+    assert findall(r"<script[^>]*\bsrc", chaos_page) == []
+    assert "url(" not in chaos_page
+    assert "http:" not in chaos_page
+    assert "https:" not in chaos_page
+
+
+def test_the_chaos_page_calls_only_endpoints_the_node_serves(chaos_page: str) -> None:
+    called = set(findall(r'["`](/data/[^"`$]*)', chaos_page))
+    some_id = ContentId.for_data(b"a signed drop", "sha256")
+
+    assert called == {
+        CLIENT_PATH,
+        SESSION_PATH,
+        "/data/chaos/",
+        "/data/drop/",
+        "/data/signed/",
+        f"{TRUST_PATH}/",
+        "/data/",
+    }
+    # The report, of the path as the page's address spells it beneath /chaos/.
+    assert fullmatch(CHAOS_REPORT_PATTERN, "/data/chaos/a%20b/c.html")
+    assert fullmatch(CHAOS_REPORT_PATTERN, "/data/chaos/")
+    assert 'location.pathname.replace(CHAOS_PREFIX, "")' in chaos_page
+    assert fullmatch(DROP_SEARCH_PATTERN, f"/data/drop/{quote(f'user:{some_id}', safe='')}")
+    assert "encodeURIComponent(target)" in chaos_page
+    assert fullmatch(SIGNED_PATTERN, f"/data/signed/{some_id}")
+    assert fullmatch(TRUST_PATTERN, f"{TRUST_PATH}/{some_id}")
+    # Reading into a proposal's bundle at the rest, the root with its /.
+    assert fullmatch(BUNDLE_PATTERN, f"/data/{some_id}/b/c.html")
+    assert fullmatch(BUNDLE_PATTERN, f"/data/{some_id}/")
+
+
+def test_the_chaos_page_says_why_each_proposal_was_passed_over(chaos_page: str) -> None:
+    [said] = findall(r"const PASSED_OVER = \{(.*?)\n\};", chaos_page, DOTALL)
+    # Each reason the report gives (HttpApi 13.6.7), quoted or not.
+    named = set(findall(r'^  "?([a-z-]+)"?:', said, MULTILINE))
+
+    assert named == {str(reason) for reason in PassedOver}
+
+
+def test_the_chaos_page_marks_each_signers_trust_as_the_issue_does(chaos_page: str) -> None:
+    # Above 0, 0, and below 0 (#322), and a mark of its own where there are
+    # no scores (Phase 5 6), by the scores the report says chose.
+    assert 'const TRUSTED = "\\u{1F7E2}";' in chaos_page
+    assert 'const NEITHER = "\\u{1F7E1}";' in chaos_page
+    assert 'const DISTRUSTED = "\\u{1F534}";' in chaos_page
+    assert 'const UNKNOWN = "\\u{26AA}";' in chaos_page
+
+
+def test_the_chaos_page_changes_trust_one_entry_at_a_time(chaos_page: str) -> None:
+    # A change is one entry, trusted, distrusted, or cleared (HttpApi 11.7),
+    # offered only to a person signed in on the node's own machine.
+    assert 'call("PUT", path, { trust: trusted })' in chaos_page
+    assert 'call("DELETE", path)' in chaos_page
+    assert "client.value.local === true" in chaos_page
+
+
+def test_the_chaos_page_reads_the_report_again_as_the_directory_reads_scores(
+    chaos_page: str, directory_page: str
+) -> None:
+    assert "const REPORT_AGAIN_SECONDS = 2;" in chaos_page
+    assert "const SCORES_AGAIN_SECONDS = 2;" in directory_page
