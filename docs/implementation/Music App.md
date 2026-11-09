@@ -30,7 +30,7 @@ serves as `application/octet-stream`.
 
 ## 2. What It Adds
 
-Six steps, the first three built, and the last built only if it is needed:
+Six steps, the first five built, and the last built only if it is needed:
 
 - **The music application.** A person's library, with songs added from a
   file or from a whole folder, played one after another, and filtered by
@@ -724,9 +724,9 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 153 — Keeping a Playlist Offline
+## Step 153 — Keeping a Playlist Offline ✅
 
-**Issue:** to be made (§4), from #479. **Depends on:** Steps 149, 151,
+**Issue:** #643, from #479. **Depends on:** Steps 149, 151,
 152; Improve Movie Web App Step 115.
 
 Settled with the user:
@@ -760,6 +760,73 @@ My calls, reviewed:
 **Testable in isolation:** as Improve Movie Web App Step 115 was: kept on
 one node from another, and played with the other stopped and the first's
 store evicted, before and after a restart.
+
+Built, as one change set. It was checked on a node of its own in headless
+Chromium, with no peers, and songs made by `ffmpeg` and kept out of the
+repository: three songs added, and made a playlist; Keep offline refused no
+day, and kept the playlist, under a name of its own, until the day chosen,
+placing one version at `music offline:{id}`, and following the archive in
+the activity list until it was written, eleven objects; Kept offline listed
+it, in the chooser, with its day; opened, it showed only Playlists, Filter,
+Keys, and the player's own controls, was not remembered as the playlist
+open, and played from the bundle kept; Keep longer moved the same archive's
+day; and the library, chosen again, showed every icon. Then, with the node
+stopped, everything the archive held, and the library's newest bundle,
+moved out of its store, and the node started again, the person signed in
+from the identity block in the archive, and the playlist kept offline
+played. With the library's index made to fail, as when the node is offline
+and holds the library no longer, the page said so, offered only the
+playlists kept offline, with focus on the first, and played it, N playing
+the next; and Stop keeping removed the archive and shunned the version, the
+chooser then saying that none is kept. The library's own bundle was still
+read once moved out of the store, so the failure was made in the browser.
+Safari is yet to be checked, and so is keeping on a node fetching what it
+lacks from another.
+
+Calls made while building it, not yet reviewed:
+
+- **The name** starts as the playlist's own, rather than with `, offline`
+  as the movie and TV pages name what they keep, since the whole playlist
+  is kept, and Kept offline is a heading of its own in the chooser.
+- **The same bundle as sharing.** The bundle is made by one method of
+  `Playlist` for both, so a playlist kept offline and shared as it is are
+  one bundle. The songs of the playlist the library does not hold, as one
+  whose part of the index could not be read, are left out, as sharing
+  leaves them out, and a playlist holding no songs is not kept.
+- **Kept again, kept beside.** Keeping a playlist again keeps another,
+  beside the one kept before, under the name given, with the songs it holds
+  then. The one before is kept until its own day, or until Stop keeping.
+- **Played from its bundle alone.** A playlist kept offline is read from
+  its own bundle, `playlist.json` and each song's `info.json`, as importing
+  one reads it, and each song's audio and cover are read from there too, so
+  that it plays however little of the library the node still holds. A song
+  whose `info.json` cannot be read is not listed. It is shown in place of
+  the library, with its name as the heading, and the filters, Shuffle, and
+  the keys of playing work in it as in a playlist.
+- **Nothing that changes is shown with it**: not Add from a file, Add by
+  id, nor any icon of a song or of the heading, nor Edit or Share of the
+  song playing, as the movie page hides Share too. `[` and `]` move
+  nothing, and the duration of a song playing from it is not kept in the
+  library. The playlist open, as `music.list` remembers it, is left as it
+  was, and the library or a playlist chosen again shows as before.
+- **The song playing plays on** as one kept offline is opened, if the
+  playlist holds it, as it does as a playlist is chosen, and stops if it
+  does not. The songs after it are played from the bundle kept.
+- **A library that cannot be read** no longer leaves the page with nothing
+  to offer: it says so, and that a playlist kept offline can still be
+  played, from Playlists, whose chooser then offers only the playlists kept
+  offline, and says if there are none. Nothing is changed, as for a
+  fallback password, until the page is loaded again. A library whose
+  versions the node no longer holds at all is read as empty, as before.
+- **In the chooser**, each playlist kept offline is listed below the
+  playlists, under **Kept offline**, with how keeping it goes, and
+  **Keeping…** beside it, which opens Keep longer and Stop keeping. They are
+  read once the chooser is shown, so that it is not waited on behind them,
+  and the one open is marked. Each one's day is shown in the browser's
+  own way of writing a date.
+- **Two archives of one bundle**, as for the movie and TV pages: two people
+  who keep the same playlist, of the same songs, under the same name, keep
+  one bundle, and one's Stop keeping may remove the other's archive.
 
 ---
 
@@ -871,7 +938,7 @@ step, and this table then given their numbers.
 | #640 | Reading a song's tags on the page | 150 |
 | #641 | Playlists | 151 |
 | #642 | Sharing a song or a playlist | 152 |
-| *to be made* | Keeping a playlist offline | 153 |
+| #643 | Keeping a playlist offline | 153 |
 | #644 | A file's content type, given by its bundle | 154 |
 
 ## 5. Suggested Build Order

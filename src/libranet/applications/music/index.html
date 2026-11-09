@@ -197,6 +197,10 @@
   .in-playlist .song { --row-icons: 10.5rem; }
   #library:not(.in-playlist) .playlist-only, #library.in-playlist .library-only { display: none; }
 
+  /* A playlist kept offline is only played: nothing that changes it, or the library, is shown with it, nor Share. */
+  body.offline :is(header, main) .changes-only, body.offline #share-playing { display: none !important; }
+  body.offline .song { --row-icons: 0px; }
+
   @media (max-width: 44rem) {
     .player { align-items: flex-start; }
     .cover-frame { flex-basis: 5rem; width: 5rem; }
@@ -240,6 +244,11 @@
 
   /* The library, or the playlist, shown, among those to choose from. */
   .entries button[aria-current="true"] span:first-child { color: var(--accent); font-weight: 600; }
+
+  /* The playlists kept offline, below the rest, each with what manages keeping it beside it. */
+  #offline-heading { font-size: 1rem; margin: 1rem 0 0.5rem; }
+  #offline-choices li { display: flex; align-items: center; gap: 0.5rem; }
+  #offline-choices button.small { flex: none; width: auto; padding: 0.2rem 0.55rem; border: 1px solid var(--accent); }
   .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; margin: 0 0 0.5rem; }
   .crumbs button { padding: 0.1rem 0.4rem; }
 
@@ -352,6 +361,9 @@
         <button type="button" class="icon playlist-only" id="share-list" title="Share" aria-label="Share this playlist">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V3 M8 7l4-4 4 4 M9 10H5v11h14V10h-4"/></svg>
         </button>
+        <button type="button" class="icon playlist-only" id="keep-offline" title="Keep offline" aria-label="Keep this playlist offline">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12 M8 11l4 4 4-4 M4 17v4h16v-4"/></svg>
+        </button>
         <button type="button" class="icon playlist-only" id="rename-list" title="Rename" aria-label="Rename this playlist">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
         </button>
@@ -460,6 +472,9 @@
   <p class="hint">Your library holds every song you have added. A playlist holds songs of it, in an
   order of its own.</p>
   <ul class="entries" id="list-choices"></ul>
+  <h4 id="offline-heading" hidden>Kept offline</h4>
+  <ul class="entries" id="offline-choices" hidden></ul>
+  <p class="result" id="lists-result" role="status" hidden></p>
   <div class="buttons">
     <button type="button" class="secondary" data-close>Close</button>
     <button type="button" class="secondary changes-only" id="import-list" hidden>Import a playlist</button>
@@ -548,6 +563,40 @@
   </form>
 </dialog>
 
+<dialog id="keep-dialog" aria-labelledby="keep-heading">
+  <form id="keep-form">
+    <h3 id="keep-heading"></h3>
+    <p class="hint">Every song of this playlist, as it holds them now, is kept on this node, under the
+    name given, and plays here even once it is offline, until the day chosen. Signing in still works
+    offline too. A song added to the playlist later is not kept with it until it is kept again.</p>
+    <div class="fields">
+      <label class="wide">Name <input id="keep-name" required autocomplete="off"></label>
+      <label>Keep until <input type="date" id="keep-until" required></label>
+    </div>
+    <p class="result" id="keep-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Keep offline</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="kept-dialog" aria-labelledby="kept-heading">
+  <form id="kept-form">
+    <h3 id="kept-heading"></h3>
+    <p class="hint" id="kept-state"></p>
+    <div class="fields">
+      <label>Keep until <input type="date" id="kept-until" required></label>
+      <button type="submit">Keep longer</button>
+    </div>
+    <p class="result" id="kept-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="danger" id="stop-keeping">Stop keeping</button>
+      <button type="button" class="secondary" data-close>Done</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="keys-dialog" aria-labelledby="keys-heading">
   <h3 id="keys-heading">Keys</h3>
   <p class="hint">Anywhere on the page but in a field, and while no other dialog is open.</p>
@@ -566,7 +615,7 @@
     <dt><kbd>S</kbd></dt>
     <dd>Shuffle on, or off.</dd>
     <dt><kbd>L</kbd></dt>
-    <dd>Choose the library, or a playlist, to show.</dd>
+    <dd>Choose the library, a playlist, or one kept offline, to show.</dd>
     <dt><kbd>[</kbd> <kbd>]</kbd></dt>
     <dd>In a playlist, move the song chosen earlier, or later.</dd>
     <dt><kbd>`</kbd></dt>
@@ -584,7 +633,7 @@
 <script>
 "use strict";
 
-// The endpoints this page uses (HttpApi 2.4, 12.2, 12.3). What a bundle
+// The endpoints this page uses (HttpApi 2.4, 12.2, 12.3, 12.4). What a bundle
 // holds is read at DATA, then its id, then a path (HttpApi 12.1).
 const CLIENT = "/data/client";
 const DIRECTORY = "/data/directory";
@@ -595,12 +644,26 @@ const SESSION = "/data/session";
 const SIGNED = "/data/signed";
 const DROPS = "/data/drop";
 const ENCRYPTED = "/data/encrypted/";
+const ARCHIVES = "/data/archives";
 
 // Where a person's library is kept, "music library:{id}": in versions at the
 // drop, each signed by them and encrypted for them (HttpApi 9, 11.5, 11.6),
 // each naming the library's newest bundle, and holding their playlists. The
 // node keeps no library for whoever is not signed in.
 const LIBRARY_PREFIX = "music library:";
+
+// Where the playlists a person keeps offline are listed, "music
+// offline:{id}": a version for each, signed by them and encrypted for them,
+// which a change to their library never shuns, as it shuns those it
+// replaces. Each is kept in an archive of the node's own (HttpApi 12.4),
+// beside the version, the identity block they signed in with, and their
+// public key, so that signing in and reading the version work offline.
+const OFFLINE_PREFIX = "music offline:";
+
+// How long a version kept offline may go without its archive being reported
+// before it is taken to be no longer kept, as the node reports an archive
+// asked for within moments.
+const REPORT_GRACE_SECONDS = 60;
 
 // How many bytes, made at random, a playlist's id holds, as hex digits.
 const PLAYLIST_ID_BYTES = 16;
@@ -845,6 +908,13 @@ const state = {
   playlists: null,
   // The id of the playlist shown, or null for the library.
   list: null,
+  // The playlist kept offline shown in its place, an OfflineSongs, which is
+  // only played, or null.
+  offline: null,
+  // Whether the library could not be read, as when the node is offline and
+  // no longer holds it: only the playlists kept offline are offered then,
+  // and nothing is changed.
+  unread: false,
   // The folder of the song chosen to play, playing or paused, or null; and
   // the songs chosen to play: the folders of those listed as it was chosen,
   // in the order shown, those in the order they play in, and where in that
@@ -1388,6 +1458,11 @@ class Library {
     return entryUrl(this.bundle, path);
   }
 
+  // Where the file named `name` of `song`'s folder is read.
+  songUrl(song, name) {
+    return this.url(song.path(name));
+  }
+
   // The song imported from `source`, or null.
   holdingSource(source) {
     this.sources = this.sources || new Map([...this.songs.values()].map((song) => [song.details.source, song]));
@@ -1498,6 +1573,21 @@ class Playlist {
   // Its songs that `library` holds, each a Song, in its order.
   songsOf(library) {
     return this.songs.map((folder) => library.songs.get(folder)).filter(Boolean);
+  }
+
+  // An encrypted bundle of it, as makeBundle takes it, as a collection is
+  // shared, and as one is kept offline: its playlist.json, naming it `name`
+  // and naming the folders of its songs that `library` holds, in its order,
+  // and each of those folders, as `library` holds it.
+  bundleEdit(library, name = this.name) {
+    const folders = this.songsOf(library).map((song) => song.folder);
+    const add = { [PLAYLIST_FILE]: { text: jsonText(["name", "songs"], { name, songs: folders }) } };
+
+    for (const folder of folders) {
+      add[folder] = { from: library.bundle, path: `${SONGS}/${folder}` };
+    }
+
+    return { encrypted: true, add };
   }
 
   // As changed now, named `name`, and holding `songs`.
@@ -1756,12 +1846,12 @@ async function openVersion(id) {
   }
 }
 
-// Whether the library is changed: for whoever is signed in, unless with their
-// fallback password before the fallback takes over (HttpApi 11.4), as nothing
-// is signed then.
+// Whether the library is changed: for whoever is signed in, once it is read,
+// unless with their fallback password before the fallback takes over
+// (HttpApi 11.4), as nothing is signed then.
 function canChange() {
   const owner = state.owner;
-  return Boolean(owner) && !(isText(owner.fallback_for) && !isText(owner.fallback));
+  return Boolean(owner) && !state.unread && !(isText(owner.fallback_for) && !isText(owner.fallback));
 }
 
 // Changes to the library are made one at a time, each from the version the
@@ -1884,16 +1974,25 @@ function shownPlaylist() {
   return playlist;
 }
 
-// Shows the library, or the playlist it holds, by its songs. Focus stays on
-// what had it in the list, or, if that is not shown, goes to its song.
+// What the songs listed are played from: the playlist kept offline shown, or
+// else the library.
+function playedFrom() {
+  return state.offline || state.library;
+}
+
+// Shows the library, or the playlist it holds, or the playlist kept offline
+// shown, by its songs. Focus stays on what had it in the list, or, if that is
+// not shown, goes to its song.
 function renderLibrary() {
   const library = state.library;
+  const offline = state.offline;
   const list = byId("songs");
   const active = document.activeElement;
   const focused = focusedFolder();
   const before = rows;
-  const playlist = shownPlaylist();
-  const songs = playlist ? playlist.songsOf(library) : [...library.songs.values()].sort(compareSongs);
+  const playlist = offline ? null : shownPlaylist();
+  const songs = offline ? [...offline.songs.values()]
+    : (playlist ? playlist.songsOf(library) : [...library.songs.values()].sort(compareSongs));
 
   rows = new Map(songs.map((song) => {
     const held = before.get(song.folder);
@@ -1902,11 +2001,12 @@ function renderLibrary() {
 
   list.replaceChildren(...[...rows.values()].map((row) => row.item));
   byId("library").classList.toggle("in-playlist", playlist !== null);
-  byId("library-heading").textContent = playlist ? playlist.name : "Library";
+  byId("library-heading").textContent = offline ? offline.name : (playlist ? playlist.name : "Library");
+  document.body.classList.toggle("offline", offline !== null);
   byId("library").hidden = false;
   byId("player-section").hidden = false;
 
-  if (state.current !== null && !library.songs.has(state.current)) {
+  if (state.current !== null && !playedFrom().songs.has(state.current)) {
     stopPlaying();
   }
 
@@ -1941,7 +2041,7 @@ function songRow(song) {
   item.dataset.folder = song.folder;
   play.type = "button";
   play.addEventListener("click", () => chooseSong(song.folder));
-  cover.append(coverImage(isText(song.details.cover) ? state.library.url(song.path(song.details.cover)) : null, true));
+  cover.append(coverImage(isText(song.details.cover) ? playedFrom().songUrl(song, song.details.cover) : null, true));
   title.append(make("span", name, "name"), make("span", song.byline(), "also"));
   title.title = name;
   icons.append(
@@ -2110,7 +2210,9 @@ function applyFilters() {
   byId("add-shown").disabled = shown === 0;
   paintArrows();
 
-  if (count === 0 && state.list !== null) {
+  if (count === 0 && state.offline) {
+    show(byId("library-state"), "No song of this playlist kept offline can be read here.");
+  } else if (count === 0 && state.list !== null) {
     show(byId("library-state"), canChange()
       ? "This playlist holds no songs yet. Add some from your library, with the Add icon beside each song, or every song in a folder, with the icon in the upper right corner."
       : "This playlist holds no song of your library that can be read here.");
@@ -2273,9 +2375,10 @@ function coverImage(url, lazy = false) {
 // Shows the song chosen to play: its cover, title, artist, and album; or
 // that none is.
 function showPlaying() {
-  const song = state.current === null ? null : state.library.songs.get(state.current) || null;
+  const from = playedFrom();
+  const song = state.current === null ? null : from.songs.get(state.current) || null;
   const frame = byId("cover");
-  const cover = song && isText(song.details.cover) ? state.library.url(song.path(song.details.cover)) : "";
+  const cover = song && isText(song.details.cover) ? from.songUrl(song, song.details.cover) : "";
   byId("song-title").textContent = song ? song.title() : "Nothing is playing";
   byId("song-from").textContent = song ? song.byline() : (rows.size ? "Choose a song to play." : "");
   byId("share-playing").hidden = !song;
@@ -2290,7 +2393,7 @@ function showPlaying() {
 // Whether the song in `folder` is played: it is held, this browser does not
 // say it cannot play it, and it has not failed as it loaded.
 function playable(folder) {
-  const song = state.library.songs.get(folder);
+  const song = playedFrom().songs.get(folder);
   return Boolean(song) && !song.refused() && !state.failed.has(folder);
 }
 
@@ -2320,7 +2423,7 @@ function queueFrom(listed, folder) {
 // this browser says it cannot play is not played, and one that failed as it
 // loaded is tried again.
 function chooseSong(folder) {
-  const song = state.library.songs.get(folder);
+  const song = playedFrom().songs.get(folder);
   markChosen(folder);
   show(byId("player-result"), "");
 
@@ -2344,17 +2447,20 @@ function chooseSong(folder) {
 }
 
 // Plays the song in `folder`. The same song of a newer version of the
-// library plays on where it was.
+// library plays on where it was, as one of the library is known by its path
+// in it, and one kept offline by where it is read.
 function playSong(folder) {
   const audio = byId("audio");
-  const song = state.library.songs.get(folder);
-  const source = song.path(song.details.audio);
+  const from = playedFrom();
+  const song = from.songs.get(folder);
+  const url = from.songUrl(song, song.details.audio);
+  const source = from === state.library ? song.path(song.details.audio) : url;
   const before = state.current;
   state.current = folder;
 
   if (audio.dataset.source !== source) {
     audio.dataset.source = source;
-    audio.src = state.library.url(source);
+    audio.src = url;
   }
 
   showRow(before);
@@ -2379,7 +2485,7 @@ function advance(delta, failing = false) {
   }
 
   if (failing) {
-    const song = state.library.songs.get(state.current);
+    const song = playedFrom().songs.get(state.current);
     const every = queue.order.every((folder) => !playable(folder));
     stopPlaying();
     show(byId("player-result"), every ? "None of the songs listed can be played in this browser."
@@ -2633,6 +2739,14 @@ function besideShown(folder) {
 function showList(id) {
   state.list = id;
   rememberList();
+  showSongs(null);
+}
+
+// Shows the songs of the library, or of the playlist shown, or, if `offline`
+// is not null, of that playlist kept offline in their place, which is not
+// remembered, with every song the artist and album chosen match.
+function showSongs(offline) {
+  state.offline = offline;
   byId("song-filter").value = "";
   byId("song-filter").hidden = true;
   show(byId("library-result"), "");
@@ -2654,26 +2768,36 @@ function listChoice(name, count, shown, action) {
 }
 
 // The chooser: the library, then each playlist, by name, with how many songs
-// each holds, and New playlist below.
+// each holds, then each playlist kept offline, once they are read, and New
+// playlist below. With the library unread, only those kept offline.
 function showLists() {
   const list = byId("list-choices");
   const choose = (id) => () => {
     byId("lists-dialog").close();
     showList(id);
   };
+  const shown = (id) => state.offline === null && state.list === id;
 
-  // Not until the library is read.
-  if (byId("library").hidden) {
+  // Not until the library is read, or could not be.
+  if (byId("library").hidden && !state.unread) {
     return;
   }
 
-  list.replaceChildren(
-    listChoice("Library", state.library.songs.size, state.list === null, choose(null)),
+  list.replaceChildren(...(state.unread ? [] : [
+    listChoice("Library", state.library.songs.size, shown(null), choose(null)),
     ...state.playlists.list.map((playlist) => listChoice(playlist.name, playlist.songsOf(state.library).length,
-      playlist.id === state.list, choose(playlist.id))),
-  );
+      shown(playlist.id), choose(playlist.id))),
+  ]));
+  list.hidden = state.unread;
+  show(byId("lists-result"), "");
   byId("lists-dialog").showModal();
-  (list.querySelector("[aria-current=true]") || list.querySelector("button")).focus();
+  const first = list.querySelector("[aria-current=true]") || list.querySelector("button");
+
+  if (first) {
+    first.focus();
+  }
+
+  listOffline();
 }
 
 // What the dialog naming a playlist does once it is named: renames the
@@ -2847,7 +2971,7 @@ async function moveSong(folder, delta) {
 function moveChosen(delta) {
   const row = state.chosen === null ? null : rows.get(state.chosen);
 
-  if (state.list !== null && row && !row.item.hidden && canChange()) {
+  if (state.list !== null && !state.offline && row && !row.item.hidden && canChange()) {
     moveSong(state.chosen, delta);
   }
 }
@@ -2913,21 +3037,15 @@ async function shareList() {
     return null;
   }
 
-  const folders = playlist.songsOf(library).map((song) => song.folder);
+  const count = playlist.songsOf(library).length;
 
-  if (folders.length === 0) {
+  if (count === 0) {
     throw new Error("This playlist holds no songs yet, so there is nothing to share.");
   }
 
-  const add = { [PLAYLIST_FILE]: { text: jsonText(["name", "songs"], { name: playlist.name, songs: folders }) } };
-
-  for (const folder of folders) {
-    add[folder] = { from: library.bundle, path: `${SONGS}/${folder}` };
-  }
-
   showShared(`Share “${playlist.name}”`,
-    `Whoever is given this id can import this playlist, with its ${plural(folders.length, "song", "songs")}, into a library of their own. No one else can read it.`,
-    await makeBundle({ encrypted: true, add }));
+    `Whoever is given this id can import this playlist, with its ${plural(count, "song", "songs")}, into a library of their own. No one else can read it.`,
+    await makeBundle(playlist.bundleEdit(library)));
   return null;
 }
 
@@ -3209,6 +3327,443 @@ async function importPlaylist() {
   byId("import-dialog").close();
   showList(made.id);
   show(byId("library-result"), notes.join(" "));
+  return null;
+}
+
+// Keeping a playlist offline.
+
+// A bundle's id without the key it may carry, as the node names what it keeps.
+function plainId(bundle) {
+  return bundle.split("/").slice(0, 2).join("/");
+}
+
+// The playlists whoever is signed in keeps offline, each as its version at
+// their offline drop lists it, with the archive keeping it, as the node last
+// reported it, or null if the node has not said.
+class Offline {
+  constructor(entry, version, archive) {
+    this.entry = entry;
+    this.version = version;
+    this.archive = archive;
+  }
+
+  static target() {
+    return `${OFFLINE_PREFIX}${state.owner.id}`;
+  }
+
+  // Each playlist kept offline, in order of name. One whose archive the node
+  // no longer keeps, as once it expires, is forgotten, and its version
+  // shunned.
+  static async read() {
+    const ids = await foundAt(Offline.target());
+    const lists = await Promise.all(ids.map((id) => Offline.version(id)));
+    const archives = await Offline.archives();
+    const kept = [];
+
+    for (const [index, id] of ids.entries()) {
+      for (const entry of lists[index] || []) {
+        const archive = archives && archives.find((each) => each.bundles.includes(plainId(entry.bundle)));
+        const reported = (Date.now() - Date.parse(entry.changed)) / 1000 > REPORT_GRACE_SECONDS;
+
+        if (archives && !archive && reported) {
+          await Offline.forget(id);
+        } else {
+          kept.push(new Offline(entry, id, archive || null));
+        }
+      }
+    }
+
+    kept.sort((one, other) => COLLATOR.compare(one.entry.name, other.entry.name));
+    return kept;
+  }
+
+  // The playlists the version at the drop `id` lists, each {name, bundle,
+  // changed, block}, opened with the key of whoever is signed in (HttpApi
+  // 11.6); null if it is not held, or is not a version they signed.
+  static async version(id) {
+    const contents = await openVersion(id);
+
+    if (!isObject(contents) || !Array.isArray(contents.playlists)) {
+      console.warn(`Passing over ${id}: it is no version of your playlists kept offline.`);
+      return null;
+    }
+
+    return contents.playlists.filter((entry) => isObject(entry) && isText(entry.name) && isText(entry.bundle)
+      && CONTENT_ID.test(entry.bundle) && isText(entry.changed) && isText(entry.block));
+  }
+
+  // Every archive the node reports it keeps, each with its id; null if the
+  // node cannot say yet.
+  static async archives() {
+    const result = await call("GET", ARCHIVES);
+
+    if (result.status === 503) {
+      return null;
+    }
+
+    if (!result.ok || !isObject(result.value) || !isObject(result.value.archives)) {
+      throw new Refusal(result);
+    }
+
+    return Object.entries(result.value.archives)
+      .filter(([, report]) => isObject(report) && Array.isArray(report.bundles))
+      .map(([id, report]) => ({ ...report, id }));
+  }
+
+  // Keeps `playlist` offline, each of its songs that `library` holds, in a
+  // bundle made as sharing it makes one, named `name`, until `expires`, and
+  // returns the archive's id.
+  static async keep(playlist, library, name, expires) {
+    const session = await askSession();
+
+    if (!session || session.id !== state.owner.id) {
+      throw new SessionEnded();
+    }
+
+    if (!isText(session.block)) {
+      throw new Error("This node does not say which identity block you signed in with, so signing in could not be kept offline.");
+    }
+
+    const bundle = await makeBundle(playlist.bundleEdit(library, name));
+    const entry = { name, bundle, changed: new Date().toISOString(), block: session.block };
+    const version = await placeVersion(Offline.target(), { playlists: [entry] });
+    return new Offline(entry, version, null).archiveUntil(expires);
+  }
+
+  // Shuns the version `id`, which lists a playlist no longer kept offline.
+  static async forget(id) {
+    const shunned = await call("DELETE", `${DATA}${id}`);
+
+    if (!shunned.ok) {
+      console.warn(`The version ${id} no longer kept offline was not shunned: ${new Refusal(shunned).message}`);
+    }
+  }
+
+  // Asks the node to keep this playlist, its version, and what signing in
+  // reads, until `expires`, and returns the archive's id. Asked again, the
+  // same archive is kept longer.
+  async archiveUntil(expires) {
+    const result = await call("POST", ARCHIVES, {
+      body: {
+        bundles: [this.entry.bundle],
+        objects: [this.version, this.entry.block, state.owner.id],
+        expires,
+      },
+    });
+
+    if (result.status !== 202 || !isObject(result.value) || !isText(result.value.archive_id)) {
+      throw new Refusal(result);
+    }
+
+    return result.value.archive_id;
+  }
+
+  // Stops keeping this playlist offline.
+  async stop() {
+    if (this.archive) {
+      const removed = await call("DELETE", `${ARCHIVES}/${this.archive.id}`);
+
+      if (!removed.ok) {
+        throw new Refusal(removed);
+      }
+    }
+
+    await Offline.forget(this.version);
+  }
+}
+
+// The songs of a playlist kept offline, as it is played in place of the
+// library: the bundle keeping it, the name it is kept under, and its songs,
+// each a Song, by folder, in its order, but those whose info.json could not
+// be read. Its songs are read from that bundle alone, which the node keeps
+// in its archive, so that they play with the library no longer held.
+class OfflineSongs {
+  constructor(bundle, name, songs) {
+    this.bundle = bundle;
+    this.name = name;
+    this.songs = songs;
+  }
+
+  // The playlist kept offline in `bundle`, under the name `name`.
+  static async read(bundle, name) {
+    const shared = await SharedPlaylist.read(bundle);
+    const details = await shared.details(shared.folders);
+    const folders = shared.folders.filter((folder) => details.has(folder));
+    return new OfflineSongs(bundle, name, new Map(folders.map((folder) => [folder, new Song(folder, details.get(folder))])));
+  }
+
+  // Where the file named `name` of `song`'s folder is read.
+  songUrl(song, name) {
+    return entryUrl(this.bundle, `${song.folder}/${name}`);
+  }
+}
+
+// When the day `chosen`, from a date field, ends where the browser is, as
+// the node is told an archive expires; null if it is not a day yet to come.
+function endOfDay(chosen) {
+  const [year, month, day] = chosen.split("-").map(Number);
+  const end = new Date(year, month - 1, day + 1);
+  return Number.isNaN(end.getTime()) || end <= new Date() ? null : end.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+// The day an archive expiring at `expires` is kept until, as a date field gives it.
+function dayBefore(expires) {
+  const last = new Date(Date.parse(expires) - 1000);
+  return dateValue(last);
+}
+
+function dateValue(date) {
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// The first day a date field may choose: tomorrow.
+function tomorrow() {
+  const day = new Date();
+  day.setDate(day.getDate() + 1);
+  return dateValue(day);
+}
+
+// What an archive keeping a playlist offline is doing, as the node last
+// said, or that it has not said, if `archive` is null.
+function keptText(archive) {
+  if (!archive) {
+    return "Kept offline";
+  }
+
+  if (archive.status === "done") {
+    return `Kept until ${untilText(archive.expires)}`;
+  }
+
+  if (archive.status === "failed") {
+    return `Not kept: ${archive.error || "the node did not say why"}`;
+  }
+
+  if (archive.status === "running") {
+    return `Writing ${archive.written} of ${archive.needed}`;
+  }
+
+  return `Fetching ${plural(archive.missing, "part", "parts")} it lacks`;
+}
+
+// The last day an archive expiring at `expires` is kept, as the browser
+// shows a date; or that it is kept until removed, if `expires` is null.
+function untilText(expires) {
+  return isText(expires) ? new Date(Date.parse(expires) - 1000).toLocaleDateString() : "it is removed";
+}
+
+// Lists the playlists kept offline in the chooser, beneath the rest, once
+// they are read, the one shown marked. If focus is still where the chooser
+// put it, or was lost as the list was made again, it goes to that one; or,
+// with the library unread, or focus lost, to the first choice offered.
+async function listOffline() {
+  const heading = byId("offline-heading");
+  const list = byId("offline-choices");
+  const focused = document.activeElement;
+  list.replaceChildren();
+  heading.hidden = true;
+  list.hidden = true;
+  let kept;
+
+  try {
+    kept = await Offline.read();
+  } catch (error) {
+    console.warn(`The playlists kept offline could not be read: ${error.message}`);
+    kept = [];
+  }
+
+  list.replaceChildren(...kept.map((offline) => offlineChoice(offline)));
+  heading.hidden = kept.length === 0;
+  list.hidden = kept.length === 0;
+
+  if (state.unread && kept.length === 0) {
+    show(byId("lists-result"), "You keep no playlist offline on this node.");
+  }
+
+  const dialog = byId("lists-dialog");
+  const lost = focusLost();
+  const target = list.querySelector("[aria-current=true]")
+    || (state.unread || lost ? dialog.querySelector("ul:not([hidden]) button") : null);
+
+  if (target && dialog.open && (lost || document.activeElement === focused)) {
+    target.focus();
+  }
+}
+
+// A playlist kept offline, as the chooser offers it: its name, and how
+// keeping it goes, which opens it; and Keeping… beside it, for Keep longer
+// and Stop keeping.
+function offlineChoice(offline) {
+  const name = offline.entry.name;
+  const item = entryRow(name, keptText(offline.archive),
+    () => perform(item.querySelector("button"), byId("lists-result"), () => openOffline(offline)));
+  const manage = make("button", "Keeping…", "secondary small");
+  manage.type = "button";
+  manage.setAttribute("aria-label", `Keeping “${name}” offline`);
+  manage.addEventListener("click", () => openKept(offline));
+  item.append(manage);
+
+  if (state.offline && state.offline.bundle === offline.entry.bundle) {
+    item.querySelector("button").setAttribute("aria-current", "true");
+  }
+
+  return item;
+}
+
+// Shows the playlist kept offline `offline` in place of the library, read
+// from the bundle keeping it. It is only played.
+async function openOffline(offline) {
+  show(byId("lists-result"), `Reading “${offline.entry.name}”…`);
+  const songs = await OfflineSongs.read(offline.entry.bundle, offline.entry.name);
+  byId("lists-dialog").close();
+  showSongs(songs);
+  return null;
+}
+
+// Asks for the name, and the day, to keep the playlist shown offline under,
+// and until: its own name, to start with.
+function openKeep() {
+  const playlist = shownPlaylist();
+
+  if (!playlist || state.offline) {
+    return;
+  }
+
+  byId("keep-form").reset();
+  byId("keep-heading").textContent = `Keep “${playlist.name}” offline`;
+  byId("keep-name").value = playlist.name;
+  byId("keep-until").min = tomorrow();
+  show(byId("keep-result"), playlist.songsOf(state.library).length ? "" : "This playlist holds no songs yet, so there is nothing to keep.");
+  byId("keep-dialog").showModal();
+}
+
+// Keeps the playlist shown offline, as the dialog keeping it says, and
+// follows the archive keeping it in the activity list.
+async function keepPlaylist() {
+  const playlist = shownPlaylist();
+  const name = byId("keep-name").value.trim();
+  const expires = endOfDay(byId("keep-until").value);
+
+  if (!playlist) {
+    throw new Error("This playlist is no longer kept.");
+  }
+
+  if (playlist.songsOf(state.library).length === 0) {
+    throw new Error("This playlist holds no songs yet, so there is nothing to keep.");
+  }
+
+  if (!name) {
+    throw new Error("Give the playlist kept a name.");
+  }
+
+  if (!expires) {
+    throw new Error("Choose a day to keep it until, after today.");
+  }
+
+  const archive = await Offline.keep(playlist, state.library, name, expires);
+  byId("keep-dialog").close();
+  followKeeping(archive, name);
+  return null;
+}
+
+// Says, in the activity list, how keeping `name` offline in the archive
+// `archive` goes, until it is kept or not.
+function followKeeping(archive, name) {
+  const item = make("li");
+  const label = make("span", `Keeping “${name}” offline`);
+  const bar = make("progress");
+  const note = make("span", "Asking the node…", "note");
+  bar.setAttribute("aria-label", `How much of “${name}” is kept offline`);
+  item.append(label, bar, note);
+  byId("activity").append(item);
+
+  const ended = (text, isError) => {
+    const dismiss = make("button", "Dismiss", "secondary small");
+    dismiss.type = "button";
+    dismiss.addEventListener("click", () => item.remove());
+    label.textContent = text;
+    label.className = isError ? "error" : "";
+    bar.remove();
+    note.remove();
+    item.append(dismiss);
+  };
+
+  const progress = (report) => {
+    if (typeof report.needed === "number" && report.needed > 0) {
+      bar.max = report.needed;
+      bar.value = report.status === "running" ? report.written : report.needed - report.missing;
+    }
+
+    note.textContent = keptText(report);
+  };
+
+  writtenArchive(archive, progress).then(
+    (report) => ended(`“${name}” is kept offline until ${untilText(report.expires)}.`, false),
+    (error) => ended(`“${name}” was not kept offline: ${error.message}`, true),
+  );
+}
+
+// The node's report of the archive `archive`, once it is written, `progress`
+// told of each report before then.
+async function writtenArchive(archive, progress) {
+  for (;;) {
+    const archives = await Offline.archives();
+    const report = archives && archives.find((each) => each.id === archive);
+
+    if (report && report.status === "done") {
+      return report;
+    }
+
+    if (report && report.status === "failed") {
+      throw new Error(report.error || "The node did not say why.");
+    }
+
+    if (report) {
+      progress(report);
+    }
+
+    await sleep(IMPORT_POLL_SECONDS);
+  }
+}
+
+// The playlist kept offline that the dialog for it is open on.
+let managing = null;
+
+function openKept(offline) {
+  managing = offline;
+  const archive = offline.archive;
+  byId("kept-form").reset();
+  byId("kept-heading").textContent = `Keeping “${offline.entry.name}” offline`;
+  byId("kept-state").textContent = archive ? `${keptText(archive)}.` : "The node has not said yet how keeping it goes.";
+  byId("kept-until").min = tomorrow();
+  byId("kept-until").value = archive && isText(archive.expires) ? dayBefore(archive.expires) : "";
+  show(byId("kept-result"), "");
+  byId("kept-dialog").showModal();
+}
+
+async function keepLonger() {
+  const expires = endOfDay(byId("kept-until").value);
+
+  if (!expires) {
+    throw new Error("Choose a day to keep it until, after today.");
+  }
+
+  await managing.archiveUntil(expires);
+  byId("kept-dialog").close();
+  await listOffline();
+  return null;
+}
+
+async function stopKeeping() {
+  const offline = managing;
+
+  if (!window.confirm(`Stop keeping “${offline.entry.name}” offline?`)) {
+    return null;
+  }
+
+  await offline.stop();
+  byId("kept-dialog").close();
+  await listOffline();
   return null;
 }
 
@@ -4206,10 +4761,11 @@ async function folderCover(segments) {
 }
 
 // The duration of the song playing, once its audio gives it, kept in its
-// info.json and its entry in the index, if its tags gave none.
+// info.json and its entry in the index, if its tags gave none. Nothing is
+// kept while a playlist kept offline is shown, which is only played.
 async function keepDuration() {
   const folder = state.current;
-  const song = folder === null ? null : state.library.songs.get(folder);
+  const song = folder === null || state.offline ? null : state.library.songs.get(folder);
   const seconds = wholeSeconds(byId("audio").duration);
 
   if (!song || typeof song.details.duration_seconds === "number" || seconds === undefined || !canChange()) {
@@ -4974,7 +5530,15 @@ async function start() {
     state.library = await Library.open(kept.entries);
     state.playlists = kept.playlists;
   } catch (error) {
-    show(status, `Your library could not be read: ${error.message}`, true);
+    // As when the node is offline, and no longer holds it: the playlists
+    // kept offline are still offered, read apart, and nothing is changed.
+    state.unread = true;
+
+    for (const element of document.querySelectorAll(".changes-only")) {
+      element.hidden = !canChange();
+    }
+
+    show(status, `Your library could not be read: ${error.message} A playlist you keep offline can still be played, from Playlists.`, true);
     return;
   }
 
@@ -5054,6 +5618,7 @@ for (const [action, handler] of Object.entries(MEDIA_KEYS)) {
 arrowKeys(byId("songs"), "button.play");
 arrowKeys(byId("folder-entries"));
 arrowKeys(byId("list-choices"));
+arrowKeys(byId("offline-choices"));
 arrowKeys(byId("add-choices"));
 
 // The song whose row has focus is the one chosen, to edit, remove, or move.
@@ -5112,6 +5677,7 @@ byId("add-new").addEventListener("click", () => {
   openNaming({ id: null, songs: toAdd });
 });
 byId("rename-list").addEventListener("click", () => openNaming({ id: state.list }));
+byId("keep-offline").addEventListener("click", openKeep);
 byId("previous").addEventListener("click", () => stepSong(-1));
 byId("next").addEventListener("click", () => stepSong(1));
 byId("shuffle").addEventListener("click", toggleShuffle);
@@ -5144,6 +5710,9 @@ onSubmit("song-form", "song-result", saveSong);
 onSubmit("name-form", "name-result", saveName);
 onSubmit("id-form", "id-result", addById);
 onSubmit("import-form", "import-result", importPlaylist);
+onSubmit("keep-form", "keep-result", keepPlaylist);
+onSubmit("kept-form", "kept-result", keepLonger);
+onClick("stop-keeping", "kept-result", stopKeeping);
 onClick("remove-list", "library-result", removeList);
 onClick("share-list", "library-result", shareList);
 onClick("share-playing", "player-result", () => shareSong(state.current));

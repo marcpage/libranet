@@ -220,7 +220,9 @@ Share a song with a friend by giving them its id, or a playlist by an id
 made for it, holding each of its songs. Their music application adds a song
 to their library by its id, and imports a playlist as a new playlist of
 theirs, adding to their library each song of it they lack. A song their
-library holds already is not added again.
+library holds already is not added again. A playlist can be kept on your
+node until a day you choose, so that it still plays there once it is
+offline, as a collection of movies can.
 
 Play a song, and the songs after it in the list play on, or, with Shuffle
 on, the songs of the list in an order chosen at random. The list stays shown
@@ -422,7 +424,7 @@ you say so on `/config`.
 | [Phase 11 Plan](docs/implementation/Phase%2011.md) | Bonus features: steps 16 and 50, planned |
 | [Movie App Plan](docs/implementation/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 83, 85–88, and 115, all built |
 | [TV App Plan](docs/implementation/TV%20App.md) | The TV application: steps 144–148, all built |
-| [Music App Plan](docs/implementation/Music%20App.md) | The music application: steps 149–154, steps 149 to 152 built |
+| [Music App Plan](docs/implementation/Music%20App.md) | The music application: steps 149–154, steps 149 to 153 built |
 | [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |
 | [File Layout](docs/implementation/File%20Layout.md) | Every file a node reads or writes, and the settings that move them |
 | [Database Schema](docs/implementation/Database%20Schema.md) | The statistics database's tables, and what reads and writes them |
