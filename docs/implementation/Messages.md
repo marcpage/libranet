@@ -493,7 +493,7 @@ or reported, nor is the key a kept archive's bundle may carry.
 | `backup.restore_requested` | `restore_id`, `bundle`, `directory`, `on_conflict` | Restores the bundle into the directory, in passes, asking for what it lacks |
 | `backup.build_requested` | `build_id`, `directory`, `password` | Builds the directory into a bundle, or a new version of it |
 | `backup.export_requested` | `export_id`, `bundle`, `archive`, `on_conflict`, `password` | Writes the bundle and all it needs into a content archive |
-| `backup.import_requested` | `import_id`, `path`, `local_path` | Reads the file at `local_path` into parts and a file bundle |
+| `backup.import_requested` | `import_id`, `path`, `encrypted`, `local_path` | Reads the file at `local_path` into parts and a file bundle, each stored encrypted if `encrypted` is `true`; the key is reported, but never logged |
 | `backup.archive_requested` | `archive_id`, `bundles`, `objects`, `expires` | Writes the bundles, with all they need, and the objects into an archive of its own once all is held, asking for what it lacks, and keeps it until `expires`; asked again, keeps it until the new time |
 | `backup.archive_removed` | `archive_id` | Stops keeping the archive, and deletes it |
 

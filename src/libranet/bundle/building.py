@@ -12,10 +12,11 @@ SHA-256 as reassembled (§2.3), its times, and whether its owner may write or
 run it, and its bundle the size of each part (§2.1). An empty file has no
 parts.
 
-A directory may be built with every part encrypted instead (§7), as a backup
-is (BackupSpecification §4.4), and as any bundle protected with a password
-must be (§6). Parts are then cut a block short of the object limit, so that
-each fits once padded (:class:`~libranet.bundle.parts.PartWriter`).
+A directory, or a file alone, may be built with every part encrypted instead
+(§7), as a backup is (BackupSpecification §4.4), as any bundle protected with
+a password must be (§6), and as a file imported encrypted is (HttpApi §12.2).
+Parts are then cut a block short of the object limit, so that each fits once
+padded (:class:`~libranet.bundle.parts.PartWriter`).
 
 A directory is walked without following symlinks. Every file and symlink
 beneath it is keyed by its full relative path, and a directory holding
@@ -193,21 +194,24 @@ def build_file(
     max_object_bytes: int = MIB,
     *,
     read: Callable[[int], None] | None = None,
+    encrypt_parts: bool = False,
 ) -> FileBundle:
     """The bundle for the file at ``path``, its parts stored in ``sink``.
 
     ``read``, if given, is told the size of each part once it is read and
-    stored. A file whose size or modification time changes while it is read
-    fails, rather than record bytes it never held all at once.
+    stored. ``encrypt_parts`` says whether every part is encrypted (§7). A
+    file whose size or modification time changes while it is read fails,
+    rather than record bytes it never held all at once.
 
     Raises:
-        ValueError: ``max_object_bytes`` is not positive.
+        ValueError: ``max_object_bytes`` leaves no room for a part.
         OSError: ``path`` is not a regular file, or could not be read, or
             changed while it was read, or content could not be stored.
     """
     with _open_regular_file(path) as file:
         before = fstat(file.fileno())
-        bundle = _file_bundle(file, PartWriter(sink, max_object_bytes), {}, read=read)
+        parts = PartWriter(sink, max_object_bytes, encrypt_parts)
+        bundle = _file_bundle(file, parts, {}, read=read)
         after = fstat(file.fileno())
 
     unchanged = (after.st_size, after.st_mtime_ns) == (before.st_size, before.st_mtime_ns)

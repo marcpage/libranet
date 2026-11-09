@@ -271,6 +271,26 @@ def test_each_part_of_a_file_is_told_once_it_is_read_and_stored(
     assert told == [(MAX_BYTES, 1), (MAX_BYTES, 2), (150 - 2 * MAX_BYTES, 3)]
 
 
+def test_a_file_may_be_built_with_every_part_encrypted(
+    tmp_path: Path, store: RecordingStore
+) -> None:
+    data = bytes(number % 251 for number in range(2 * MAX_BYTES))
+    path = tmp_path / "file.bin"
+    path.write_bytes(data)
+    told: list[int] = []
+
+    bundle = build_file(path, store, MAX_BYTES, read=told.append, encrypt_parts=True)
+
+    # Cut a block short of the limit: 48, 48, and 32 bytes.
+    assert bundle.part_sizes_bytes == (48, 48, 32)
+    assert told == [48, 48, 32]
+    parts = [PartPath.parse(part) for part in bundle.parts]
+    assert all(part.encrypted for part in parts)
+    assert store.writes == [part.content_id for part in parts]
+    assert bundle.metadata.hash == sha256(data).hexdigest()
+    assert reassembled(bundle, store) == data
+
+
 def test_a_file_that_grows_while_it_is_read_fails(tmp_path: Path, store: RecordingStore) -> None:
     path = tmp_path / "file.bin"
     path.write_bytes(bytes(range(150)))

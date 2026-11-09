@@ -113,6 +113,20 @@ def test_a_file_in_a_folder_offered_is_asked_for_by_its_path_and_where_it_lies(
         "Movies/Film.mp4",
         realpath(machine / "Movies" / "Film.mp4"),
     )
+    assert message["encrypted"] is False
+
+
+def test_a_file_asked_for_encrypted_is_asked_for_encrypted(
+    router: Router, queues: ModuleQueues
+) -> None:
+    response = router.dispatch(import_request({"path": "Movies/Film.mp4", "encrypted": True}))
+
+    # Named as it would be plain, so that asking again either way imports
+    # it again.
+    assert response.status == 202
+    assert loads(response.body) == {"import_id": FILM_ID}
+    (message,) = asked_for(queues)
+    assert (message["import_id"], message["encrypted"]) == (FILM_ID, True)
 
 
 @mark.parametrize("path", ["Movies", "Movies/Holidays"])
@@ -147,7 +161,15 @@ def test_a_path_naming_no_file_in_a_folder_offered_is_404(
 
 @mark.parametrize(
     "value",
-    [[], {}, {"path": 7}, {"path": ""}, {"path": "Movies/../private.txt"}, {"path": "/etc"}],
+    [
+        [],
+        {},
+        {"path": 7},
+        {"path": ""},
+        {"path": "Movies/../private.txt"},
+        {"path": "/etc"},
+        {"path": "Movies/Film.mp4", "encrypted": "yes"},
+    ],
 )
 def test_a_body_naming_no_usable_path_is_400(
     router: Router, queues: ModuleQueues, value: object

@@ -1158,7 +1158,7 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `backup.restore_requested` | `restore_id`, `bundle`, `directory`, `on_conflict` | Restore a bundle into a directory |
 | `backup.build_requested` | `build_id`, `directory`, `password` | Build a directory into a bundle; `password` is never logged |
 | `backup.export_requested` | `export_id`, `bundle`, `archive`, `on_conflict`, `password` | Write a bundle into a content archive |
-| `backup.import_requested` | `import_id`, `path`, `local_path` | Import the file the web server found at `local_path`, which a local client asked for as `path` |
+| `backup.import_requested` | `import_id`, `path`, `encrypted`, `local_path` | Import the file the web server found at `local_path`, which a local client asked for as `path`, encrypted if `encrypted` is `true` |
 | `backup.archive_requested` | `archive_id`, `bundles`, `objects`, `expires` | Keep the bundles, with all they need, and the objects in an archive of the node's own until `expires`; a bundle's key is never logged |
 | `backup.archive_removed` | `archive_id` | Stop keeping the archive, and delete it |
 | `backup.state` | `jobs`, `restores`, `builds`, `exports`, `imports`, `archives` | Everything the backup module is doing, replacing the last report |
