@@ -1613,6 +1613,37 @@ with your site's path. Every answer beneath `/chaos` carries
 `Cache-Control: no-store`, since what is chosen depends on who asks, and
 when.
 
+**Seeing why.** An address beneath `/chaos` ending in a bare `?`, as
+`/chaos/recipes/?`, opens the node's **Chaos page** for its path, and so
+does a path for which nothing is chosen. It shows each level searched,
+every proposal found there, with its signer, date, and bundle, why each was
+passed over, and which was chosen, and lets a person signed in on the
+node's machine trust, distrust, or clear each signer. It is served on the
+node's port alone, outside any sandbox, and no page may frame it. A query
+with anything in it, such as `?about`, is your site's, as any other is, so
+use one of those, never a bare `?`, for a page of your own.
+
+The node's own pages read what the Chaos page shows, the **report**, from
+any client:
+
+```js
+const response = await fetch(`/data/chaos/${path}`, { cache: "no-store" });
+const report = await response.json();
+// report.chosen is {level, drop}, or null when nothing is chosen.
+// report.served_at is where the path is served for whoever asked.
+// Each of report.levels[i].proposals has its signer, score, bundle,
+// created, holds, and passed_over.
+```
+
+`path` is spelled as it is beneath `/chaos/`, percent-encoded, and is empty
+for the root. The node resolves it as a request for the path would be, by
+the same person's scores, and may wait as long, up to
+`network.app_wait_seconds`. `served_at` is on the Chaos port for a person
+signed in, and on the node's port for anyone else. A path that names
+nothing is `404`. HTTP API §13.6.7 gives every member, and each reason a
+proposal is passed over. A Chaos site cannot read the report: it is not one
+of the node's own pages, on either port.
+
 ## 7. Patterns From the Movie Library
 
 The movie library, `src/libranet/applications/movie/index.html`, is one page

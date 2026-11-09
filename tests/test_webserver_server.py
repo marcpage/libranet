@@ -396,6 +396,36 @@ def test_hash_case_and_query_string_are_ignored(connection: HTTPConnection) -> N
     assert body == CONTENT
 
 
+@mark.parametrize(
+    ("target", "query"),
+    [("/a?", (True, "")), ("/a", (False, "")), ("/a?b=1", (True, "b=1")), ("/a?&", (True, "&"))],
+)
+def test_a_request_keeps_whether_its_target_held_a_question_mark(
+    target: str, query: tuple[bool, str]
+) -> None:
+    seen: list[Request] = []
+
+    def answered(request: Request) -> Response:
+        seen.append(request)
+        return Response(204)
+
+    router = Router()
+    router.add("GET", "/a", answered)
+    served = serving(
+        LibranetHTTPServer(
+            ("127.0.0.1", 0), router, getLogger("test.webserver"), MessageSigner(SERVER_IDENTITY)
+        )
+    )
+
+    with closing(next(connected(next(served)))) as connection:
+        _get(connection, target)
+
+    # Shut down.
+    assert next(served, None) is None
+    # urlsplit alone reads /a? as it reads /a (Phase 7 Step 158).
+    assert [(request.has_query, request.query_text) for request in seen] == [query]
+
+
 def test_missing_content_is_503_and_published(
     connection: HTTPConnection, queues: ModuleQueues
 ) -> None:

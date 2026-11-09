@@ -27,7 +27,8 @@ the node seeks, is closed (Phase 6 Step 142). What a path beneath ``/chaos``
 resolves to, for whom, and why, is read from the bundles proposed at the
 drops of its levels, by the trust of whoever asks (Phase 7 Step 156), and
 served on the main port, or, to whoever is signed in, on the Chaos port, a
-port of its own (Phase 7 Step 157).
+port of its own (Phase 7 Step 157). The Chaos page, on the main port alone,
+shows why, from a report any of the node's pages may read (Phase 7 Step 158).
 
 A few ``/data`` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
@@ -60,6 +61,7 @@ from libranet.webserver.app_handler import (
 )
 from libranet.webserver.app_outcomes import DEFAULT_MAX_OUTCOMES, ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_registry import (
+    CHAOS_SEGMENT,
     CONFIG_API_SEGMENT,
     CONFIG_APPLICATION,
     RESERVED_APPLICATION_NAMES,
@@ -103,9 +105,11 @@ from libranet.webserver.byte_range import BYTES_UNIT, ByteRange
 from libranet.webserver.chaos_handler import (
     CHAOS_METHODS,
     CHAOS_PATTERN,
-    CHAOS_SEGMENT,
+    CHAOS_REPORT_PATTERN,
     ChaosHandler,
+    ChaosPage,
     ChaosPort,
+    ChaosReport,
     PathResolver,
 )
 from libranet.webserver.chaos_levels import MAX_KEPT_DROPS, ChaosLevels, DropRead
@@ -382,6 +386,7 @@ __all__ = [
     "CACHED_FOR_GOOD",
     "CHAOS_METHODS",
     "CHAOS_PATTERN",
+    "CHAOS_REPORT_PATTERN",
     "CHAOS_SEGMENT",
     "CLIENT_PATH",
     "CONFIG_API_PATH",
@@ -492,7 +497,9 @@ __all__ = [
     "ChaosChoice",
     "ChaosHandler",
     "ChaosLevels",
+    "ChaosPage",
     "ChaosPort",
+    "ChaosReport",
     "ChaosResolution",
     "ChaosResolver",
     "ChaosScores",

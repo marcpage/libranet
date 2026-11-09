@@ -10,6 +10,7 @@ from pytest import LogCaptureFixture, fixture, mark, raises
 from libranet.cas.content_id import ContentId
 from libranet.problems import PROBLEM_CONTENT_TYPE
 from libranet.webserver.app_registry import (
+    CHAOS_SEGMENT,
     CONFIG_APPLICATION,
     ROOT_APPLICATION,
     ApplicationRegistry,
@@ -150,6 +151,28 @@ def test_what_is_for_trusted_applications_is_refused_to_another(pages: OwnPages)
     assert "'wiki', which is not trusted" in untrusted
     assert no_page is not None
     assert "no application's page" in no_page
+
+
+@mark.parametrize(
+    "page", ["/chaos/", "/chaos", "/Chaos/a%20b/c.html", "/chaos/a/b?", "/%63haos/recipes/"]
+)
+def test_a_page_beneath_chaos_is_the_chaos_pages_and_counts_as_trusted(
+    pages: OwnPages, page: str
+) -> None:
+    request = asked(f"http://{HOST}{page}")
+
+    # Not registered, whatever the registry holds (Phase 7 Step 158).
+    assert pages.application(request) == CHAOS_SEGMENT
+    assert pages.refusal(request) is None
+    assert pages.trusted_refusal(request) is None
+    assert pages.refused(request, trusted=True) is None
+
+
+@mark.parametrize("page", ["/chaosx/", "/x/chaos/"])
+def test_a_page_only_beginning_with_chaos_is_not_the_chaos_pages(
+    pages: OwnPages, page: str
+) -> None:
+    assert pages.application(asked(f"http://{HOST}{page}")) == ROOT_APPLICATION
 
 
 def test_trust_is_read_from_the_registry_as_it_is_now(tmp_path: Path) -> None:

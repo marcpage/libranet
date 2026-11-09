@@ -43,7 +43,8 @@ PACKAGED_APPLICATIONS: Final = Path(__file__).resolve().parent
 #: (Music App Step 149), ``directory`` the user directory (Phase 4 Step
 #: 92), ``mail`` mail between people (Phase 4 Step 82), ``nodes`` the
 #: nodes known (Phase 5 Step 108), and ``karma`` the Karma chain followed
-#: (Phase 6 Step 139).
+#: (Phase 6 Step 139). ``chaos`` is the Chaos page (Phase 7 Step 158),
+#: built with them, but never registered, since the name is reserved.
 SHIPPED_APPLICATIONS: Final = MappingProxyType(
     {
         "/": "root",
@@ -55,6 +56,7 @@ SHIPPED_APPLICATIONS: Final = MappingProxyType(
         "mail": "mail",
         "nodes": "nodes",
         "karma": "karma",
+        "chaos": "chaos",
     }
 )
 

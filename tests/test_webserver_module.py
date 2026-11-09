@@ -913,9 +913,9 @@ def test_the_chaos_port_is_50_above_the_main_port_or_the_next_100_up_that_is_fre
 
 def test_the_chaos_port_serves_chaos_alone_where_the_main_port_listens(tmp_path: Path) -> None:
     queues = _queues()
-    module = WebServerModule(
-        ModuleName.WEBSERVER, queues, _config(tmp_path, _free_port()), poll_interval_seconds=0.01
-    )
+    # Nothing waits for what no unbundler resolves here.
+    config = _config(tmp_path, _free_port(), app_wait_seconds=0)
+    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval_seconds=0.01)
     stop = Event()
     thread = Thread(target=module.run, args=(stop,), daemon=True)
     thread.start()
@@ -929,9 +929,15 @@ def test_the_chaos_port_serves_chaos_alone_where_the_main_port_listens(tmp_path:
         assert chaos_host == host
         assert _chaos_status(host, port, "/chaos?tag=bread&new") == (302, "/chaos/?tag=bread&new")
         assert _chaos_status(host, chaos_port, "/Chaos") == (302, "/Chaos/")
-        # Nothing is proposed anywhere.
-        assert _chaos_status(host, port, "/chaos/recipes/") == (404, None)
+        # Nothing is proposed anywhere. The main port answers with the Chaos
+        # page, which is not resolved from its bundle yet.
+        assert _chaos_status(host, port, "/chaos/recipes/") == (503, None)
         assert _chaos_status(host, chaos_port, "/chaos/recipes/") == (404, None)
+        # A bare ? is kept as the target is read, and goes to the main port.
+        assert _chaos_status(host, chaos_port, "/chaos/recipes/?") == (
+            302,
+            f"http://{host}:{port}/chaos/recipes/?",
+        )
         assert _status(host, chaos_port, "/data/nodes") == (404, None)
         assert _status(host, chaos_port, "/") == (404, None)
 
@@ -942,6 +948,52 @@ def test_the_chaos_port_serves_chaos_alone_where_the_main_port_listens(tmp_path:
     assert not thread.is_alive()
     assert module.chaos_address is None
     assert _is_free(chaos_port)
+
+
+def test_the_main_port_alone_reports_what_a_chaos_path_resolves_to_its_pages(
+    tmp_path: Path,
+) -> None:
+    queues = _queues()
+    config = _config(tmp_path, _free_port(), app_wait_seconds=0)
+    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval_seconds=0.01)
+    stop = Event()
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
+    thread.start()
+
+    try:
+        host, port = _serving(module, queues)
+        chaos_address = module.chaos_address
+        assert chaos_address is not None
+        # The Chaos page's, as a browser sends it, without its bare ?.
+        page = {"Referer": f"http://{host}:{port}/chaos/recipes/"}
+
+        status, report = _report(host, port, page)
+        assert status == 200
+        assert (report["path"], report["scores"], report["chosen"]) == ("recipes/", "node", None)
+        assert report["served_at"] == f"http://{host}:{port}/chaos/recipes/"
+        assert [level["target"] for level in report["levels"]] == ["chaos:/", "chaos:/recipes"]
+        # Served to the node's own pages alone, and on the main port alone.
+        assert _report(host, port, {})[0] == 403
+        assert _report(host, chaos_address[1], page)[0] == 404
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+
+def _report(host: str, port: int, headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
+    """What ``/chaos/recipes/`` resolves to, asked with ``headers``, and what was answered."""
+    connection = HTTPConnection(host, port, timeout=5)
+    connection.request("GET", "/data/chaos/recipes/", headers=headers)
+    response = connection.getresponse()
+    body = response.read()
+    connection.close()
+
+    if response.status != 200:
+        return response.status, {}
+
+    assert response.getheader("Cache-Control") == "no-store"
+    return response.status, loads(body)
 
 
 def _chaos_status(host: str, port: int, path: str) -> tuple[int, str | None]:

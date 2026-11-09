@@ -71,6 +71,7 @@ DATA_ENDPOINT_NAMES: Final = (
     "trust",
     "archives",
     "karma",
+    "chaos",
 )
 
 DATA_PATTERN: Final = (

@@ -89,7 +89,11 @@ from libranet.webserver.app_handler import (
     AppHandler,
 )
 from libranet.webserver.app_outcomes import ApplicationOutcomes
-from libranet.webserver.app_registry import ApplicationRegistry, RegisteredApplications
+from libranet.webserver.app_registry import (
+    CHAOS_SEGMENT,
+    ApplicationRegistry,
+    RegisteredApplications,
+)
 from libranet.webserver.app_store import (
     STORE_KEY_PATTERN,
     STORE_PATTERN,
@@ -111,7 +115,15 @@ from libranet.webserver.bundle_edits import (
 )
 from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
-from libranet.webserver.chaos_handler import CHAOS_METHODS, CHAOS_PATTERN, ChaosHandler, ChaosPort
+from libranet.webserver.chaos_handler import (
+    CHAOS_METHODS,
+    CHAOS_PATTERN,
+    CHAOS_REPORT_PATTERN,
+    ChaosHandler,
+    ChaosPage,
+    ChaosPort,
+    ChaosReport,
+)
 from libranet.webserver.chaos_levels import ChaosLevels
 from libranet.webserver.chaos_resolver import ChaosResolver, ChaosScores
 from libranet.webserver.config_auth import ConfigAuthGuard
@@ -300,7 +312,11 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     unless given: a request carrying a session is sent to ``chaos_port``, to
     whose router the routes serving it there are added, and any other is
     resolved by the node's own scores, as ``peers`` builds them, and served
-    in a sandbox (Phase 7 Step 157).
+    in a sandbox (Phase 7 Step 157). The Chaos page ``content`` ships is
+    served there, on the main port alone, for a path ending in a bare ``?``,
+    and for a ``404``, which the Chaos port sends there when a page is being
+    opened, and ``/data/chaos`` reports what a Chaos path resolves to, for any
+    client (Phase 7 Step 158).
 
     Each of those but reading into a bundle and checking signed content is
     served only to this node's own pages, as a request's ``Referer`` names
@@ -499,15 +515,24 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
                 settings,
             )
 
+            page = ChaosPage(content.applications.get(CHAOS_SEGMENT), paths)
+            main_port = node.network.listen_port
+
             for method in CHAOS_METHODS:
                 router.add(
                     method,
                     CHAOS_PATTERN,
-                    ChaosHandler(resolver, paths, sessions, chaos_port.number),
+                    ChaosHandler(resolver, paths, sessions, chaos_port.number, page=page),
                 )
                 chaos_port.router.add(
-                    method, CHAOS_PATTERN, ChaosHandler(resolver, paths, sessions)
+                    method,
+                    CHAOS_PATTERN,
+                    ChaosHandler(resolver, paths, sessions, main_port=main_port),
                 )
+
+            # Before the bundle route, whose pattern it also fits.
+            report = ChaosReport(resolver, sessions, main_port, chaos_port.number)
+            router.add("GET", CHAOS_REPORT_PATTERN, OwnSiteOnly(OwnPageOnly(report, pages), checks))
 
     router.add("GET", SEARCH_PATTERN, search)
     router.add(
@@ -987,6 +1012,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             connection=self.inbound,
             query=dict(parse_qsl(target.query)),
             query_text=target.query,
+            # urlsplit reads a target ending in a bare ? as one without it.
+            has_query="?" in self.path,
         )
 
         try:

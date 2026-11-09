@@ -29,6 +29,18 @@ carries the person's session:
   person whose session it carries, or else the node's, and served without a
   sandbox, with ``X-Content-Type-Options: nosniff``.
 
+The **Chaos page** says what a path resolves to, and why, from the report
+(:class:`ChaosReport`). It is served on the main port alone, without a
+sandbox, under the policy ``/config``'s pages carry, so that it loads only
+what the node serves, and no Chaos site can frame it (HttpApi §13.6.6, Phase
+7 Step 158). On the main port, a path whose address ends in a bare ``?`` is
+answered ``200`` with it, whoever asks, and nothing is resolved for it, and
+a ``404`` carries it. On the Chaos port, a bare ``?`` is ``302`` to the same
+address on the main port, and so is a ``404`` for a page the browser is
+opening (``Sec-Fetch-Dest: document``), to its path with a bare ``?``. Any
+other ``404`` there is a plain problem. A query with anything in it is
+ignored, as an application's is.
+
 The file chosen is served as a read into a bundle serves one (see
 :mod:`libranet.webserver.bundle_paths`): with ranges, the content type its
 bundle gives it, or else one guessed from its name, and ``503`` while its
@@ -37,7 +49,8 @@ resolved in. A path naming a directory without its ``/``, or reaching a file
 or a directory through a symbolic link, is ``302`` to the Chaos path it
 leads to, which is then resolved as any other is, and may be served from
 another bundle. A path that names nothing, or for which nothing is chosen,
-is ``404``, and a file that cannot be served from its parts ``500``.
+is ``404``, with the Chaos page or sent to it, and a file that cannot be
+served from its parts ``500``.
 
 Every answer carries ``Cache-Control: no-store``, since what is chosen
 depends on who asks, and when. The bundle chosen is reported used, so that
@@ -45,19 +58,27 @@ what is resolved from it is kept while it is served (Phase 2 Step 29).
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass, replace
 from http import HTTPStatus
 from logging import DEBUG, WARNING, getLogger
 from typing import Final, Protocol
 from urllib.parse import quote
 
 from libranet.bundle.errors import BundleError, UnsupportedBundleError
+from libranet.bundle.parts import PartPath
 from libranet.bundle.shapes import FileBundle
+from libranet.cas.content_id import ContentId
 from libranet.messaging.events import PathOutcome
 from libranet.problems import UNUSABLE_BUNDLE
 from libranet.protocol.chaos import ChaosLevel, ChaosPath
-from libranet.webserver.app_handler import UNTRUSTED_APP_HEADERS
+from libranet.protocol.http_syntax import API_PREFIX
+from libranet.webserver.app_handler import (
+    CONFIG_APP_POLICY,
+    DEFAULT_FILE,
+    UNTRUSTED_APP_HEADERS,
+)
 from libranet.webserver.app_outcomes import KnownOutcome
+from libranet.webserver.app_registry import CHAOS_SEGMENT
 from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.chaos_resolver import ChaosChoice, ChaosResolution
 from libranet.webserver.http_types import (
@@ -66,6 +87,7 @@ from libranet.webserver.http_types import (
     READ_METHODS,
     Request,
     Response,
+    json_response,
     redirect_response,
     status_response,
     typed_response,
@@ -76,12 +98,13 @@ from libranet.webserver.site_checks import origin_on_port
 
 _LOGGER = getLogger(__name__)
 
-#: The name the Chaos endpoint is served at (HttpApi §13.6).
-CHAOS_SEGMENT: Final = "chaos"
-
 #: ``/chaos``, in any case, and every path beneath it, which ``path`` holds,
 #: as sent.
 CHAOS_PATTERN: Final = rf"/(?i:{CHAOS_SEGMENT})(?:/(?P<path>.*))?"
+
+#: Where a page reads what the Chaos path ``path`` resolves to, and why, the
+#: path spelled as beneath ``/chaos/`` (HttpApi §13.6.7).
+CHAOS_REPORT_PATTERN: Final = rf"{API_PREFIX}/{CHAOS_SEGMENT}/(?P<path>.*)"
 
 #: What the Chaos endpoint answers.
 CHAOS_METHODS: Final = READ_METHODS
@@ -92,6 +115,14 @@ _MAIN_PORT_HEADERS: Final = {**NOT_STORED, **UNTRUSTED_APP_HEADERS}
 
 # Carried by every answer on the Chaos port, which is an origin of its own.
 _CHAOS_PORT_HEADERS: Final = {**NOT_STORED, **NOT_SNIFFED}
+
+# Carried by the Chaos page: what /config's pages may load, it may, and no
+# page may frame it (HttpApi §13.6.6).
+_PAGE_HEADERS: Final = {"Content-Security-Policy": CONFIG_APP_POLICY}
+
+# What a browser says it fetches a request for, and says of a page it opens.
+_DESTINATION_HEADER: Final = "Sec-Fetch-Dest"
+_DOCUMENT: Final = "document"
 
 
 class PathResolver(Protocol):
@@ -113,24 +144,113 @@ class ChaosPort:
 
 
 @dataclass(frozen=True)
+class ChaosPage:
+    """The Chaos page (HttpApi §13.6.6): the ``index.html`` of ``bundle``, as ``paths`` serves it.
+
+    ``bundle`` is the one the node ships, and ``None`` if it ships none.
+    """
+
+    bundle: ContentId | None
+    paths: BundlePaths
+
+    def response(self, request: Request, status: HTTPStatus) -> Response:
+        """The page, answering ``request`` with ``status``; or why it cannot be.
+
+        It carries the policy ``/config``'s pages carry, and never a sandbox.
+        """
+        if self.bundle is None:
+            return status_response(request, HTTPStatus.NOT_FOUND, "This node ships no Chaos page.")
+
+        # Reported used, so that its entry is kept while it is served.
+        self.paths.use.used(self.bundle)
+        deadline = self.paths.deadline()
+        # Looked at as whatever it is, so that an answer of any other kind is
+        # logged, rather than taken for one.
+        entry: object = self.paths.entry(PartPath(self.bundle), DEFAULT_FILE, deadline)
+
+        if entry is None:
+            return self.paths.unavailable(
+                request, "The Chaos page is not resolved from its bundle yet; that was requested."
+            )
+
+        try:
+            if not isinstance(entry, FileBundle):
+                raise BundleError(f"its {DEFAULT_FILE} is {entry!r}, not a file's entry")
+
+            response = self.paths.file_response(
+                entry, DEFAULT_FILE, deadline, request, headers=_PAGE_HEADERS
+            )
+
+        except BundleError as error:
+            # The node's own page, so its fault, whatever the cause.
+            _LOGGER.error("The Chaos page cannot be served from %s: %s", self.bundle, error)
+            return typed_response(
+                request, UNUSABLE_BUNDLE, HTTPStatus.INTERNAL_SERVER_ERROR, str(error)
+            )
+
+        return replace(response, status=status) if response.status == HTTPStatus.OK else response
+
+
+@dataclass(frozen=True)
 class ChaosHandler:
     """Serves Chaos paths, as ``resolver`` resolves them, from the bundles ``paths`` reads.
 
     On the main port, ``chaos_port`` is the Chaos port's number, to which a
-    request carrying a session ``sessions`` holds is sent. On the Chaos port
-    itself, it is ``None``.
+    request carrying a session ``sessions`` holds is sent, and ``page`` the
+    Chaos page, which a bare ``?`` and a ``404`` are answered with. On the
+    Chaos port itself, ``chaos_port`` is ``None``, and ``main_port`` the
+    main port's number, to which a bare ``?``, and a ``404`` for a page being
+    opened, are sent. Without ``page``, or ``main_port``, a ``404`` is a plain
+    problem, and a bare ``?`` is not looked for.
     """
 
     resolver: PathResolver
     paths: BundlePaths
     sessions: Sessions
     chaos_port: int | None = None
+    _: KW_ONLY
+    page: ChaosPage | None = None
+    main_port: int | None = None
 
     def __call__(self, request: Request) -> Response:
+        if self.chaos_port is None:
+            return self._on_chaos_port(request).with_headers(_CHAOS_PORT_HEADERS)
+
+        # The page shows what is chosen for whoever asks, whether or not their
+        # request carries a session (HttpApi §13.6.6).
+        page = self.page
+        shows_page = request.params.get("path") is not None and request.bare_query()
+
+        if page is not None and shows_page:
+            # Nothing is resolved for it: the page reads the report.
+            return page.response(request, HTTPStatus.OK).with_headers(NOT_STORED)
+
         response = self._response(request)
-        return response.with_headers(
-            _CHAOS_PORT_HEADERS if self.chaos_port is None else _MAIN_PORT_HEADERS
-        )
+
+        if page is not None and response.status == HTTPStatus.NOT_FOUND:
+            return page.response(request, HTTPStatus.NOT_FOUND).with_headers(NOT_STORED)
+
+        return response.with_headers(_MAIN_PORT_HEADERS)
+
+    def _on_chaos_port(self, request: Request) -> Response:
+        """The response to ``request`` on the Chaos port, before the headers every one carries."""
+        if self.main_port is None:
+            return self._response(request)
+
+        origin = origin_on_port(request, self.main_port, unnamed=request.server_address)
+        # On the main port alone, at the path, with a bare ?.
+        page = f"{origin}{request.path}?"
+
+        if request.params.get("path") is not None and request.bare_query():
+            return redirect_response(page)
+
+        response = self._response(request)
+        destination = (request.header(_DESTINATION_HEADER) or "").strip().lower()
+
+        if response.status == HTTPStatus.NOT_FOUND and destination == _DOCUMENT:
+            return redirect_response(page)
+
+        return response
 
     def _response(self, request: Request) -> Response:
         """The response to ``request``, before the headers every one carries."""
@@ -225,9 +345,48 @@ class ChaosHandler:
             )
 
 
+@dataclass(frozen=True)
+class ChaosReport:
+    """``GET /data/chaos/{path}``: what a Chaos path resolves to, and why (HttpApi §13.6.7).
+
+    It is resolved by ``resolver``, as a request for the path would be. The
+    path is served at the Chaos port, ``chaos_port``, for a request carrying
+    a session ``sessions`` holds, and otherwise at the main port,
+    ``main_port``.
+    """
+
+    resolver: PathResolver
+    sessions: Sessions
+    main_port: int
+    chaos_port: int
+
+    def __call__(self, request: Request) -> Response:
+        encoded = request.params["path"]
+
+        try:
+            path = ChaosPath.parse(encoded)
+
+        except ValueError as error:
+            # Not logged: the 404 says why, as for a request for the path.
+            return status_response(
+                request,
+                HTTPStatus.NOT_FOUND,
+                f"This names no Chaos path: {error}.",
+                headers=NOT_STORED,
+            )
+
+        port = self.main_port if self.sessions.session(request) is None else self.chaos_port
+        origin = origin_on_port(request, port, unnamed=request.server_address)
+        report = {
+            **self.resolver.resolve(request, path).value(),
+            "served_at": f"{origin}/{CHAOS_SEGMENT}/{encoded}",
+        }
+        return json_response(report).with_headers(NOT_STORED)
+
+
 def _query(request: Request) -> str:
-    """``request``'s query, as sent, with its ``?``; empty if it has none."""
-    return f"?{request.query_text}" if request.query_text else ""
+    """``request``'s query, as sent, with its ``?``; the ``?`` alone if bare; empty if none."""
+    return f"?{request.query_text}" if request.has_query or request.query_text else ""
 
 
 def _located(path: ChaosPath, level: ChaosLevel, entry_path: str) -> str:
