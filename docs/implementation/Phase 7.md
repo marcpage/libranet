@@ -150,7 +150,7 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
 
 ## Step 155 — Specifying the Chaos Endpoint
 
-**Kind:** specification. **Issue:** to be made (§7.1). **Depends on:**
+**Kind:** specification. **Issue:** #655 (§7.1). **Depends on:**
 nothing.
 
 Settled in the milestone: everything quoted in §2.1.
@@ -192,6 +192,34 @@ My calls, not yet reviewed:
 - **HTTP API §13.6**, beside the application routing it shares the main
   port's paths with, rather than a section of its own.
 
+Calls made in writing it, not yet reviewed:
+
+- **The open items of §6 are written in as this plan's calls**, so that a
+  ruling against one changes the specification, not code.
+- **A proposal's other members are ignored**, as a trust list's are (Trust
+  Network §3.1), so that a later version can add one.
+- **What is passed over before a proposer's newest is found.** A proposal
+  that is not one, or whose signature, bundle, or date passes it over, does
+  not supersede the proposer's older ones. One whose bundle lacks the
+  rest, is unusable, or is still pending does, so that a proposer can take
+  a path away.
+- **The report's `null`s.** `signer`, `score`, and `step` are `null` for an
+  unsigned proposal, `bundle` and `created` for what is not a proposal,
+  `holds` where it was not asked, and `passed_over` for the proposal chosen
+  and every one after it, which is not looked at.
+- **Every cookie of the session's name is tried** (HttpApi §11.4), as the
+  node already does, so that a Chaos site's script cannot hide the session
+  behind a cookie it sets for a path of its own.
+- **A link from another site's page** arrives without the session cookie,
+  which is `SameSite=Strict`, so it is served by the node's scores, in the
+  sandbox, and so is each link followed from that page. The specification
+  says so (HttpApi §13.6.4) rather than working around it.
+- **More sections than listed above**, so that none contradicts §13.6:
+  HttpApi §2.1 and §2.4 (the report, and Chaos sites kept out), §11.4 (the
+  cookie reaching the Chaos port), §13's opening, §13.5's text, §20
+  (`no-store`), §23 (the TBD of sandboxing rules), and Terms' **Main Port**
+  and **Reserved Names**.
+
 **Testable in isolation:** a specification. Every link resolves, and
 nothing still calls `/chaos` reserved.
 
@@ -199,7 +227,7 @@ nothing still calls `/chaos` reserved.
 
 ## Step 156 — Resolving a Chaos Path
 
-**Kind:** new node code. **Issue:** to be made (§7.2). **Depends on:**
+**Kind:** new node code. **Issue:** #656 (§7.2). **Depends on:**
 Step 155; Phase 3 Steps 65 and 71; Phase 4 Steps 80, 89, and 93; Phase 5
 Steps 99 and 113.
 
@@ -341,7 +369,7 @@ pending when the deadline passes.
 
 ## Step 157 — Serving /chaos
 
-**Kind:** new node code. **Issue:** to be made (§7.3). **Depends on:**
+**Kind:** new node code. **Issue:** #657 (§7.3). **Depends on:**
 Step 156; Phase 2 Step 58; Phase 3 Steps 65, 66, and 74.
 
 Settled in the milestone: a path beneath `/chaos` is reached by a browser,
@@ -442,7 +470,7 @@ page's request to the main port's endpoints is refused.
 
 ## Step 158 — The Chaos Page
 
-**Kind:** new node code, and a page. **Issue:** to be made (§7.4).
+**Kind:** new node code, and a page. **Issue:** #658 (§7.4).
 **Depends on:** Steps 156 and 157; Phase 5 Steps 97, 100, and 106.
 
 Settled in the milestone:
@@ -550,9 +578,9 @@ node serves. The page is checked by hand.
 
 ## Step 159 — Proposing and Downloading a Bundle
 
-**Kind:** improvement in the UI: the page alone. **Issue:** to be made
-(§7.5). **Depends on:** Step 158; Phase 3 Steps 69 and 72; Phase 4 Steps
-80 and 89.
+**Kind:** improvement in the UI: the page alone. **Issue:** #659 (§7.5).
+**Depends on:** Step 158; Phase 3 Steps 69 and 72; Phase 4 Steps 80 and
+89.
 
 Settled in the milestone: the page lets a viewer download and upload a
 bundle to the address it is open on.
@@ -605,17 +633,16 @@ downloading a bundle and proposing it again.
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 7 - Chaos endpoint** milestone, by number, and
-where it went. The issues marked *to be made* are to be made from the text
-in §7, one for each step, and this table then given their numbers.
+where it went. The issue of each step was made from the text in §7.
 
 | Issue | Asks for | Step |
 | --- | --- | --- |
 | #595 | Planning the Chaos endpoint | None: this plan |
-| *to be made* | Specifying the Chaos endpoint (§7.1) | 155 |
-| *to be made* | Resolving a Chaos path (§7.2) | 156 |
-| *to be made* | Serving `/chaos` (§7.3) | 157 |
-| *to be made* | The Chaos page (§7.4) | 158 |
-| *to be made* | Proposing and downloading a bundle (§7.5) | 159 |
+| #655 | Specifying the Chaos endpoint (§7.1) | 155 |
+| #656 | Resolving a Chaos path (§7.2) | 156 |
+| #657 | Serving `/chaos` (§7.3) | 157 |
+| #658 | The Chaos page (§7.4) | 158 |
+| #659 | Proposing and downloading a bundle (§7.5) | 159 |
 
 ## 5. Suggested Build Order
 
@@ -636,8 +663,8 @@ Ruled on 2026-11-07, once this plan was written:
   page, its images and scripts, and each link followed from it (Steps 156
   and 157).
 
-Still to be ruled on, each this plan's call, before Step 155 writes it into
-the specification:
+Still to be ruled on, each this plan's call. Step 155 writes each into the
+specification as it stands, to be changed there if ruled otherwise:
 
 - **Trust before depth** (Step 156): two passes, every level's trusted
   proposals before any of no trust specified, rather than the milestone's

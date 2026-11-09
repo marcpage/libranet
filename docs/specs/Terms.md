@@ -444,6 +444,49 @@ point.
   [Heaviest Chain](#heaviest-chain), [Root (Karma)](#root-karma),
   [Weight (Chain)](#weight-chain).
 
+### `/chaos`
+
+The reserved namespace of the Chaos endpoint, where anyone may propose a bundle
+for any path, and each person is served what those they trust chose. A path has
+a level for the root and for each of its elements, each a drop, and a node
+chooses the newest trusted proposal at the shallowest level whose bundle holds
+the rest of the path, or else the newest of no trust specified. A person signed
+in is served on the Chaos port, by their scores, and anyone else on the main
+port, in a sandbox, by the node's own. A path for which nothing is chosen, and
+any address ending in a bare `?`, shows the Chaos page, the node's own page
+saying what the path resolves to, and why.
+
+- **Sources:** [HTTP API §13.6](HttpApi.md#136-the-chaos-endpoint),
+  [Known Drops §3.18](KnownDrops.md#318-chaos-proposals),
+  [High-Level Design §3.3.1](HighLevelDesign.md#331-reserved-top-level-paths).
+- **See also:** [Chaos Port](#chaos-port), [Chaos Proposal](#chaos-proposal),
+  [Reserved Names](#reserved-names), [Sandbox](#sandbox), [Score](#score).
+
+### Chaos Port
+
+The node's third port, beside the main port and `/config`'s, which serves only
+`/chaos`, without a sandbox, so that every request a signed-in person's browser
+makes for a Chaos path carries their session and follows their trust. It is
+another origin than the main port's, so its pages can use none of the endpoints
+meant for the node's own pages, and it is one origin for every Chaos site.
+
+- **Sources:** [HTTP API §13.6.4](HttpApi.md#1364-the-chaos-port),
+  [§2](HttpApi.md#2-api-namespaces).
+- **See also:** [`/chaos`](#chaos), [`/config` Port](#config-port),
+  [Main Port](#main-port), [Origin](#origin), [Session](#session).
+
+### Chaos Proposal
+
+A drop at a level of a Chaos path, `chaos:/{path}`, naming a bundle to serve
+there and when it was proposed, signed by its proposer or by no one. A
+proposer's newest proposal at a level replaces their older ones there, and one
+dated too far ahead is passed over.
+
+- **Sources:** [HTTP API §13.6.2](HttpApi.md#1362-proposals),
+  [Known Drops §3.18](KnownDrops.md#318-chaos-proposals).
+- **See also:** [`/chaos`](#chaos), [Drop](#drop),
+  [Signed Bundle](#signed-bundle), [Target String](#target-string).
+
 ### Circular Reputation Farming
 
 An attack on Karma in which one participant's identities reward one another,
@@ -1539,11 +1582,13 @@ and keeps the sender's copies, address books, and read and hidden marks.
 ### Main Port
 
 The port on which a node serves `/data` and its applications, and never
-`/config`.
+`/config`. It serves `/chaos` too, to whoever is not signed in, and sends
+whoever is to the Chaos port.
 
-- **Sources:** [HTTP API §2.3](HttpApi.md#23-local-configuration-interface).
-- **See also:** [Application](#application), [`/config` Port](#config-port),
-  [Origin](#origin).
+- **Sources:** [HTTP API §2.3](HttpApi.md#23-local-configuration-interface),
+  [§13.6.4](HttpApi.md#1364-the-chaos-port).
+- **See also:** [Application](#application), [Chaos Port](#chaos-port),
+  [`/config` Port](#config-port), [Origin](#origin).
 
 ### Matching Bits
 
@@ -2271,7 +2316,8 @@ RECOMMENDED, MAY, and OPTIONAL, which carry the meanings of RFC 2119 and RFC
 ### Reserved Names
 
 The top-level path segments that may never be application names: `data`, `web`,
-`chaos`, and `config`, save that `config` names the administration application.
+`chaos`, and `config`, save that `config` names the administration application,
+and `chaos` the Chaos endpoint.
 
 - **Sources:**
   [High-Level Design §3.3.1](HighLevelDesign.md#331-reserved-top-level-paths),
@@ -2279,8 +2325,8 @@ The top-level path segments that may never be application names: `data`, `web`,
   [Protocol Specification §7.2](ProtocolSpecification.md#72-hosting-and-resolution),
   [HTTP API §2](HttpApi.md#2-api-namespaces).
 - **See also:** [Administration Application](#administration-application),
-  [Application Name](#application-name), [`/config`](#config),
-  [`/data`](#data).
+  [Application Name](#application-name), [`/chaos`](#chaos),
+  [`/config`](#config), [`/data`](#data).
 
 ### Restore
 

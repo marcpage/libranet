@@ -33,6 +33,7 @@ is placed at its target, and links to the documents that define it.
 | [`node:{id}`](#39-what-a-node-says-of-itself) | The versions of what a node says of itself | The node | The node | No | In use |
 | [`karma transaction:{validation}`](#310-karma-transaction-blocks) | Karma's transaction blocks, and transactions put up for them | Anyone | Its builder; each transaction by its sender | No | In use |
 | [`karma validation:{validation}`](#311-karma-validation-blocks) | Karma's validation blocks | Anyone | Its builder; each stake by its staker | No | In use |
+| [`chaos:/{path}`](#318-chaos-proposals) | Proposals of a bundle to serve at that path beneath `/chaos` | Anyone | Its proposer, or no one | No | Specified |
 
 A drop **in use** is placed by the node or a shipped application today. A
 **specified** drop is defined by a specification, but nothing places it yet.
@@ -62,8 +63,13 @@ flowchart TB
         validation["0, then each winning<br/>validation block's id"] --> kt["karma transaction:{validation}"]
         validation --> kv["karma validation:{validation}"]
     end
+    subgraph chaos["The Chaos endpoint"]
+        direction LR
+        cpath["/chaos/a/b/c.html"] --> clevels["chaos:/, chaos:/a, chaos:/a/b,<br/>chaos:/a/b/c.html<br/>proposals at each level (§3.18)"]
+    end
     person ~~~ node
     node ~~~ karma
+    karma ~~~ chaos
 ```
 
 ## 2. Reading the Catalog
@@ -83,6 +89,10 @@ A target string is written with its variable parts in braces:
   ([Karma Ledger §3.1](KarmaLedger.md#31-targets)).
 - **`{year}/{month}/{day}`** is a date in UTC, with two digits for each
   part but the year, such as `2026/10/12`.
+- **`{path}`** is the elements of a path beneath `/chaos/` down to a level,
+  percent-decoded and joined by `/`, such as `recipes/cakes`, and is empty
+  for the root's level, `chaos:/`
+  ([HTTP API §13.6.1](HttpApi.md#1361-levels)).
 
 The node hashes a target string's UTF-8 bytes, as they are, with SHA-256
 ([HTTP API §9.6](HttpApi.md#96-making-a-drop-from-a-page)). A page searches
@@ -649,3 +659,43 @@ are read. The node keeps no library for a client no one is signed in on.
   for any it could not merge whole.
 - **Defined in:** [Music App](../implementation/Music%20App.md) Steps 149
   and 151.
+
+### 3.18 Chaos Proposals
+
+**Target:** `chaos:/{path}`
+
+A proposal names a bundle to serve beneath `/chaos`, at the level its
+target names, and says when it was proposed: `{"bundle", "created"}`. The
+bundle is mounted at the level, and serves each path beneath it that it
+holds. Anyone may propose at any level, signed or not, and the node of each
+viewer chooses among the proposals by the viewer's trust, or, for anyone
+not signed in, by the node's own.
+
+- **Status:** specified, in [Phase 7](../implementation/Phase%207.md) Step
+  155. The node reads it from Step 156, and the Chaos page places it from
+  Step 159.
+- **Placed by** anyone. The Chaos page places one on a local client, with
+  `POST /data/signed` for a person signed in, and with `POST /data/drop`
+  otherwise. The node reads the proposals at each level of a path for every
+  request beneath `/chaos`, and for the report the Chaos page reads.
+- **Signed** by its proposer, or by no one. **Not encrypted**, since the
+  node of every viewer reads it, though the bundle it names may be.
+- **Bits:** placed matching at least as many as the node's search returns,
+  24 by default. The Chaos page searches for 5 seconds.
+- **Reading:** a reader passes over, in order, what is not a proposal,
+  signed or unsigned; a signed one whose signature does not check; one
+  whose bundle is shunned; one dated more than the node allows ahead of its
+  clock, 5 minutes by default; and each of a proposer's proposals at the
+  level but their newest. The newest is the one whose `created` is latest,
+  and of two of the same moment, the one whose drop's id comes first. It
+  never chooses a proposal whose proposer is distrusted. Of the rest, it
+  chooses the newest trusted proposal at the shallowest level whose bundle
+  holds the rest of the path, and when there is none, the newest of no trust
+  specified, in the same way. Nothing is shunned.
+- **Defined in:**
+  [HTTP API §13.6](HttpApi.md#136-the-chaos-endpoint), for the levels
+  (§13.6.1), the proposals (§13.6.2), and choosing among them (§13.6.3).
+- **See also:**
+  [HTTP API §11.7](HttpApi.md#117-trust) for the scores that choose;
+  [Trust Network §4.5](TrustNetwork.md#45-a-nodes-own-scores) for the
+  node's own.
