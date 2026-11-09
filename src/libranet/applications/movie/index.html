@@ -2866,6 +2866,12 @@ async function addById() {
     throw new Error(`That movie's ${INFO_FILE} is not what this page reads.`);
   }
 
+  // Movies and songs are kept apart: a song's info.json names its audio, and
+  // no video.
+  if (!isText(info.video)) {
+    throw new Error(`That bundle's ${INFO_FILE} names no video, so it is a song. A song is added to a library in the music application.`);
+  }
+
   // Movies and series are kept apart: an episode's info.json gives its season.
   if (Object.hasOwn(info, "season")) {
     throw new Error(`That bundle's ${INFO_FILE} gives a season, so it is an episode. An episode is added to a series in the TV application.`);

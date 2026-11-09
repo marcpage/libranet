@@ -216,6 +216,12 @@ add a song to one, or every song the filters show, move each earlier or
 later, and choose, with **Playlists**, the library or a playlist to show.
 A folder added with a playlist open is added to it too.
 
+Share a song with a friend by giving them its id, or a playlist by an id
+made for it, holding each of its songs. Their music application adds a song
+to their library by its id, and imports a playlist as a new playlist of
+theirs, adding to their library each song of it they lack. A song their
+library holds already is not added again.
+
 Play a song, and the songs after it in the list play on, or, with Shuffle
 on, the songs of the list in an order chosen at random. The list stays shown
 while one plays. A song the browser cannot play, such as a `.wma` in Chrome,
@@ -416,7 +422,7 @@ you say so on `/config`.
 | [Phase 11 Plan](docs/implementation/Phase%2011.md) | Bonus features: steps 16 and 50, planned |
 | [Movie App Plan](docs/implementation/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 83, 85–88, and 115, all built |
 | [TV App Plan](docs/implementation/TV%20App.md) | The TV application: steps 144–148, all built |
-| [Music App Plan](docs/implementation/Music%20App.md) | The music application: steps 149–154, steps 149 to 151 built |
+| [Music App Plan](docs/implementation/Music%20App.md) | The music application: steps 149–154, steps 149 to 152 built |
 | [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |
 | [File Layout](docs/implementation/File%20Layout.md) | Every file a node reads or writes, and the settings that move them |
 | [Database Schema](docs/implementation/Database%20Schema.md) | The statistics database's tables, and what reads and writes them |

@@ -74,6 +74,7 @@
   .state { margin: 1rem 0 0; }
   .result { margin: 0.75rem 0 0; }
   .error { color: var(--bad); }
+  .id { user-select: all; word-break: break-all; }
 
   .heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; }
   .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 0; }
@@ -163,11 +164,11 @@
   .filter { display: block; width: 100%; margin: 0 0 0.75rem; }
 
   /* The list of songs: a play icon, the cover, track number, title, artist, album, and duration of each, and its icons:
-     in the library, Add, Edit, and Remove; in a playlist, Earlier, Later, Edit, and Remove from playlist. */
+     in the library, Add, Share, Edit, and Remove; in a playlist, Earlier, Later, Share, Edit, and Remove from playlist. */
   .songs { list-style: none; margin: 0.5rem 0 0; padding: 0; }
 
   .song {
-    --row-icons: 6.25rem;
+    --row-icons: 8.5rem;
     display: grid;
     grid-template-columns: 2.25rem 2rem 2.25rem minmax(0, 3fr) minmax(0, 2fr) minmax(0, 2fr) 3.5rem var(--row-icons);
     align-items: center;
@@ -193,7 +194,7 @@
   .song.playing .row-icons, .song.chosen .row-icons, .song:hover .row-icons, .song:focus-within .row-icons { visibility: visible; }
 
   /* What is shown only in the library, and only in a playlist. */
-  .in-playlist .song { --row-icons: 8.5rem; }
+  .in-playlist .song { --row-icons: 10.5rem; }
   #library:not(.in-playlist) .playlist-only, #library.in-playlist .library-only { display: none; }
 
   @media (max-width: 44rem) {
@@ -289,6 +290,9 @@
     <button type="button" class="icon changes-only" id="add-file" title="Add from a file" aria-label="Add from a file" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 4H5v17h12v-8 M18 3v6 M15 6h6 M8 13h6 M8 17h6"/></svg>
     </button>
+    <button type="button" class="icon changes-only" id="add-id" title="Add by id" aria-label="Add by id" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 8v8 M8 12h8"/></svg>
+    </button>
     <button type="button" class="icon signed-in-only" id="filter-songs" title="Filter" aria-label="Filter" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M16 16l5 5"/></svg>
     </button>
@@ -309,6 +313,9 @@
         <div class="title-row">
           <h2 id="song-title"></h2>
           <div class="icons">
+            <button type="button" class="icon" id="share-playing" title="Share" aria-label="Share" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V3 M8 7l4-4 4 4 M9 10H5v11h14V10h-4"/></svg>
+            </button>
             <button type="button" class="icon changes-only" id="edit-playing" title="Edit" aria-label="Edit" hidden>
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
             </button>
@@ -342,6 +349,9 @@
         <button type="button" class="icon library-only" id="add-shown" title="Add every song shown" aria-label="Add every song shown to a playlist">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h12 M4 12h12 M4 18h7 M18 14v7 M14.5 17.5h7"/></svg>
         </button>
+        <button type="button" class="icon playlist-only" id="share-list" title="Share" aria-label="Share this playlist">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V3 M8 7l4-4 4 4 M9 10H5v11h14V10h-4"/></svg>
+        </button>
         <button type="button" class="icon playlist-only" id="rename-list" title="Rename" aria-label="Rename this playlist">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
         </button>
@@ -374,6 +384,7 @@
   <svg data-icon="edit" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
   <svg data-icon="remove" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16 M9 7V4h6v3 M6 7l1 14h10l1-14 M10 11v6 M14 11v6"/></svg>
   <svg data-icon="add" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14 M5 12h14"/></svg>
+  <svg data-icon="share" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V3 M8 7l4-4 4 4 M9 10H5v11h14V10h-4"/></svg>
   <svg data-icon="earlier" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 19V5 M6 11l6-6 6 6"/></svg>
   <svg data-icon="later" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14 M6 13l6 6 6-6"/></svg>
   <svg data-icon="unlist" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>
@@ -451,8 +462,62 @@
   <ul class="entries" id="list-choices"></ul>
   <div class="buttons">
     <button type="button" class="secondary" data-close>Close</button>
+    <button type="button" class="secondary changes-only" id="import-list" hidden>Import a playlist</button>
     <button type="button" class="changes-only" id="new-list" hidden>New playlist</button>
   </div>
+</dialog>
+
+<dialog id="id-dialog" aria-labelledby="id-heading">
+  <form id="id-form">
+    <h3 id="id-heading">Add a song by its id</h3>
+    <p class="hint">The id a song was shared by. It is added to your library, and to the playlist
+    open, if one is.</p>
+    <div class="fields">
+      <label class="wide">Song id
+        <input id="song-id" required autocomplete="off" spellcheck="false" placeholder="sha256/…">
+      </label>
+    </div>
+    <p class="result" id="id-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Add</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="shared-dialog" aria-labelledby="shared-heading">
+  <h3 id="shared-heading"></h3>
+  <p class="hint" id="shared-hint"></p>
+  <p><code class="id" id="shared-id"></code></p>
+  <div class="toolbar"><button type="button" class="secondary small" data-copy="shared-id">Copy</button></div>
+  <div class="buttons">
+    <button type="button" class="secondary" data-close>Done</button>
+  </div>
+</dialog>
+
+<dialog id="import-dialog" aria-labelledby="import-heading">
+  <form id="import-form">
+    <h3 id="import-heading">Import a playlist</h3>
+    <p class="hint">The id a playlist was shared by. Each of its songs your library does not hold is
+    added to it, and a playlist of yours is made of them all, in the order shared, under the name
+    shared.</p>
+    <div class="fields">
+      <label class="wide">Playlist id
+        <input id="import-id" required autocomplete="off" spellcheck="false" placeholder="sha256/…">
+      </label>
+    </div>
+    <div id="import-apart" hidden>
+      <p class="hint" id="import-apart-note"></p>
+      <div class="fields">
+        <label class="wide">Name <input id="import-name" autocomplete="off"></label>
+      </div>
+    </div>
+    <p class="result" id="import-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Import</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="add-dialog" aria-labelledby="add-heading">
@@ -564,6 +629,11 @@ const FALLBACK_REFUSAL = "Signed in with your fallback password, nothing you kee
 const SONGS = "songs";
 const INDEX = "index";
 const INFO_FILE = "info.json";
+
+// What a playlist shared holds, beside each of its songs' folders, as a
+// collection of movies is shared: its name, and its songs' folders, in its
+// order.
+const PLAYLIST_FILE = "playlist.json";
 
 // What a song's info.json holds, in the order it is written, and what its
 // entry in the index holds: the same, and the path it was imported from, and
@@ -756,6 +826,9 @@ const POSTER_TRIES = 3;
 
 // A content id, plain or carrying the key of a bundle stored encrypted (HttpApi 5).
 const CONTENT_ID = /^[a-z0-9-]+\/[0-9a-f]+(?:\/[A-Za-z0-9:-]+\/[0-9a-f]+)?$/;
+
+// A bundle as written begins with "{", which no zlib stream does (HttpApi 8).
+const OPEN_BRACE = 0x7b;
 
 // How songs are compared as they are listed, and artists and albums as they
 // are offered: ignoring case, and numbers in order.
@@ -1000,6 +1073,20 @@ async function makeBundle(edit) {
   }
 
   return result.value.bundle;
+}
+
+// The content id `text` gives, as it was shared, or as a link reading into
+// a bundle; or null if it gives none.
+function parseId(text) {
+  let id = text.trim();
+  const at = id.indexOf(DATA);
+
+  if (at >= 0) {
+    id = id.slice(at + DATA.length);
+  }
+
+  id = id.replace(/\/+$/, "");
+  return CONTENT_ID.test(id) ? id : null;
 }
 
 // The icon named `name`, from those the page holds.
@@ -1840,8 +1927,9 @@ function renderLibrary() {
   }
 }
 
-// The row showing `song`, with its icons: in the library, Add, Edit, and
-// Remove; and in a playlist, Earlier, Later, Edit, and Remove from playlist.
+// The row showing `song`, with its icons: in the library, Add, Share, Edit,
+// and Remove; and in a playlist, Earlier, Later, Share, Edit, and Remove from
+// playlist.
 function songRow(song) {
   const item = make("li", null, "song");
   const play = make("button", null, "icon play");
@@ -1849,7 +1937,7 @@ function songRow(song) {
   const icons = make("span", null, "row-icons changes-only");
   const cover = make("span", null, "thumb");
   const name = song.title();
-  const removing = (control, action) => perform(control, byId("library-result"), action);
+  const acting = (control, action) => perform(control, byId("library-result"), action);
   item.dataset.folder = song.folder;
   play.type = "button";
   play.addEventListener("click", () => chooseSong(song.folder));
@@ -1860,9 +1948,10 @@ function songRow(song) {
     rowIcon("add", `Add “${name}” to a playlist`, "library-only", () => openAdd([song.folder])),
     rowIcon("earlier", `Move “${name}” earlier`, "earlier playlist-only", () => moveSong(song.folder, -1)),
     rowIcon("later", `Move “${name}” later`, "later playlist-only", () => moveSong(song.folder, 1)),
+    rowIcon("share", `Share “${name}”`, "", (control) => acting(control, () => shareSong(song.folder))),
     rowIcon("edit", `Edit “${name}”`, "", () => openEdit(song.folder)),
-    rowIcon("remove", `Remove “${name}”`, "danger library-only", (control) => removing(control, () => removeSong(song.folder))),
-    rowIcon("unlist", `Remove “${name}” from the playlist`, "danger playlist-only", (control) => removing(control, () => unlistSong(song.folder))),
+    rowIcon("remove", `Remove “${name}”`, "danger library-only", (control) => acting(control, () => removeSong(song.folder))),
+    rowIcon("unlist", `Remove “${name}” from the playlist`, "danger playlist-only", (control) => acting(control, () => unlistSong(song.folder))),
   );
   icons.hidden = !canChange();
   item.append(play, cover, make("span", song.number("track"), "number"), title, make("span", song.artist(), "artist"),
@@ -2189,6 +2278,7 @@ function showPlaying() {
   const cover = song && isText(song.details.cover) ? state.library.url(song.path(song.details.cover)) : "";
   byId("song-title").textContent = song ? song.title() : "Nothing is playing";
   byId("song-from").textContent = song ? song.byline() : (rows.size ? "Choose a song to play." : "");
+  byId("share-playing").hidden = !song;
   byId("edit-playing").hidden = !song || !canChange();
 
   if (frame.dataset.cover !== cover || !frame.firstElementChild) {
@@ -2774,6 +2864,352 @@ async function removeList() {
   await changeLibrary((library, playlists) => (playlists.find(playlist.id) ? { playlists: playlists.without(playlist.id) } : null));
   showList(null);
   return [`Removed the playlist “${playlist.name}”.`, false];
+}
+
+// Sharing a song, and a playlist. Neither shares the index, which says where
+// each song was imported from on the person's machine.
+
+// Shows the id made to share what `heading` names, and what `hint` says of it.
+function showShared(heading, hint, id) {
+  byId("shared-heading").textContent = heading;
+  byId("shared-hint").textContent = hint;
+  byId("shared-id").textContent = id;
+  byId("shared-dialog").showModal();
+}
+
+// A plain bundle of what the folder of the song in `folder` holds, as an
+// episode is shared: the song's own bundle again, unless it was edited.
+async function shareSong(folder) {
+  const library = state.library;
+  const song = library.songs.get(folder);
+
+  if (!song) {
+    return null;
+  }
+
+  markChosen(folder);
+  const listing = await readEntry(library.bundle, `${SONGS}/${folder}`);
+  const names = isObject(listing) && isObject(listing.entries) ? Object.keys(listing.entries) : [];
+
+  if (names.length === 0) {
+    throw new Error("This song's folder holds nothing to share.");
+  }
+
+  const add = Object.fromEntries(names.map((name) => [name, { from: library.bundle, path: song.path(name) }]));
+  showShared(`Share “${song.title()}”`, "Whoever is given this id can add this song to a library of their own, and play it there.",
+    await makeBundle({ add }));
+  return null;
+}
+
+// An encrypted bundle of the playlist shown, as a collection is shared: its
+// playlist.json, naming it and its songs' folders in its order, and each of
+// those folders, as the library holds it. Only whoever is given its id can
+// read it.
+async function shareList() {
+  const playlist = shownPlaylist();
+  const library = state.library;
+
+  if (!playlist) {
+    return null;
+  }
+
+  const folders = playlist.songsOf(library).map((song) => song.folder);
+
+  if (folders.length === 0) {
+    throw new Error("This playlist holds no songs yet, so there is nothing to share.");
+  }
+
+  const add = { [PLAYLIST_FILE]: { text: jsonText(["name", "songs"], { name: playlist.name, songs: folders }) } };
+
+  for (const folder of folders) {
+    add[folder] = { from: library.bundle, path: `${SONGS}/${folder}` };
+  }
+
+  showShared(`Share “${playlist.name}”`,
+    `Whoever is given this id can import this playlist, with its ${plural(folders.length, "song", "songs")}, into a library of their own. No one else can read it.`,
+    await makeBundle({ encrypted: true, add }));
+  return null;
+}
+
+// Adding a song by its id.
+
+async function inflated(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+// The JSON of the plain bundle `id`, read as it is stored (HttpApi 5.1),
+// rather than into, and inflated if it is stored compressed (HttpApi 8).
+async function storedJson(id) {
+  for (let waits = 0; ; waits += 1) {
+    const response = await fetch(`${DATA}${id}`, { cache: "default" });
+
+    if (response.status === 503 && waits < MAX_WAITS) {
+      await sleep(retryAfter(response.headers));
+      continue;
+    }
+
+    if (!response.ok) {
+      throw new Error(`The node answered ${response.status}.`);
+    }
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    return JSON.parse(new TextDecoder().decode(bytes[0] === OPEN_BRACE ? bytes : await inflated(bytes)));
+  }
+}
+
+// The file bundle of the audio named `name` in the song bundle `song`, as
+// the import that first stored it gave it, so that a song is known by its
+// file however it came: the song's entry for it, stored whole as a file
+// bundle of its own (HttpApi 12.3), written as the node wrote it then. Or
+// undefined if it cannot be known, as of a bundle stored encrypted, which is
+// read only into.
+async function fileOf(song, name) {
+  if (song.split("/").length !== 2) {
+    return undefined;
+  }
+
+  try {
+    const bundle = await storedJson(song);
+    const entry = isObject(bundle) && isObject(bundle.contents) ? bundle.contents[name] : null;
+
+    if (!isObject(entry) || !Array.isArray(entry.contents)) {
+      return undefined;
+    }
+
+    const file = await makeBundle({ bundle: entry });
+    return CONTENT_ID.test(file) ? file : undefined;
+  } catch (error) {
+    console.warn(`The audio of ${song} is not known by its file: ${error.message}`);
+    return undefined;
+  }
+}
+
+// Adds the song whose id is given to the library, and to the playlist open,
+// if one is. One the library holds already, by its folder or by its audio's
+// file, is not added again, and the page says so: it is added to the
+// playlist open alone, if that does not hold it.
+async function addById() {
+  const id = parseId(byId("song-id").value);
+  const into = state.list;
+
+  if (!id) {
+    throw new Error("That is not a content id, such as sha256/….");
+  }
+
+  let info;
+
+  try {
+    info = await readEntry(id, INFO_FILE);
+  } catch (error) {
+    if (error.status === 404) {
+      throw new Error(`That bundle holds no ${INFO_FILE}, so it is not a song. A playlist's id is imported from Playlists.`);
+    }
+
+    throw error;
+  }
+
+  if (!isObject(info)) {
+    throw new Error(`That song's ${INFO_FILE} is not what this page reads.`);
+  }
+
+  // Each application refuses the others': a movie's info.json, and an
+  // episode's, names its video, and no audio.
+  if (!isText(info.audio)) {
+    throw new Error(`That bundle's ${INFO_FILE} names no audio, so it is not a song: it is a movie, or an episode. A movie is added in the movie application, and an episode in the TV application.`);
+  }
+
+  const folder = folderOf(id);
+  const file = await fileOf(id, info.audio);
+  const song = new Song(folder, defined({ ...info, source: undefined, file }));
+  let shown = folder;
+  let said = "";
+
+  await changeLibrary((library, playlists) => {
+    const held = library.songs.get(folder) || (file ? library.holdingFile(file) : null);
+    const playlist = into === null ? null : playlists.find(into);
+    const listed = playlist ? playlist.adding([(held || song).folder]) : null;
+    const grown = listed && listed.songs.length > playlist.songs.length ? playlists.with(listed) : undefined;
+    shown = (held || song).folder;
+
+    if (held && grown) {
+      said = `“${held.title()}” is in your library already, so it was added to “${playlist.name}” alone.`;
+      return { playlists: grown };
+    }
+
+    if (held) {
+      said = playlist ? `“${held.title()}” is in your library, and in “${playlist.name}”, already, so it was not added.`
+        : `“${held.title()}” is in your library already, so it was not added.`;
+      return null;
+    }
+
+    said = playlist ? `Added “${song.title()}” to your library, and to “${playlist.name}”.` : `Added “${song.title()}” to your library.`;
+    return { add: { [`${SONGS}/${folder}`]: { from: id, path: "" } }, set: new Map([[folder, song]]), playlists: grown };
+  });
+
+  byId("id-dialog").close();
+  show(byId("library-result"), said);
+  focusSong(shown);
+  return null;
+}
+
+// Importing a playlist by its id.
+
+// A playlist shared: the bundle holding it, the name it was shared under,
+// and its songs' folders, in its order, each once.
+class SharedPlaylist {
+  constructor(bundle, name, folders) {
+    this.bundle = bundle;
+    this.name = name;
+    this.folders = folders;
+  }
+
+  // The playlist the bundle `bundle` holds, as its playlist.json gives it.
+  static async read(bundle) {
+    let file;
+
+    try {
+      file = await readEntry(bundle, PLAYLIST_FILE);
+    } catch (error) {
+      if (error.status === 404) {
+        throw new Error(`That bundle holds no ${PLAYLIST_FILE}, so it is not a playlist. A song's id is added with Add by id, and a series' is imported in the TV application.`);
+      }
+
+      throw error;
+    }
+
+    // Each application refuses the others': a collection of movies holds a
+    // playlist.json too, ordering its movies.
+    if (isObject(file) && !Object.hasOwn(file, "songs") && Array.isArray(file.order)) {
+      throw new Error(`That bundle's ${PLAYLIST_FILE} lists movies, not songs, so it is a collection. A collection is imported in the movie application.`);
+    }
+
+    if (!isObject(file) || !Array.isArray(file.songs)) {
+      throw new Error(`That bundle's ${PLAYLIST_FILE} is not a playlist this page reads.`);
+    }
+
+    const name = isText(file.name) && file.name.trim() ? file.name.trim() : "Untitled";
+    const folders = file.songs.filter((folder) => typeof folder === "string" && SONG_FOLDER.test(folder));
+    return new SharedPlaylist(bundle, name, [...new Set(folders)]);
+  }
+
+  // What the info.json of each song in `folders` of it gives, by folder, of
+  // those that could be read, and are songs.
+  async details(folders) {
+    const infos = await Promise.all(folders.map((folder) => readEntry(this.bundle, `${folder}/${INFO_FILE}`).catch((error) => {
+      console.warn(`The ${INFO_FILE} of ${folder} could not be read: ${error.message}`);
+      return null;
+    })));
+    return new Map(folders.map((folder, at) => [folder, infos[at]]).filter(([, info]) => isObject(info) && isText(info.audio)));
+  }
+}
+
+// The playlist whose id was read, once it is, a SharedPlaylist.
+let importing = null;
+
+function openImport() {
+  importing = null;
+  byId("import-form").reset();
+  byId("import-apart").hidden = true;
+  show(byId("import-result"), "");
+  byId("lists-dialog").close();
+  byId("import-dialog").showModal();
+}
+
+// Asks for a name for the playlist imported apart from `held`, a playlist
+// of the name it was to be imported under, suggesting the first not held of
+// that name followed by a number.
+function askApart(held) {
+  const field = byId("import-name");
+  let count = 2;
+
+  while (state.playlists.named(`${held.name} (${count})`)) {
+    count += 1;
+  }
+
+  byId("import-apart").hidden = false;
+  byId("import-apart-note").textContent = `You have a playlist named “${held.name}” already. Give the one imported a name of its own.`;
+  field.value = `${held.name} (${count})`;
+  field.select();
+  field.focus();
+}
+
+// Imports the playlist whose id is given: each of its songs the library does
+// not hold, by its folder, is added to it, as its info.json gives it, and a
+// playlist is made of every song, in the order shared, under the name
+// shared, or, if a playlist of that name is held, a name the person gives it
+// apart. A playlist imported is made new, not merged into one of its name.
+// Says how many songs the library held already.
+async function importPlaylist() {
+  const bundle = parseId(byId("import-id").value);
+
+  if (!bundle) {
+    throw new Error("That is not a content id, such as sha256/….");
+  }
+
+  if (!importing || importing.bundle !== bundle) {
+    byId("import-apart").hidden = true;
+    importing = await SharedPlaylist.read(bundle);
+  }
+
+  const shared = importing;
+  const name = byId("import-apart").hidden ? shared.name : byId("import-name").value.trim();
+
+  if (!name) {
+    throw new Error("Give the playlist a name.");
+  }
+
+  if (state.playlists.named(name)) {
+    askApart(state.playlists.named(name));
+    return null;
+  }
+
+  const missing = shared.folders.filter((folder) => !state.library.songs.has(folder));
+  show(byId("import-result"), missing.length ? `Reading ${plural(missing.length, "song", "songs")}…` : "");
+  const details = await shared.details(missing);
+  show(byId("import-result"), `Importing “${name}”…`);
+  let outcome = null;
+
+  await changeLibrary((library, playlists) => {
+    const named = playlists.named(name);
+
+    if (named) {
+      outcome = { apart: named };
+      return null;
+    }
+
+    const fresh = shared.folders.filter((folder) => !library.songs.has(folder) && details.has(folder));
+    const taken = shared.folders.filter((folder) => library.songs.has(folder) || details.has(folder));
+    const made = Playlist.made(name, taken);
+    const songs = fresh.map((folder) => new Song(folder, defined({ ...details.get(folder), source: undefined, file: undefined })));
+    outcome = { made, held: taken.length - fresh.length, unread: shared.folders.length - taken.length };
+    return {
+      add: Object.fromEntries(fresh.map((folder) => [`${SONGS}/${folder}`, { from: shared.bundle, path: folder }])),
+      set: new Map(songs.map((song) => [song.folder, song])),
+      playlists: playlists.with(made),
+    };
+  });
+
+  if (outcome.apart) {
+    askApart(outcome.apart);
+    return null;
+  }
+
+  const { made, held, unread } = outcome;
+  const notes = [`Imported “${made.name}”, holding ${plural(made.songs.length, "song", "songs")}.`];
+
+  if (held) {
+    notes.push(`${plural(held, "song was", "songs were")} in your library already.`);
+  }
+
+  if (unread) {
+    notes.push(`${plural(unread, "song", "songs")} could not be read, so ${unread === 1 ? "was" : "were"} not taken.`);
+  }
+
+  byId("import-dialog").close();
+  showList(made.id);
+  show(byId("library-result"), notes.join(" "));
+  return null;
 }
 
 // Reading a song's tags.
@@ -4633,6 +5069,22 @@ for (const control of document.querySelectorAll("[data-close]")) {
   control.addEventListener("click", () => control.closest("dialog").close());
 }
 
+for (const control of document.querySelectorAll("[data-copy]")) {
+  control.addEventListener("click", async () => {
+    const text = byId(control.dataset.copy).textContent;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      control.textContent = "Copied";
+    } catch (error) {
+      window.getSelection().selectAllChildren(byId(control.dataset.copy));
+      control.textContent = "Selected: copy it";
+    }
+
+    setTimeout(() => { control.textContent = "Copy"; }, 2000);
+  });
+}
+
 byId("show-keys").addEventListener("click", () => byId("keys-dialog").showModal());
 byId("add-file").addEventListener("click", () => {
   showFolders();
@@ -4643,7 +5095,13 @@ byId("found-back").addEventListener("click", () => {
   showFolders();
   byId("folder-all").focus();
 });
+byId("add-id").addEventListener("click", () => {
+  byId("id-form").reset();
+  show(byId("id-result"), "");
+  byId("id-dialog").showModal();
+});
 byId("choose-list").addEventListener("click", showLists);
+byId("import-list").addEventListener("click", openImport);
 byId("new-list").addEventListener("click", () => {
   byId("lists-dialog").close();
   openNaming({ id: null, open: true });
@@ -4684,7 +5142,11 @@ onClick("folder-all", "folder-state", findEvery);
 onSubmit("found-form", "found-result", addFound);
 onSubmit("song-form", "song-result", saveSong);
 onSubmit("name-form", "name-result", saveName);
+onSubmit("id-form", "id-result", addById);
+onSubmit("import-form", "import-result", importPlaylist);
 onClick("remove-list", "library-result", removeList);
+onClick("share-list", "library-result", shareList);
+onClick("share-playing", "player-result", () => shareSong(state.current));
 
 start();
 </script>
