@@ -123,6 +123,17 @@ def host_name(authority: str) -> str:
     return authority.partition(":")[0]
 
 
+def origin_on_port(request: Request, port: int, *, unnamed: str) -> str:
+    """The origin of this node's ``port``, at the host ``request``'s ``Host`` header names.
+
+    It is at ``unnamed`` if the header names none. Each of this node's ports
+    is served over HTTP.
+    """
+    name = host_name(request.header(HOST_HEADER) or "") or unnamed
+    host = f"[{name}]" if ":" in name else name
+    return f"http://{host}:{port}"
+
+
 def _names_address(authority: str, address: str) -> bool:
     """Whether ``authority`` names the IP address ``address``, whatever its port."""
     named = parsed_address(host_name(authority))

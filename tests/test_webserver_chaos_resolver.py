@@ -706,6 +706,20 @@ def test_a_drop_found_and_not_held_is_asked_for_and_pending_once_the_wait_is_up(
     assert drop.fields() in chaos.recorder.payloads(EventType.DATA_NOT_FOUND)
 
 
+def test_a_deadline_given_is_waited_until_and_no_longer(
+    chaos: Chaos, resolver: ChaosResolver
+) -> None:
+    drop = chaos.propose(ROOT, bundle("elsewhere"), stored=False)
+    started = monotonic()
+
+    resolution = resolver.resolve(
+        asking("cake.html"), ChaosPath.parse("cake.html"), deadline=started + WAIT_SECONDS / 3
+    )
+
+    assert WAIT_SECONDS / 3 <= monotonic() - started < WAIT_SECONDS
+    assert found(resolution, drop).passed_over == PassedOver.PENDING
+
+
 def test_a_drop_arriving_within_the_wait_is_read(chaos: Chaos, resolver: ChaosResolver) -> None:
     late = bundle("late")
     drop = chaos.propose(ROOT, late, stored=False)

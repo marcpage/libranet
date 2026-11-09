@@ -32,11 +32,14 @@ arrived on, and each connection is reported closed when its thread ends
 connection is closed after the response once a peer on it is no longer kept
 (Phase 6 Step 142).
 
-A node has two of these servers, with routes of their own. The main port's,
-from :func:`build_router`, serves ``/data`` and the applications, and never
-``/config``. ``/config``'s port's, from :func:`build_config_router`, serves
-``/config`` and nothing else, so that no application's page shares its
-origin (HttpApi §2.3, Phase 2 Step 58).
+A node has three of these servers, with routes of their own. The main
+port's, from :func:`build_router`, serves ``/data``, the applications, and
+``/chaos``, and never ``/config``. ``/config``'s port's, from
+:func:`build_config_router`, serves ``/config`` and nothing else, so that no
+application's page shares its origin (HttpApi §2.3, Phase 2 Step 58). The
+Chaos port's, whose routes :func:`build_router` adds too, serves ``/chaos``
+and nothing else, so that no Chaos site shares the origin of the node's own
+pages (HttpApi §13.6.4, Phase 7 Step 157).
 """
 
 # pylint: disable=too-many-lines
@@ -65,6 +68,7 @@ from libranet.config.models import (
     DEFAULT_READ_AHEAD_PARTS,
     IDLE_TIMEOUT_SECONDS,
     LOOPBACK_FOR_ANY,
+    ChaosConfig,
     KarmaConfig,
     StorageConfig,
 )
@@ -107,6 +111,9 @@ from libranet.webserver.bundle_edits import (
 )
 from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
+from libranet.webserver.chaos_handler import CHAOS_METHODS, CHAOS_PATTERN, ChaosHandler, ChaosPort
+from libranet.webserver.chaos_levels import ChaosLevels
+from libranet.webserver.chaos_resolver import ChaosResolver, ChaosScores
 from libranet.webserver.config_auth import ConfigAuthGuard
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_guard import (
@@ -212,6 +219,8 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     max_update_layers: int = 0,
     costly_work: CostlyWork | None = None,
     peers: PeerTrust | None = None,
+    chaos: ChaosConfig | None = None,
+    chaos_port: ChaosPort | None = None,
 ) -> Router:
     """The main port's routes, serving the configured source of truth, derived lists, and apps.
 
@@ -286,7 +295,12 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     ``/data/karma/payments`` and ``/data/karma/stakes`` pay and stake as
     whoever is signed in, for local clients alone, a payment's nonce searched
     for as a drop's is, in its turns, and publish each for the Karma module
-    (Phase 6 Step 137).
+    (Phase 6 Step 137). Given ``node``, ``peers``, and ``chaos_port``,
+    ``/chaos`` serves Chaos sites, resolved as ``chaos`` says, its defaults
+    unless given: a request carrying a session is sent to ``chaos_port``, to
+    whose router the routes serving it there are added, and any other is
+    resolved by the node's own scores, as ``peers`` builds them, and served
+    in a sandbox (Phase 7 Step 157).
 
     Each of those but reading into a bundle and checking signed content is
     served only to this node's own pages, as a request's ``Referer`` names
@@ -475,6 +489,25 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
         router.add("GET", KARMA_GENERATIONS_PATH, karma.generations)
         router.add("GET", KARMA_HEAD_PATH, karma.head)
         router.add("POST", KARMA_HEAD_PATH, KarmaHeadTold(publish))
+
+        if peers is not None and chaos_port is not None:
+            settings = ChaosConfig() if chaos is None else chaos
+            resolver = ChaosResolver(
+                ChaosLevels(search, paths.parts, settings),
+                paths,
+                ChaosScores(sessions, builds, node.node_id, peers.builds),
+                settings,
+            )
+
+            for method in CHAOS_METHODS:
+                router.add(
+                    method,
+                    CHAOS_PATTERN,
+                    ChaosHandler(resolver, paths, sessions, chaos_port.number),
+                )
+                chaos_port.router.add(
+                    method, CHAOS_PATTERN, ChaosHandler(resolver, paths, sessions)
+                )
 
     router.add("GET", SEARCH_PATTERN, search)
     router.add(
@@ -953,6 +986,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             body=body,
             connection=self.inbound,
             query=dict(parse_qsl(target.query)),
+            query_text=target.query,
         )
 
         try:

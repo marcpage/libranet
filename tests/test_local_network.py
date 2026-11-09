@@ -26,6 +26,7 @@ from libranet.local_network import (
     NodePlace,
     NodeProcess,
     RunningNetwork,
+    chaos_port_offset,
     choose_keys,
     config_port_offset,
     parse_args,
@@ -138,7 +139,7 @@ def test_held_keys_are_kept_whatever_their_digit() -> None:
 
 
 def test_a_node_config_keeps_everything_under_its_directory(tmp_path: Path) -> None:
-    place = NodePlace(2, tmp_path / "node-02", 18402, 18502)
+    place = NodePlace(2, tmp_path / "node-02", 18402, 18502, 18452)
 
     assert place.endpoint == "http://127.0.0.1:18402"
     assert place.config.network.listen_address == "::"
@@ -167,6 +168,31 @@ def test_the_base_port_leaves_room_for_the_config_ports_too() -> None:
 
     with raises(SystemExit):
         parse_args(["--base-port", str(65536 - 40 - 99)])
+
+
+@mark.parametrize(
+    "count, offset", [(2, 50), (40, 50), (50, 50), (51, 250), (100, 250), (101, 350), (150, 350)]
+)
+def test_chaos_ports_take_no_nodes_port_nor_any_config_port(
+    tmp_path: Path, count: int, offset: int
+) -> None:
+    network = LocalNetwork.create(tmp_path, count, 18400)
+    ports = {node.place.port for node in network.nodes}
+    config_ports = {node.place.config_port for node in network.nodes}
+    chaos_ports = [node.place.chaos_port for node in network.nodes]
+
+    assert chaos_port_offset(count) == offset
+    assert chaos_ports == [port + offset for port in sorted(ports)]
+    assert not (ports | config_ports) & set(chaos_ports)
+    assert network.nodes[0].place.config.network.chaos_port == 18400 + offset
+
+
+def test_the_base_port_leaves_room_for_the_chaos_ports_too() -> None:
+    # 60 nodes have their Chaos ports 250 above, past their /config ports.
+    assert parse_args(["--count", "60", "--base-port", str(65536 - 60 - 250)]).count == 60
+
+    with raises(SystemExit):
+        parse_args(["--count", "60", "--base-port", str(65536 - 60 - 249)])
 
 
 def test_the_written_config_is_the_one_the_node_reads(tmp_path: Path) -> None:
@@ -214,7 +240,7 @@ def test_nodes_listen_at_and_are_listed_at_the_host_given(tmp_path: Path) -> Non
 
 
 def test_an_ipv6_host_is_bracketed_in_the_endpoint(tmp_path: Path) -> None:
-    place = NodePlace(2, tmp_path / "node-02", 18402, 18502, host="fd00::10")
+    place = NodePlace(2, tmp_path / "node-02", 18402, 18502, 18452, host="fd00::10")
 
     assert place.endpoint == "http://[fd00::10]:18402"
     assert place.config.network.listen_address == "fd00::10"

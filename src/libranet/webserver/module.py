@@ -2,13 +2,19 @@
 
 The HTTP servers run on background threads for the module's lifetime, while
 :meth:`~libranet.messaging.module.ModuleBase.run` keeps the receive loop (and
-so shutdown handling) on the main thread. There are two: one on the main
+so shutdown handling) on the main thread. There are three: one on the main
 port, for peers and applications, and one for ``/config`` alone, on a port
 of its own at ``127.0.0.1``, so that no application's page shares its origin
 (HttpApi §2.3, Phase 2 Step 58). That port is ``network.config_port`` if it
 is set, and otherwise the first free of the main port plus 100, plus 200,
-and so on, so nodes on one machine have theirs where they can be told.
-Both make people's identities, and the costly work that takes waits in turns
+and so on, so nodes on one machine have theirs where they can be told. The
+third serves ``/chaos`` alone, to whoever is signed in, on the Chaos port,
+listening where the main port does, so that no Chaos site shares the origin
+of the node's own pages (HttpApi §13.6.4, Phase 7 Step 157). It is
+``network.chaos_port`` if that is set, and otherwise the first free of the
+main port plus 50, plus 150, and so on, none of which ``/config`` takes.
+The main port and ``/config``'s make people's identities, and the costly
+work that takes waits in turns
 they share (:class:`~libranet.webserver.costly_work.CostlyWork`), so the node
 searches for one drop, and derives one key, at a time, whichever port asks
 (Phase 4 Step 91).
@@ -77,9 +83,11 @@ from libranet.webserver.server import (
     build_own_trust,
     build_router,
 )
+from libranet.webserver.chaos_handler import ChaosPort
+from libranet.webserver.router import Router
 
 
-class WebServerModule(ModuleBase):
+class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     """Serves the node's HTTP API while the module runs."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
@@ -117,6 +125,7 @@ class WebServerModule(ModuleBase):
         self._false_builders: FalseBuilders | None = None
         self._server: LibranetHTTPServer | None = None
         self._config_server: LibranetHTTPServer | None = None
+        self._chaos_server: LibranetHTTPServer | None = None
         self._threads: tuple[Thread, ...] = ()
         self._route(
             {
@@ -144,14 +153,20 @@ class WebServerModule(ModuleBase):
         """Where ``/config``'s server is listening, once started."""
         return _address(self._config_server)
 
+    @property
+    def chaos_address(self) -> tuple[str, int] | None:
+        """Where the Chaos port's server is listening, once started."""
+        return _address(self._chaos_server)
+
     def on_start(self) -> None:
         """Bind the listeners and start serving.
 
         A bind failure, an unusable node key, a content archive that cannot
         be opened, or shipped applications that cannot be read or built crash
-        the module. ``/config``'s port is bound first, so the main port can
-        send its pages there; it is passed over for the next only if
-        ``network.config_port`` is not set. The archives stay open for as
+        the module. ``/config``'s port is bound first, and then the Chaos
+        port, so the main port can send requests to each; each is passed over
+        for the next only if its setting, ``network.config_port`` or
+        ``network.chaos_port``, is not set. The archives stay open for as
         long as the process runs. An application registry that cannot be read
         does not: requests that need it are answered ``500`` until it is
         fixed, and the rest of the node's API is served meanwhile.
@@ -221,6 +236,16 @@ class WebServerModule(ModuleBase):
             self.logger,
             signer,
         )
+        try:
+            # Its routes are added as the main port's are built, since the two
+            # share who is signed in.
+            chaos_server = LibranetHTTPServer.first_free(
+                network.listen_address, network.chaos_ports(), Router(), self.logger, signer
+            )
+
+        except BaseException:
+            config_server.server_close()
+            raise
 
         try:
             server = LibranetHTTPServer(
@@ -243,6 +268,8 @@ class WebServerModule(ModuleBase):
                     max_update_layers=self._config.backup.max_update_layers,
                     costly_work=costly_work,
                     peers=peers,
+                    chaos=self._config.chaos,
+                    chaos_port=ChaosPort(chaos_server.server_port, chaos_server.router),
                 ),
                 self.logger,
                 signer,
@@ -251,25 +278,30 @@ class WebServerModule(ModuleBase):
 
         except BaseException:
             config_server.server_close()
+            chaos_server.server_close()
             raise
 
         self._server = server
         self._config_server = config_server
+        self._chaos_server = chaos_server
         self._peers = peers
         self._false_builders = FalseBuilders(trust, retry_seconds=network.retry_after_seconds)
         peers.start()
         self._threads = (
             Thread(target=server.serve_forever, name=f"{self.name}-http", daemon=True),
             Thread(target=config_server.serve_forever, name=f"{self.name}-config", daemon=True),
+            Thread(target=chaos_server.serve_forever, name=f"{self.name}-chaos", daemon=True),
         )
 
         for thread in self._threads:
             thread.start()
 
         self.logger.info(
-            "Web server listening on %s:%s, and /config at http://%s:%s/config/",
+            "Web server listening on %s:%s, Chaos sites on port %s, "
+            "and /config at http://%s:%s/config/",
             server.server_name,
             server.server_port,
+            chaos_server.server_port,
             CONFIG_LISTEN_ADDRESS,
             config_server.server_port,
         )
@@ -292,7 +324,7 @@ class WebServerModule(ModuleBase):
             self._peers.close()
             self._peers = None
 
-        for server in (self._server, self._config_server):
+        for server in (self._server, self._config_server, self._chaos_server):
             if server is not None:
                 server.shutdown()
                 server.server_close()
@@ -305,6 +337,7 @@ class WebServerModule(ModuleBase):
 
         self._server = None
         self._config_server = None
+        self._chaos_server = None
         self._threads = ()
 
     def _on_app_path_resolved(self, message: Message) -> None:
