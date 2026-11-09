@@ -620,9 +620,9 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 152 — Sharing a Song or a Playlist
+## Step 152 — Sharing a Song or a Playlist ✅
 
-**Issue:** to be made (§4), from #479. **Depends on:** Steps 149, 151.
+**Issue:** #642, from #479. **Depends on:** Steps 149, 151.
 
 Settled with the user:
 
@@ -663,6 +663,64 @@ node: a song shared and added by id; a playlist shared and imported, with
 some of its songs held already; a name held, named apart; and a movie and
 an episode refused by the music page, and a song by the movie and TV
 pages.
+
+Built, as one change set. It was checked on a node of its own in headless
+Chromium, signed in as two people, with songs made by `ffmpeg` and kept out
+of the repository: three songs added by one person, made a playlist, one of
+them edited, and each shared from its row, and one from the player; each
+song shared as a plain bundle holding its audio and its `info.json`, with
+neither `source` nor `file`, the one not edited as the bundle it was added
+as; the playlist shared encrypted, holding its `playlist.json` and each
+song's folder, and no index. Then, by the other person, holding two of the
+songs already, from their own files: a movie, an episode, a playlist, and
+what is not an id refused by Add by id; a collection of movies and a song
+refused by Import a playlist; the playlist imported, two of its songs held
+already and the third added from its `info.json`, shown in the order
+shared; imported again, its name held, named apart as suggested, every song
+held; a song held by its folder, by its folder and in the playlist open,
+and, edited, by its file alone, each not added again; one held added to a
+new playlist open alone; and one not held added to the library and to the
+playlist open, known by the sharer's file, kept once the page was reloaded,
+and played. And a song refused by the movie and TV pages' Add by id, each
+still refusing the other's. Safari is yet to be checked.
+
+Calls made while building it, not yet reviewed:
+
+- **Where each is.** A song's Share is in its row, beside Edit, in the
+  library and in a playlist alike, and in the player, for the song playing.
+  A playlist's Share is beside its heading, with Rename and Remove
+  playlist. Add by id is an icon in the header, beside Add from a file, and
+  Import a playlist a button of the chooser, beside New playlist.
+- **A song's file, read from its bundle.** A song shared names its audio's
+  file bundle nowhere, as `file` is kept in the index alone. Add by id reads
+  the song's plain bundle as it is stored (HttpApi §5.1, §8), and has the
+  node store the bundle's entry for its audio as a file bundle of its own
+  (HttpApi §12.3), which the node writes as the import that first stored
+  the file wrote it, at the same id. That id is the song's `file`. A song
+  given by an id carrying a key is known by its folder alone.
+- **A playlist's songs are known by their folders alone**, since they are
+  in a bundle stored encrypted, which is read only into. A song imported
+  keeps no `file`, so the same file added later from a folder is added
+  again, as another song.
+- **A song held, with a playlist open**, is added to the playlist alone, or
+  said to be in it already, as one added from a file is.
+- **No `source`** for a song added by id or imported. Where it was on the
+  sharer's machine is not shared, and it was never on the person's own.
+- **Naming apart** suggests the name held followed by the first number, in
+  brackets, of no playlist held, as `Road (2)`.
+- **Songs that cannot be read.** A song of a playlist imported whose
+  `info.json` could not be read, or names no audio, is not taken, nor named
+  in the playlist made, and the page says how many were not.
+- **A playlist holding no songs is not shared.** The page says so.
+- **What is refused as what.** The music page refuses as a movie or an
+  episode an `info.json` naming no audio, and as a collection of movies a
+  `playlist.json` with `order` and no `songs`. The movie and TV pages refuse
+  as a song an `info.json` naming no video, before what they refused
+  already. The TV page refused a song already, as a movie, since its
+  `info.json` gives no season, and now says it is a song. The movie page's
+  Import a collection refuses a playlist of songs already, as its
+  `playlist.json` gives no `order`, and the TV page's Import a series one
+  that holds no `series.json`; neither is changed.
 
 ---
 
@@ -812,7 +870,7 @@ step, and this table then given their numbers.
 | *to be made* | The music application: a library, added from a file or a folder, played, and filtered | 149 |
 | #640 | Reading a song's tags on the page | 150 |
 | #641 | Playlists | 151 |
-| *to be made* | Sharing a song or a playlist | 152 |
+| #642 | Sharing a song or a playlist | 152 |
 | *to be made* | Keeping a playlist offline | 153 |
 | #644 | A file's content type, given by its bundle | 154 |
 
