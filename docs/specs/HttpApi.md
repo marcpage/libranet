@@ -56,11 +56,18 @@ chaos
 config
 ```
 
-The one use of a reserved name is `config` for the administration
-application itself (§2.3), whichever bundle or shipped resources a node
-serves it from.
+Two reserved names are in use, though neither as an application's name:
+`config` for the administration application itself (§2.3), whichever bundle
+or shipped resources a node serves it from, and `chaos` for the Chaos
+endpoint (§13.6), where anyone may propose a bundle for any path. `web` is
+reserved for the future.
 
 The root path `/` is itself a special application mapping.
+
+A node serves on three ports. Its main port serves `/data` and the
+applications (§13), `/config`'s port serves `/config` alone (§2.3), and the
+Chaos port serves `/chaos` alone, to whoever is signed in (§13.6). The main
+port serves `/chaos` too, to anyone else.
 
 ### 2.1 Programmatic API
 
@@ -79,8 +86,9 @@ content (§5.5), making a drop (§9.6), what the node knows of its peers
 person (§11.5), opening an encrypted block (§11.6), the trust of whoever is
 signed in (§11.7), reading into a bundle (§12.1), the folders and imports
 (§12.2), making bundles (§12.3), keeping content offline (§12.4), an
-application's store (§13.3), and the list of applications (§13.4). Each but
-reading into a bundle requires a `Referer` naming a page of the node (§2.5).
+application's store (§13.3), the list of applications (§13.4), and the
+report of a Chaos path (§13.6.7). Each but reading into a bundle requires a
+`Referer` naming a page of the node (§2.5).
 A few serve only clients on the node's own machine (§2.4).
 
 ### 2.2 Web Applications
@@ -140,19 +148,26 @@ flowchart LR
     browsers["Browsers"] --> root
     browsers --> apps
     browsers --> data
+    browsers --> chaos
     local["A client on the node's machine,<br/>holding the /config credential"] --> cfgapp
     local --> cfgapi
+    signed["A browser on the node's machine,<br/>with a person signed in"] --> chaossites
     subgraph node["A Libranet node"]
         subgraph main["Main port"]
             data["/data/…<br/>programmatic API"]
             root["/ root application"]
             apps["/{app-name}/…<br/>directory-bundle applications"]
+            chaos["/chaos/…<br/>Chaos sites, in a sandbox,<br/>and the Chaos page"]
         end
         subgraph cfg["/config's port, at a loopback address"]
             cfgapp["/config/…<br/>administration application"]
             cfgapi["/config/api/…<br/>administration endpoints"]
         end
+        subgraph chaosport["The Chaos port"]
+            chaossites["/chaos/…<br/>Chaos sites, for whoever is signed in"]
+        end
     end
+    chaos -.->|"302, given a session"| chaossites
 ```
 
 On its main port, a node MUST NOT challenge for, check, or capture the
@@ -462,7 +477,9 @@ request.
 
 These checks keep other sites out. They keep out an application the
 operator has not trusted as well, since it is served in a sandbox, and a
-browser marks its requests as another site's (§13.5). They do not keep
+browser marks its requests as another site's (§13.5). They keep out every
+Chaos site too, served in that sandbox on the main port, or from the Chaos
+port, which is another origin (§13.6.4). They do not keep
 trusted applications from each other. Every trusted application is served
 on the main port's origin, which it shares with every other, and whatever
 one may ask of these endpoints, all may: a page can send the `Referer` of
@@ -482,8 +499,8 @@ another node:
   §11.4), making a signed drop (§11.5), paying and staking as a person
   (§10.10), opening an encrypted block (§11.6),
   trust (§11.7), the folders and imports (§12.2), making bundles (§12.3),
-  keeping content offline (§12.4), an application's store (§13.3), and the
-  list of applications (§13.4);
+  keeping content offline (§12.4), an application's store (§13.3), the
+  list of applications (§13.4), and the report of a Chaos path (§13.6.7);
 - on `/config`'s port: every endpoint beneath `/config/api` (§2.3).
 
 Reading into a bundle (§12.1) is meant for those pages too, but is not
@@ -499,8 +516,9 @@ compared, since `Host` carries none.
 
 - **On the main port**, the page is an application's: the one whose name
   is its path's first segment, or the root application's, for a path no
-  other application's name begins (§13). A path beneath a reserved name
-  (§2) is no application's page.
+  other application's name begins (§13). A path beneath `/chaos` is the
+  Chaos page's (§13.6.6), which counts as a trusted application's page, and
+  a path beneath any other reserved name (§2) is no application's page.
 - **On `/config`'s port**, the page is the `/config` application's: a
   path beneath `/config`, and outside `/config/api`.
 
@@ -544,7 +562,9 @@ every trusted application shares the main port's (§2.4). It keeps out a
 request that no page of the node made, and one application's request that
 names another's store. The checks of §2.3.3 and §2.4 keep other sites'
 pages out, and the sandbox of §13.5 keeps out an application the operator
-has not trusted.
+has not trusted. A Chaos site cannot use what the Chaos page may, whatever
+`Referer` it sends: its requests come from the Chaos port, another origin,
+or from a sandbox on the main port, and those checks refuse both (§13.6.6).
 
 For `/config/api`, the `Referer` is checked with the checks of §2.3.3,
 before the request's credentials are looked at, and a request it refuses
@@ -2283,7 +2303,10 @@ for the session, in memory, so that it can sign and decrypt with it for a page,
 which never reads the key. The session's cookie is `HttpOnly`, so no page's
 script reads it either, and `SameSite=Strict`, so no other site's page sends
 it. A browser keeps cookies by host and not by port, so the cookie is sent to
-every port of the node's host, `/config`'s too, which ignores it.
+every port of the node's host, `/config`'s too, which ignores it, and the
+Chaos port's, which goes by it (§13.6.4). A request may carry more than one
+cookie of the session's name, since a page of the host can set one for a path
+of its own. A node tries each, and goes by the one naming a session it holds.
 
 `GET /data/session` says who is signed in, as signing in answers, or
 `{"id": null, "username": null, "created": null, "fallback": null,
@@ -3106,7 +3129,7 @@ trusted application, or refused (§2.4, §2.5).
 
 Directory-bundle applications are exposed outside the programmatic `/data`
 namespace. They are served on the node's main port, as `/data` is, and
-never on `/config`'s port (§2.3).
+never on `/config`'s port (§2.3) or the Chaos port (§13.6.4).
 
 An application name is mapped to a directory bundle.
 
@@ -3370,13 +3393,16 @@ can do whatever another can (§2.4).
 
 The `/config` application is neither trusted nor untrusted. It is served
 only on its own port (§2.3), where trust gives nothing, and never in a
-sandbox.
+sandbox. The Chaos page counts as a trusted application's page, and every
+Chaos site is served on the main port as an untrusted application is
+(§13.6).
 
 ```mermaid
 flowchart TD
     req["Request on the main port"] --> seg{"Its first path segment"}
     seg -->|data| api["The programmatic API"]
-    seg -->|"web, chaos, or config"| reserved["Reserved: no application<br/>(config MAY redirect to /config's port)"]
+    seg -->|chaos| chaos["The Chaos endpoint (§13.6): given a session,<br/>a 302 to the Chaos port, and otherwise<br/>a Chaos site in the sandbox, or the Chaos page"]
+    seg -->|"web or config"| reserved["Reserved: no application<br/>(config MAY redirect to /config's port)"]
     seg -->|"a registered application's name"| app["That application's bundle"]
     seg -->|"anything else"| rootapp["The root application's bundle"]
     app --> trusted{"Trusted by the operator?"}
@@ -3384,6 +3410,398 @@ flowchart TD
     trusted -->|yes| plain["Served on the main port's origin:<br/>may use the endpoints for local<br/>clients, from a local client"]
     trusted -->|no| sandbox["Served with Content-Security-Policy:<br/>sandbox, at an origin of its own"]
 ```
+
+### 13.6. The Chaos Endpoint
+
+Beneath `/chaos`, anyone may propose a bundle for any path, and each person
+is served what those they trust chose. Nothing is registered there, as an
+application is. A node finds what to serve at a path by searching drops
+named for the path and for each directory above it (§9), and chooses among
+the bundles proposed there by the trust scores of whoever asks (§11.7), so
+two people asking for one path may be served different files. What a bundle
+proposed at a path serves, the files it holds beneath that path, is called
+here a **Chaos site**. The node's own page saying what a path resolves to,
+and why, is the **Chaos page** (§13.6.6).
+
+The name `chaos` is matched ignoring case, as an application's name is
+(§13). `/chaos` is answered `302 Found` to `/chaos/`, with any query it
+carries. A `HEAD` of a path beneath it is answered as a `GET` would be, and
+any other method is `405 Method Not Allowed`. A node never asks a peer to
+resolve a Chaos path for it. It searches, and fetches what it lacks, as for
+any miss (§5.2), and resolves the path itself.
+
+#### 13.6.1 Levels
+
+A **Chaos path** is the path beneath `/chaos/`, percent-decoded as an
+application's path is. Split at each `/`, a `%2F` counting as one, it gives
+its **elements**, and each is a segment of an entry path
+([Bundle Specification §3.1](BundleSpecification.md#31-fields)): a path with
+an element that is empty, `.`, or `..`, or that is not UTF-8, names nothing,
+and is `404 Not Found`. A path that is empty, or ends in `/`, names a
+directory, and that last `/` ends it, rather than beginning an element.
+Elements are compared byte for byte, as entry paths are, and never
+case-folded or normalized.
+
+A path has a **level** for the root and for each of its elements in turn,
+from the root down. Each level is a drop, whose target string (§9.3) is
+`chaos:/` followed by the elements down to the level, joined by `/`. A
+bundle proposed at a level is mounted there, and can serve only the paths
+beneath it. It serves a path only if it holds the level's **rest**: what is
+left of the path after the level's elements, followed by `index.html` for a
+path naming a directory.
+
+| Level | Drop | Rest, for `/chaos/a/b/c.html` | Rest, for `/chaos/a/b/` |
+| --- | --- | --- | --- |
+| 0 | `chaos:/` | `a/b/c.html` | `a/b/index.html` |
+| 1 | `chaos:/a` | `b/c.html` | `b/index.html` |
+| 2 | `chaos:/a/b` | `c.html` | `index.html` |
+| 3 | `chaos:/a/b/c.html` | The empty path | No level 3 |
+
+The empty rest names a file bundle's own file, or a directory bundle's root
+(§12.1), to which the path is redirected with its `/` (§13.6.5).
+
+A node MAY search fewer levels than a path has, the shallowest first, so
+that a deeper path is served only from a bundle proposed at one of those it
+searches. The reference node searches at most 16 by default (§21).
+
+#### 13.6.2 Proposals
+
+A **proposal** names a bundle to serve at a level, and says when it was
+proposed:
+
+```json
+{"bundle": "sha256/…", "created": "2026-11-07T15:04:05Z"}
+```
+
+- **`bundle`** names a directory bundle or a file bundle, in either form a
+  read into a bundle takes (§12.1): by its content identifier, or, for one
+  stored encrypted, by the identifier that carries its key (§5).
+- **`created`** is when it was proposed, a UTC time to the second.
+
+A reader ignores any other member, so that a later version of this document
+can add one. Of two proposals, the **newer** is the one whose `created` is
+later, and of two of the same moment, the one whose drop's id comes first.
+
+A **signed proposal** is a signed bundle
+([Bundle Specification §5](BundleSpecification.md#5-signed-bundle)) whose
+`contents` is the JSON text of a proposal, as a page has the node make one
+with `POST /data/signed` (§11.5). Its signer is its **proposer**. An
+**unsigned proposal** is the JSON text of a proposal itself, as a page has
+the node make one with `POST /data/drop` (§9.6), and has no proposer. Either
+is placed at its level's drop, sharing at least as many leading bits with
+the target hash as a node's search returns (§6), 24 by default, so that a
+search of the drop finds it. Anyone may propose at any level. A proposal is
+never encrypted, since the node of each viewer reads it, though the bundle
+it names may be stored encrypted (§12.3). A proposal names a bundle, rather
+than holding one, so that one bundle may be proposed at many paths, and a
+bundle larger than a drop can hold (§9.6) may be proposed.
+
+A node reads each drop a level's search finds as `GET /data/signed` reads
+one (§11.5): what it holds before its last null byte (§9), as a signed
+proposal, checked under the key its `signer` names, or else as an unsigned
+proposal. It then passes over, in this order, each that is:
+
+1. neither a signed proposal nor an unsigned one (`not-a-proposal`), or a
+   signed one that does not check as §11.5 says, its `hash` or `signature`
+   failing, or its `signer` naming no key that can sign (`bad-signature`);
+2. a proposal whose bundle the node has shunned, as §5.5 says (`shunned`);
+3. dated further ahead of the node's clock than the node allows
+   (`future`), so that one dated far ahead cannot be the newest for ever.
+   The reference node allows 5 minutes by default (§21);
+4. any but the newest of a proposer's proposals left at the level
+   (`superseded`), so that a proposer's newer proposal replaces their
+   older ones, and they can take a path away from a bundle that still
+   holds it. Unsigned proposals have no proposer, and none supersedes
+   another.
+
+The words in parentheses are the reasons the report gives (§13.6.7).
+
+#### 13.6.3 Choosing
+
+A request is resolved by the trust scores of the person whose session it
+carries (§11.4), as `GET /data/trust` reads them (§11.7), and otherwise by
+the node's own scores
+([Trust Network §4.5](TrustNetwork.md#45-a-nodes-own-scores)). Only a local
+client signs in, so a client elsewhere is always served by the node's
+scores, and the node's operator chooses, by the node's trust list, what a
+stranger sees. Scores still being built choose as they stand. Each request
+is resolved on its own, a page's images and scripts as much as the page, so
+that what a person sees follows their trust throughout.
+
+By the scores that choose, a proposal is:
+
+- **trusted** if its proposer scores above 0, as the person themselves
+  does (§11.7);
+- **distrusted** if its proposer scores below 0, and is then never chosen
+  (`distrusted`);
+- of **no trust specified** if it is unsigned, or if its proposer scores 0
+  or has not been reached by the scores.
+
+A node chooses in two passes: first among the trusted proposals at every
+level, from the root down, then among those of no trust specified, in the
+same way. At each level, it takes the proposals of the pass newest first,
+and chooses the first whose bundle holds the rest. A bundle holds the rest
+if it holds a file there, or a directory or a symbolic link, to which the
+path is then redirected (§13.6.5). A bundle that does not is passed over
+(`lacks-path`), and so is one that is not a bundle, cannot be read, or is
+password-protected (`unusable`), as a read into a bundle refuses one
+(§12.1). The first proposal chosen is served (§13.6.5). When neither pass
+chooses one, the path is `404 Not Found` (§13.6.6).
+
+So trust comes before depth. A proposal of no trust specified at `chaos:/`,
+whose bundle holds `recipes/index.html`, does not take `/chaos/recipes/`
+from a trusted proposal at `chaos:/recipes`. Within a pass, a shallower
+level comes first, so that whoever is trusted at a level decides each path
+beneath it that their bundle holds.
+
+```mermaid
+flowchart TD
+    req["GET /chaos/a/b/c.html"] --> session{"Carries a session?"}
+    session -->|yes| person["The person's scores"]
+    session -->|no| node["The node's own scores"]
+    person --> trusted["Pass 1: trusted proposals at chaos:/,<br/>chaos:/a, chaos:/a/b, chaos:/a/b/c.html"]
+    node --> trusted
+    trusted -->|"at the first level holding one,<br/>the newest whose bundle holds the rest"| serve["Serve it (§13.6.5)"]
+    trusted -->|none| unknown["Pass 2: proposals of no trust<br/>specified, at the same levels"]
+    unknown -->|"as in pass 1"| serve
+    unknown -->|none| missing["404 Not Found,<br/>and the Chaos page (§13.6.6)"]
+```
+
+A node searches each level's drop as a search of a drop by its target
+string does (§9.7), scanning what it holds each time, and starting a search
+of its peers, as any search does (§6). It MAY keep what a level's search
+found for a few seconds, so that a page's images and scripts, each resolved
+on its own, do not each search every level again. A proposal placed
+meanwhile is then found once that time is up. The reference node keeps it
+for 5 seconds by default.
+
+What could change the choice and is not held, whether a drop a search
+found, a proposer's public key, or what a bundle needs for the node to tell
+whether it holds the rest, is asked for, as for any miss (§5.2), and waited
+for, as serving an application's file waits (§13.2), within one deadline for
+the whole request. A proposal still waiting when it passes is passed over
+(`pending`), so that a request made once what it waits for has arrived
+chooses with it. The reference node waits up to 10 seconds in all, by
+default.
+
+#### 13.6.4 The Chaos Port
+
+The session cookie is `SameSite=Strict` (§11.4), and a Chaos site cannot be
+served on the main port's origin, where its scripts could do whatever a
+trusted application may (§13.5). Served in a sandbox, a page has an origin
+of its own, which a browser takes to be another site's. Its requests, for
+its images and scripts and for each link followed from it, would then carry
+no session cookie, and could not follow the person's trust. So a node
+serves Chaos sites to whoever is signed in on a port of its own, the
+**Chaos port**. That is another origin than the main port's, so a page
+served there needs no sandbox: the checks of §2.4 and §2.5 refuse its
+requests every endpoint meant only for the node's own pages, as they refuse
+another site's. A browser keeps cookies by host and not by port, so the
+session cookie reaches the Chaos port, and each request that a page served
+there makes of its own origin carries it.
+
+A node MUST NOT serve anything on the Chaos port but `/chaos` and the paths
+beneath it, and its Chaos port is neither its main port nor `/config`'s.
+Which port it is, is implementation-defined. An implementation SHOULD
+document how it is chosen, and SHOULD report the port it chose as the node
+starts, as for `/config`'s port (§2.3). A node listens on it at the
+addresses its main port listens at, since a local client reaches the node at
+any of its machine's addresses (§2.4). The reference node listens on the
+port its configuration names, or, if it names none, on the first port free
+of 50 above its main port, 150 above, 250 above, and so on, none of which
+`/config` may take. It logs the port as it starts.
+
+- **On the main port**, a request carrying a session is answered
+  `302 Found` to the same address on the Chaos port: the same scheme, the
+  host its `Host` header names, and the same path and query. One whose
+  address ends in a bare `?` is not, but is the Chaos page (§13.6.6). Any
+  other is resolved by the node's own scores, and served in the sandbox of
+  an untrusted application (§13.6.5).
+- **On the Chaos port**, every request is resolved by the scores of the
+  person whose session it carries, or else by the node's own, and served
+  without a sandbox. One whose address ends in a bare `?` is sent to the
+  main port (§13.6.6).
+
+A client elsewhere never signs in (§11.4), so it is always served on the
+main port, and needs nothing but the main port to reach a node's Chaos
+sites. A request without the cookie is served as for anyone not signed in.
+So is one that a link on another site's page starts, since a browser sends
+a `SameSite=Strict` cookie with no request that another site begins, and so
+is every link followed from the sandboxed page it opens. The Chaos port does
+not check `Host` (§2.3.3): what a request without the cookie is served is
+anyone's to have, and a browser sends the cookie only to the host that set
+it.
+
+A person's first view of a Chaos site, on a node whose main port is 8080
+and whose Chaos port is 8130:
+
+```mermaid
+sequenceDiagram
+    participant Br as Browser, a person signed in
+    participant M as Main port, 8080
+    participant C as Chaos port, 8130
+    Br->>M: GET /chaos/recipes/<br/>Cookie: libranet-session=…
+    M-->>Br: 302 Found<br/>Location: http://localhost:8130/chaos/recipes/
+    Br->>C: GET /chaos/recipes/<br/>Cookie: libranet-session=…
+    C->>C: search chaos:/ and chaos:/recipes,<br/>choose by the person's scores
+    C-->>Br: 200 OK, the index.html of the bundle chosen
+    Br->>C: GET /chaos/recipes/cake.jpg, an image of the page<br/>Cookie: libranet-session=…
+    C->>C: the levels' searches kept,<br/>choose by the person's scores
+    C-->>Br: 200 OK, the cake.jpg of the bundle chosen
+    Br->>C: GET /chaos/recipes/bread.html, a link followed<br/>Cookie: libranet-session=…
+    C->>C: choose by the person's scores
+    C-->>Br: 200 OK, the bread.html of the bundle chosen
+```
+
+What the Chaos port costs:
+
+- **One origin for every Chaos site.** Every page the Chaos port serves
+  shares its origin, so a Chaos site can read what another keeps in the
+  browser's storage, frame another, and script it.
+- **Cookies for the host.** A Chaos site's scripts can set cookies for the
+  node's host, which a browser sends to each of its ports. They can neither
+  replace the session cookie, which is `HttpOnly`, nor hide it, since a node
+  tries each cookie of its name (§11.4). But they can fill the browser's
+  cookies for the host until the browser's requests to it are refused for
+  their size, until the person clears them.
+- **What the person's trust chose.** A Chaos site's scripts can read what
+  any Chaos path serves the person, and so learn something of whom they
+  trust. That is what following their trust means. Their scores themselves
+  are served on the main port alone (§11.7).
+
+#### 13.6.5 Serving
+
+A Chaos path's file is served as a read into a bundle serves one (§12.1):
+with range requests (§19), the content type its bundle gives it, or one
+found from its name (§13), and `503 Service Unavailable` while what it needs
+is not held (§13.2). A path naming a directory without its `/` is answered
+`302 Found` to the path with its `/`, and one reaching a file or a directory
+through a symbolic link is answered `302 Found` with the Chaos path it leads
+to, which is then resolved as any other is, and may be served from another
+bundle.
+
+Every answer for a path beneath `/chaos`, on either port, carries
+`Cache-Control: no-store`, since what is chosen depends on who asks, and
+when. On the main port, a Chaos site's files are served with the headers of
+an untrusted application, its sandbox and `X-Content-Type-Options: nosniff`
+(§13.5). On the Chaos port, they are served with
+`X-Content-Type-Options: nosniff` alone.
+
+#### 13.6.6 The Chaos Page
+
+The Chaos page shows what a Chaos path resolves to, and why: whose scores
+chose, and whether they are complete; each level searched, with its drop;
+each proposal found there, with its proposer, when it was proposed, its
+bundle, whether that holds the rest, and why it was passed over; what is
+still missing; and the proposal chosen, with a link to the path where it is
+served. It reads all it shows from the report (§13.6.7). Its Reload asks for
+the path again. On a local client, it lets the viewer propose a bundle at
+any level of the path, signed by them if they are signed in, and unsigned
+otherwise, and lets a person signed in trust, distrust, or clear each
+proposer (§11.7), clearing leaving their score to the lists of those the
+person trusts. From any client, it lets the viewer download what the path
+serves, and each bundle proposed.
+
+- **On the main port**, a `GET` or `HEAD` of a path beneath `/chaos` whose
+  address ends in a bare `?`, with nothing after it, is answered `200 OK`
+  with the Chaos page, whether or not the request carries a session, and
+  nothing is resolved for it. A path for which nothing is chosen, or that
+  names nothing, is answered `404 Not Found` with the Chaos page.
+- **On the Chaos port**, an address ending in a bare `?` is answered
+  `302 Found` to the same address on the main port, at the host the
+  request's `Host` header names. So is a path for which nothing is chosen,
+  or that names nothing, when the browser is opening it as a page
+  (`Sec-Fetch-Dest: document`), to its address with a bare `?` after its
+  path. Any other such path is `404 Not Found`, with a problem (§17).
+
+A query with anything in it is ignored, as an application's is, so
+`?about` is no bare `?`.
+
+The Chaos page is the node's own, whatever bundle or shipped resources the
+node serves it from. It is served on the main port's origin, without a
+sandbox, and never on the Chaos port, where it could use none of the
+endpoints it needs, and every Chaos site could script it. Every answer
+carrying it carries a `Content-Security-Policy` that has it load what it
+uses only from its own origin, inline scripts and styles aside, and names
+`frame-ancestors 'none'`, so that no page frames it, since a Chaos site
+could otherwise lead a person to click its buttons unseen. The reference
+node sends the policy `/config`'s pages carry (§2.3.3).
+
+Its requests carry a `Referer` beneath `/chaos`, which counts as a trusted
+application's page (§2.5), so that it may change the trust list of whoever
+is signed in, sign, and make bundles, on a local client. A Chaos site
+cannot do as much, whatever `Referer` it sends: its requests come from the
+Chaos port, another origin, or from a sandbox on the main port, and the
+checks of §2.4 refuse both.
+
+#### 13.6.7 The Report
+
+A page reads what a Chaos path resolves to, and why, with:
+
+```http
+GET /data/chaos/{path}
+```
+
+`{path}` is a Chaos path, percent-encoded as an address spells it beneath
+`/chaos/`, and may be empty. The node resolves it as a request for the path
+would be resolved, by the same scores, waiting as long, and answers
+`200 OK`, whatever it chose:
+
+```json
+{"path": "a/b/c.html", "scores": "person", "complete": true,
+ "served_at": "http://localhost:8130/chaos/a/b/c.html",
+ "chosen": {"level": 1, "drop": "sha256/…"},
+ "levels": [
+   {"target": "chaos:/", "hash": "<target hash>", "rest": "a/b/c.html",
+    "proposals": [
+      {"drop": "sha256/…", "matching_bits": 26, "signer": "sha256/…",
+       "score": 1, "step": 1, "bundle": "sha256/…",
+       "created": "2026-11-07T15:04:05Z", "holds": false,
+       "passed_over": "lacks-path"}],
+    "missing": ["sha256/…"]}]}
+```
+
+- **`path`** is the Chaos path, decoded.
+- **`scores`** is `person` when the scores of whoever is signed in chose,
+  and `node` when the node's own did, and **`complete`** says whether they
+  were complete (§11.7).
+- **`served_at`** is the address at which the path is served for whoever
+  asked: on the Chaos port for a request carrying a session, and otherwise
+  on the main port, at the host the request's `Host` header names.
+- **`chosen`** names the `level` and the `drop` of the proposal chosen, or
+  is `null` when none was.
+- **`levels`** lists each level searched, from the root down: its
+  `target` string, its target `hash` in lower-case hex, its `rest`, every
+  drop its search found, as `proposals`, and `missing`, the content
+  identifiers of what it needs and does not hold yet, which the node has
+  asked for.
+- **Each of `proposals`** gives the id of its `drop`, the `matching_bits`
+  that shares with the target hash, and its proposer's id as `signer`, with
+  their `score` and `step` as §11.7 gives one identity's, all three `null`
+  for an unsigned proposal. `bundle` and `created` are as it says, and
+  `null` for what is not a proposal. `holds` says whether its bundle holds
+  the rest, and is `null` where that was not asked. `passed_over` is why it
+  was passed over, and is `null` for the proposal chosen, and for any that
+  came after it, which were not looked at:
+
+| `passed_over` | Why |
+| --- | --- |
+| `not-a-proposal` | Neither a signed nor an unsigned proposal (§13.6.2) |
+| `bad-signature` | Signed, but its signature does not check (§13.6.2) |
+| `shunned` | The node has shunned its bundle (§13.6.2) |
+| `future` | Dated further ahead of the node's clock than the node allows (§13.6.2) |
+| `superseded` | Its proposer made a newer one at the same level (§13.6.2) |
+| `distrusted` | Its proposer is distrusted by the scores that chose (§13.6.3) |
+| `lacks-path` | Its bundle does not hold the rest (§13.6.3) |
+| `unusable` | Its bundle is not a bundle, cannot be read, or is password-protected (§13.6.3) |
+| `pending` | What it needs had not arrived in time (§13.6.3) |
+
+A path that names nothing is `404 Not Found`. The report is served to any
+client, from a page of the node (§2.5), as making a drop is: the checks
+§2.3.3 makes of `Sec-Fetch-Site` and `Origin` are made on every request, as
+§2.4 makes them, but not of `Host` (§9.6). It is served on the main port
+alone, and every answer carries `Cache-Control: no-store`, since it is for
+whoever asks.
 
 ---
 
@@ -3789,7 +4207,9 @@ An encrypted block opened (§11.6) MUST carry `Cache-Control: no-store`, since
 it is opened for one session, or one username and password, and holds what
 was encrypted to keep it from everyone else. Every response that names a
 session (§11.4), and every answer about the trust of whoever is signed in
-(§11.7), carries it too, since each is for that person alone.
+(§11.7), carries it too, since each is for that person alone. So does every
+answer for a path beneath `/chaos`, and every report of one (§13.6), since
+what is chosen there depends on who asks.
 
 **TBD:**
 
@@ -3819,7 +4239,8 @@ Potential limits include:
 - maximum peer requests;
 - maximum drop-search work;
 - maximum concurrent key derivations;
-- maximum trust lists a sign-in reads.
+- maximum trust lists a sign-in reads;
+- maximum levels of a Chaos path searched.
 
 A node limits the drop-search work a page asks of it by how long a search
 may take and how many bits it must match, signed, encrypted, or neither (§9.6,
@@ -3827,7 +4248,9 @@ may take and how many bits it must match, signed, encrypted, or neither (§9.6,
 whichever of its ports is asked, and whether to make an identity, take over,
 sign in, encrypt, or open a block (§11.3, §11.4, §11.6). It limits the
 trust lists a sign-in reads, by steps and by lists, and how long it looks
-for each (Trust Network §4.2, §4.3).
+for each (Trust Network §4.2, §4.3). It limits how many levels of a Chaos
+path it searches, and how far ahead of its clock a proposal may be dated
+(§13.6.1, §13.6.2).
 
 A request whose body is larger than the node takes is refused with
 `413 Content Too Large` (§17.2, `content-too-large`), unread if its
@@ -3846,7 +4269,9 @@ that must know a body's size before it reads it.
   A drop's search takes at most 60 seconds, and matches at most 32 bits
   (§9.6). A sign-in's trust scores reach at most 4 steps out and read at
   most 1,000 lists, spending up to 30 seconds looking for each (Trust
-  Network §4.2, §4.3). The node's operator may change each of these limits
+  Network §4.2, §4.3). It searches at most 16 levels of a Chaos path, and
+  passes over a proposal dated more than 5 minutes ahead of its clock
+  (§13.6). The node's operator may change each of these limits
   but two, which are fixed: a page's request to make a drop, signed or not,
   takes at most 4 MiB, and any other JSON body 64 KiB.
 - Negotiation of limits.
@@ -3926,7 +4351,7 @@ CAS paths MUST resolve only to content addressed by the Libranet storage system.
 - Rate limiting requirements.
 - Resource quotas.
 - Bundle execution/sandboxing rules, cross-origin policy, and security
-  headers, beyond what §2.3.3, §2.4, §12.1, and §13.5 give.
+  headers, beyond what §2.3.3, §2.4, §12.1, §13.5, and §13.6 give.
 - SSRF protections.
 - Maximum bundle recursion.
 - Maximum remote-fetch depth.
@@ -3980,9 +4405,11 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/archives/{archive_id}`        | `DELETE`     | Stop keeping an archive, locally (§12.4)                   | Defined |
 | `/data/store/{application}/...`      | Various      | An application's store on this node (§13.3)                | Defined |
 | `/data/applications`                 | `GET`        | The applications this node serves (§13.4)                  | Defined |
+| `/data/chaos/{path}`                 | `GET`        | What a Chaos path resolves to, and why (§13.6.7)           | Defined |
 | `/data/...`                          | Various      | Additional programmatic APIs                               | TBD     |
 | `/`                                  | `GET`/`HEAD` | Root web application                                       | Defined |
 | `/{application}/...`                 | `GET`/`HEAD` | Directory-bundle application                               | Defined |
+| `/chaos/...`                         | `GET`/`HEAD` | Chaos sites, on the main port and the Chaos port (§13.6)   | Defined |
 | `/config/api/...`                    | Various      | Local-only administration endpoints, on `/config`'s port   | Defined |
 | `/config/...`                        | `GET`/`HEAD` | Local-only administration application, on `/config`'s port | Defined |
 

@@ -147,7 +147,9 @@ application name (see §5.2):
 - `data` - the programmatic content-addressed interface described in this
   section.
 - `web` - reserved for future use.
-- `chaos` - reserved for future use.
+- `chaos` - the Chaos endpoint, where anyone may propose a bundle for any path
+  beneath `/chaos`, and each person is served what those they trust chose
+  (HTTP API §13.6).
 - `config` - the local-only node configuration and administration interface (see
   HTTP API §2.3).
 
@@ -798,5 +800,5 @@ root of the node's HTTP namespace and must not be used as application names:
 | --------- | ----------------- | -------------------------------------------------------------------------- |
 | `/data`   | In use            | Programmatic content-addressed interface (§3-4)                            |
 | `/web`    | Reserved (future) | Not yet defined                                                            |
-| `/chaos`  | Reserved (future) | Not yet defined                                                            |
+| `/chaos`  | In use            | Bundles anyone proposes, chosen by whom the viewer trusts (HTTP API §13.6) |
 | `/config` | In use            | Local-only node configuration and administration interface (HTTP API §2.3) |
