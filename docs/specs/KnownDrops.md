@@ -669,16 +669,17 @@ A proposal names a bundle to serve beneath `/chaos`, at the level its
 target names, and says when it was proposed: `{"bundle", "created"}`. The
 bundle is mounted at the level, and serves each path beneath it that it
 holds. Anyone may propose at any level, signed or not, and the node of each
-viewer chooses among the proposals by the viewer's trust, or, for anyone
-not signed in, by the node's own.
+viewer chooses among the proposals by the viewer's trust. Chaos is only
+for someone signed in, so a node's own trust chooses for no one.
 
 - **Status:** specified, in [Phase 7](../implementation/Phase%207.md) Step
   155. The node reads it from Step 156, and the Chaos page places it from
   Step 159.
-- **Placed by** anyone. The Chaos page places one on a local client, with
-  `POST /data/signed` for a person signed in, and with `POST /data/drop`
-  otherwise. The node reads the proposals at each level of a path for every
-  request beneath `/chaos`, and for the report the Chaos page reads.
+- **Placed by** anyone. The Chaos page places one, signed, with
+  `POST /data/signed`, for a person signed in on the node's own machine,
+  of a bundle the node made of a zip they uploaded. The node reads the
+  proposals at each level of a path for every request beneath `/chaos` on
+  the Chaos port, and for the report the Chaos page reads.
 - **Signed** by its proposer, or by no one. **Not encrypted**, since the
   node of every viewer reads it, though the bundle it names may be.
 - **Bits:** placed matching at least as many as the node's search returns,

@@ -3778,13 +3778,13 @@ was proposed, its bundle, whether that holds the rest, and why it was
 passed over; what is still missing; the proposal chosen; and a link to the
 path on the Chaos port, to view what is served there. It reads all it shows
 from the report (§13.6.7), and its Reload reads the report again. To
-someone not signed in, it says to sign in. On a local client, it lets the
-viewer propose a bundle at
-any level of the path, signed by them if they are signed in, and unsigned
-otherwise, and lets a person signed in trust, distrust, or clear each
-proposer (§11.7), clearing leaving their score to the lists of those the
-person trusts. From any client, it lets the viewer download what the path
-serves, and each bundle proposed.
+someone not signed in, it says to sign in. To a person signed in on the
+node's own machine, it lets them trust, distrust, or clear each proposer
+(§11.7), clearing leaving their score to the lists of those the person
+trusts, and upload a zip at the address of any level of the path but a
+file's own: the node makes a directory bundle of it (§12.3), and the page
+places a proposal of that, signed by the person (§11.5). It lets them
+download each bundle proposed as a zip (§12.5).
 
 - **On the main port**, a `GET` or `HEAD` of any path beneath `/chaos` is
   answered `200 OK` with the Chaos page, whatever its query, and whether or

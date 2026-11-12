@@ -1647,8 +1647,10 @@ level searched, at the address it serves, every proposal found there, with
 its signer, date, and bundle, why each was passed over, and which was
 chosen, and lets a person signed in on the node's machine trust, distrust,
 or clear each signer. Its **View content** links to the path on the Chaos
-port. It is served on the node's port alone, outside any sandbox, and no
-page may frame it. A query with anything in it, such as `?about`, is your
+port. Signed in on the node's machine, a person uploads a zip there, which
+the page has the node make a bundle of (§6.5) and proposes, signed, at the
+address chosen, and downloads any bundle listed as a zip. It is served on
+the node's port alone, outside any sandbox, and no page may frame it. A query with anything in it, such as `?about`, is your
 site's, as any other is, so use one of those, never a bare `?`, for a page
 of your own.
 

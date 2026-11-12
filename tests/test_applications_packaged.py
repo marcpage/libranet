@@ -56,6 +56,7 @@ from libranet.webserver.app_registry import CONFIG_APPLICATION, ROOT_APPLICATION
 from libranet.webserver.app_store import STORE_KEY_PATTERN, STORE_PATH
 from libranet.webserver.bundle_edits import BUNDLES_PATH
 from libranet.webserver.bundle_reads import BUNDLE_PATTERN
+from libranet.webserver.bundle_zip_reads import ZIP_PATTERN
 from libranet.webserver.chaos_handler import CHAOS_REPORT_PATTERN
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import CONFIG_API_PATH, ENDPOINTS, NodeDescription
@@ -1387,7 +1388,13 @@ def test_the_chaos_page_calls_only_endpoints_the_node_serves(chaos_page: str) ->
         "/data/signed/",
         f"{TRUST_PATH}/",
         "/data/",
+        BUNDLES_PATH,
+        SIGNED_PATH,
+        "/data/zip/",
     }
+    # A zip uploaded is made a bundle, and the upload of it signed.
+    assert 'setRequestHeader("Content-Type", "application/zip")' in chaos_page
+    assert fullmatch(ZIP_PATTERN, f"/data/zip/{some_id}/")
     # The report, of the path as the page's address spells it beneath /chaos/.
     assert fullmatch(CHAOS_REPORT_PATTERN, "/data/chaos/a%20b/c.html")
     assert fullmatch(CHAOS_REPORT_PATTERN, "/data/chaos/")
