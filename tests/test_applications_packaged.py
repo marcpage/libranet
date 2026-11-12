@@ -847,6 +847,10 @@ def test_the_photos_page_calls_only_endpoints_the_node_serves(photos_page: str) 
     album = f"/data/sha256/{hex_digits}/AES256-CBC/{hex_digits}"
     assert fullmatch(BUNDLE_PATTERN, f"{album}/index/2024-05.json")
     assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/thumb.jpg")
+    # A photo shown: what is known of it, and its original, shown and
+    # downloaded.
+    assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/info.json")
+    assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/original%20thumb.jpg")
 
 
 def test_the_photos_page_keeps_albums_where_the_plan_names_them(photos_page: str) -> None:
@@ -947,6 +951,26 @@ def test_the_photos_page_reads_when_a_photo_was_taken_from_its_name(photos_page:
 
     assert {name: taken(name) for name in dated} == dated
     assert [name for name in undated if taken(name)] == []
+
+
+def test_the_photos_page_shows_a_photo_with_the_keys_the_plan_names(photos_page: str) -> None:
+    [keys] = findall(r"^    const keys = \{\n(.*?)\n    \};$", photos_page, DOTALL | MULTILINE)
+
+    # The photo before and after, Zoom, Full screen, Download, and Close,
+    # with the keys, as the keys dialog shows them.
+    assert set(findall(r'^\s+"?([a-z?/]+)"?: ', keys, MULTILINE)) == {
+        "arrowleft",
+        "arrowright",
+        "z",
+        "f",
+        "d",
+        "escape",
+        "?",
+        "/",
+    }
+    # Download is a link to the original, saved under its file's name.
+    assert 'id="viewer-download" title="Download" aria-label="Download" download>' in photos_page
+    assert "this.download.download = photo.name;" in photos_page
 
 
 def test_the_photos_page_is_black_as_the_movie_and_tv_pages_are_dark(photos_page: str) -> None:
