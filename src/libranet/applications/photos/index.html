@@ -79,6 +79,7 @@
 
   button.secondary { background: transparent; color: var(--text); }
   button.danger { background: transparent; color: var(--bad); border-color: var(--bad); }
+  button.small { padding: 0.2rem 0.55rem; font-size: 0.85rem; }
   button:disabled { opacity: 0.6; cursor: default; }
 
   /* A button shown as an icon alone, which it is named for. */
@@ -98,6 +99,7 @@
 
   label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--muted); }
   label.wide { flex: 1 1 16rem; }
+  label.check { flex-direction: row; align-items: center; gap: 0.5rem; font-size: 1rem; color: var(--text); }
   .fields { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; margin: 0 0 0.75rem; }
 
   input {
@@ -109,6 +111,45 @@
     border-radius: 6px;
     padding: 0.4rem 0.55rem;
   }
+
+  input[type="checkbox"] { flex: none; width: 1.1rem; height: 1.1rem; margin: 0; padding: 0; accent-color: var(--accent); }
+
+  /* Lists of choices: folders and the photos in them, and the photos found to import. */
+  .entries {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 50vh;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .entries li { padding: 0.35rem 0.6rem; }
+  .entries li + li { border-top: 1px solid var(--border); }
+
+  .entries button {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.15rem 0;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+  }
+
+  .entries span:first-child, .entries label.check > span:first-of-type { overflow-wrap: anywhere; }
+  .entries label.check { padding: 0.15rem 0; font-size: 0.95rem; }
+  .entries label.check .note { margin-left: auto; }
+  .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; margin: 0 0 0.5rem; }
+  .crumbs button { padding: 0.1rem 0.4rem; }
+
+  /* What is imported, which an import of thousands of photos makes long. */
+  .activity { list-style: none; margin: 0.75rem 0 0; padding: 0; max-height: 40vh; overflow-y: auto; }
+  .activity li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; margin: 0.35rem 0; }
+  .activity progress { flex: 0 1 12rem; }
 
   /* The albums, newest first, each a tile: its cover, its name, how many
      photos it holds, and the days of its first and last. */
@@ -162,6 +203,48 @@
   .title-row > .icons:first-child { margin-left: -0.3rem; }
   .facts { margin: 0.5rem 0 0; }
 
+  /* The album's photos, oldest first, beside the years and months to move to. */
+  .album-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1.5rem; align-items: start; }
+  .years { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; margin: 1rem 0 0; }
+  .years ul { list-style: none; margin: 0; padding: 0; }
+
+  .years button {
+    display: block;
+    width: 100%;
+    padding: 0.05rem 0.5rem;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.85rem;
+    text-align: right;
+  }
+
+  .years button:hover { color: var(--text); }
+  .years button.year { margin: 0.5rem 0 0; color: var(--text); font-weight: 600; }
+  .years li:first-child button.year { margin-top: 0; }
+
+  @media (max-width: 40rem) {
+    .album-body { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .years { position: static; order: -1; max-height: none; overflow-x: auto; }
+    .years ul { display: flex; gap: 0.25rem; }
+    .years button, .years button.year { margin: 0; white-space: nowrap; }
+  }
+
+  .grid h3 { font-size: 1.35rem; margin: 1.5rem 0 0; }
+  .grid h4 { font-size: 1.1rem; margin: 1rem 0 0; }
+  .grid h5 { font-size: 0.9rem; font-weight: 500; color: var(--muted); margin: 0 0 0.4rem; }
+  .day { padding: 0.6rem 0 0.4rem; }
+  .day-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: 4px; }
+
+  @media (max-width: 30rem) {
+    .day-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
+  }
+
+  /* Each photo a square tile, its thumbnail cropped to fill it. */
+  .tile { display: block; width: 100%; aspect-ratio: 1; }
+  button.tile { padding: 0; border: 0; border-radius: 2px; background: var(--surface); }
+  .tile .cover { border-radius: 2px; }
+
   dialog {
     width: min(40rem, calc(100vw - 2rem));
     border: 1px solid var(--border);
@@ -198,6 +281,9 @@
     <button type="button" class="icon changes-only" id="new-album" title="New album" aria-label="New album" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8 M8 12h8"/></svg>
     </button>
+    <button type="button" class="icon changes-only" id="import-photos" title="Import" aria-label="Import" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12 M7 10l5 5 5-5 M4 15v5h16v-5"/></svg>
+    </button>
     <button type="button" class="icon" id="show-keys" title="Keys" aria-label="Keys">
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.75 2.17C12.5 12.1 12 12.6 12 13.5V14 M12 17.5v.01"/></svg>
     </button>
@@ -207,6 +293,7 @@
 <main>
   <noscript><p>This page needs JavaScript.</p></noscript>
   <p class="state" id="page-state" role="status" hidden></p>
+  <ul class="activity" id="activity" aria-label="Imports"></ul>
 
   <div id="chooser">
     <p class="state" id="chooser-state" role="status" hidden></p>
@@ -232,8 +319,43 @@
     </div>
     <p class="note facts" id="album-facts"></p>
     <p class="result" id="album-result" role="status" hidden></p>
+    <p class="state" id="grid-state" role="status" hidden></p>
+    <div class="album-body">
+      <div class="grid" id="photo-grid" aria-label="Photos"></div>
+      <nav class="years" id="photo-years" aria-label="Years and months"></nav>
+    </div>
   </section>
 </main>
+
+<dialog id="import-dialog" aria-labelledby="import-heading">
+  <h3 id="import-heading">Import photos</h3>
+  <div id="folder-browse">
+    <p class="hint">The folders this node offers. Choose photos in any of them with their boxes,
+    and import those chosen, or import every photo in the folder shown, and in the folders within
+    it. Each import makes a new album, named for when it is made, and imports each photo
+    encrypted, so that only whoever is given the album can see it. Photos of kinds not every
+    browser shows, as HEIC and raw files, and videos, are not imported yet.</p>
+    <nav class="crumbs" id="folder-path" aria-label="Where in the folders"></nav>
+    <ul class="entries" id="folder-entries"></ul>
+    <p class="result" id="folder-state" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Close</button>
+      <button type="button" class="secondary" id="folder-all" hidden>Import every photo here</button>
+      <button type="button" id="import-chosen">Import chosen</button>
+    </div>
+  </div>
+  <form id="found-form" hidden>
+    <p class="hint">Each photo found, by its path. Leave out any you choose. Those left are
+    imported one after another into a new album, named Import, then the date and time.</p>
+    <p class="hint" id="found-note" hidden></p>
+    <ul class="entries" id="found-list"></ul>
+    <p class="result" id="found-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" id="found-back">Back</button>
+      <button type="submit" id="found-import">Import</button>
+    </div>
+  </form>
+</dialog>
 
 <dialog id="new-dialog" aria-labelledby="new-heading">
   <form id="new-form">
@@ -284,9 +406,11 @@
   <p class="hint">Anywhere on the page but in a field, and while no other dialog is open.</p>
   <dl class="keys">
     <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt>
-    <dd>Move through the albums, as they are laid out, from the one with focus.</dd>
+    <dd>Move through the albums, or the photos of the album open, as they are laid out, from the one with focus.</dd>
     <dt><kbd>Home</kbd> <kbd>End</kbd></dt>
-    <dd>To the first album, or the last.</dd>
+    <dd>To the first album or photo, or the last.</dd>
+    <dt><kbd>Page Up</kbd> <kbd>Page Down</kbd></dt>
+    <dd>Move through the photos of the album open by a screen.</dd>
     <dt><kbd>Enter</kbd></dt>
     <dd>Open the album with focus.</dd>
     <dt><kbd>Esc</kbd> <kbd>Backspace</kbd></dt>
@@ -313,6 +437,8 @@ const SESSION = "/data/session";
 const SIGNED = "/data/signed";
 const DROPS = "/data/drop";
 const ENCRYPTED = "/data/encrypted/";
+const DIRECTORY = "/data/directory";
+const IMPORTS = "/data/imports";
 
 // Where a person's albums are listed, "photos albums:{id}": in versions at
 // the drop, each signed by them and encrypted for them (HttpApi 9, 11.5,
@@ -353,6 +479,90 @@ const PART_PHOTOS = 2000;
 // A photo's thumbnail, in its folder, which is what shows an album's cover.
 const THUMB_FILE = "thumb.jpg";
 
+// What else a photo's folder holds, beside its original under the name of
+// the file it was imported from: what is known of it, its members in this
+// order. `kind` is PHOTO_KIND, `taken` a local date and time, and
+// `taken_from` where that came from: TAKEN_FROM_NAME or TAKEN_FROM_MODIFIED.
+const INFO_FILE = "info.json";
+const INFO_KEYS = ["name", "kind", "taken", "taken_from", "width", "height", "size", "original", "thumb"];
+const PHOTO_KIND = "photo";
+const TAKEN_FROM_NAME = "name";
+const TAKEN_FROM_MODIFIED = "modified";
+
+// How many hex digits of the hash of a photo's original's file bundle name
+// its folder.
+const FOLDER_DIGITS = 16;
+
+// The photos every browser shows as they are, by the extension of their
+// file's name, any case, with the content type each is placed with (Music
+// App Step 154). A file the node gives as one of these types is one too.
+const PHOTO_TYPES = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  jpe: "image/jpeg",
+  jfif: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+  avif: "image/avif",
+  bmp: "image/bmp",
+};
+
+// The other files found beside photos, counted and not listed: photos no
+// browser shows as they are (Step 165) and videos (Step 166), each by its
+// extension or as the node gives its type; files that only describe the
+// photos beside them; and the rest. Each with how it is counted.
+const OTHER_PHOTOS = new Set([
+  "heic", "heif", "hif", "tif", "tiff", "dng", "cr2", "cr3", "crw", "nef", "nrw", "arw", "srf",
+  "sr2", "raf", "orf", "rw2", "pef", "srw", "x3f", "3fr", "iiq", "erf", "kdc", "mrw", "rwl",
+]);
+const VIDEOS = new Set(["mov", "mp4", "m4v", "3gp", "3g2", "avi", "mkv", "webm", "mts", "m2ts", "wmv"]);
+const DESCRIBING = new Set(["xmp", "aae", "thm", "json"]);
+const NOT_LISTED = [
+  ["unshown", "photo of a kind not imported yet", "photos of kinds not imported yet"],
+  ["video", "video, not imported yet", "videos, not imported yet"],
+  ["describing", "file describing a photo", "files describing photos"],
+  ["other", "other file", "other files"],
+];
+
+// A date and time in a photo's file's name, as IMG_20240514_093012.jpg,
+// PXL_20240514_093012345.jpg, or 2024-05-14 09.30.12.png give it: the
+// year, month, and day, separated alike or not at all, then the hour,
+// minute, and second, likewise, and any thousandths of a second.
+const NAME_TAKEN = /(?:^|\D)((?:19|20)\d\d)([-_.]?)(\d\d)\2(\d\d)(?:[ _T-]|\sat\s)?(\d\d)([-_.:]?)(\d\d)\6(\d\d)(?:\d{3})?(?!\d)/g;
+
+// What an import names the album it makes, before the local date and time,
+// as "Import 2026-11-09 14:32".
+const IMPORT_NAME = "Import";
+
+// How many photos an album holds at most. An import of more makes as many
+// albums as it needs.
+const MOST_PHOTOS = 100000;
+
+// How many photos imported are added to an album at a time, each batch as a
+// new bundle, with a version placed naming it, so that an import cut short
+// keeps what it added.
+const BATCH_PHOTOS = 50;
+
+// How many photos the node is asked to import ahead of the one being added,
+// so that it reads the next while the page draws a thumbnail.
+const IMPORTS_AHEAD = 3;
+
+// How often the node is asked how its imports are doing, in seconds.
+const IMPORT_POLL_SECONDS = 1;
+
+// How many folders below the one chosen photos are looked for in, so that a
+// link back to a folder above does not lead the search on forever.
+const FOLDER_DEPTH = 8;
+
+// A photo's thumbnail: as many pixels on its longer side at most, as a JPEG
+// of this quality.
+const THUMB_SIZE = 400;
+const THUMB_QUALITY = 0.85;
+
+// How files are listed: ignoring case, and numbers in order.
+const COLLATOR = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+
 // How large a request to make a bundle is let grow, in bytes, well short of
 // the most the node takes (HttpApi 21), so that photos merged into an album
 // are added in as many requests as they need.
@@ -381,6 +591,8 @@ const state = {
   unread: false,
   // The id of the album open, or null while the albums are shown.
   open: null,
+  // How many imports are running, which the page warns of leaving.
+  imports: 0,
 };
 
 function byId(id) {
@@ -432,10 +644,63 @@ function sameName(one, other) {
   return nameKey(one) === nameKey(other);
 }
 
-// The day `day`, as YYYY-MM-DD, as the browser shows a date.
-function dateText(day) {
+// The day `day`, as YYYY-MM-DD, as the browser shows a date, as `options`
+// ask, by default its year, month, and day.
+function dateText(day, options = { year: "numeric", month: "short", day: "numeric" }) {
   const [year, month, date] = day.split("-").map(Number);
-  return new Date(year, month - 1, date).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return new Date(year, month - 1, date || 1).toLocaleDateString(undefined, options);
+}
+
+// The local date and time `taken`, as a photo's `taken` gives it, as the
+// browser shows one.
+function takenText(taken) {
+  const [day, time = ""] = taken.split("T");
+  const [hours, minutes, seconds] = time.split(":").map(Number);
+
+  if (!Number.isInteger(hours)) {
+    return dateText(day);
+  }
+
+  const [year, month, date] = day.split("-").map(Number);
+  return new Date(year, month - 1, date, hours, minutes || 0, seconds || 0)
+    .toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+// The local date and time of `date`, as a photo's `taken` gives it:
+// YYYY-MM-DDTHH:MM:SS.
+function localTime(date) {
+  const two = (number) => String(number).padStart(2, "0");
+  return `${String(date.getFullYear()).padStart(4, "0")}-${two(date.getMonth() + 1)}-${two(date.getDate())}`
+    + `T${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`;
+}
+
+function formatSize(bytes) {
+  if (typeof bytes !== "number") {
+    return "";
+  }
+
+  for (const [unit, size] of [["GB", 1e9], ["MB", 1e6], ["kB", 1e3]]) {
+    if (bytes >= size) {
+      return `${(bytes / size).toFixed(1)} ${unit}`;
+    }
+  }
+
+  return `${bytes} B`;
+}
+
+// The extension of the file named `name`, in lower case, or "" if it has none.
+function extensionOf(name) {
+  const at = name.lastIndexOf(".");
+  return at > 0 ? name.slice(at + 1).toLowerCase() : "";
+}
+
+function base64Of(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",", 2)[1]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }
 
 // How long `headers` say to wait before asking again (HttpApi 5.2): at least a
@@ -1090,7 +1355,8 @@ function serially(action) {
 // every other change. The versions of the list are read again for it, and
 // any made elsewhere since this page read them, on another node say, are
 // merged with the albums it holds first. `change` is given the albums so
-// merged, and gives the albums to keep, or the same list, to keep nothing.
+// merged, and gives, or resolves to, the albums to keep, or the same list,
+// to keep nothing.
 async function changeAlbums(change) {
   if (!canChange()) {
     throw new Error(state.owner ? FALLBACK_REFUSAL : "No one is signed in, so no albums are kept. Sign in on the home page.");
@@ -1098,7 +1364,7 @@ async function changeAlbums(change) {
 
   await serially(async () => {
     const { albums, replaced } = await Kept.read(state.albums);
-    const changed = change(albums);
+    const changed = await change(albums);
 
     if (changed !== albums) {
       await Kept.place(changed, replaced);
@@ -1286,6 +1552,391 @@ function renderAlbum(album) {
       }
     });
   }
+
+  showGrid(album);
+}
+
+// The photos of an album, as its grid shows them: oldest first, under a
+// heading for each year, each month, and each day, with the undated last,
+// each a square tile. The tiles of a month are made only as it is scrolled
+// near, and each thumbnail is loaded only as it is scrolled to, so that an
+// album of many photos opens quickly. The years and months are listed
+// beside it, to move to.
+class Grid {
+  // The grid of `album`, whose index is `index`. A grid shown of an earlier
+  // bundle of it, `before`, gives the tiles it made, which are kept, so that
+  // an album that grows as it is shown does not load each thumbnail again.
+  constructor(album, index, before = null) {
+    this.id = album.id;
+    this.bundle = album.bundle;
+    this.tiles = before && before.id === album.id ? before.tiles : new Map();
+    this.positions = new WeakMap();
+    this.current = null;
+    this.months = [];
+    this.days = [];
+    this.observer = new IntersectionObserver((seen) => {
+      for (const each of seen.filter((entry) => entry.isIntersecting)) {
+        this.fill(this.months.find((month) => month.body === each.target));
+      }
+    }, { rootMargin: "100% 0px" });
+    const byDay = new Map();
+
+    for (const entries of index.months.values()) {
+      for (const [folder, entry] of entries) {
+        const day = dayTaken(entry);
+        byDay.set(day, [...(byDay.get(day) || []), [folder, entry]]);
+      }
+    }
+
+    const keys = [...byDay.keys()].filter(Boolean).sort();
+
+    if (byDay.has(null)) {
+      keys.push(null);
+    }
+
+    for (const key of keys) {
+      const monthKey = key ? key.slice(0, 7) : UNDATED;
+      let month = this.months[this.months.length - 1];
+
+      if (!month || month.key !== monthKey) {
+        month = { key: monthKey, days: [], filled: false, body: null, heading: null };
+        this.months.push(month);
+      }
+
+      const day = { month, key, at: this.days.length, photos: byDay.get(key).sort(inTakenOrder), tiles: [] };
+      month.days.push(day);
+      this.days.push(day);
+    }
+  }
+
+  // Shows it in `grid`, with the years and months listed in `nav`, the
+  // months `filled` names made at once, as those a grid shown before it made.
+  render(grid, nav, filled = new Set()) {
+    const shown = [];
+    const moves = [];
+    let year = null;
+    // Measured while the grid shown before it is still there, so that the
+    // page does not grow shorter, and lose where it was scrolled to.
+    this.measure(grid);
+
+    for (const month of this.months) {
+      if (month.key === UNDATED) {
+        month.heading = make("h3", "Undated");
+        shown.push(month.heading);
+        moves.push(this.move("Undated", "year", month));
+      } else {
+        if (month.key.slice(0, 4) !== year) {
+          year = month.key.slice(0, 4);
+          shown.push(make("h3", year));
+          moves.push(this.move(year, "year", month, shown[shown.length - 1]));
+        }
+
+        month.heading = make("h4", dateText(month.key, { month: "long" }));
+        shown.push(month.heading);
+        moves.push(this.move(dateText(month.key, { month: "short" }), "month", month));
+      }
+
+      month.body = make("div", null, "month");
+      month.body.style.height = `${this.estimate(month)}px`;
+      shown.push(month.body);
+    }
+
+    grid.replaceChildren(...shown);
+    nav.replaceChildren(make("ul"));
+    nav.firstElementChild.append(...moves);
+    nav.hidden = this.months.length === 0;
+
+    for (const month of this.months) {
+      if (filled.has(month.key)) {
+        this.fill(month);
+      } else {
+        this.observer.observe(month.body);
+      }
+    }
+
+    if (this.days.length > 0 && !this.current) {
+      this.makeCurrent(this.tileAt([0, 0]));
+    }
+  }
+
+  // An item of the years and months listed, named `text`, which moves to the
+  // first photo of `month`, and shows its heading, or `heading`.
+  move(text, kind, month, heading = null) {
+    const item = make("li");
+    const control = make("button", text, kind);
+    control.type = "button";
+    control.addEventListener("click", () => {
+      const [first] = month.days;
+      this.focus([first.at, 0]);
+      (heading || month.heading).scrollIntoView({ block: "start" });
+    });
+    item.append(control);
+    return item;
+  }
+
+  // How many tiles a row of a day holds as the grid is laid out, the height
+  // of a row, and that of a day of one row, measured of one made for it in
+  // `grid`, so that a month not yet made is given about the height it will
+  // take.
+  measure(grid) {
+    const day = make("div", null, "day");
+    const tiles = make("div", null, "day-tiles");
+    const tile = make("span", null, "tile");
+    tiles.append(tile);
+    day.append(make("h5", " "), tiles);
+    grid.append(day);
+    const style = getComputedStyle(tiles);
+    this.columns = Math.max(1, style.gridTemplateColumns.split(" ").filter(Boolean).length);
+    this.row = tile.getBoundingClientRect().height + (Number.parseFloat(style.rowGap) || 0);
+    this.day = day.getBoundingClientRect().height;
+    day.remove();
+  }
+
+  // About the height `month` takes once its tiles are made.
+  estimate(month) {
+    return month.days.reduce((height, day) => height + this.day + (Math.ceil(day.photos.length / this.columns) - 1) * this.row, 0);
+  }
+
+  // Gives each month not yet made about the height it will take, as the
+  // grid is laid out now, in `grid`.
+  remeasure(grid) {
+    this.measure(grid);
+
+    for (const month of this.months.filter((each) => !each.filled)) {
+      month.body.style.height = `${this.estimate(month)}px`;
+    }
+  }
+
+  // Makes the tiles of `month`, under a heading for each day.
+  fill(month) {
+    if (!month || month.filled) {
+      return;
+    }
+
+    month.filled = true;
+    this.observer.unobserve(month.body);
+    month.body.style.height = "";
+
+    for (const day of month.days) {
+      const group = make("div", null, "day");
+      const tiles = make("div", null, "day-tiles");
+      day.tiles = day.photos.map(([folder, entry], at) => this.tile(folder, entry, [day.at, at]));
+      tiles.append(...day.tiles);
+
+      if (day.key) {
+        group.append(make("h5", dateText(day.key, { weekday: "long", month: "long", day: "numeric" })));
+      }
+
+      group.append(tiles);
+      month.body.append(group);
+    }
+  }
+
+  // The keys of the months whose tiles are made.
+  filled() {
+    return new Set(this.months.filter((month) => month.filled).map((month) => month.key));
+  }
+
+  // The tile of the photo in `folder`, as `entry`, its entry in the index,
+  // describes it, at `position`, [the day, and where in the day].
+  tile(folder, entry, position) {
+    let tile = this.tiles.get(folder);
+
+    if (!tile) {
+      const thumb = isText(entry.thumb) && !entry.thumb.includes("/") ? entry.thumb : null;
+      const name = isText(entry.name) ? entry.name : folder;
+      const taken = isText(entry.taken) ? takenText(entry.taken) : "Undated";
+      tile = make("button", null, "tile");
+      tile.type = "button";
+      tile.title = `${name}\n${taken}`;
+      tile.setAttribute("aria-label", `${name}, ${taken}`);
+      tile.append(coverImage(thumb ? entryUrl(this.bundle, `${PHOTOS}/${folder}/${thumb}`) : null));
+      tile.addEventListener("click", () => {
+        if (shownGrid && shownGrid.positions.has(tile)) {
+          shownGrid.focus(shownGrid.positions.get(tile));
+        }
+      });
+      this.tiles.set(folder, tile);
+    }
+
+    tile.tabIndex = -1;
+    this.positions.set(tile, position);
+    return tile;
+  }
+
+  // The tile at `position`, its month made first, if it is not.
+  tileAt([day, at]) {
+    this.fill(this.days[day].month);
+    return this.days[day].tiles[at];
+  }
+
+  // Makes `tile` the one of the grid that Tab reaches.
+  makeCurrent(tile) {
+    if (this.current && this.current !== tile) {
+      this.current.tabIndex = -1;
+    }
+
+    tile.tabIndex = 0;
+    this.current = tile;
+  }
+
+  // Gives focus to the tile at `position`.
+  focus(position, preventScroll = false) {
+    const tile = this.tileAt(position);
+    this.makeCurrent(tile);
+    tile.focus({ preventScroll });
+  }
+
+  // The first photo, or the last if `last`.
+  end(last) {
+    const day = this.days[last ? this.days.length - 1 : 0];
+    return [day.at, last ? day.photos.length - 1 : 0];
+  }
+
+  // Where the key `key` moves from the photo at `position`, as the tiles are
+  // laid out: null if it moves nowhere, or undefined if it is not a key
+  // that moves.
+  moved([day, at], key) {
+    const count = (each) => this.days[each].photos.length;
+    const columns = this.columns;
+    const above = () => {
+      if (at >= columns) {
+        return [day, at - columns];
+      }
+
+      if (day === 0) {
+        return null;
+      }
+
+      const last = count(day - 1) - 1;
+      return [day - 1, Math.min(Math.floor(last / columns) * columns + (at % columns), last)];
+    };
+    const below = () => {
+      if (at + columns < count(day)) {
+        return [day, at + columns];
+      }
+
+      if (Math.floor(at / columns) < Math.floor((count(day) - 1) / columns)) {
+        return [day, count(day) - 1];
+      }
+
+      return day + 1 < this.days.length ? [day + 1, Math.min(at % columns, count(day + 1) - 1)] : null;
+    };
+    const screen = (step) => {
+      const rows = Math.max(1, Math.floor(window.innerHeight / this.row) - 1);
+      let position = [day, at];
+
+      for (let moved = 0; moved < rows; moved += 1) {
+        const next = step(position);
+
+        if (!next) {
+          break;
+        }
+
+        position = next;
+      }
+
+      return position[0] === day && position[1] === at ? null : position;
+    };
+    const moves = {
+      ArrowLeft: () => (at > 0 ? [day, at - 1] : (day > 0 ? [day - 1, count(day - 1) - 1] : null)),
+      ArrowRight: () => (at + 1 < count(day) ? [day, at + 1] : (day + 1 < this.days.length ? [day + 1, 0] : null)),
+      ArrowUp: above,
+      ArrowDown: below,
+      Home: () => this.end(false),
+      End: () => this.end(true),
+      PageUp: () => screen((position) => this.moved(position, "ArrowUp")),
+      PageDown: () => screen((position) => this.moved(position, "ArrowDown")),
+    };
+
+    return Object.hasOwn(moves, key) ? moves[key]() : undefined;
+  }
+
+  stop() {
+    this.observer.disconnect();
+  }
+}
+
+// The grid shown of the album open, a Grid, or null; and the album and
+// bundle whose grid is being read, as "{id} {bundle}", or null.
+let shownGrid = null;
+let readingGrid = null;
+
+// Shows the grid of `album`, read from its index, unless it is shown of its
+// bundle already. The grid of an earlier bundle of it, shown while its index
+// is read, keeps the tile with focus, and the months made.
+async function showGrid(album) {
+  const grid = byId("photo-grid");
+  const status = byId("grid-state");
+  const reading = `${album.id} ${album.bundle}`;
+  const before = shownGrid && shownGrid.id === album.id ? shownGrid : null;
+
+  if ((before && before.bundle === album.bundle) || readingGrid === reading) {
+    return;
+  }
+
+  if (!before) {
+    stopGrid();
+  }
+
+  if (album.count === 0) {
+    stopGrid();
+    show(status, "");
+    return;
+  }
+
+  readingGrid = reading;
+  show(status, before ? status.textContent : "Reading the album…");
+  let index;
+
+  try {
+    index = await AlbumIndex.read(album.bundle);
+  } catch (error) {
+    if (readingGrid === reading) {
+      readingGrid = null;
+      show(status, `The album's photos could not be read: ${error.message}`, true);
+    }
+
+    return;
+  }
+
+  if (readingGrid !== reading || state.open !== album.id) {
+    return;
+  }
+
+  readingGrid = null;
+  const shown = new Grid(album, index, before);
+  const focused = before && before.positions.has(document.activeElement) ? document.activeElement : null;
+  const filled = before ? before.filled() : new Set();
+
+  if (before) {
+    before.stop();
+    shown.current = before.current;
+  }
+
+  shownGrid = shown;
+  shown.render(grid, byId("photo-years"), filled);
+
+  if (focused && shown.positions.has(focused)) {
+    shown.focus(shown.positions.get(focused), true);
+  } else if (shown.current && !shown.positions.has(shown.current)) {
+    shown.current = null;
+    shown.makeCurrent(shown.tileAt([0, 0]));
+  }
+
+  show(status, index.unread.size ? "Part of this album could not be read, so not every photo of it is shown." : "");
+}
+
+// Takes the grid shown away.
+function stopGrid() {
+  if (shownGrid) {
+    shownGrid.stop();
+  }
+
+  shownGrid = null;
+  readingGrid = null;
+  byId("photo-grid").replaceChildren();
+  byId("photo-years").replaceChildren();
 }
 
 function openAlbum(id) {
@@ -1383,6 +2034,890 @@ async function removeAlbum() {
   await changeAlbums((albums) => albums.filter((album) => album.id !== id));
   byId("remove-dialog").close();
   return null;
+}
+
+// Importing photos from the folders the node offers.
+
+// Which of the files `kind` NOT_LISTED counts the file named `name` is, as
+// the node says of it, `entry`; or PHOTO_KIND if it is a photo every browser
+// shows as it is.
+function fileKind(name, entry) {
+  const type = isText(entry.content_type) ? entry.content_type.toLowerCase() : "";
+  const extension = extensionOf(name);
+
+  if (Object.hasOwn(PHOTO_TYPES, extension) || Object.values(PHOTO_TYPES).includes(type)) {
+    return PHOTO_KIND;
+  }
+
+  if (OTHER_PHOTOS.has(extension) || type.startsWith("image/")) {
+    return "unshown";
+  }
+
+  if (VIDEOS.has(extension) || type.startsWith("video/")) {
+    return "video";
+  }
+
+  return DESCRIBING.has(extension) ? "describing" : "other";
+}
+
+// What `counts`, how many files of each kind NOT_LISTED names were not
+// listed, says of them, or "".
+function notListedText(counts) {
+  const said = NOT_LISTED.filter(([kind]) => counts[kind]).map(([kind, one, many]) => plural(counts[kind], one, many));
+  return said.length ? `Not listed: ${said.join(", ")}.` : "";
+}
+
+// A photo in a folder the node offers: the segments of its path, a folder
+// offered and those below it, then its name, and what the node's listing
+// says of it, kept as it is found, since an import keeps none of a file's
+// times (HttpApi 12.2).
+class PhotoFile {
+  constructor(segments, entry) {
+    this.segments = segments;
+    this.entry = entry;
+    this.path = segments.join("/");
+    this.name = segments[segments.length - 1];
+  }
+
+  // The content type it is placed in an album with: by its extension, or
+  // else as the node gives it.
+  contentType() {
+    const type = isText(this.entry.content_type) ? this.entry.content_type.toLowerCase() : "";
+    return PHOTO_TYPES[extensionOf(this.name)] || type;
+  }
+
+  size() {
+    return Number.isInteger(this.entry.size) && this.entry.size >= 0 ? this.entry.size : undefined;
+  }
+
+  // When it was taken, until Step 164 reads it from the photo, {taken, from}:
+  // a local date and time from a date and time in its name, or else from the
+  // time the folder's listing gives it as modified; or null, if neither does.
+  taken() {
+    for (const found of this.name.matchAll(NAME_TAKEN)) {
+      const [year, month, day, hours, minutes, seconds] = [1, 3, 4, 5, 7, 8].map((at) => Number(found[at]));
+      const date = new Date(year, month - 1, day);
+      const real = date.getMonth() === month - 1 && date.getDate() === day && hours < 24 && minutes < 60 && seconds < 60;
+
+      if (real) {
+        return { taken: `${found[1]}-${found[3]}-${found[4]}T${found[5]}:${found[7]}:${found[8]}`, from: TAKEN_FROM_NAME };
+      }
+    }
+
+    const modified = isText(this.entry.modified) ? new Date(this.entry.modified) : null;
+    return modified && !Number.isNaN(modified.getTime()) ? { taken: localTime(modified), from: TAKEN_FROM_MODIFIED } : null;
+  }
+}
+
+function crumb(text, segments) {
+  const control = make("button", text, "secondary small");
+  control.type = "button";
+  control.addEventListener("click", () => browse(segments));
+  return control;
+}
+
+function folderRow(text, action) {
+  const item = make("li");
+  const control = make("button");
+  control.type = "button";
+  control.append(make("span", text));
+  control.addEventListener("click", action);
+  item.append(control);
+  return item;
+}
+
+// What a folder the node offers holds: the folders and the photos in it,
+// each as [name, what the node says of it], in order of name, and how many
+// other files of each kind NOT_LISTED names.
+class Folder {
+  constructor(segments, folders, photos, others) {
+    this.segments = segments;
+    this.folders = folders;
+    this.photos = photos;
+    this.others = others;
+  }
+
+  // The folder at `segments`, the folders it is in and then its name, or,
+  // if they are none, the folders the node offers.
+  static async list(segments) {
+    const path = segments.length ? `${DIRECTORY}/${encodedPath(segments.join("/"))}` : DIRECTORY;
+    const result = await call("GET", path);
+
+    if (!result.ok || !isObject(result.value) || !isObject(result.value.entries)) {
+      throw new Refusal(result);
+    }
+
+    const entries = Object.entries(result.value.entries).filter(([, entry]) => isObject(entry))
+      .sort(([one], [other]) => COLLATOR.compare(one, other));
+    const folders = entries.filter(([, entry]) => entry.type === "directory");
+    const photos = [];
+    const others = {};
+
+    for (const [name, entry] of entries.filter(([, each]) => each.type === "file")) {
+      const kind = fileKind(name, entry);
+
+      if (kind === PHOTO_KIND) {
+        photos.push([name, entry]);
+      } else {
+        others[kind] = (others[kind] || 0) + 1;
+      }
+    }
+
+    return new Folder(segments, folders, photos, others);
+  }
+
+  // Adds to `found` the photos in it, and in the folders within it, each a
+  // PhotoFile, and counts the other files, and the folders not looked in:
+  // those FOLDER_DEPTH below it, and those that could not be read. `told`
+  // is called as each folder is read.
+  async gather(found, told, depth = 0) {
+    found.photos.push(...this.photos.map(([name, entry]) => new PhotoFile([...this.segments, name], entry)));
+
+    for (const [kind, count] of Object.entries(this.others)) {
+      found.others[kind] = (found.others[kind] || 0) + count;
+    }
+
+    told(found);
+
+    for (const [name] of this.folders) {
+      let folder = null;
+
+      try {
+        folder = depth < FOLDER_DEPTH ? await Folder.list([...this.segments, name]) : null;
+      } catch (error) {
+        console.warn(`“${[...this.segments, name].join("/")}” could not be read: ${error.message}`);
+      }
+
+      if (folder) {
+        await folder.gather(found, told, depth + 1);
+      } else {
+        found.passed += 1;
+      }
+    }
+  }
+}
+
+// The folder the dialog importing photos shows, a Folder; the photos chosen
+// in the folders offered, each a PhotoFile, by its path, which stay chosen
+// as the person moves from folder to folder, until they are imported; and
+// the photos listed to be imported, each a FoundPhoto, while any is left out.
+let browsing = null;
+const chosen = new Map();
+let foundPhotos = [];
+
+async function browse(segments) {
+  const list = byId("folder-entries");
+  const status = byId("folder-state");
+  const every = byId("folder-all");
+  const crumbs = [crumb("Folders", [])];
+
+  segments.forEach((segment, index) => {
+    crumbs.push(make("span", "›", "note"), crumb(segment, segments.slice(0, index + 1)));
+  });
+
+  byId("folder-path").replaceChildren(...crumbs);
+  crumbs[crumbs.length - 1].focus();
+  list.replaceChildren();
+  list.hidden = true;
+  every.hidden = true;
+  show(status, "Asking the node…");
+  let listed;
+
+  try {
+    listed = await Folder.list(segments);
+  } catch (error) {
+    show(status, error.message, true);
+    return;
+  }
+
+  const { folders, photos, others } = listed;
+  browsing = listed;
+
+  list.replaceChildren(
+    ...folders.map(([name]) => folderRow(`${name}/`, () => browse([...segments, name]))),
+    ...photos.map(([name, entry]) => photoRow(new PhotoFile([...segments, name], entry))),
+  );
+  list.hidden = folders.length + photos.length === 0;
+
+  // Every photo is imported from a folder, not from all the folders offered.
+  every.hidden = segments.length === 0 || list.hidden;
+
+  if (list.firstElementChild) {
+    list.querySelector("button, input").focus();
+  }
+
+  if (segments.length === 0 && list.hidden && Object.keys(others).length === 0) {
+    show(status, "This node offers no folders. Its operator chooses them, in local.folders.");
+  } else {
+    show(status, [folders.length + photos.length ? "" : "This folder holds no photos.", notListedText(others)].filter(Boolean).join(" "));
+  }
+}
+
+// The row of `photo`, a PhotoFile, in the folder shown: a box to choose it,
+// its name, and its size.
+function photoRow(photo) {
+  const item = make("li");
+  const check = make("label", null, "check");
+  const box = make("input");
+  box.type = "checkbox";
+  box.checked = chosen.has(photo.path);
+  box.addEventListener("change", () => {
+    if (box.checked) {
+      chosen.set(photo.path, photo);
+    } else {
+      chosen.delete(photo.path);
+    }
+
+    showChosen();
+  });
+  check.append(box, make("span", photo.name), make("span", formatSize(photo.entry.size), "note"));
+  item.append(check);
+  return item;
+}
+
+// Says how many photos are chosen, on Import chosen.
+function showChosen() {
+  byId("import-chosen").textContent = chosen.size ? `Import chosen (${chosen.size.toLocaleString()})` : "Import chosen";
+}
+
+function openImport() {
+  if (byId("import-photos").hidden) {
+    return;
+  }
+
+  showFolders();
+  showChosen();
+  byId("import-dialog").showModal();
+  browse([]);
+}
+
+// Shows the folders, in the dialog importing photos, rather than the photos
+// found to import.
+function showFolders() {
+  foundPhotos = [];
+  byId("import-heading").textContent = "Import photos";
+  byId("found-form").hidden = true;
+  byId("folder-browse").hidden = false;
+}
+
+// A photo listed to be imported, with a box to leave it out, chosen to start
+// with, and as much of its path as is below the folder chosen, `from`
+// segments in.
+class FoundPhoto {
+  constructor(photo, from) {
+    const check = make("label", null, "check");
+    this.photo = photo;
+    this.box = make("input");
+    this.box.type = "checkbox";
+    this.box.checked = true;
+    this.item = make("li");
+    check.append(this.box, make("span", photo.segments.slice(from).join("/")));
+    this.item.append(check);
+  }
+}
+
+// Lists each of `photos`, each a PhotoFile, by its path below the folder
+// `from` segments in, under `heading`, with how many there are, and `notes`,
+// for the person to leave any out before any is imported.
+function listFound(photos, from, heading, notes) {
+  const sorted = [...photos].sort((one, other) => COLLATOR.compare(one.path, other.path));
+  foundPhotos = sorted.map((photo) => new FoundPhoto(photo, from));
+  byId("found-list").replaceChildren(...foundPhotos.map((each) => each.item));
+  show(byId("found-note"), [`${plural(foundPhotos.length, "photo", "photos")} found.`, ...notes].join(" "));
+  show(byId("found-result"), "");
+  showFoundCount();
+  byId("import-heading").textContent = heading;
+  byId("folder-browse").hidden = true;
+  byId("found-form").hidden = false;
+  byId("found-list").querySelector("input").focus();
+}
+
+// Says how many of the photos listed are to be imported, on Import.
+function showFoundCount() {
+  const count = foundPhotos.filter((each) => each.box.checked).length;
+  byId("found-import").textContent = `Import ${plural(count, "photo", "photos")}`;
+}
+
+// Looks for every photo in the folder shown, and in the folders within it,
+// and lists each found.
+async function findEvery() {
+  const folder = browsing;
+  const status = byId("folder-state");
+  const gathered = { photos: [], others: {}, passed: 0 };
+  await folder.gather(gathered, (so) => show(status, `Looking for photos… ${so.photos.length.toLocaleString()} found so far.`));
+  const notes = [notListedText(gathered.others)].filter(Boolean);
+
+  if (gathered.passed) {
+    notes.push(`${plural(gathered.passed, "folder was", "folders were")} not looked in, as they could not be read, or are more than ${FOLDER_DEPTH} below this one.`);
+  }
+
+  if (gathered.photos.length === 0) {
+    return [["No photos are here, nor in the folders within it.", ...notes].join(" "), false];
+  }
+
+  listFound(gathered.photos, folder.segments.length, `Import every photo in “${folder.segments[folder.segments.length - 1]}”`, notes);
+  return null;
+}
+
+// Lists each photo chosen, by its path below the folder that holds them all.
+async function findChosen() {
+  const photos = [...chosen.values()];
+
+  if (photos.length === 0) {
+    throw new Error("No photo is chosen. Choose photos with their boxes, or import every photo in a folder.");
+  }
+
+  const folders = photos.map((photo) => photo.segments.slice(0, -1));
+  let from = 0;
+
+  while (folders.every((segments) => from < segments.length && segments[from] === folders[0][from])) {
+    from += 1;
+  }
+
+  listFound(photos, from, "Import the photos chosen", []);
+  return null;
+}
+
+// Imports each photo listed that is not left out, into a new album.
+async function importFound() {
+  const photos = foundPhotos.filter((each) => each.box.checked).map((each) => each.photo);
+
+  if (photos.length === 0) {
+    throw new Error("No photo is chosen to import.");
+  }
+
+  for (const photo of photos) {
+    chosen.delete(photo.path);
+  }
+
+  byId("import-dialog").close();
+  new Importing(photos).run();
+  return null;
+}
+
+// The imports followed until each is done, by id, each with what is told how
+// it is doing, and what is told when it is done, or has failed; and whether
+// the node is being asked after them. It is asked after them all at once,
+// however many there are.
+const followed = new Map();
+let askingAfterImports = false;
+
+// Imports the file at `path`, a folder offered and the path below it,
+// encrypted (HttpApi 12.2), and returns the file bundle the node stores it
+// as, carrying its key, telling `progress` how the import is doing until
+// then.
+async function importFile(path, progress) {
+  const started = await call("POST", IMPORTS, { body: { path, encrypted: true } });
+
+  if (started.status !== 202 || !isObject(started.value) || !isText(started.value.import_id)) {
+    throw new Refusal(started);
+  }
+
+  return followImport(started.value.import_id, progress);
+}
+
+// What the node says of an import, until it is done: the file bundle it stored.
+function followImport(importId, progress) {
+  return new Promise((resolve, reject) => {
+    followed.set(importId, { progress, resolve, reject });
+
+    if (!askingAfterImports) {
+      askingAfterImports = true;
+      askAfterImports();
+    }
+  });
+}
+
+// Asks the node how the imports followed are doing, until none is. If it
+// cannot say, every one followed fails.
+async function askAfterImports() {
+  try {
+    while (followed.size > 0) {
+      const result = await call("GET", IMPORTS);
+
+      if (result.status === 503) {
+        await sleep(retryAfter(result.headers));
+        continue;
+      }
+
+      if (!result.ok) {
+        throw new Refusal(result);
+      }
+
+      const imports = isObject(result.value) && isObject(result.value.imports) ? result.value.imports : {};
+
+      for (const [importId, { progress, resolve, reject }] of followed) {
+        const record = imports[importId];
+
+        if (!isObject(record)) {
+          continue;
+        }
+
+        if (record.status === "done" && isText(record.file)) {
+          followed.delete(importId);
+          resolve(record.file);
+        } else if (record.status === "failed") {
+          followed.delete(importId);
+          reject(new Error(record.error || "The node did not say why the import failed."));
+        } else {
+          progress(record);
+        }
+      }
+
+      if (followed.size > 0) {
+        await sleep(IMPORT_POLL_SECONDS);
+      }
+    }
+  } catch (error) {
+    for (const { reject } of followed.values()) {
+      reject(error);
+    }
+
+    followed.clear();
+  } finally {
+    // At once, so that an import followed from now on is asked after again.
+    askingAfterImports = false;
+  }
+}
+
+// The whole file `file` at the node, waiting out the 503s it answers while
+// it fetches what it lacks.
+async function fileBlob(file) {
+  for (let waits = 0; ; waits += 1) {
+    let response;
+
+    try {
+      response = await fetch(`${DATA}${file}/`, { cache: "no-store" });
+    } catch (error) {
+      throw new Unreachable(`The node could not be reached: ${error.message}`);
+    }
+
+    if (response.ok) {
+      return response.blob();
+    }
+
+    if (response.status !== 503 || waits >= MAX_WAITS) {
+      const value = await response.json().catch(() => null);
+      throw new Refusal({ status: response.status, value });
+    }
+
+    await response.body?.cancel();
+    await sleep(retryAfter(response.headers));
+  }
+}
+
+// A thumbnail of the photo `file`, of the content type `type`: drawn on a
+// canvas, upright, as browsers draw a photo by its orientation, scaled to at
+// most THUMB_SIZE pixels on its longer side, as the TV page scales a still,
+// and kept as a JPEG, as base64; with the photo's width and height, as it is
+// drawn. Null if this browser cannot draw it, or the node cannot give it.
+async function thumbnail(file, type) {
+  let url = null;
+
+  try {
+    const blob = await fileBlob(file);
+    const image = new Image();
+    url = URL.createObjectURL(type ? new Blob([blob], { type }) : blob);
+    image.src = url;
+    await image.decode();
+    const [width, height] = [image.naturalWidth, image.naturalHeight];
+
+    if (!width || !height) {
+      return null;
+    }
+
+    const scale = Math.min(1, THUMB_SIZE / Math.max(width, height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#000";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const jpeg = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", THUMB_QUALITY));
+    return { width, height, base64: jpeg ? await base64Of(jpeg) : null };
+  } catch (error) {
+    console.warn(`A photo could not be drawn: ${error.message}`);
+    return null;
+  } finally {
+    if (url) {
+      URL.revokeObjectURL(url);
+    }
+  }
+}
+
+// The folder a photo is kept in, in an album: the first FOLDER_DIGITS hex
+// digits of the hash of its original's file bundle, `file`.
+function folderOf(file) {
+  const folder = file.split("/")[1].slice(0, FOLDER_DIGITS);
+
+  if (!PHOTO_FOLDER.test(folder)) {
+    throw new Error(`The node stored it as ${file.split("/")[0]}, whose hash this page does not name a photo by.`);
+  }
+
+  return folder;
+}
+
+// The name an import gives the first album it makes, made at `date`:
+// IMPORT_NAME, then the local date and time to the minute.
+function importName(date) {
+  return `${IMPORT_NAME} ${localTime(date).slice(0, 16).replace("T", " ")}`;
+}
+
+// `name`, if no album of `albums` is named it, ignoring case, or else
+// `name (2)`, `name (3)`, and so on, the first that none is.
+function freeName(albums, name) {
+  const held = (each) => albums.some((album) => sameName(album.name, each));
+  let free = name;
+
+  for (let number = 2; held(free); number += 1) {
+    free = `${name} (${number})`;
+  }
+
+  return free;
+}
+
+// Asks before the page is left while a photo is imported, since leaving it
+// leaves the photos not yet added out of the album. It is listened for only
+// while one is, as some browsers do not keep a page that listens for it to
+// go back to.
+function warnOfLeaving(event) {
+  event.preventDefault();
+  // Chrome and Edge before 119 ask only when this is set.
+  event.returnValue = true;
+}
+
+// Says, in the activity list, that the import of something ended as `text`
+// says, with Dismiss beside it, in `item`, whose `label` the text is.
+function endItem(item, label, text, isError) {
+  const dismiss = make("button", "Dismiss", "secondary small");
+  dismiss.type = "button";
+  dismiss.addEventListener("click", () => item.remove());
+  label.textContent = text;
+  label.className = isError ? "error" : "";
+  item.querySelectorAll("progress, .note").forEach((each) => each.remove());
+  item.append(dismiss);
+}
+
+// A photo being imported, as the activity list shows it while it is: its
+// file imported, encrypted, from the moment it is made.
+class ImportingPhoto {
+  constructor(photo) {
+    this.photo = photo;
+    this.item = make("li");
+    this.label = make("span", `Importing “${photo.name}”`);
+    this.bar = make("progress");
+    this.note = make("span", "", "note");
+    this.bar.setAttribute("aria-label", `How much of “${photo.name}” is imported`);
+    this.item.append(this.label, this.bar, this.note);
+    byId("activity").append(this.item);
+    this.file = importFile(photo.path, (record) => this.progress(record));
+    // Followed whether or not it is waited for, as an import stopped is not.
+    this.file.catch(() => undefined);
+  }
+
+  progress(record) {
+    if (typeof record.size === "number" && record.size > 0 && typeof record.bytes_read === "number") {
+      this.bar.max = record.size;
+      this.bar.value = record.bytes_read;
+      this.note.textContent = `${formatSize(record.bytes_read)} of ${formatSize(record.size)}`;
+    } else {
+      this.note.textContent = record.status === "waiting" ? "Waiting its turn." : "";
+    }
+  }
+
+  // What it adds to an album, as Importing.batch holds it, once its file is
+  // imported, unless `holds` says the album holds its folder already, when
+  // it is null.
+  async described(holds) {
+    const photo = this.photo;
+    const file = await this.file;
+    const folder = folderOf(file);
+
+    if (holds(folder)) {
+      return null;
+    }
+
+    this.bar.removeAttribute("value");
+    this.note.textContent = "Making its thumbnail…";
+    const type = photo.contentType();
+    const drawn = await thumbnail(file, type);
+    const taken = photo.taken();
+    const thumb = drawn && drawn.base64 ? THUMB_FILE : undefined;
+    const original = [THUMB_FILE, INFO_FILE].includes(photo.name) ? `original ${photo.name}` : photo.name;
+    const info = {
+      name: photo.name,
+      kind: PHOTO_KIND,
+      taken: taken ? taken.taken : undefined,
+      taken_from: taken ? taken.from : undefined,
+      width: drawn ? drawn.width : undefined,
+      height: drawn ? drawn.height : undefined,
+      size: photo.size(),
+      original,
+      thumb,
+    };
+    const add = {
+      [`${PHOTOS}/${folder}/${original}`]: type ? { file, content_type: type } : { file },
+      [`${PHOTOS}/${folder}/${INFO_FILE}`]: { text: jsonText(INFO_KEYS, info) },
+    };
+
+    if (thumb) {
+      add[`${PHOTOS}/${folder}/${THUMB_FILE}`] = { base64: drawn.base64 };
+    }
+
+    return {
+      folder,
+      add,
+      month: taken ? taken.taken.slice(0, 7) : UNDATED,
+      entry: defined({ taken: info.taken, kind: PHOTO_KIND, width: info.width, height: info.height, thumb, name: photo.name, source: photo.path }),
+    };
+  }
+
+  ended(text, isError) {
+    endItem(this.item, this.label, text, isError);
+  }
+
+  done() {
+    this.item.remove();
+  }
+}
+
+// An import of photos into a new album, named for it and its date and time,
+// or into as many as hold them, MOST_PHOTOS each. Each photo is imported
+// encrypted, in turn, and shown in the activity list while it is, and the
+// photos imported are added BATCH_PHOTOS at a time. The activity list shows
+// the whole of it too, and says how it ended.
+class Importing {
+  constructor(photos) {
+    this.photos = photos;
+    this.name = importName(new Date());
+    // The names of the albums made, and the id of the one added to, its
+    // bundle as this import last made it, or null if it is to be read again,
+    // and its index.
+    this.names = [];
+    this.album = null;
+    this.bundle = null;
+    this.index = null;
+    // The photos imported and not yet added, as ImportingPhoto.described
+    // gives them, and their folders.
+    this.batch = [];
+    this.batched = new Set();
+    this.imported = 0;
+    this.added = 0;
+    this.twice = 0;
+    this.failed = 0;
+    this.item = make("li");
+    this.label = make("span");
+    this.bar = make("progress");
+    this.note = make("span", "", "note");
+    this.bar.max = photos.length;
+    this.bar.value = 0;
+    this.bar.setAttribute("aria-label", "How many of the photos are imported");
+    this.item.append(this.label, this.bar, this.note);
+    byId("activity").append(this.item);
+    this.told();
+  }
+
+  // The albums made, as their names are said.
+  albumsText() {
+    return new Intl.ListFormat(undefined, { type: "conjunction" }).format(this.names.map((name) => `“${name}”`));
+  }
+
+  told() {
+    const into = this.names.length ? ` into ${this.albumsText()}` : "";
+    this.label.textContent = `Importing ${plural(this.photos.length, "photo", "photos")}${into}`;
+    this.bar.value = this.imported;
+    this.note.textContent = `${this.imported.toLocaleString()} imported, ${this.added.toLocaleString()} added`;
+  }
+
+  // Whether the album added to holds the photo in `folder`, or will once the
+  // batch is added.
+  holds(folder) {
+    return this.batched.has(folder) || this.index.holds(folder);
+  }
+
+  async run() {
+    const started = new Map();
+    const start = (at) => {
+      if (at < this.photos.length && !started.has(at)) {
+        started.set(at, new ImportingPhoto(this.photos[at]));
+      }
+    };
+
+    if (state.imports++ === 0) {
+      window.addEventListener("beforeunload", warnOfLeaving);
+    }
+
+    try {
+      await this.newAlbum();
+
+      for (let at = 0; at < this.photos.length; at += 1) {
+        for (let ahead = at; ahead <= at + IMPORTS_AHEAD; ahead += 1) {
+          start(ahead);
+        }
+
+        const importing = started.get(at);
+        started.delete(at);
+        await this.prepare(importing);
+        this.imported += 1;
+        this.told();
+
+        if (this.batch.length >= BATCH_PHOTOS) {
+          await this.addBatch();
+        }
+      }
+
+      await this.addBatch();
+      this.ended(null);
+    } catch (error) {
+      for (const importing of started.values()) {
+        importing.done();
+      }
+
+      this.ended(error);
+    } finally {
+      if (--state.imports === 0) {
+        window.removeEventListener("beforeunload", warnOfLeaving);
+      }
+    }
+  }
+
+  // Waits for `importing`, an ImportingPhoto, to be imported, and puts it in
+  // the batch to add, unless the album holds it already. An album holding as
+  // many photos as it may has the batch added, and a new album is made.
+  async prepare(importing) {
+    let described;
+
+    try {
+      described = await importing.described((folder) => this.holds(folder));
+    } catch (error) {
+      if (error instanceof SessionEnded) {
+        importing.done();
+        throw error;
+      }
+
+      this.failed += 1;
+      importing.ended(`“${importing.photo.name}” was not imported: ${error.message}`, true);
+      return;
+    }
+
+    importing.done();
+
+    if (!described) {
+      this.twice += 1;
+      return;
+    }
+
+    if (this.index.size + this.batch.length >= MOST_PHOTOS) {
+      await this.addBatch();
+      await this.newAlbum();
+    }
+
+    this.batch.push(described);
+    this.batched.add(described.folder);
+  }
+
+  // Makes the album the photos are added to next, and lists it at once: the
+  // first named for the import, and each after it named as the first, with
+  // its number after it.
+  async newAlbum() {
+    const name = this.names.length ? `${this.name} (${this.names.length + 1})` : this.name;
+    const bundle = await makeBundle({ encrypted: true, add: {} });
+    let made = null;
+    await changeAlbums((albums) => {
+      made = Album.made(freeName(albums, name), bundle);
+      return [...albums, made];
+    });
+    this.names.push(made.name);
+    this.album = made.id;
+    this.bundle = bundle;
+    this.index = new AlbumIndex();
+    this.told();
+  }
+
+  // Adds the batch of photos imported to the album, as a new bundle of it,
+  // with its index's months written again, and places a version naming it.
+  // A photo it holds already, as one added elsewhere since, is not added
+  // again.
+  async addBatch() {
+    const batch = this.batch;
+    let added = 0;
+    this.batch = [];
+    this.batched = new Set();
+
+    if (batch.length === 0) {
+      return;
+    }
+
+    await changeAlbums(async (albums) => {
+      const album = albums.find((each) => each.id === this.album);
+
+      if (!album) {
+        throw new Error(`“${this.names[this.names.length - 1]}” was removed, so no more photos are added to it.`);
+      }
+
+      if (album.bundle !== this.bundle) {
+        this.index = await AlbumIndex.read(album.bundle);
+      }
+
+      // Read again if this is not finished, as the index may then hold
+      // photos the album does not.
+      this.bundle = null;
+      const add = {};
+      const months = new Set();
+      let cover = album.cover;
+
+      for (const photo of batch) {
+        if (this.index.holds(photo.folder)) {
+          this.twice += 1;
+          continue;
+        }
+
+        this.index.set(photo.month, photo.folder, photo.entry);
+        Object.assign(add, photo.add);
+        months.add(photo.month);
+        cover = cover || (photo.entry.thumb ? photo.folder : undefined);
+        added += 1;
+      }
+
+      if (added === 0) {
+        this.bundle = album.bundle;
+        return albums;
+      }
+
+      const files = this.index.files(months);
+      this.bundle = await editInParts(album.bundle, { ...add, ...files.add }, files.remove);
+      return albums.map((each) => (each.id === album.id ? each.with({ bundle: this.bundle, count: this.index.size, cover }) : each));
+    });
+    this.added += added;
+    this.told();
+  }
+
+  // Says how the import ended, with `error`, if it stopped.
+  ended(error) {
+    const said = [];
+
+    if (this.names.length) {
+      said.push(`${plural(this.added, "photo was", "photos were")} added to ${this.albumsText()}.`);
+    } else {
+      said.push("No album was made, so no photo was imported.");
+    }
+
+    if (this.twice) {
+      said.push(`${plural(this.twice, "photo was", "photos were")} the same as one added already, so each is in the album once.`);
+    }
+
+    if (this.failed) {
+      said.push(`${plural(this.failed, "photo was", "photos were")} not imported, as said beside each.`);
+    }
+
+    if (error) {
+      said.push(`The import stopped: ${error.message}`);
+    }
+
+    endItem(this.item, this.label, said.join(" "), Boolean(error) || this.failed > 0);
+  }
 }
 
 // Runs `action` with `control` disabled, and says what it returned in
@@ -1497,16 +3032,26 @@ function arrowKeys(list, selector = "button") {
 }
 
 // An arrow key, Home, or End, with the albums shown but none with focus,
-// gives focus to the first, or, for End, the last.
-function intoAlbums(key) {
+// gives focus to the first, or, for End, the last; and with an album open,
+// but none of its photos with focus, to its first photo, or its last.
+function intoTiles(key) {
+  if (state.open !== null) {
+    shownGrid.focus(shownGrid.end(key === "end"));
+    return;
+  }
+
   const picks = [...byId("album-list").querySelectorAll("button.pick")];
   picks[key === "end" ? picks.length - 1 : 0].focus();
 }
 
-// Whether `intoAlbums` has albums to move into, from `target`, which has focus.
+// Whether `intoTiles` has albums or photos to move into, from `target`,
+// which has focus.
 function canMoveInto(target) {
-  return state.open === null && !target.closest("#album-list")
-    && byId("album-list").querySelector("button.pick") !== null;
+  if (state.open !== null) {
+    return Boolean(shownGrid) && shownGrid.days.length > 0 && !target.closest("#photo-grid");
+  }
+
+  return !target.closest("#album-list") && byId("album-list").querySelector("button.pick") !== null;
 }
 
 async function askClient() {
@@ -1591,12 +3136,12 @@ const SHORTCUTS = {
   escape: backToAlbums,
   backspace: backToAlbums,
   n: openNew,
-  arrowleft: intoAlbums,
-  arrowright: intoAlbums,
-  arrowup: intoAlbums,
-  arrowdown: intoAlbums,
-  home: intoAlbums,
-  end: intoAlbums,
+  arrowleft: intoTiles,
+  arrowright: intoTiles,
+  arrowup: intoTiles,
+  arrowdown: intoTiles,
+  home: intoTiles,
+  end: intoTiles,
   "?": () => byId("keys-dialog").showModal(),
   "/": () => byId("keys-dialog").showModal(),
 };
@@ -1606,7 +3151,7 @@ window.addEventListener("keydown", (event) => {
   const key = String(event.key).toLowerCase();
   const ignored = event.altKey || event.ctrlKey || event.metaKey || event.isComposing || event.repeat
     || document.querySelector("dialog[open]") || target.closest("input, select, textarea")
-    || !Object.hasOwn(SHORTCUTS, key) || (SHORTCUTS[key] === intoAlbums && !canMoveInto(target));
+    || !Object.hasOwn(SHORTCUTS, key) || (SHORTCUTS[key] === intoTiles && !canMoveInto(target));
 
   if (ignored) {
     return;
@@ -1618,20 +3163,72 @@ window.addEventListener("keydown", (event) => {
 }, true);
 
 arrowKeys(byId("album-list"), "button.pick");
+arrowKeys(byId("folder-entries"), "button, input");
+
+// The arrow keys, Home, End, Page Up, and Page Down, from a photo of the
+// album open, move through its photos, as the grid lays them out.
+byId("photo-grid").addEventListener("keydown", (event) => {
+  const from = shownGrid ? shownGrid.positions.get(event.target) : undefined;
+
+  if (!from || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+    return;
+  }
+
+  const to = shownGrid.moved(from, event.key);
+
+  if (to !== undefined) {
+    event.preventDefault();
+  }
+
+  if (to) {
+    shownGrid.focus(to);
+  }
+});
+
+// The months not yet shown are given about the height they will take, as
+// the grid is laid out again.
+let remeasuring = false;
+
+window.addEventListener("resize", () => {
+  if (!remeasuring && shownGrid && state.open !== null) {
+    remeasuring = true;
+    requestAnimationFrame(() => {
+      remeasuring = false;
+
+      if (shownGrid && state.open !== null) {
+        shownGrid.remeasure(byId("photo-grid"));
+      }
+    });
+  }
+});
 
 for (const control of document.querySelectorAll("[data-close]")) {
   control.addEventListener("click", () => control.closest("dialog").close());
 }
 
+function onClick(id, message, action) {
+  const control = byId(id);
+  control.addEventListener("click", () => perform(control, byId(message), action));
+}
+
 byId("show-keys").addEventListener("click", () => byId("keys-dialog").showModal());
 byId("new-album").addEventListener("click", openNew);
+byId("import-photos").addEventListener("click", openImport);
 byId("back").addEventListener("click", backToAlbums);
 byId("rename-album").addEventListener("click", openRename);
 byId("remove-album").addEventListener("click", openRemove);
+byId("found-list").addEventListener("change", showFoundCount);
+byId("found-back").addEventListener("click", () => {
+  showFolders();
+  (byId("folder-entries").querySelector("button, input") || byId("import-chosen")).focus();
+});
 
 onSubmit("new-form", "new-result", makeAlbum);
 onSubmit("rename-form", "rename-result", renameAlbum);
 onSubmit("remove-form", "remove-result", removeAlbum);
+onSubmit("found-form", "found-result", importFound);
+onClick("folder-all", "folder-state", findEvery);
+onClick("import-chosen", "folder-state", findChosen);
 
 start();
 </script>

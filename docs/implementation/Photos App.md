@@ -34,7 +34,7 @@ and can be built alongside any phase.
 
 ## 2. What It Adds
 
-Twelve steps, the first two built:
+Twelve steps, the first three built:
 
 - **Importing a file encrypted.** The node's one change. Step 160.
 - **The photos application, and its albums.** Step 161.
@@ -335,9 +335,9 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 162 — Importing Photos into a New Album
+## Step 162 — Importing Photos into a New Album ✅
 
-**Issue:** to be made (§4), from #477. **Depends on:** Steps 160, 161; TV
+**Issue:** #670, from #477. **Depends on:** Steps 160, 161; TV
 App Step 145; Music App Step 154.
 
 Settled with the user:
@@ -438,6 +438,99 @@ photo in two folders, added once; the new album listed at once, its count
 growing; the page reloaded during an import, keeping what was added; the
 grid grouped by year, month, and day, with the undated last; and an import
 of more than 100,000 photos, made for the purpose, split into two albums.
+
+Built, in one change set, the page alone. It was checked on a node of its
+own in headless Chromium, with photos made for the purpose and kept out of
+the repository: photos chosen in three folders, staying chosen as the
+person moved between them, listed by their paths below the folder holding
+them all, and imported; every photo of a folder and the folders within it,
+with HEIC, MP4, XMP, AAE, and JSON files beside them counted and not
+listed; the new album listed as the import started, at no photos, and its
+count growing a batch at a time, 50 and then 96; the same photo in two
+folders added once; dates read from names of each form the step names, and
+from the time modified; a JPEG turned by its orientation given an upright
+thumbnail, 267 by 400, and its width and height as seen, 800 by 1,200; a
+file that is no photo added with a placeholder; a photo named `thumb.jpg`
+kept as `original thumb.jpg`; each original served with its content type;
+the grid under its years, months, and days, the years and months beside it
+moving to each; every key; the album open while an import added to it,
+growing with the photo with focus kept; the page warning on leaving, and
+reloaded mid-import keeping each batch added; with the most an album holds
+lowered to 45 for the purpose, 96 photos split into albums of 45, 45, and
+6, named as the first, then `(2)`, then `(3)`; and a phone's width. On
+this machine, 96 small photos were imported in 16 seconds. Safari is yet to
+be checked.
+
+Calls made while building it, not yet reviewed:
+
+- **Import chosen lists the photos too**, before any is imported, as
+  Import every photo here does, each by its path below the folder holding
+  them all, so that both are checked alike.
+- **Photos chosen stay chosen** while the dialog is closed and opened
+  again, until they are imported.
+- **What is not listed is counted by kind**, and said in the folder and
+  before importing: photos of kinds not imported yet, videos, files
+  describing photos, and other files.
+- **Three photos ahead.** The node is asked to import the next three
+  photos while the page draws the thumbnail of one, so that it is not idle.
+  Those are shown in the activity list, waiting their turn. Photos are
+  still added in the order listed.
+- **The import as a whole** is shown in the activity list as well: how many
+  photos are imported, and how many added. Once it ends it says how many
+  were added, to which albums, how many were the same as one added already,
+  how many were not imported, and why it stopped, if it did, with Dismiss.
+- **A photo that fails** is said beside it in the activity list, and the
+  rest go on. A batch that cannot be added, or an album removed while photos
+  are added to it, stops the import.
+- **The thumbnail is drawn from the whole original**, read from the node,
+  as an image of the content type it is placed with, on black, so that what
+  is transparent in it is black. A photo whose original the node could not
+  give is added as one the browser cannot draw is, with a placeholder.
+- **A file named `thumb.jpg` or `info.json`** is kept as `original
+  thumb.jpg` or `original info.json`, so that its thumbnail does not take
+  its place.
+- **The content type** is the one the page's own table gives for the file's
+  extension, or else the node's, as for songs (Music App Step 154).
+- **Dates in names** are of years 1900 to 2099, with or without
+  separators, and with ` at ` before the time, as a Mac names a
+  screenshot. A date that is no real date is passed over. A date with no
+  time, as `IMG-20240514-WA0001.jpg`, is not read, and the time modified is
+  used.
+- **The time modified** is given as the browser's own local time.
+- **An album after the first** is named as the first, with its number
+  after it; one whose name is held already takes the next free number
+  after that, as `Import 2026-11-09 14:32 (2) (2)`.
+- **The grid makes a month's tiles** only as the month comes within a
+  screen of being seen, each month not yet made given about the height it
+  will take, so that an album of 100,000 photos does not make 100,000 tiles
+  at once. Each thumbnail is loaded only as it is scrolled to.
+- **An album open while photos are added to it** is read again after each
+  batch, keeping the tiles shown, so that their thumbnails are not loaded
+  again, and the photo with focus.
+- **The headings**: the year, the month's name, and the day, with its day
+  of the week. The years and months are beside the grid, and above it, as
+  one row scrolled across, at a phone's width.
+- **One tile is reached by Tab**, the one last moved to, and the arrow keys
+  move within the grid as it is laid out: Up and Down to the photo in the
+  same column of the row above or below, into the day before or after; Page
+  Up and Page Down by as many rows as fit on a screen, less one.
+- **Choosing a photo** gives it focus, and nothing more, until Step 163
+  shows it.
+- **Tiles** are at least 7.5rem across, and three to a row at a phone's
+  width.
+
+**Open questions:**
+
+- **`GET /data/imports` grows with every import.** It gives every import
+  the node has made since it started, so an import of 100,000 photos makes
+  the answer the page asks for each second larger and larger. Whether the
+  node should forget an import some time after it ends, or answer for the
+  imports asked about.
+- **How long 100,000 photos take.** Each photo is imported, read whole, and
+  drawn in turn, and Step 161 measured about 10 seconds for each batch added
+  to an album that large, so an import of 100,000 photos would take many
+  hours. Whether batches should grow as the album does, or the node's edit
+  of a large bundle be made quicker, as Step 161 asks.
 
 ---
 
@@ -869,7 +962,7 @@ and this table then given their numbers.
 | #476 | Defining the photos application | None: this plan |
 | #477 | Implementing the photos application, split into the issues below, then Step 161 — The Photos Application and Its Albums | 160 to 171, then 161 |
 | #669 | Importing a file encrypted | 160 |
-| *to be made* | Step 162 — Importing Photos into a New Album | 162 |
+| #670 | Step 162 — Importing Photos into a New Album | 162 |
 | *to be made* | Step 163 — Viewing a Photo | 163 |
 | *to be made* | Step 164 — Reading a Photo's Details | 164 |
 | *to be made* | Step 165 — Photos No Browser Shows as They Are | 165 |

@@ -822,6 +822,8 @@ def test_the_photos_page_calls_only_endpoints_the_node_serves(photos_page: str) 
     # No store: the node keeps no albums for whoever is not signed in.
     assert called == {
         CLIENT_PATH,
+        "/data/directory",
+        IMPORTS_PATH,
         BUNDLES_PATH,
         "/data/",
         SESSION_PATH,
@@ -829,13 +831,18 @@ def test_the_photos_page_calls_only_endpoints_the_node_serves(photos_page: str) 
         DROP_PATH,
         f"{ENCRYPTED_PATH}/",
     }
+    # The folders, and a photo's original, imported encrypted, read whole to
+    # draw its thumbnail.
+    assert fullmatch(DIRECTORY_PATTERN, "/data/directory/Pictures/2024/May")
+    photo = f"/data/sha256/{hex_digits}/AES256-CBC/{hex_digits}"
+    assert fullmatch(BUNDLE_PATTERN, f"{photo}/")
     # A person's albums: searched at their drop, each version opened, and
     # those replaced shunned.
     target = quote(f"photos albums:sha256/{hex_digits}", safe="")
     assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{target}")
     assert fullmatch(ENCRYPTED_PATTERN, f"{ENCRYPTED_PATH}/sha256/{hex_digits}")
     assert fullmatch(DATA_PATTERN, f"/data/sha256/{hex_digits}")
-    # An album's index, and the thumbnail of its cover in its folder.
+    # An album's index, and the thumbnail of each photo in its folder.
     album = f"/data/sha256/{hex_digits}/AES256-CBC/{hex_digits}"
     assert fullmatch(BUNDLE_PATTERN, f"{album}/index/2024-05.json")
     assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/thumb.jpg")
@@ -866,6 +873,79 @@ def test_the_photos_page_reads_an_albums_index_by_month_as_the_plan_names_it(
     assert [name for name in not_named if fullmatch(pattern, name)] == []
     # A month of more photos than this is split into parts.
     assert "const PART_PHOTOS = 2000;" in photos_page
+
+
+def test_the_photos_page_takes_as_photos_the_files_the_plan_names(photos_page: str) -> None:
+    [types] = findall(r"const PHOTO_TYPES = \{([^}]*)\};", photos_page)
+    placed = dict(findall(r"^\s+(\w+): \"(image/[a-z]+)\",$", types, MULTILINE))
+
+    # Those every browser shows as they are, each placed with its type.
+    assert placed == {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "jpe": "image/jpeg",
+        "jfif": "image/jpeg",
+        "png": "image/png",
+        "gif": "image/gif",
+        "webp": "image/webp",
+        "avif": "image/avif",
+        "bmp": "image/bmp",
+    }
+    # Those beside them that only describe them are counted, not listed.
+    assert 'const DESCRIBING = new Set(["xmp", "aae", "thm", "json"]);' in photos_page
+
+
+def test_the_photos_page_imports_each_photo_encrypted(photos_page: str) -> None:
+    assert 'call("POST", IMPORTS, { body: { path, encrypted: true } })' in photos_page
+    # Its folder in an album is named by the hash of its original's file bundle.
+    assert "const FOLDER_DIGITS = 16;" in photos_page
+
+
+def test_the_photos_page_imports_into_albums_as_the_plan_names_them(photos_page: str) -> None:
+    assert 'const IMPORT_NAME = "Import";' in photos_page
+    assert "const MOST_PHOTOS = 100000;" in photos_page
+    assert "const BATCH_PHOTOS = 50;" in photos_page
+    assert "const THUMB_SIZE = 400;" in photos_page
+    assert 'const THUMB_FILE = "thumb.jpg";' in photos_page
+    assert 'const INFO_FILE = "info.json";' in photos_page
+    assert (
+        'const INFO_KEYS = ["name", "kind", "taken", "taken_from", "width", "height", "size",'
+        ' "original", "thumb"];'
+    ) in photos_page
+    assert 'const PHOTO_KIND = "photo";' in photos_page
+    assert 'const TAKEN_FROM_NAME = "name";' in photos_page
+    assert 'const TAKEN_FROM_MODIFIED = "modified";' in photos_page
+
+
+def test_the_photos_page_reads_when_a_photo_was_taken_from_its_name(photos_page: str) -> None:
+    [pattern] = findall(r"^const NAME_TAKEN = /(.*)/g;$", photos_page, MULTILINE)
+    dated = {
+        "IMG_20240514_093012.jpg": "2024-05-14T09:30:12",
+        "PXL_20240514_093012345.jpg": "2024-05-14T09:30:12",
+        "2024-05-14 09.30.12.png": "2024-05-14T09:30:12",
+        "20240514_093012.jpg": "2024-05-14T09:30:12",
+        "Screenshot 2024-05-14 at 09.30.12.png": "2024-05-14T09:30:12",
+        "IMG_1234 2024-05-14_09-30-12.jpg": "2024-05-14T09:30:12",
+    }
+    undated = [
+        "IMG_0001.jpg",
+        "2024-05-14.jpg",
+        "IMG-20240514-WA0001.jpg",
+        "120240514_093012.jpg",
+        "IMG_20240514_0930123.jpg",
+        "2024-05.14 09:30.12.png",
+    ]
+
+    def taken(name: str) -> str | None:
+        found = findall(pattern, name)
+        return (
+            f"{found[0][0]}-{found[0][2]}-{found[0][3]}T{found[0][4]}:{found[0][6]}:{found[0][7]}"
+            if found
+            else None
+        )
+
+    assert {name: taken(name) for name in dated} == dated
+    assert [name for name in undated if taken(name)] == []
 
 
 def test_the_photos_page_is_black_as_the_movie_and_tv_pages_are_dark(photos_page: str) -> None:
