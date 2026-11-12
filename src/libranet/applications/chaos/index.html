@@ -93,6 +93,11 @@
   .mark { margin-right: 0.4rem; cursor: help; }
   .choices { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-left: 0.5rem; font-weight: normal; }
   .choices button { padding: 0.1rem 0.55rem; }
+
+  /* Uploading a zip: what to send, where, and how it goes. */
+  #upload form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+  #upload select, #upload input { font: inherit; max-width: 100%; }
+  #upload progress { width: 100%; margin-top: 0.75rem; }
 </style>
 </head>
 <body>
@@ -103,7 +108,7 @@
   <noscript><p class="note">Showing what this path resolves to needs JavaScript.</p></noscript>
   <div class="actions">
     <button id="reload" type="button">Reload</button>
-    <a id="served" hidden>Open it where it is served</a>
+    <a id="served" hidden>View content</a>
   </div>
 
   <section id="summary" hidden>
@@ -113,25 +118,41 @@
     <p id="trust-text" class="note" hidden></p>
   </section>
 
+  <section id="upload" hidden>
+    <h2>Upload a zip</h2>
+    <p class="note">The zip's contents are put at the address chosen, signed by
+    you, and served there to whoever trusts you more than anyone uploading
+    there too. A zip of one folder gives that folder's contents.</p>
+    <form id="upload-form">
+      <input id="upload-file" type="file" accept=".zip,application/zip" required
+             aria-label="The zip to upload">
+      <label>At <select id="upload-level" aria-label="Where to upload it"></select></label>
+      <button id="upload-send" type="submit">Upload</button>
+    </form>
+    <progress id="upload-progress" max="1" value="0" hidden></progress>
+    <p id="upload-said" class="note" aria-live="polite"></p>
+  </section>
+
   <div id="levels"></div>
 
   <footer>
-    Anyone may propose a bundle for any path beneath <code>/chaos</code>, by
-    placing a proposal at the drop of the path, or of a directory above it:
+    Anyone may upload a bundle to any path beneath <code>/chaos</code>, by
+    placing an upload at the drop of the path, or of a directory above it:
     <code>chaos:/</code> for the root, then <code>chaos:/</code> and each
-    element of the path in turn. A bundle proposed at a level serves the
+    element of the path in turn. A bundle uploaded at a level serves the
     paths beneath it that it holds, so it must hold the rest of the path below
-    that level. The node first looks at every level for proposals signed by
+    that level. The node first looks at every level for uploads signed by
     someone trusted, from the root down, and then for those whose signer is
     neither trusted nor distrusted, or that are unsigned. At each level it
     takes the newest first, and serves the first whose bundle holds the rest.
-    A distrusted signer's proposal is never served. Whose trust chooses is
-    whoever is signed in, or else this node's.
+    A distrusted signer's upload is never served. Chaos is only for
+    someone signed in, and their trust chooses.
     Each signer's mark is from those scores: &#x1F7E2; above 0, trusted;
     &#x1F7E1; 0, neither; &#x1F534; below 0, distrusted; and &#x26AA; where
     there are no scores to show.
-    Ending any address beneath <code>/chaos</code> with <code>?</code> shows
-    this page for it.
+    On this node's own port, every address beneath <code>/chaos</code> shows
+    this page for it, and on the Chaos port, ending one with <code>?</code>
+    comes back to it.
   </footer>
 </main>
 <script>
@@ -142,6 +163,9 @@
 // as it is beneath /chaos/ (HttpApi 13.6.7).
 const CHAOS_PREFIX = /^\/chaos(?:\/|$)/i;
 const REPORT_PREFIX = "/data/chaos/";
+
+// What begins the target string of a level's drop (HttpApi 13.6.1).
+const TARGET_PREFIX = "chaos:/";
 
 // What marks each signer's trust (#322), by the scores that chose (HttpApi
 // 11.7): a score above 0, of 0, and below 0; and where there are no scores to
@@ -170,13 +194,23 @@ const DETAILS_AT_ONCE = 8;
 // An id: the only hash the node knows, in lower-case hex (HttpApi 5).
 const CONTENT_ID = /^sha256\/[0-9a-f]{64}$/;
 
+// Where the node makes a bundle of a zip (HttpApi 12.3), and has a bundle's
+// directory as one (HttpApi 12.5).
+const BUNDLES_PATH = "/data/bundles";
+const ZIP_PREFIX = "/data/zip/";
+
+// An upload placed at a level's drop: signed, matching as many bits as a
+// node's search returns, searched for this long (HttpApi 13.6.2).
+const UPLOAD_MINIMUM_BITS = 24;
+const UPLOAD_SECONDS = 5;
+
 // Why a proposal was passed over, in words (HttpApi 13.6.7).
 const PASSED_OVER = {
-  "not-a-proposal": "Passed over: it is not a proposal.",
+  "not-a-proposal": "Passed over: it is not an upload.",
   "bad-signature": "Passed over: it is signed, but its signature does not check.",
   shunned: "Passed over: this node has shunned its bundle.",
   future: "Passed over: it is dated too far ahead of this node's clock.",
-  superseded: "Passed over: its signer proposed a newer one here.",
+  superseded: "Passed over: its signer uploaded a newer one here.",
   distrusted: "Passed over: its signer is distrusted.",
   "lacks-path": "Passed over: its bundle does not hold the rest of the path.",
   unusable: "Passed over: its bundle cannot be read, or is password-protected.",
@@ -288,7 +322,9 @@ function refusal(result) {
 // there before.
 const status = {
   say(lines) {
-    byId("status").replaceChildren(...lines.map(([text, className]) => make("li", text, className || "note")));
+    byId("status").replaceChildren(
+      ...lines.map((line) => (line instanceof Node ? line : make("li", line[0], line[1] || "note"))),
+    );
   },
 };
 
@@ -304,29 +340,39 @@ function decodedPath() {
   }
 }
 
-// What the page shows: the last report, or null; who is signed in on this
-// machine, whose trust list the page may change, or null; what changing each
-// signer's trust last said; and what each signer says of themselves, as far as
-// it has been read.
+// What the page shows: the last report, or null; whether this client is on
+// the node's own machine, where alone anyone signs in; who is signed in on it,
+// whose trust list the page may change, or null; what changing each signer's
+// trust last said; and what each signer says of themselves, as far as it has
+// been read.
 const view = {
   report: null,
+  local: false,
   you: null,
   changing: new Map(),
   details: new Map(),
 };
 
-// Who is signed in, as the node says (HttpApi 11.4), if this client is on the
-// node's own machine, where alone a page may change their trust list; null
-// otherwise.
+// Whether this client is on the node's own machine, and who is signed in
+// there, as the node says (HttpApi 2.4, 11.4); null if no one is.
 async function signedInHere() {
   const client = await call("GET", "/data/client");
+  view.local = client.ok && isObject(client.value) && client.value.local === true;
 
-  if (!(client.ok && isObject(client.value) && client.value.local === true)) {
+  if (!view.local) {
     return null;
   }
 
   const session = await call("GET", "/data/session");
   return session.ok && isObject(session.value) && CONTENT_ID.test(session.value.id) ? session.value : null;
+}
+
+// The address a level's drop serves, beneath /chaos/: its elements, and a
+// "/" after them, as for a directory, unless the level is a file's own,
+// whose rest is empty (HttpApi 13.6.1).
+function baseUrl(level) {
+  const elements = level.target.startsWith(TARGET_PREFIX) ? level.target.slice(TARGET_PREFIX.length) : level.target;
+  return elements === "" || level.rest === "" ? `/chaos/${elements}` : `/chaos/${elements}/`;
 }
 
 // Where the node searches the drop `target` names (HttpApi 9.7): the target
@@ -524,11 +570,6 @@ function nameOf(person) {
   return fields[HANDLE] || names;
 }
 
-// Whose scores chose, in words.
-function whose(report) {
-  return report.scores === "person" ? "your" : "this node's";
-}
-
 function markOf(score) {
   if (!Number.isFinite(score)) {
     return UNKNOWN;
@@ -546,10 +587,10 @@ function trustText(report, score, step) {
   }
 
   if (step === null) {
-    return `Not reached by ${whose(report)} trust scores. Score 0.${building}`;
+    return `Not reached by your trust scores. Score 0.${building}`;
   }
 
-  return `Score ${score}, step ${step}, by ${whose(report)} trust scores.${building}`;
+  return `Score ${score}, step ${step}, by your trust scores.${building}`;
 }
 
 // Trust, Distrust, and Clear, changing the entry for `signer` on the trust
@@ -557,7 +598,7 @@ function trustText(report, score, step) {
 // and what the last change said.
 function choicesFor(report, signer, score, step) {
   const row = make("span", "", "choices");
-  const own = report.scores === "person" && step === 1;
+  const own = step === 1;
   const held = own ? score > 0 : null;
   const change = view.changing.get(signer);
 
@@ -615,7 +656,7 @@ function signerRow(report, proposal) {
   const signer = proposal.signer;
 
   if (!CONTENT_ID.test(signer || "")) {
-    row.append(proposal.passed_over === "not-a-proposal" ? "Not a proposal" : "Unsigned");
+    row.append(proposal.passed_over === "not-a-proposal" ? "Not an upload" : "Unsigned");
     return row;
   }
 
@@ -654,7 +695,18 @@ function proposalItem(report, level, proposal, chosen) {
     link.title = "Read the rest of the path in this bundle";
     link.append(code(proposal.bundle, "id"));
     bundle.append(link);
-    rows.append(make("li", `Proposed ${when(proposal.created)}`), bundle);
+    rows.append(make("li", `Uploaded ${when(proposal.created)}`), bundle);
+
+    // A file's own level holds a file bundle, which is no directory to zip.
+    if (level.rest !== "") {
+      const download = document.createElement("a");
+      download.href = `${ZIP_PREFIX}${proposal.bundle}/`;
+      download.download = zipName(level);
+      download.textContent = "Download it as a zip";
+      const item = make("li", "");
+      item.append(download);
+      rows.append(item);
+    }
   }
 
   const holds = proposal.holds === true ? "Its bundle holds the rest of the path." : proposal.holds === false ? "Its bundle does not hold the rest of the path." : "";
@@ -683,16 +735,18 @@ function proposalItem(report, level, proposal, chosen) {
 function levelSection(report, level, index) {
   const section = document.createElement("section");
   const title = make("h2", `Level ${index}: `);
-  title.append(code(level.target));
-  const rest = make("p", "Rest of the path, which a bundle proposed here must hold: ", "note");
+  title.append(code(baseUrl(level)));
+  const target = make("p", "Drop ", "note");
+  target.append(code(level.target));
+  const rest = make("p", "Rest of the path, which a bundle uploaded here must hold: ", "note");
   rest.append(level.rest ? code(level.rest) : "nothing: a file bundle's own file, or a directory bundle's root");
   const hash = make("p", "Drop target hash ", "note");
   hash.append(code(level.hash, "id"));
-  section.append(title, rest, hash);
+  section.append(title, target, rest, hash);
   const proposals = Array.isArray(level.proposals) ? level.proposals : [];
 
   if (proposals.length === 0) {
-    section.append(make("p", "Nothing proposed here has been found."));
+    section.append(make("p", "Nothing uploaded here has been found."));
   } else {
     const list = make("ol", "", "proposals");
     const chosen = isObject(report.chosen) && report.chosen.level === index ? report.chosen.drop : null;
@@ -741,31 +795,211 @@ function render() {
   const chosen = isObject(report.chosen) ? report.chosen : null;
   const served = byId("served");
 
+  // The same path on the Chaos port, whatever was chosen.
+  served.href = report.served_at;
+  served.hidden = false;
+
   if (chosen === null) {
     byId("summary-title").textContent = "Nothing is served here";
-    byId("chosen").textContent = "No bundle proposed at this path, or at any directory above it, is chosen for it. What was found at each level is below.";
-    served.hidden = true;
+    byId("chosen").textContent = "No bundle uploaded at this path, or at any directory above it, is chosen for it. What was found at each level is below.";
   } else {
     byId("summary-title").textContent = "What is served here";
-    const said = make("span", `Served from the proposal at level ${chosen.level}, `);
-    said.append(code(levels[chosen.level] ? levels[chosen.level].target : "?"), ", drop ", code(chosen.drop, "id"), ".");
+    const said = make("span", `Served from the upload at level ${chosen.level}, `);
+    said.append(code(levels[chosen.level] ? baseUrl(levels[chosen.level]) : "?"), ", drop ", code(chosen.drop, "id"), ".");
     byId("chosen").replaceChildren(said);
-    served.href = report.served_at;
-    served.hidden = false;
   }
 
   const building = report.complete ? "" : " They are still being built, so this is read again until they are.";
-  byId("scores").textContent = `Chosen by ${whose(report)} trust scores.${building}`;
+  byId("scores").textContent = `Chosen by your trust scores.${building}`;
   const trustNote = byId("trust-text");
   trustNote.hidden = view.you === null;
   trustNote.textContent = "Trust, Distrust, and Clear change your trust list, which is public: anyone can read whom you trust, and whom you distrust. Clear takes your own entry away, leaving their score to the lists of those you trust.";
   byId("summary").hidden = false;
+  showUploadLevels(levels);
   byId("levels").replaceChildren(...levels.map((level, index) => levelSection(report, level, index)));
+}
+
+// The name a zip of what is uploaded at `level` is saved as: its address's
+// last element, or chaos at the root.
+function zipName(level) {
+  const elements = baseUrl(level).split("/").filter((element) => element !== "");
+  return `${elements.length > 1 ? elements[elements.length - 1] : "chaos"}.zip`;
+}
+
+// The levels a zip may be uploaded at: each but a file's own, whose rest is
+// empty, and which a directory bundle cannot serve.
+function uploadLevels(levels) {
+  return levels.filter((level) => typeof level.rest === "string" && level.rest !== "");
+}
+
+// Offer the levels of the report to upload at, once signed in on the node's
+// own machine, where alone the node makes bundles. The deepest, the
+// directory of the address, is chosen first, and a choice made is kept.
+function showUploadLevels(levels) {
+  const section = byId("upload");
+  section.hidden = view.you === null;
+
+  if (section.hidden) {
+    return;
+  }
+
+  const select = byId("upload-level");
+  const offered = uploadLevels(levels).map((level) => level.target);
+
+  if (offered.join("\n") === [...select.options].map((option) => option.value).join("\n")) {
+    return;
+  }
+
+  const chosen = select.value;
+  select.replaceChildren(
+    ...uploadLevels(levels).map((level) => {
+      const option = make("option", baseUrl(level));
+      option.value = level.target;
+      return option;
+    }),
+  );
+  select.value = offered.includes(chosen) ? chosen : offered[offered.length - 1] || "";
+}
+
+// Say how uploading goes, and show how much of the zip is sent, or hide
+// that, if `sent` is null.
+function sayUpload(text, className, sent) {
+  const said = byId("upload-said");
+  said.textContent = text;
+  said.className = className || "note";
+  const progress = byId("upload-progress");
+  progress.hidden = sent === null || sent === undefined;
+  progress.value = sent || 0;
+}
+
+// Send the zip `file` to the node to be made a bundle (HttpApi 12.3), showing
+// how much is sent; what names the bundle made.
+function sendZip(file) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", BUNDLES_PATH);
+    request.setRequestHeader("Content-Type", "application/zip");
+    request.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) {
+        sayUpload("Sending the zip…", "note", event.loaded / event.total);
+      }
+    });
+    request.upload.addEventListener("load", () => sayUpload("Making a bundle of the zip…", "note", 1));
+    request.addEventListener("load", () => {
+      let value = null;
+
+      try {
+        value = JSON.parse(request.responseText);
+      } catch (error) {
+        value = null;
+      }
+
+      if (request.status >= 200 && request.status < 300 && isObject(value) && typeof value.bundle === "string") {
+        resolve(value.bundle);
+      } else {
+        reject(new Error(`The zip was not made a bundle: ${refusal({ status: request.status, value })}`));
+      }
+    });
+    request.addEventListener("error", () => reject(new Unreachable("The node could not be reached.")));
+    request.send(file);
+  });
+}
+
+// Whether `bundle` holds `rest` (HttpApi 12.1); null if that could not be
+// told, as when the node has not resolved it yet.
+async function holdsRest(bundle, rest) {
+  for (let waits = 0; ; waits += 1) {
+    let response;
+
+    try {
+      response = await fetch(bundlePath(bundle, rest), { method: "HEAD", cache: "no-store" });
+    } catch (error) {
+      return null;
+    }
+
+    if (response.status === 503 && waits < MAX_WAITS) {
+      await sleep(retryAfter(response.headers));
+      continue;
+    }
+
+    return response.ok ? true : response.status === 404 ? false : null;
+  }
+}
+
+// Upload the zip chosen at the level chosen: make a bundle of it, and place
+// an upload of it at the level's drop, signed by whoever is signed in
+// (HttpApi 11.5, 13.6.2); then read the report again.
+async function upload(event) {
+  event.preventDefault();
+  const file = byId("upload-file").files[0];
+  const level = uploadLevels(view.report ? view.report.levels : []).find(
+    (each) => each.target === byId("upload-level").value,
+  );
+
+  if (!file || !level) {
+    return;
+  }
+
+  const send = byId("upload-send");
+  send.disabled = true;
+
+  try {
+    sayUpload("Sending the zip…", "note", 0);
+    const bundle = await sendZip(file);
+    sayUpload("Looking for the rest of the path in it…", "note", null);
+    const holds = await holdsRest(bundle, level.rest);
+
+    if (holds === false && !confirm(`This zip has no ${level.rest} at its top. Upload it at ${baseUrl(level)} anyway?`)) {
+      sayUpload("Not uploaded.", "note", null);
+      return;
+    }
+
+    sayUpload(`Placing it at ${baseUrl(level)}…`, "note", null);
+    const created = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+    const placed = await call("POST", "/data/signed", {
+      target: level.target,
+      text: JSON.stringify({ bundle, created }),
+      seconds: UPLOAD_SECONDS,
+      minimum_bits: UPLOAD_MINIMUM_BITS,
+    });
+
+    if (!placed.ok) {
+      throw new Error(`It was not placed: ${refusal(placed)}`);
+    }
+
+    sayUpload(`Uploaded at ${baseUrl(level)}.`, "chosen", null);
+    // The zip alone is cleared: where it went is kept for the next.
+    byId("upload-file").value = "";
+    followReport();
+  } catch (error) {
+    sayUpload(error.message, "error", null);
+  } finally {
+    send.disabled = false;
+  }
+}
+
+// What the page says to someone not signed in, who cannot use Chaos.
+function signInLines() {
+  if (!view.local) {
+    return [["Chaos is used signed in, on this node's own machine.", "error"]];
+  }
+
+  const line = make("li", "Chaos is only for someone signed in. ", "error");
+  const home = document.createElement("a");
+  home.href = "/";
+  home.textContent = "Sign in on the home page.";
+  line.append(home);
+  return [line];
 }
 
 // Read the report (HttpApi 13.6.7), and show it.
 async function readReport() {
   const result = await call("GET", REPORT_PREFIX + encodedPath);
+
+  if (result.status === 401) {
+    status.say(signInLines());
+    return false;
+  }
 
   if (!(result.ok && isObject(result.value) && Array.isArray(result.value.levels))) {
     status.say([[`What this path resolves to could not be read: ${refusal(result)}`, "error"]]);
@@ -803,9 +1037,10 @@ async function followReport() {
 
 async function start() {
   byId("path").textContent = `/chaos/${decodedPath()}`;
-  // Asking for the path again serves what has been found since, or this page
-  // again, if still nothing is chosen.
-  byId("reload").addEventListener("click", () => location.assign(location.pathname));
+  // The main port shows only this page for the path, so Reload reads the
+  // report again, with what has been found since.
+  byId("reload").addEventListener("click", () => followReport());
+  byId("upload-form").addEventListener("submit", upload);
 
   try {
     view.you = await signedInHere();

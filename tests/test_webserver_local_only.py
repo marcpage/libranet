@@ -172,6 +172,29 @@ def test_a_json_body_is_left_to_the_endpoint(content_type: str) -> None:
     assert not endpoint.handled[0].body.consumed
 
 
+@mark.parametrize(
+    ("content_type", "or_else", "status"),
+    [
+        ("application/zip", ("application/zip",), 200),
+        ("Application/Zip; name=site.zip", ("application/zip",), 200),
+        ("application/json", ("application/zip",), 200),
+        # Not taken where it is not named, nor a form's type where it is.
+        ("application/zip", (), 415),
+        ("text/plain", ("application/zip",), 415),
+    ],
+)
+def test_a_body_of_another_type_no_form_sends_is_taken_only_where_it_is_named(
+    content_type: str, or_else: tuple[str, ...], status: int
+) -> None:
+    endpoint = Endpoint()
+    request = asked("POST", body=b"PK", Host=HOST, Content_Type=content_type)
+
+    response = LocalOnly(endpoint, CHECKS, or_else=or_else)(request)
+
+    assert response.status == status
+    assert len(endpoint.handled) == (1 if status == 200 else 0)
+
+
 @mark.parametrize("address", [*REMOTE, *LOCAL])
 @mark.parametrize("host", [HOST, "node.lan:8080", "192.168.1.5:8080"])
 def test_any_client_on_this_nodes_own_page_is_served_where_any_may_be(

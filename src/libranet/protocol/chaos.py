@@ -84,16 +84,6 @@ class PassedOver(StrEnum):
     PENDING = "pending"
 
 
-class ChoosingScores(StrEnum):
-    """Whose trust scores chose, as the report says it (HttpApi §13.6.7)."""
-
-    # Those of the person whose session the request carried.
-    PERSON = "person"
-
-    # The node's own.
-    NODE = "node"
-
-
 @dataclass(frozen=True)
 class ChaosLevel:
     """Level ``number`` of a Chaos path: its drop's ``target`` string, and the ``rest`` below it."""

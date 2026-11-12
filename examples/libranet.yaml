@@ -59,6 +59,19 @@ network:
   # base64, a third larger than they are. A larger request is refused.
   max_bundles_request_bytes: 4194304
 
+  # Provisional: the largest zip a page may send to be made a bundle (HTTP
+  # API §12.3), 16 GiB. It comes as it is, and is written to a temporary file
+  # beside the store before it is read, so as much room again is needed. A
+  # larger one is refused.
+  max_bundles_zip_bytes: 17179869184
+
+  # What a zip made a bundle leaves out: an entry with an element of its
+  # name matching one of these shell-style patterns, case sensitively, and
+  # all beneath it. By default, what macOS's Finder adds of its own.
+  zip_excluded_names:
+    - "__MACOSX"
+    - ".DS_Store"
+
   # How long a person's session lasts unused before it ends, in seconds
   # (HTTP API §11.4). The node holds the person's private key in memory for
   # as long as the session lasts. Signing out, or the node stopping, ends a

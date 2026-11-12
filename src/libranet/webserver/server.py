@@ -115,6 +115,8 @@ from libranet.webserver.bundle_edits import (
 )
 from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
+from libranet.webserver.bundle_zip_reads import ZIP_PATTERN, BundleZipHandler
+from libranet.webserver.bundle_zips import ZIP_MEDIA_TYPE, BundlesHandler, ZipBundleMaker
 from libranet.webserver.chaos_handler import (
     CHAOS_METHODS,
     CHAOS_PATTERN,
@@ -419,7 +421,22 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
                 max_bundle_bytes=storage.max_decompressed_bundle_bytes,
             ),
         )
-        router.add("POST", BUNDLES_PATH, LocalOnly(OwnPageOnly(edits, pages, trusted=True), checks))
+        zips = ZipBundleMaker(
+            uploads,
+            storage.data_dir,
+            storage.max_object_bytes,
+            max_zip_bytes=node.network.max_bundles_zip_bytes,
+            excluded_names=node.network.zip_excluded_names,
+        )
+        router.add(
+            "POST",
+            BUNDLES_PATH,
+            LocalOnly(
+                OwnPageOnly(BundlesHandler(edits, zips), pages, trusted=True),
+                checks,
+                or_else=(ZIP_MEDIA_TYPE,),
+            ),
+        )
         drops = DropHandler(
             uploads,
             storage.max_object_bytes,
@@ -506,12 +523,12 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
         router.add("GET", KARMA_HEAD_PATH, karma.head)
         router.add("POST", KARMA_HEAD_PATH, KarmaHeadTold(publish))
 
-        if peers is not None and chaos_port is not None:
+        if chaos_port is not None:
             settings = ChaosConfig() if chaos is None else chaos
             resolver = ChaosResolver(
                 ChaosLevels(search, paths.parts, settings),
                 paths,
-                ChaosScores(sessions, builds, node.node_id, peers.builds),
+                ChaosScores(sessions, builds),
                 settings,
             )
 
@@ -519,11 +536,7 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
             main_port = node.network.listen_port
 
             for method in CHAOS_METHODS:
-                router.add(
-                    method,
-                    CHAOS_PATTERN,
-                    ChaosHandler(resolver, paths, sessions, chaos_port.number, page=page),
-                )
+                router.add(method, CHAOS_PATTERN, page)
                 chaos_port.router.add(
                     method,
                     CHAOS_PATTERN,
@@ -531,7 +544,7 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
                 )
 
             # Before the bundle route, whose pattern it also fits.
-            report = ChaosReport(resolver, sessions, main_port, chaos_port.number)
+            report = ChaosReport(resolver, sessions, chaos_port.number)
             router.add("GET", CHAOS_REPORT_PATTERN, OwnSiteOnly(OwnPageOnly(report, pages), checks))
 
     router.add("GET", SEARCH_PATTERN, search)
@@ -548,9 +561,11 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     )
     router.add("GET", DROP_SEARCH_PATTERN, search.at_drop)
     reads = BundleReadHandler(paths)
+    zipped = BundleZipHandler(paths, storage.max_decompressed_bundle_bytes)
 
     for method in BUNDLE_METHODS:
         router.add(method, BUNDLE_PATTERN, reads)
+        router.add(method, ZIP_PATTERN, zipped)
 
     router.add(
         "GET",
