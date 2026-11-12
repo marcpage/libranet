@@ -1,4 +1,4 @@
-"""Tests for serving Chaos paths on the main port and the Chaos port (HttpApi §13.6.4-§13.6.7)."""
+"""Tests for the Chaos page on the main port and Chaos sites on the Chaos port (HttpApi §13.6)."""
 
 from __future__ import annotations
 from datetime import UTC, datetime
@@ -24,8 +24,8 @@ from libranet.config.models import HOUR_SECONDS
 from libranet.identity.people import NewIdentity, PersonKey, Username
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType, PathOutcome
-from libranet.problems import UNUSABLE_BUNDLE
-from libranet.protocol.chaos import ChaosPath, ChaosProposal, ChoosingScores
+from libranet.problems import SESSION_REQUIRED, UNUSABLE_BUNDLE
+from libranet.protocol.chaos import ChaosPath, ChaosProposal
 from libranet.webserver.app_handler import CONFIG_APP_POLICY
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_use import ApplicationUse
@@ -54,7 +54,6 @@ PROPOSAL = ChaosProposal(BUNDLE, datetime(2026, 11, 7, 15, 4, 5, tzinfo=UTC))
 # A page of two parts, of 9 and 6 bytes.
 PAGE_PARTS = (b"<p>Bread ", b"cake</p>")
 PAGE = b"".join(PAGE_PARTS)
-SANDBOX_POLICY = "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads"
 HANDLER_LOGGER = "libranet.webserver.chaos_handler"
 # The Chaos page the node ships, and its bundle.
 CHAOS_PAGE = b"<!doctype html><title>Chaos</title>"
@@ -83,7 +82,7 @@ class Resolver:
         self, request: Request, path: ChaosPath, *, deadline: float | None = None
     ) -> ChaosResolution:
         self.asked.append((request, path, deadline))
-        return ChaosResolution(path, ChoosingScores.NODE, True, (), self.chosen)
+        return ChaosResolution(path, True, (), self.chosen)
 
 
 class Site:
@@ -114,23 +113,16 @@ class Site:
     def router(self, *, main_port: bool, page: bool = False) -> Router:
         """The routes of the main port, if ``main_port``, and of the Chaos port otherwise.
 
-        If ``page``, the main port serves the Chaos page, and the Chaos port
-        sends to it, as Phase 7 Step 158 has them.
+        The main port serves the Chaos page. If ``page``, the Chaos port
+        sends to it, as Phase 7 Steps 158 and 159 have it.
         """
-        if main_port:
-            handler = ChaosHandler(
-                self.resolver,
-                self.paths,
-                self.sessions,
-                CHAOS_PORT,
-                page=ChaosPage(PAGE_BUNDLE, self.paths) if page else None,
-            )
-
-        else:
-            handler = ChaosHandler(
+        handler = (
+            ChaosPage(PAGE_BUNDLE, self.paths)
+            if main_port
+            else ChaosHandler(
                 self.resolver, self.paths, self.sessions, main_port=MAIN_PORT if page else None
             )
-
+        )
         router = Router()
 
         for method in CHAOS_METHODS:
@@ -233,24 +225,140 @@ def test_chaos_is_redirected_to_chaos_slash_with_its_query_whatever_its_case(
     assert site.resolver.asked == []
 
 
-@mark.parametrize("method", ["GET", "HEAD"])
-def test_the_main_port_sends_a_request_carrying_a_session_to_the_chaos_port(
-    site: Site, alice: PersonKey, method: str
+@mark.parametrize("main_port", [True, False])
+def test_chaos_with_a_bare_question_mark_is_redirected_to_chaos_slash_with_it(
+    site: Site, main_port: bool
 ) -> None:
-    signed_in = {**site.signed_in(alice), "Host": "localhost:8080"}
-
-    response = asked(
-        site.router(main_port=True),
-        "/chaos/recipes/a%20cake.html",
-        signed_in,
-        method=method,
-        query_text="serves=4",
-    )
+    response = asked(site.router(main_port=main_port, page=True), "/chaos", has_query=True)
 
     assert response.status == 302
-    assert response.headers["Location"] == (
-        f"http://localhost:{CHAOS_PORT}/chaos/recipes/a%20cake.html?serves=4"
+    assert response.headers["Location"] == "/chaos/?"
+
+
+@mark.parametrize("signed_in", [True, False])
+@mark.parametrize("method", ["GET", "HEAD"])
+@mark.parametrize(
+    ("path", "query"),
+    [
+        ("/chaos/recipes/a%20cake.html", {"has_query": True}),
+        ("/chaos/recipes/a%20cake.html", {}),
+        ("/chaos/recipes/a%20cake.html", {"query_text": "about"}),
+        ("/chaos/", {}),
+        # A path naming nothing: the page reads the report, which says so.
+        ("/chaos/a/../b", {}),
+        ("/chaos/%FF", {}),
+    ],
+)
+def test_every_path_on_the_main_port_is_the_chaos_page_whoever_asks(
+    site: Site,
+    alice: PersonKey,
+    signed_in: bool,
+    method: str,
+    path: str,
+    query: dict[str, Any],
+) -> None:
+    site.show_page()
+    site.choose("recipes/a cake.html", 1, site.hold(*PAGE_PARTS))
+    cookie = site.signed_in(alice) if signed_in else {}
+
+    response = asked(site.router(main_port=True), path, cookie, method=method, **query)
+
+    assert response.status == 200
+    # The server sends no body for a HEAD.
+    assert body_of(response) == CHAOS_PAGE
+    assert response.headers["Content-Type"] == "text/html"
+    # On the main port's origin, without a sandbox, and framed by no page.
+    assert response.headers["Content-Security-Policy"] == CONFIG_APP_POLICY
+    assert "frame-ancestors 'none'" in CONFIG_APP_POLICY
+    assert response.headers["Cache-Control"] == "no-store"
+    # Nothing is resolved for it, nor is a Chaos site's file ever served there.
+    assert site.resolver.asked == []
+    assert site.uses.messages == [(EventType.APP_ACCESSED, {"bundle": str(PAGE_BUNDLE)})]
+
+
+def test_a_chaos_page_not_resolved_yet_is_asked_for_and_503(site: Site) -> None:
+    response = asked(site.router(main_port=True), "/chaos/")
+
+    assert response.status == 503
+    assert response.headers["Retry-After"] == str(RETRY_AFTER_SECONDS)
+    assert response.headers["Cache-Control"] == "no-store"
+    assert "Content-Security-Policy" not in response.headers
+    assert site.asks.messages == [
+        (EventType.APP_PATH_NOT_FOUND, {"bundle": str(PAGE_BUNDLE), "path": "index.html"})
+    ]
+
+
+def test_a_node_shipping_no_chaos_page_answers_404_without_it(site: Site) -> None:
+    router = Router()
+    router.add("GET", CHAOS_PATTERN, ChaosPage(None, site.paths))
+
+    response = asked(router, "/chaos/recipes/")
+
+    assert response.status == 404
+    assert "ships no Chaos page" in loads(response.body)["detail"]
+    assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_a_chaos_page_that_cannot_be_served_is_logged_and_500(
+    site: Site, caplog: LogCaptureFixture
+) -> None:
+    site.store.write(ContentId.for_data(CHAOS_PAGE, "sha256"), CHAOS_PAGE)
+    write_atomically(
+        site.files.entry_for(PAGE_BUNDLE, "index.html"),
+        compress(encode_bundle(page_entry(CHAOS_PAGE, algorithm="sha3-999"))),
     )
+
+    with caplog.at_level(ERROR, logger=HANDLER_LOGGER):
+        response = asked(site.router(main_port=True), "/chaos/")
+
+    assert response.status == 500
+    assert loads(response.body)["type"].endswith(UNUSABLE_BUNDLE)
+    assert "The Chaos page cannot be served" in caplog.text
+
+
+@mark.parametrize("method", ["GET", "HEAD"])
+def test_the_chaos_port_serves_whoever_is_signed_in_by_their_session_without_a_sandbox(
+    site: Site, alice: PersonKey, method: str
+) -> None:
+    site.choose("recipes/bread.html", 1, site.hold(*PAGE_PARTS))
+    cookie = site.signed_in(alice)
+
+    response = asked(
+        site.router(main_port=False, page=True), "/chaos/recipes/bread.html", cookie, method=method
+    )
+
+    assert response.status == 200
+    assert body_of(response) == PAGE
+    assert response.headers["Content-Type"] == "text/html"
+    assert "Content-Security-Policy" not in response.headers
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Cache-Control"] == "no-store"
+    # The resolver chooses by the session the request carries.
+    ((request, path, _),) = site.resolver.asked
+    assert (request.headers, path) == (cookie, ChaosPath.parse("recipes/bread.html"))
+
+
+@mark.parametrize("page", [True, False])
+@mark.parametrize(
+    "headers",
+    [
+        {},
+        {"Sec-Fetch-Dest": "image"},
+        # A session that has ended is no session.
+        {"Cookie": "libranet-session=ended"},
+    ],
+)
+def test_the_chaos_port_refuses_anything_but_a_page_to_whoever_is_not_signed_in(
+    site: Site, page: bool, headers: dict[str, str]
+) -> None:
+    site.choose("cake.jpg", 0, site.hold(*PAGE_PARTS))
+
+    response = asked(site.router(main_port=False, page=page), "/chaos/cake.jpg", headers)
+
+    assert response.status == 401
+    assert loads(response.body)["type"].endswith(SESSION_REQUIRED)
+    assert response.headers["Content-Type"] == "application/problem+json"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["Cache-Control"] == "no-store"
     assert site.resolver.asked == []
 
@@ -258,65 +366,123 @@ def test_the_main_port_sends_a_request_carrying_a_session_to_the_chaos_port(
 @mark.parametrize(
     ("host", "origin"),
     [
-        ({"Host": "[::1]:8080"}, f"http://[::1]:{CHAOS_PORT}"),
-        ({"Host": "MacBook.local:8080"}, f"http://macbook.local:{CHAOS_PORT}"),
+        ({"Host": f"localhost:{CHAOS_PORT}"}, f"http://localhost:{MAIN_PORT}"),
+        ({"Host": f"[::1]:{CHAOS_PORT}"}, f"http://[::1]:{MAIN_PORT}"),
+        ({"Host": f"MacBook.local:{CHAOS_PORT}"}, f"http://macbook.local:{MAIN_PORT}"),
         # A client sending no Host is sent to the address it reached.
-        ({}, f"http://127.0.0.1:{CHAOS_PORT}"),
+        ({}, f"http://127.0.0.1:{MAIN_PORT}"),
     ],
 )
-def test_the_chaos_port_is_at_the_host_the_request_named(
-    site: Site, alice: PersonKey, host: dict[str, str], origin: str
+def test_a_page_opened_on_the_chaos_port_by_whoever_is_not_signed_in_is_sent_to_the_chaos_page(
+    site: Site, host: dict[str, str], origin: str
 ) -> None:
-    response = asked(site.router(main_port=True), "/chaos/", {**site.signed_in(alice), **host})
+    site.choose("recipes/a b.html", 1, site.hold(*PAGE_PARTS))
+    headers = {**host, "Sec-Fetch-Dest": "document"}
 
-    assert response.headers["Location"] == f"{origin}/chaos/"
-
-
-def test_the_main_port_serves_anyone_else_in_a_sandbox(site: Site) -> None:
-    site.choose("recipes/bread.html", 1, site.hold(*PAGE_PARTS))
-
-    # A session that has ended is no session.
     response = asked(
-        site.router(main_port=True),
-        "/chaos/recipes/bread.html",
-        {"Cookie": "libranet-session=ended"},
+        site.router(main_port=False, page=True),
+        "/chaos/recipes/a%20b.html",
+        headers,
+        query_text="x",
+    )
+
+    assert response.status == 302
+    # At the path alone, which says to sign in.
+    assert response.headers["Location"] == f"{origin}/chaos/recipes/a%20b.html"
+    assert response.headers["Cache-Control"] == "no-store"
+    assert site.resolver.asked == []
+
+
+@mark.parametrize("signed_in", [True, False])
+def test_a_bare_question_mark_on_the_chaos_port_is_sent_to_the_chaos_page(
+    site: Site, alice: PersonKey, signed_in: bool
+) -> None:
+    headers = {
+        "Host": f"MacBook.local:{CHAOS_PORT}",
+        **(site.signed_in(alice) if signed_in else {}),
+    }
+
+    response = asked(
+        site.router(main_port=False, page=True), "/chaos/a%20b/", headers, has_query=True
+    )
+
+    assert response.status == 302
+    assert response.headers["Location"] == f"http://macbook.local:{MAIN_PORT}/chaos/a%20b/"
+    assert response.headers["Cache-Control"] == "no-store"
+    assert site.resolver.asked == []
+
+
+def test_a_query_with_anything_in_it_is_no_bare_question_mark(site: Site, alice: PersonKey) -> None:
+    site.choose("bread.html", 0, site.hold(*PAGE_PARTS))
+
+    response = asked(
+        site.router(main_port=False, page=True),
+        "/chaos/bread.html",
+        site.signed_in(alice),
+        query_text="about",
     )
 
     assert response.status == 200
     assert body_of(response) == PAGE
-    assert response.headers["Content-Type"] == "text/html"
-    assert response.headers["Content-Security-Policy"] == SANDBOX_POLICY
-    assert response.headers["X-Content-Type-Options"] == "nosniff"
-    assert response.headers["Cache-Control"] == "no-store"
-    assert [path for _, path, _ in site.resolver.asked] == [ChaosPath.parse("recipes/bread.html")]
 
 
-@mark.parametrize("signed_in", [True, False])
-def test_the_chaos_port_serves_whoever_asks_without_a_sandbox(
-    site: Site, alice: PersonKey, signed_in: bool
+@mark.parametrize("path", ["/chaos/recipes/", "/chaos/a//b"])
+@mark.parametrize("destination", ["document", " Document "])
+def test_a_404_on_the_chaos_port_for_a_page_being_opened_is_sent_to_the_chaos_page(
+    site: Site, alice: PersonKey, path: str, destination: str
 ) -> None:
-    site.choose("recipes/bread.html", 1, site.hold(*PAGE_PARTS))
-    cookie = site.signed_in(alice) if signed_in else {}
+    headers = {
+        "Host": f"localhost:{CHAOS_PORT}",
+        "Sec-Fetch-Dest": destination,
+        **site.signed_in(alice),
+    }
 
-    response = asked(site.router(main_port=False), "/chaos/recipes/bread.html", cookie)
+    response = asked(site.router(main_port=False, page=True), path, headers, query_text="x=1")
 
-    assert response.status == 200
-    assert body_of(response) == PAGE
-    assert "Content-Security-Policy" not in response.headers
-    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.status == 302
+    # The path alone, the query it had left out.
+    assert response.headers["Location"] == f"http://localhost:{MAIN_PORT}{path}"
     assert response.headers["Cache-Control"] == "no-store"
-    # The resolver chooses whose scores, by the session the request carries.
-    ((request, _, _),) = site.resolver.asked
-    assert request.headers == cookie
 
 
-def test_the_path_is_resolved_and_its_part_waited_for_within_one_deadline(tmp_path: Path) -> None:
+@mark.parametrize("page", [True, False])
+@mark.parametrize("headers", [{"Sec-Fetch-Dest": "image"}, {}])
+def test_any_other_404_on_the_chaos_port_is_a_plain_problem(
+    site: Site, alice: PersonKey, page: bool, headers: dict[str, str]
+) -> None:
+    response = asked(
+        site.router(main_port=False, page=page),
+        "/chaos/cake.jpg",
+        {**headers, **site.signed_in(alice)},
+    )
+
+    assert response.status == 404
+    assert response.headers["Content-Type"] == "application/problem+json"
+    assert response.headers["Cache-Control"] == "no-store"
+    assert [path for _, path, _ in site.resolver.asked] == [ChaosPath.parse("cake.jpg")]
+    assert site.uses.messages == []
+
+
+@mark.parametrize("path", ["/chaos/a/../b", "/chaos/a//b", "/chaos//a", "/chaos/%FF"])
+def test_a_path_naming_nothing_is_404_and_not_resolved(
+    site: Site, alice: PersonKey, path: str
+) -> None:
+    response = asked(site.router(main_port=False), path, site.signed_in(alice))
+
+    assert response.status == 404
+    assert response.headers["Cache-Control"] == "no-store"
+    assert site.resolver.asked == []
+
+
+def test_the_path_is_resolved_and_its_part_waited_for_within_one_deadline(
+    tmp_path: Path, alice: PersonKey
+) -> None:
     site = Site(tmp_path, wait_seconds=0.2)
     # Its parts are not held.
     site.choose("bread.html", 0, page_entry(*PAGE_PARTS))
     started = monotonic()
 
-    response = asked(site.router(main_port=False), "/chaos/bread.html")
+    response = asked(site.router(main_port=False), "/chaos/bread.html", site.signed_in(alice))
 
     # The 503 comes once the deadline the path was resolved within passes.
     ((_, _, deadline),) = site.resolver.asked
@@ -326,10 +492,14 @@ def test_the_path_is_resolved_and_its_part_waited_for_within_one_deadline(tmp_pa
     assert response.headers["Cache-Control"] == "no-store"
 
 
-def test_a_range_of_the_file_is_served(site: Site) -> None:
+def test_a_range_of_the_file_is_served(site: Site, alice: PersonKey) -> None:
     site.choose("bread.html", 0, site.hold(*PAGE_PARTS))
 
-    response = asked(site.router(main_port=False), "/chaos/bread.html", {"Range": "bytes=9-"})
+    response = asked(
+        site.router(main_port=False),
+        "/chaos/bread.html",
+        {"Range": "bytes=9-", **site.signed_in(alice)},
+    )
 
     assert response.status == 206
     assert body_of(response) == b"cake</p>"
@@ -337,12 +507,14 @@ def test_a_range_of_the_file_is_served(site: Site) -> None:
     assert response.headers["Cache-Control"] == "no-store"
 
 
-def test_a_head_is_answered_as_a_get_without_a_part(tmp_path: Path) -> None:
+def test_a_head_is_answered_as_a_get_without_a_part(tmp_path: Path, alice: PersonKey) -> None:
     site = Site(tmp_path, wait_seconds=0.2)
     # Its parts are not held, and are not waited for.
     site.choose("bread.html", 0, page_entry(*PAGE_PARTS))
 
-    response = asked(site.router(main_port=False), "/chaos/bread.html", method="HEAD")
+    response = asked(
+        site.router(main_port=False), "/chaos/bread.html", site.signed_in(alice), method="HEAD"
+    )
 
     assert response.status == 200
     assert response.headers["Content-Type"] == "text/html"
@@ -352,42 +524,25 @@ def test_a_head_is_answered_as_a_get_without_a_part(tmp_path: Path) -> None:
     ("content_type", "served_as"), [(None, "text/html"), ("text/plain", "text/plain")]
 )
 def test_a_file_bundles_own_file_is_typed_by_the_paths_last_element(
-    site: Site, content_type: str | None, served_as: str
+    site: Site, alice: PersonKey, content_type: str | None, served_as: str
 ) -> None:
     # Proposed at chaos:/recipes/bread.html, where the rest is empty.
     site.choose("recipes/bread.html", 2, site.hold(*PAGE_PARTS, content_type=content_type))
 
-    response = asked(site.router(main_port=False), "/chaos/recipes/bread.html")
+    response = asked(
+        site.router(main_port=False), "/chaos/recipes/bread.html", site.signed_in(alice)
+    )
 
     assert response.status == 200
     assert response.headers["Content-Type"] == served_as
 
 
-def test_the_bundle_chosen_is_reported_used(site: Site) -> None:
+def test_the_bundle_chosen_is_reported_used(site: Site, alice: PersonKey) -> None:
     site.choose("bread.html", 0, site.hold(*PAGE_PARTS))
 
-    asked(site.router(main_port=False), "/chaos/bread.html")
+    asked(site.router(main_port=False), "/chaos/bread.html", site.signed_in(alice))
 
     assert site.uses.messages == [(EventType.APP_ACCESSED, {"bundle": str(BUNDLE.content_id)})]
-
-
-@mark.parametrize("main_port", [True, False])
-def test_a_path_for_which_nothing_is_chosen_is_404(site: Site, main_port: bool) -> None:
-    response = asked(site.router(main_port=main_port), "/chaos/recipes/")
-
-    assert response.status == 404
-    assert response.headers["Cache-Control"] == "no-store"
-    assert [path for _, path, _ in site.resolver.asked] == [ChaosPath.parse("recipes/")]
-    assert site.uses.messages == []
-
-
-@mark.parametrize("path", ["/chaos/a/../b", "/chaos/a//b", "/chaos//a", "/chaos/%FF"])
-def test_a_path_naming_nothing_is_404_and_not_resolved(site: Site, path: str) -> None:
-    response = asked(site.router(main_port=False), path)
-
-    assert response.status == 404
-    assert response.headers["Cache-Control"] == "no-store"
-    assert site.resolver.asked == []
 
 
 @mark.parametrize(
@@ -404,26 +559,25 @@ def test_a_path_naming_nothing_is_404_and_not_resolved(site: Site, path: str) ->
     ],
 )
 def test_a_directory_or_a_link_is_redirected_to_the_chaos_path_it_leads_to(
-    site: Site, path: str, level: int, location: str, redirected: str
+    site: Site, alice: PersonKey, path: str, level: int, location: str, redirected: str
 ) -> None:
     site.choose(path, level, KnownOutcome(PathOutcome.REDIRECT, location))
 
-    response = asked(site.router(main_port=True), f"/chaos/{path}")
+    response = asked(site.router(main_port=False), f"/chaos/{path}", site.signed_in(alice))
 
     assert response.status == 302
     assert response.headers["Location"] == redirected
-    assert response.headers["Content-Security-Policy"] == SANDBOX_POLICY
     assert response.headers["Cache-Control"] == "no-store"
 
 
 def test_a_file_that_cannot_be_served_from_its_parts_is_500(
-    site: Site, caplog: LogCaptureFixture
+    site: Site, alice: PersonKey, caplog: LogCaptureFixture
 ) -> None:
     site.store.write(ContentId.for_data(PAGE, "sha256"), PAGE)
     site.choose("bread.html", 0, page_entry(PAGE, algorithm="sha3-999"))
 
     with caplog.at_level(WARNING, logger=HANDLER_LOGGER):
-        response = asked(site.router(main_port=False), "/chaos/bread.html")
+        response = asked(site.router(main_port=False), "/chaos/bread.html", site.signed_in(alice))
 
     assert response.status == 500
     assert loads(response.body)["type"].endswith(UNUSABLE_BUNDLE)
@@ -433,19 +587,20 @@ def test_a_file_that_cannot_be_served_from_its_parts_is_500(
 
 
 def test_an_entry_of_a_kind_not_served_is_logged_and_500(
-    site: Site, caplog: LogCaptureFixture
+    site: Site, alice: PersonKey, caplog: LogCaptureFixture
 ) -> None:
     site.choose("bread.html", 0, KnownOutcome(PathOutcome.NOT_FOUND))
 
     with caplog.at_level(ERROR, logger=HANDLER_LOGGER):
-        response = asked(site.router(main_port=False), "/chaos/bread.html")
+        response = asked(site.router(main_port=False), "/chaos/bread.html", site.signed_in(alice))
 
     assert response.status == 500
     assert "neither a file's entry nor a redirect" in caplog.text
 
 
-def test_any_other_method_is_405(site: Site) -> None:
-    response = asked(site.router(main_port=False), "/chaos/bread.html", method="POST")
+@mark.parametrize("main_port", [True, False])
+def test_any_other_method_is_405(site: Site, main_port: bool) -> None:
+    response = asked(site.router(main_port=main_port), "/chaos/bread.html", method="POST")
 
     assert response.status == 405
     assert response.headers["Allow"] == "GET, HEAD"
@@ -467,217 +622,62 @@ def test_chaos_is_matched_ignoring_case(path: str, matched: bool) -> None:
     assert (fullmatch(CHAOS_PATTERN, path) is not None) == matched
 
 
-@mark.parametrize("signed_in", [True, False])
-@mark.parametrize("method", ["GET", "HEAD"])
-def test_a_bare_question_mark_on_the_main_port_is_the_chaos_page_whoever_asks(
-    site: Site, alice: PersonKey, signed_in: bool, method: str
-) -> None:
-    site.show_page()
-    cookie = site.signed_in(alice) if signed_in else {}
-
-    response = asked(
-        site.router(main_port=True, page=True),
-        "/chaos/recipes/a%20cake.html",
-        cookie,
-        method=method,
-        has_query=True,
-    )
-
-    assert response.status == 200
-    # The server sends no body for a HEAD.
-    assert body_of(response) == CHAOS_PAGE
-    assert response.headers["Content-Type"] == "text/html"
-    # On the main port's origin, without a sandbox, and framed by no page.
-    assert response.headers["Content-Security-Policy"] == CONFIG_APP_POLICY
-    assert "frame-ancestors 'none'" in CONFIG_APP_POLICY
-    assert response.headers["Cache-Control"] == "no-store"
-    # Nothing is resolved for it: the page reads the report.
-    assert site.resolver.asked == []
-    assert site.uses.messages == [(EventType.APP_ACCESSED, {"bundle": str(PAGE_BUNDLE)})]
-
-
-def test_a_query_with_anything_in_it_is_no_bare_question_mark(site: Site) -> None:
-    site.choose("bread.html", 0, site.hold(*PAGE_PARTS))
-
-    response = asked(
-        site.router(main_port=True, page=True), "/chaos/bread.html", query_text="about"
-    )
-
-    assert response.status == 200
-    assert body_of(response) == PAGE
-    assert response.headers["Content-Security-Policy"] == SANDBOX_POLICY
-
-
-@mark.parametrize(
-    ("path", "resolved"),
-    [("/chaos/recipes/", True), ("/chaos/a/../b", False), ("/chaos/%FF", False)],
-)
-def test_a_404_on_the_main_port_carries_the_chaos_page(
-    site: Site, path: str, resolved: bool
-) -> None:
-    site.show_page()
-
-    response = asked(site.router(main_port=True, page=True), path)
-
-    assert response.status == 404
-    assert body_of(response) == CHAOS_PAGE
-    assert response.headers["Content-Security-Policy"] == CONFIG_APP_POLICY
-    assert response.headers["Cache-Control"] == "no-store"
-    assert bool(site.resolver.asked) == resolved
-
-
-@mark.parametrize("main_port", [True, False])
-def test_chaos_with_a_bare_question_mark_is_redirected_to_chaos_slash_with_it(
-    site: Site, main_port: bool
-) -> None:
-    response = asked(site.router(main_port=main_port, page=True), "/chaos", has_query=True)
-
-    assert response.status == 302
-    assert response.headers["Location"] == "/chaos/?"
-
-
-@mark.parametrize("signed_in", [True, False])
-def test_a_bare_question_mark_on_the_chaos_port_is_sent_to_the_main_port(
-    site: Site, alice: PersonKey, signed_in: bool
-) -> None:
-    headers = {
-        "Host": f"MacBook.local:{CHAOS_PORT}",
-        **(site.signed_in(alice) if signed_in else {}),
-    }
-
-    response = asked(
-        site.router(main_port=False, page=True), "/chaos/a%20b/", headers, has_query=True
-    )
-
-    assert response.status == 302
-    assert response.headers["Location"] == f"http://macbook.local:{MAIN_PORT}/chaos/a%20b/?"
-    assert response.headers["Cache-Control"] == "no-store"
-    assert site.resolver.asked == []
-
-
-@mark.parametrize("path", ["/chaos/recipes/", "/chaos/a//b"])
-@mark.parametrize("destination", ["document", " Document "])
-def test_a_404_on_the_chaos_port_for_a_page_being_opened_is_sent_to_the_chaos_page(
-    site: Site, path: str, destination: str
-) -> None:
-    headers = {"Host": f"localhost:{CHAOS_PORT}", "Sec-Fetch-Dest": destination}
-
-    response = asked(site.router(main_port=False, page=True), path, headers, query_text="x=1")
-
-    assert response.status == 302
-    # Its address with a bare ?, the query it had left out.
-    assert response.headers["Location"] == f"http://localhost:{MAIN_PORT}{path}?"
-    assert response.headers["Cache-Control"] == "no-store"
-
-
-@mark.parametrize("headers", [{"Sec-Fetch-Dest": "image"}, {}])
-def test_any_other_404_on_the_chaos_port_is_a_plain_problem(
-    site: Site, headers: dict[str, str]
-) -> None:
-    response = asked(site.router(main_port=False, page=True), "/chaos/cake.jpg", headers)
-
-    assert response.status == 404
-    assert response.headers["Content-Type"] == "application/problem+json"
-    assert response.headers["Cache-Control"] == "no-store"
-
-
-def test_a_chaos_page_not_resolved_yet_is_asked_for_and_503(site: Site) -> None:
-    response = asked(site.router(main_port=True, page=True), "/chaos/", has_query=True)
-
-    assert response.status == 503
-    assert response.headers["Retry-After"] == str(RETRY_AFTER_SECONDS)
-    assert response.headers["Cache-Control"] == "no-store"
-    assert "Content-Security-Policy" not in response.headers
-    assert site.asks.messages == [
-        (EventType.APP_PATH_NOT_FOUND, {"bundle": str(PAGE_BUNDLE), "path": "index.html"})
-    ]
-
-
-def test_a_node_shipping_no_chaos_page_answers_404_without_it(site: Site) -> None:
-    router = Router()
-    router.add(
-        "GET",
-        CHAOS_PATTERN,
-        ChaosHandler(
-            site.resolver, site.paths, site.sessions, CHAOS_PORT, page=ChaosPage(None, site.paths)
-        ),
-    )
-
-    response = asked(router, "/chaos/", has_query=True)
-
-    assert response.status == 404
-    assert "ships no Chaos page" in loads(response.body)["detail"]
-    assert response.headers["Cache-Control"] == "no-store"
-
-
-def test_a_chaos_page_that_cannot_be_served_is_logged_and_500(
-    site: Site, caplog: LogCaptureFixture
-) -> None:
-    site.store.write(ContentId.for_data(CHAOS_PAGE, "sha256"), CHAOS_PAGE)
-    write_atomically(
-        site.files.entry_for(PAGE_BUNDLE, "index.html"),
-        compress(encode_bundle(page_entry(CHAOS_PAGE, algorithm="sha3-999"))),
-    )
-
-    with caplog.at_level(ERROR, logger=HANDLER_LOGGER):
-        response = asked(site.router(main_port=True, page=True), "/chaos/", has_query=True)
-
-    assert response.status == 500
-    assert loads(response.body)["type"].endswith(UNUSABLE_BUNDLE)
-    assert "The Chaos page cannot be served" in caplog.text
-
-
 def reported(site: Site, path: str, headers: Mapping[str, str] | None = None) -> Response:
     """The report of the Chaos path ``path`` spells, as the main port's route serves it."""
     router = Router()
-    router.add(
-        "GET",
-        CHAOS_REPORT_PATTERN,
-        ChaosReport(site.resolver, site.sessions, MAIN_PORT, CHAOS_PORT),
-    )
+    router.add("GET", CHAOS_REPORT_PATTERN, ChaosReport(site.resolver, site.sessions, CHAOS_PORT))
     return asked(
         router, f"/data/chaos/{path}", {"Host": f"localhost:{MAIN_PORT}", **(headers or {})}
     )
 
 
-@mark.parametrize("signed_in", [True, False])
 def test_the_report_says_what_the_path_resolves_to_and_where_it_is_served(
-    site: Site, alice: PersonKey, signed_in: bool
+    site: Site, alice: PersonKey
 ) -> None:
     site.choose("recipes/a b.html", 1, site.hold(*PAGE_PARTS))
-    cookie = site.signed_in(alice) if signed_in else {}
+    cookie = site.signed_in(alice)
 
     response = reported(site, "recipes/a%20b.html", cookie)
 
     assert response.status == 200
     assert response.headers["Cache-Control"] == "no-store"
-    # For whoever asks: on the Chaos port with a session, on the main port without.
-    port = CHAOS_PORT if signed_in else MAIN_PORT
+    # On the Chaos port, at the host the request named.
     assert loads(response.body) == {
         "path": "recipes/a b.html",
-        "scores": "node",
         "complete": True,
-        "served_at": f"http://localhost:{port}/chaos/recipes/a%20b.html",
+        "served_at": f"http://localhost:{CHAOS_PORT}/chaos/recipes/a%20b.html",
         "chosen": {"level": 1, "drop": str(DROP)},
         "levels": [],
     }
     # Resolved as a request for the path is, by its session, waiting as long.
     ((request, path, deadline),) = site.resolver.asked
     assert path == ChaosPath.parse("recipes/a%20b.html")
-    assert request.headers.get("Cookie") == cookie.get("Cookie")
+    assert request.headers.get("Cookie") == cookie["Cookie"]
     assert deadline is None
 
 
-def test_the_report_of_the_root_names_the_root(site: Site) -> None:
-    response = reported(site, "")
+@mark.parametrize("headers", [{}, {"Cookie": "libranet-session=ended"}])
+def test_the_report_is_only_for_someone_signed_in(site: Site, headers: dict[str, str]) -> None:
+    response = reported(site, "recipes/", headers)
+
+    assert response.status == 401
+    assert loads(response.body)["type"].endswith(SESSION_REQUIRED)
+    assert response.headers["Cache-Control"] == "no-store"
+    assert site.resolver.asked == []
+
+
+def test_the_report_of_the_root_names_the_root(site: Site, alice: PersonKey) -> None:
+    response = reported(site, "", site.signed_in(alice))
 
     assert loads(response.body)["path"] == ""
-    assert loads(response.body)["served_at"] == f"http://localhost:{MAIN_PORT}/chaos/"
+    assert loads(response.body)["served_at"] == f"http://localhost:{CHAOS_PORT}/chaos/"
 
 
 @mark.parametrize("path", ["a/../b", "a//b", "%FF"])
-def test_the_report_of_a_path_naming_nothing_is_404(site: Site, path: str) -> None:
-    response = reported(site, path)
+def test_the_report_of_a_path_naming_nothing_is_404(
+    site: Site, alice: PersonKey, path: str
+) -> None:
+    response = reported(site, path, site.signed_in(alice))
 
     assert response.status == 404
     assert "names no Chaos path" in loads(response.body)["detail"]

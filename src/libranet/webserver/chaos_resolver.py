@@ -1,11 +1,12 @@
 """Resolving a Chaos path: which proposal serves it, for whom, and why (HttpApi §13.6).
 
 A request for a path beneath ``/chaos`` is resolved by the trust scores of
-the person whose session it carries, as ``GET /data/trust`` reads them, and
-otherwise by the node's own (:class:`ChaosScores`, Phase 5 Step 113). A
-proposer scoring above 0 is trusted, and one below 0 distrusted. A proposal
-that is unsigned, or whose proposer scores 0 or is not reached, is of no
-trust specified (HttpApi §13.6.3).
+the person whose session it carries, as ``GET /data/trust`` reads them
+(:class:`ChaosScores`). Chaos is only for someone signed in, so the node's
+own scores choose for no one (Phase 7 Step 159). A proposer scoring above 0
+is trusted, and one below 0 distrusted. A proposal that is unsigned, or
+whose proposer scores 0 or is not reached, is of no trust specified (HttpApi
+§13.6.3).
 
 What each level's drop holds is found and read as
 :class:`~libranet.webserver.chaos_levels.ChaosLevels` reads it.
@@ -39,13 +40,7 @@ from libranet.cas.prefix import matching_bits
 from libranet.config.models import ChaosConfig
 from libranet.identity.trust import TrustScores, TrustState
 from libranet.messaging.events import PathOutcome
-from libranet.protocol.chaos import (
-    ChaosLevel,
-    ChaosPath,
-    ChaosProposal,
-    ChoosingScores,
-    PassedOver,
-)
+from libranet.protocol.chaos import ChaosLevel, ChaosPath, ChaosProposal, PassedOver
 from libranet.webserver.app_outcomes import KnownOutcome
 from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.chaos_levels import ChaosLevels, DropRead
@@ -78,28 +73,24 @@ class ScoresReader(Protocol):
 
 @dataclass(frozen=True)
 class ChaosScores:
-    """Whose trust scores resolve a request: the person's whose session it carries, or the node's.
+    """The trust scores that resolve a request: those of the person whose session it carries.
 
     ``people`` builds the scores of each person ``sessions`` holds a session
-    for, and ``node`` those of ``node_id``, this node.
+    for.
     """
 
     sessions: Sessions
     people: ScoresReader
-    node_id: ContentId
-    node: ScoresReader
 
-    def of(self, request: Request) -> tuple[ChoosingScores, TrustScores | None]:
-        """Whose scores resolve ``request``, and those scores; ``None`` if none are being built."""
+    def of(self, request: Request) -> TrustScores | None:
+        """The scores that resolve ``request``; ``None`` if none are being built for it.
+
+        A request carrying no session has none, nor does one from a person
+        whose last session ended since it was looked up. Every proposer is
+        then of no trust specified.
+        """
         session = self.sessions.session(request)
-        # A person whose last session ended since it was looked up has no
-        # scores, and is served as anyone not signed in is.
-        scores = None if session is None else self.people.scores(session.key.person_id)
-
-        if scores is not None:
-            return ChoosingScores.PERSON, scores
-
-        return ChoosingScores.NODE, self.node.scores(self.node_id)
+        return None if session is None else self.people.scores(session.key.person_id)
 
 
 @dataclass(frozen=True)
@@ -169,14 +160,13 @@ class ChaosChoice:
 
 @dataclass(frozen=True)
 class ChaosResolution:
-    """What ``path`` resolved to, by whose ``scores``, and whether they were ``complete``.
+    """What ``path`` resolved to, and whether the scores that chose were ``complete``.
 
     ``levels`` are those searched, from the root down, and ``chosen`` the
     proposal chosen, if any was.
     """
 
     path: ChaosPath
-    scores: ChoosingScores
     complete: bool
     levels: tuple[LevelResolution, ...]
     chosen: ChaosChoice | None
@@ -186,7 +176,6 @@ class ChaosResolution:
         chosen = self.chosen
         return {
             "path": self.path.text,
-            "scores": str(self.scores),
             "complete": self.complete,
             "chosen": (
                 None if chosen is None else {"level": chosen.level.number, "drop": str(chosen.drop)}
@@ -325,7 +314,7 @@ class ChaosResolver:
         tells it, or for as long as a request for a bundle's file waits, if
         none is given.
         """
-        whose, scores = self._scores.of(request)
+        scores = self._scores.of(request)
         parts = self._paths.parts
         latest = datetime.fromtimestamp(self._wall_clock(), UTC)
         resolving = _Resolving(
@@ -347,14 +336,12 @@ class ChaosResolver:
 
         chosen = self._chosen(found, resolving)
         _LOGGER.debug(
-            "Chaos path %r resolves by the %s's scores to %s",
+            "Chaos path %r resolves to %s",
             path.text,
-            whose,
             "nothing" if chosen is None else f"{chosen.drop} at level {chosen.level.number}",
         )
         return ChaosResolution(
             path,
-            whose,
             scores is not None and scores.complete,
             tuple(self._resolved(level, drops, resolving) for level, drops in found.items()),
             chosen,

@@ -826,6 +826,25 @@ On a node whose main port is 8080 and whose Chaos port is 8130:
   mention of a sandbox on the main port; the App Developer Guide §6.21;
   the Operator Guide; and the README.
 
+Set 1 was built with 121 added lines of non-test Python, and 158 taken
+away. `ChaosPage` answers every path beneath `/chaos` on the main port
+itself, and `ChaosHandler` serves the Chaos port alone. `ChaosScores`
+reads only the person's scores, and `ChoosingScores` is gone. Calls made in
+building it, not yet reviewed:
+
+- **A path naming nothing is the Chaos page too** on the main port, which
+  says so from the report's `404`, rather than a `404` of its own.
+- **The Chaos port checks for a session before the path**, so a request
+  without one for a path naming nothing is `401`, or sent to the Chaos
+  page.
+- **A person whose scores are not being built** has every proposer of no
+  trust specified, rather than being answered as one without a session:
+  it happens only when their last session has just ended.
+- **The Chaos port's `401` carries no `WWW-Authenticate`**, as the other
+  `session-required` answers do not.
+- **View content is shown once the report is read**, whatever was chosen,
+  since its address comes from the report's `served_at`.
+
 **Set 2: the node's zip, both ways.**
 
 - **Upload**: `POST /data/bundles` with `Content-Type: application/zip`,

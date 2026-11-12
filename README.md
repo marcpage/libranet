@@ -261,10 +261,12 @@ what an application can do, and how to write one.
 
 Beneath `/chaos/` on your node, anyone may put a site at any path, with no
 one registering it, by proposing a bundle there. Each person who opens the
-path sees what those they trust proposed. Signed in, you are served by your
-own trust, and otherwise by your node's. End any address there with `?` to
-see every bundle proposed for it, who proposed each, when, and why one was
-chosen, and to trust or distrust whoever proposed one. The
+path sees what those they trust proposed, so Chaos is only for someone
+signed in. On your node's port, every path there shows every bundle
+proposed for it, who proposed each, when, and why one was chosen, and lets
+you trust or distrust whoever proposed one, and View content opens the path
+on the node's Chaos port. End any address on the Chaos port with `?` to
+come back to it. The
 [App Developer Guide](docs/operations/App%20Developer%20Guide.md) shows how
 a page proposes a site.
 

@@ -103,7 +103,7 @@
   <noscript><p class="note">Showing what this path resolves to needs JavaScript.</p></noscript>
   <div class="actions">
     <button id="reload" type="button">Reload</button>
-    <a id="served" hidden>Open it where it is served</a>
+    <a id="served" hidden>View content</a>
   </div>
 
   <section id="summary" hidden>
@@ -125,8 +125,8 @@
     someone trusted, from the root down, and then for those whose signer is
     neither trusted nor distrusted, or that are unsigned. At each level it
     takes the newest first, and serves the first whose bundle holds the rest.
-    A distrusted signer's proposal is never served. Whose trust chooses is
-    whoever is signed in, or else this node's.
+    A distrusted signer's proposal is never served. Chaos is only for
+    someone signed in, and their trust chooses.
     Each signer's mark is from those scores: &#x1F7E2; above 0, trusted;
     &#x1F7E1; 0, neither; &#x1F534; below 0, distrusted; and &#x26AA; where
     there are no scores to show.
@@ -142,6 +142,9 @@
 // as it is beneath /chaos/ (HttpApi 13.6.7).
 const CHAOS_PREFIX = /^\/chaos(?:\/|$)/i;
 const REPORT_PREFIX = "/data/chaos/";
+
+// What begins the target string of a level's drop (HttpApi 13.6.1).
+const TARGET_PREFIX = "chaos:/";
 
 // What marks each signer's trust (#322), by the scores that chose (HttpApi
 // 11.7): a score above 0, of 0, and below 0; and where there are no scores to
@@ -288,7 +291,9 @@ function refusal(result) {
 // there before.
 const status = {
   say(lines) {
-    byId("status").replaceChildren(...lines.map(([text, className]) => make("li", text, className || "note")));
+    byId("status").replaceChildren(
+      ...lines.map((line) => (line instanceof Node ? line : make("li", line[0], line[1] || "note"))),
+    );
   },
 };
 
@@ -304,29 +309,39 @@ function decodedPath() {
   }
 }
 
-// What the page shows: the last report, or null; who is signed in on this
-// machine, whose trust list the page may change, or null; what changing each
-// signer's trust last said; and what each signer says of themselves, as far as
-// it has been read.
+// What the page shows: the last report, or null; whether this client is on
+// the node's own machine, where alone anyone signs in; who is signed in on it,
+// whose trust list the page may change, or null; what changing each signer's
+// trust last said; and what each signer says of themselves, as far as it has
+// been read.
 const view = {
   report: null,
+  local: false,
   you: null,
   changing: new Map(),
   details: new Map(),
 };
 
-// Who is signed in, as the node says (HttpApi 11.4), if this client is on the
-// node's own machine, where alone a page may change their trust list; null
-// otherwise.
+// Whether this client is on the node's own machine, and who is signed in
+// there, as the node says (HttpApi 2.4, 11.4); null if no one is.
 async function signedInHere() {
   const client = await call("GET", "/data/client");
+  view.local = client.ok && isObject(client.value) && client.value.local === true;
 
-  if (!(client.ok && isObject(client.value) && client.value.local === true)) {
+  if (!view.local) {
     return null;
   }
 
   const session = await call("GET", "/data/session");
   return session.ok && isObject(session.value) && CONTENT_ID.test(session.value.id) ? session.value : null;
+}
+
+// The address a level's drop serves, beneath /chaos/: its elements, and a
+// "/" after them, as for a directory, unless the level is a file's own,
+// whose rest is empty (HttpApi 13.6.1).
+function baseUrl(level) {
+  const elements = level.target.startsWith(TARGET_PREFIX) ? level.target.slice(TARGET_PREFIX.length) : level.target;
+  return elements === "" || level.rest === "" ? `/chaos/${elements}` : `/chaos/${elements}/`;
 }
 
 // Where the node searches the drop `target` names (HttpApi 9.7): the target
@@ -524,11 +539,6 @@ function nameOf(person) {
   return fields[HANDLE] || names;
 }
 
-// Whose scores chose, in words.
-function whose(report) {
-  return report.scores === "person" ? "your" : "this node's";
-}
-
 function markOf(score) {
   if (!Number.isFinite(score)) {
     return UNKNOWN;
@@ -546,10 +556,10 @@ function trustText(report, score, step) {
   }
 
   if (step === null) {
-    return `Not reached by ${whose(report)} trust scores. Score 0.${building}`;
+    return `Not reached by your trust scores. Score 0.${building}`;
   }
 
-  return `Score ${score}, step ${step}, by ${whose(report)} trust scores.${building}`;
+  return `Score ${score}, step ${step}, by your trust scores.${building}`;
 }
 
 // Trust, Distrust, and Clear, changing the entry for `signer` on the trust
@@ -557,7 +567,7 @@ function trustText(report, score, step) {
 // and what the last change said.
 function choicesFor(report, signer, score, step) {
   const row = make("span", "", "choices");
-  const own = report.scores === "person" && step === 1;
+  const own = step === 1;
   const held = own ? score > 0 : null;
   const change = view.changing.get(signer);
 
@@ -683,12 +693,14 @@ function proposalItem(report, level, proposal, chosen) {
 function levelSection(report, level, index) {
   const section = document.createElement("section");
   const title = make("h2", `Level ${index}: `);
-  title.append(code(level.target));
+  title.append(code(baseUrl(level)));
+  const target = make("p", "Drop ", "note");
+  target.append(code(level.target));
   const rest = make("p", "Rest of the path, which a bundle proposed here must hold: ", "note");
   rest.append(level.rest ? code(level.rest) : "nothing: a file bundle's own file, or a directory bundle's root");
   const hash = make("p", "Drop target hash ", "note");
   hash.append(code(level.hash, "id"));
-  section.append(title, rest, hash);
+  section.append(title, target, rest, hash);
   const proposals = Array.isArray(level.proposals) ? level.proposals : [];
 
   if (proposals.length === 0) {
@@ -741,21 +753,22 @@ function render() {
   const chosen = isObject(report.chosen) ? report.chosen : null;
   const served = byId("served");
 
+  // The same path on the Chaos port, whatever was chosen.
+  served.href = report.served_at;
+  served.hidden = false;
+
   if (chosen === null) {
     byId("summary-title").textContent = "Nothing is served here";
     byId("chosen").textContent = "No bundle proposed at this path, or at any directory above it, is chosen for it. What was found at each level is below.";
-    served.hidden = true;
   } else {
     byId("summary-title").textContent = "What is served here";
     const said = make("span", `Served from the proposal at level ${chosen.level}, `);
-    said.append(code(levels[chosen.level] ? levels[chosen.level].target : "?"), ", drop ", code(chosen.drop, "id"), ".");
+    said.append(code(levels[chosen.level] ? baseUrl(levels[chosen.level]) : "?"), ", drop ", code(chosen.drop, "id"), ".");
     byId("chosen").replaceChildren(said);
-    served.href = report.served_at;
-    served.hidden = false;
   }
 
   const building = report.complete ? "" : " They are still being built, so this is read again until they are.";
-  byId("scores").textContent = `Chosen by ${whose(report)} trust scores.${building}`;
+  byId("scores").textContent = `Chosen by your trust scores.${building}`;
   const trustNote = byId("trust-text");
   trustNote.hidden = view.you === null;
   trustNote.textContent = "Trust, Distrust, and Clear change your trust list, which is public: anyone can read whom you trust, and whom you distrust. Clear takes your own entry away, leaving their score to the lists of those you trust.";
@@ -763,9 +776,28 @@ function render() {
   byId("levels").replaceChildren(...levels.map((level, index) => levelSection(report, level, index)));
 }
 
+// What the page says to someone not signed in, who cannot use Chaos.
+function signInLines() {
+  if (!view.local) {
+    return [["Chaos is used signed in, on this node's own machine.", "error"]];
+  }
+
+  const line = make("li", "Chaos is only for someone signed in. ", "error");
+  const home = document.createElement("a");
+  home.href = "/";
+  home.textContent = "Sign in on the home page.";
+  line.append(home);
+  return [line];
+}
+
 // Read the report (HttpApi 13.6.7), and show it.
 async function readReport() {
   const result = await call("GET", REPORT_PREFIX + encodedPath);
+
+  if (result.status === 401) {
+    status.say(signInLines());
+    return false;
+  }
 
   if (!(result.ok && isObject(result.value) && Array.isArray(result.value.levels))) {
     status.say([[`What this path resolves to could not be read: ${refusal(result)}`, "error"]]);
@@ -803,9 +835,9 @@ async function followReport() {
 
 async function start() {
   byId("path").textContent = `/chaos/${decodedPath()}`;
-  // Asking for the path again serves what has been found since, or this page
-  // again, if still nothing is chosen.
-  byId("reload").addEventListener("click", () => location.assign(location.pathname));
+  // The main port shows only this page for the path, so Reload reads the
+  // report again, with what has been found since.
+  byId("reload").addEventListener("click", () => followReport());
 
   try {
     view.you = await signedInHere();

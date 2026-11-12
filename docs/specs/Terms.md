@@ -450,11 +450,11 @@ The reserved namespace of the Chaos endpoint, where anyone may propose a bundle
 for any path, and each person is served what those they trust chose. A path has
 a level for the root and for each of its elements, each a drop, and a node
 chooses the newest trusted proposal at the shallowest level whose bundle holds
-the rest of the path, or else the newest of no trust specified. A person signed
-in is served on the Chaos port, by their scores, and anyone else on the main
-port, in a sandbox, by the node's own. A path for which nothing is chosen, and
-any address ending in a bare `?`, shows the Chaos page, the node's own page
-saying what the path resolves to, and why.
+the rest of the path, or else the newest of no trust specified. It is only for
+someone signed in, who is served on the Chaos port, by their scores. On the main
+port, every path beneath `/chaos` is the Chaos page, the node's own page saying
+what the path resolves to, and why, which a bare `?` on the Chaos port, and a
+page found there for no one, lead to.
 
 - **Sources:** [HTTP API §13.6](HttpApi.md#136-the-chaos-endpoint),
   [Known Drops §3.18](KnownDrops.md#318-chaos-proposals),
@@ -1582,8 +1582,8 @@ and keeps the sender's copies, address books, and read and hidden marks.
 ### Main Port
 
 The port on which a node serves `/data` and its applications, and never
-`/config`. It serves `/chaos` too, to whoever is not signed in, and sends
-whoever is to the Chaos port.
+`/config`. Beneath `/chaos`, it serves only the Chaos page, and never a Chaos
+site's files, which the Chaos port serves.
 
 - **Sources:** [HTTP API §2.3](HttpApi.md#23-local-configuration-interface),
   [§13.6.4](HttpApi.md#1364-the-chaos-port).

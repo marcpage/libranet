@@ -506,12 +506,12 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
         router.add("GET", KARMA_HEAD_PATH, karma.head)
         router.add("POST", KARMA_HEAD_PATH, KarmaHeadTold(publish))
 
-        if peers is not None and chaos_port is not None:
+        if chaos_port is not None:
             settings = ChaosConfig() if chaos is None else chaos
             resolver = ChaosResolver(
                 ChaosLevels(search, paths.parts, settings),
                 paths,
-                ChaosScores(sessions, builds, node.node_id, peers.builds),
+                ChaosScores(sessions, builds),
                 settings,
             )
 
@@ -519,11 +519,7 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
             main_port = node.network.listen_port
 
             for method in CHAOS_METHODS:
-                router.add(
-                    method,
-                    CHAOS_PATTERN,
-                    ChaosHandler(resolver, paths, sessions, chaos_port.number, page=page),
-                )
+                router.add(method, CHAOS_PATTERN, page)
                 chaos_port.router.add(
                     method,
                     CHAOS_PATTERN,
@@ -531,7 +527,7 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
                 )
 
             # Before the bundle route, whose pattern it also fits.
-            report = ChaosReport(resolver, sessions, main_port, chaos_port.number)
+            report = ChaosReport(resolver, sessions, chaos_port.number)
             router.add("GET", CHAOS_REPORT_PATTERN, OwnSiteOnly(OwnPageOnly(report, pages), checks))
 
     router.add("GET", SEARCH_PATTERN, search)

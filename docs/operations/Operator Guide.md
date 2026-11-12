@@ -1029,25 +1029,20 @@ resolved each time it is asked for, from the drops of the path and of each
 directory above it, which the node searches for among what it holds and
 asks its peers for.
 
-Whose trust chooses depends on who asks. A request from a browser where
-someone is signed in (§6.5) goes by that person's trust scores (§6.6). Any
-other, as every request from another machine is, goes by the node's own
-scores, built from its trust list (§4.7). So whom the node trusts decides
-what a stranger sees at a path, and a bundle proposed by someone it
-distrusts is never served to one.
+Chaos is only for someone signed in (§6.5), and their trust scores choose
+what they are served (§6.6). The node's own scores choose for no one, and
+a client on another machine, which never signs in, cannot use Chaos.
 
-For whoever is signed in, Chaos sites are served on a port of their own,
-the Chaos port, so that every request their pages make carries the
-person's session, and none can use what serves only the node's own pages.
-It is `network.chaos_port` if that is set, and otherwise 50 above the
-node's port, or the next 100 up that was free as the node started: 8130 for
-a node on 8080, unless something else had that port. It listens where the
-node's port does, and the node logs it as it starts (§4.1). A browser
-signed in that asks the node's port for a path beneath `/chaos` is sent
-there. A client on another machine never signs in, so it is served on the
-node's port, in the sandbox an untrusted application is served in (§6.2),
-and needs nothing but that port. The Chaos port may be closed to other
-machines.
+Chaos sites are served on a port of their own, the Chaos port, so that
+every request their pages make carries the person's session, and none can
+use what serves only the node's own pages. It is `network.chaos_port` if
+that is set, and otherwise 50 above the node's port, or the next 100 up
+that was free as the node started: 8130 for a node on 8080, unless
+something else had that port. It listens where the node's port does, and
+the node logs it as it starts (§4.1). Beneath `/chaos`, the node's port
+serves only the Chaos page, which says what a path resolves to, and why,
+and links to the path on the Chaos port. The Chaos port may be closed to
+other machines.
 
 Every Chaos site served on the Chaos port shares its origin, so one can
 read what another keeps in the browser. Their scripts can also set cookies

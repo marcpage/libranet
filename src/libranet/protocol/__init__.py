@@ -48,7 +48,6 @@ from libranet.protocol.chaos import (
     ChaosLevel,
     ChaosPath,
     ChaosProposal,
-    ChoosingScores,
     PassedOver,
 )
 from libranet.protocol.client_origin import is_local_client, parsed_address
@@ -209,7 +208,6 @@ __all__ = [
     "ChaosLevel",
     "ChaosPath",
     "ChaosProposal",
-    "ChoosingScores",
     "ConnectingRequest",
     "CopySource",
     "DialRequest",
