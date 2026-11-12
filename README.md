@@ -278,16 +278,16 @@ what an application can do, and how to write one.
 ### Put a site at any path
 
 Beneath `/chaos/` on your node, anyone may put a site at any path, with no
-one registering it, by proposing a bundle there. Each person who opens the
-path sees what those they trust proposed, so Chaos is only for someone
+one registering it, by uploading a bundle there. Each person who opens the
+path sees what those they trust uploaded, so Chaos is only for someone
 signed in. On your node's port, every path there shows every bundle
-proposed for it, who proposed each, when, and why one was chosen, and lets
-you trust or distrust whoever proposed one, upload a zip of your own site,
+uploaded to it, who uploaded each, when, and why one was chosen, and lets
+you trust or distrust whoever uploaded one, upload a zip of your own site,
 and download any bundle there as a zip. View content opens the path on the
 node's Chaos port. End any address on the Chaos port with `?` to come back
 to it. The
 [App Developer Guide](docs/operations/App%20Developer%20Guide.md) shows how
-a page proposes a site.
+a page uploads a site.
 
 ---
 

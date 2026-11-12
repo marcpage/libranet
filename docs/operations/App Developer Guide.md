@@ -1569,12 +1569,12 @@ node's (§6.18); mail says it in what each mark says (§6.16).
 Beneath `/chaos`, anyone may put a site at any path, with no operator
 registering it, and each person who opens it is served what those they
 trust put there (HTTP API §13.6). A site there is a directory bundle, or a
-file bundle for a single file, made as §6.5 makes one. It is **proposed** at
+file bundle for a single file, made as §6.5 makes one. It is **uploaded** at
 a path by a drop naming it, which a page places as it places any other
 (§6.9, §6.13):
 
 ```js
-const proposal = {
+const upload = {
   bundle: id,
   created: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
 };
@@ -1583,7 +1583,7 @@ const response = await fetch("/data/signed", {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
     target: "chaos:/recipes",
-    text: JSON.stringify(proposal),
+    text: JSON.stringify(upload),
     seconds: 10,
     minimum_bits: 24,
   }),
@@ -1592,34 +1592,34 @@ const response = await fetch("/data/signed", {
 
 - **`bundle`** is the bundle's id, or, for one stored encrypted, the
   encrypted id that carries its key (§6.1).
-- **`created`** is when it is proposed, in UTC, to the second, as
-  `2026-11-07T15:04:05Z`. The newest proposal is chosen, and one dated more
+- **`created`** is when it is uploaded, in UTC, to the second, as
+  `2026-11-07T15:04:05Z`. The newest upload is chosen, and one dated more
   than 5 minutes ahead of a node's clock is passed over.
 - **`target`** is `chaos:/` and the path the bundle is mounted at, its
   elements joined by `/`, with no `/` at the end: `chaos:/` for the root,
   `chaos:/recipes` for `/chaos/recipes/`. Each element is spelled as it
   reads decoded, so `/chaos/a%20cake/` is `chaos:/a cake`.
 - **`minimum_bits`** is at least as many as a node's search returns, 24 by
-  default, or no node finds the proposal.
+  default, or no node finds the upload.
 
-Placed with `POST /data/signed`, the proposal is signed by whoever is
+Placed with `POST /data/signed`, the upload is signed by whoever is
 signed in, and is served first to those who trust them. Placed with
 `POST /data/drop`, it is unsigned, and is served only where nothing a
-viewer's trusted people proposed holds the path. Never give either
-`encrypt`: every viewer's node reads the proposal. A newer proposal of
+viewer's trusted people uploaded holds the path. Never give either
+`encrypt`: every viewer's node reads the upload. A newer upload of
 yours at a path replaces your older ones there, even where an older one
-holds a path the newer lacks, so propose again to change a site, or to
+holds a path the newer lacks, so upload again to change a site, or to
 take it down.
 
-A bundle proposed at a path serves each path beneath it that it holds:
-`/chaos/recipes/bread.html` is the `bread.html` of a bundle proposed at
-`chaos:/recipes`, or the `recipes/bread.html` of one proposed at
+A bundle uploaded at a path serves each path beneath it that it holds:
+`/chaos/recipes/bread.html` is the `bread.html` of a bundle uploaded at
+`chaos:/recipes`, or the `recipes/bread.html` of one uploaded at
 `chaos:/`. A path ending in `/` serves its directory's `index.html`, and
 one naming a directory without its `/` is redirected to it. **Each path is
 resolved on its own**, the page and each image, script, and page it links
 to, so a file of your site may be served from another bundle, where
-someone the viewer trusts more proposed one holding it. At every level,
-from the root down, proposals by those the viewer trusts come first, then
+someone the viewer trusts more uploaded one holding it. At every level,
+from the root down, uploads by those the viewer trusts come first, then
 those of no trust specified; one by someone they distrust is never served.
 
 **Chaos is only for someone signed in.** A Chaos site is served on the
@@ -1643,12 +1643,12 @@ when.
 node's **Chaos page** for that path. On the Chaos port, an address ending
 in a bare `?`, as `/chaos/recipes/?`, opens it, and so does a page for
 which nothing is chosen, or one opened without a session. It shows each
-level searched, at the address it serves, every proposal found there, with
+level searched, at the address it serves, every upload found there, with
 its signer, date, and bundle, why each was passed over, and which was
 chosen, and lets a person signed in on the node's machine trust, distrust,
 or clear each signer. Its **View content** links to the path on the Chaos
 port. Signed in on the node's machine, a person uploads a zip there, which
-the page has the node make a bundle of (§6.5) and proposes, signed, at the
+the page has the node make a bundle of (§6.5) and uploads, signed, at the
 address chosen, and downloads any bundle listed as a zip. It is served on
 the node's port alone, outside any sandbox, and no page may frame it. A query with anything in it, such as `?about`, is your
 site's, as any other is, so use one of those, never a bare `?`, for a page
@@ -1662,7 +1662,7 @@ const response = await fetch(`/data/chaos/${path}`, { cache: "no-store" });
 const report = await response.json();
 // report.chosen is {level, drop}, or null when nothing is chosen.
 // report.served_at is the path on the Chaos port.
-// Each of report.levels[i].proposals has its signer, score, bundle,
+// Each of report.levels[i].uploads has its signer, score, bundle,
 // created, holds, and passed_over.
 ```
 
@@ -1671,8 +1671,8 @@ for the root. The node resolves it as a request for the path would be, by
 the same person's scores, and may wait as long, up to
 `network.app_wait_seconds`. A browser no one is signed in on is `401`, and
 a path that names nothing is `404`. HTTP API §13.6.7 gives every member,
-and each reason a
-proposal is passed over. A Chaos site cannot read the report: it is not one
+and each reason an
+upload is passed over. A Chaos site cannot read the report: it is not one
 of the node's own pages, on either port.
 
 ## 7. Patterns From the Movie Library

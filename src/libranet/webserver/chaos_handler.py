@@ -1,6 +1,6 @@
 """``GET /chaos/{path}``: Chaos sites on the Chaos port, the Chaos page on the main (HttpApi §13.6).
 
-Beneath ``/chaos``, anyone may propose a bundle for any path, and each
+Beneath ``/chaos``, anyone may upload a bundle to any path, and each
 request is served what
 :class:`~libranet.webserver.chaos_resolver.ChaosResolver` chooses for it, by
 the trust scores of the person whose session it carries (Phase 7 Steps 156
@@ -279,10 +279,10 @@ class ChaosHandler:
             return status_response(
                 request,
                 HTTPStatus.NOT_FOUND,
-                "No bundle proposed at this path, or at any directory above it, is chosen for it.",
+                "No bundle uploaded at this path, or at any directory above it, is chosen for it.",
             )
 
-        self.paths.use.used(chosen.proposal.bundle.content_id)
+        self.paths.use.used(chosen.upload.bundle.content_id)
         # Looked at as whatever it is, so that an entry of a kind this does
         # not know is logged, rather than taken for another.
         entry: object = chosen.entry
@@ -298,7 +298,7 @@ class ChaosHandler:
 
         _LOGGER.error(
             "Cannot serve %s at %r, as %r is neither a file's entry nor a redirect",
-            chosen.proposal.bundle.content_id,
+            chosen.upload.bundle.content_id,
             chosen.level.rest,
             entry,
         )
@@ -322,12 +322,12 @@ class ChaosHandler:
 
         except BundleError as error:
             # Only a warning for a cipher or an algorithm this node lacks,
-            # which an update may bring, as anyone may propose any bundle.
+            # which an update may bring, as anyone may upload any bundle.
             _LOGGER.log(
                 WARNING if isinstance(error, UnsupportedBundleError) else DEBUG,
                 "%r in %s cannot be served from its parts: %s",
                 chosen.level.rest,
-                chosen.proposal.bundle.content_id,
+                chosen.upload.bundle.content_id,
                 error,
             )
             return typed_response(
@@ -382,7 +382,7 @@ def _query(request: Request) -> str:
 
 
 def _located(path: ChaosPath, level: ChaosLevel, entry_path: str) -> str:
-    """The Chaos path that ``entry_path``, in a bundle proposed at ``level`` of ``path``, is at.
+    """The Chaos path that ``entry_path``, in a bundle uploaded at ``level`` of ``path``, is at.
 
     It is percent-encoded, beneath ``/chaos/`` and each of the level's
     elements.

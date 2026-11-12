@@ -80,10 +80,10 @@
   #status li + li { margin-top: 0.15rem; }
   .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin-top: 0.75rem; }
 
-  /* Each proposal at a level: its signer first, and what became of it in
+  /* Each upload at a level: its signer first, and what became of it in
      the rows after. */
-  .proposals { margin: 0.5rem 0 0; padding-left: 1.75rem; }
-  .proposals > li + li { margin-top: 0.75rem; }
+  .uploads { margin: 0.5rem 0 0; padding-left: 1.75rem; }
+  .uploads > li + li { margin-top: 0.75rem; }
   .signer { font-weight: 600; }
   .rows { margin: 0.15rem 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.93rem; }
   .rows li + li { margin-top: 0.1rem; }
@@ -204,9 +204,9 @@ const ZIP_PREFIX = "/data/zip/";
 const UPLOAD_MINIMUM_BITS = 24;
 const UPLOAD_SECONDS = 5;
 
-// Why a proposal was passed over, in words (HttpApi 13.6.7).
+// Why an upload was passed over, in words (HttpApi 13.6.7).
 const PASSED_OVER = {
-  "not-a-proposal": "Passed over: it is not an upload.",
+  "not-an-upload": "Passed over: it is not an upload.",
   "bad-signature": "Passed over: it is signed, but its signature does not check.",
   shunned: "Passed over: this node has shunned its bundle.",
   future: "Passed over: it is dated too far ahead of this node's clock.",
@@ -649,58 +649,58 @@ async function changeTrust(id, trusted) {
   followReport();
 }
 
-// The signer of `proposal`, with their mark, name, and id, and the choices
+// The signer of `upload`, with their mark, name, and id, and the choices
 // changing their trust; or that it is unsigned.
-function signerRow(report, proposal) {
+function signerRow(report, upload) {
   const row = make("div", "", "signer");
-  const signer = proposal.signer;
+  const signer = upload.signer;
 
   if (!CONTENT_ID.test(signer || "")) {
-    row.append(proposal.passed_over === "not-a-proposal" ? "Not an upload" : "Unsigned");
+    row.append(upload.passed_over === "not-an-upload" ? "Not an upload" : "Unsigned");
     return row;
   }
 
   askDetails(signer);
-  const text = trustText(report, proposal.score, proposal.step);
-  const mark = make("span", markOf(proposal.score), "mark");
+  const text = trustText(report, upload.score, upload.step);
+  const mark = make("span", markOf(upload.score), "mark");
   mark.title = text;
   mark.setAttribute("aria-label", text);
   const name = nameOf(signer);
   row.append(mark, personLink(signer, name ? `${name} ` : ""), code(signer, "id"));
 
   if (view.you !== null) {
-    row.append(choicesFor(report, signer, proposal.score, proposal.step));
+    row.append(choicesFor(report, signer, upload.score, upload.step));
   }
 
   return row;
 }
 
-// When `created`, as a proposal gives it, was, as the viewer reads a time.
+// When `created`, as an upload gives it, was, as the viewer reads a time.
 function when(created) {
   const time = new Date(created);
   return Number.isNaN(time.getTime()) ? created : time.toLocaleString();
 }
 
-// What became of `proposal`, found at `level`, and whether it is the one
+// What became of `upload`, found at `level`, and whether it is the one
 // chosen.
-function proposalItem(report, level, proposal, chosen) {
+function uploadItem(report, level, upload, chosen) {
   const item = document.createElement("li");
   const rows = make("ul", "", "rows");
-  item.append(signerRow(report, proposal), rows);
+  item.append(signerRow(report, upload), rows);
 
-  if (typeof proposal.bundle === "string") {
+  if (typeof upload.bundle === "string") {
     const bundle = make("li", "Bundle ");
     const link = document.createElement("a");
-    link.href = bundlePath(proposal.bundle, level.rest);
+    link.href = bundlePath(upload.bundle, level.rest);
     link.title = "Read the rest of the path in this bundle";
-    link.append(code(proposal.bundle, "id"));
+    link.append(code(upload.bundle, "id"));
     bundle.append(link);
-    rows.append(make("li", `Uploaded ${when(proposal.created)}`), bundle);
+    rows.append(make("li", `Uploaded ${when(upload.created)}`), bundle);
 
     // A file's own level holds a file bundle, which is no directory to zip.
     if (level.rest !== "") {
       const download = document.createElement("a");
-      download.href = `${ZIP_PREFIX}${proposal.bundle}/`;
+      download.href = `${ZIP_PREFIX}${upload.bundle}/`;
       download.download = zipName(level);
       download.textContent = "Download it as a zip";
       const item = make("li", "");
@@ -709,7 +709,7 @@ function proposalItem(report, level, proposal, chosen) {
     }
   }
 
-  const holds = proposal.holds === true ? "Its bundle holds the rest of the path." : proposal.holds === false ? "Its bundle does not hold the rest of the path." : "";
+  const holds = upload.holds === true ? "Its bundle holds the rest of the path." : upload.holds === false ? "Its bundle does not hold the rest of the path." : "";
 
   if (holds) {
     rows.append(make("li", holds));
@@ -717,20 +717,20 @@ function proposalItem(report, level, proposal, chosen) {
 
   if (chosen) {
     rows.append(make("li", "Chosen: this is what is served here.", "chosen"));
-  } else if (typeof proposal.passed_over === "string") {
-    const said = PASSED_OVER[proposal.passed_over] || `Passed over: ${proposal.passed_over}.`;
-    rows.append(make("li", said, proposal.passed_over === "pending" ? "note" : "error"));
+  } else if (typeof upload.passed_over === "string") {
+    const said = PASSED_OVER[upload.passed_over] || `Passed over: ${upload.passed_over}.`;
+    rows.append(make("li", said, upload.passed_over === "pending" ? "note" : "error"));
   } else {
     rows.append(make("li", "Not looked at, since one was chosen before it."));
   }
 
   const drop = make("li", "Drop ");
-  drop.append(code(proposal.drop, "id"), ` matching ${plural(proposal.matching_bits, "bit", "bits")}`);
+  drop.append(code(upload.drop, "id"), ` matching ${plural(upload.matching_bits, "bit", "bits")}`);
   rows.append(drop);
   return item;
 }
 
-// The level `level` of the report: its drop, each proposal found there, and
+// The level `level` of the report: its drop, each upload found there, and
 // what is still missing.
 function levelSection(report, level, index) {
   const section = document.createElement("section");
@@ -743,16 +743,16 @@ function levelSection(report, level, index) {
   const hash = make("p", "Drop target hash ", "note");
   hash.append(code(level.hash, "id"));
   section.append(title, target, rest, hash);
-  const proposals = Array.isArray(level.proposals) ? level.proposals : [];
+  const uploads = Array.isArray(level.uploads) ? level.uploads : [];
 
-  if (proposals.length === 0) {
+  if (uploads.length === 0) {
     section.append(make("p", "Nothing uploaded here has been found."));
   } else {
-    const list = make("ol", "", "proposals");
+    const list = make("ol", "", "uploads");
     const chosen = isObject(report.chosen) && report.chosen.level === index ? report.chosen.drop : null;
 
-    for (const proposal of proposals) {
-      list.append(proposalItem(report, level, proposal, proposal.drop === chosen));
+    for (const upload of uploads) {
+      list.append(uploadItem(report, level, upload, upload.drop === chosen));
     }
 
     section.append(list);
@@ -769,7 +769,7 @@ function levelSection(report, level, index) {
   return section;
 }
 
-// Whether anything the report shows could still change: a proposal pending,
+// Whether anything the report shows could still change: an upload pending,
 // something missing, or scores still being built.
 function unsettled(report) {
   const levels = Array.isArray(report.levels) ? report.levels : [];
@@ -778,7 +778,7 @@ function unsettled(report) {
     levels.some(
       (level) =>
         (Array.isArray(level.missing) && level.missing.length > 0) ||
-        (Array.isArray(level.proposals) && level.proposals.some((proposal) => proposal.passed_over === "pending")),
+        (Array.isArray(level.uploads) && level.uploads.some((upload) => upload.passed_over === "pending")),
     )
   );
 }
@@ -929,7 +929,7 @@ async function holdsRest(bundle, rest) {
 // Upload the zip chosen at the level chosen: make a bundle of it, and place
 // an upload of it at the level's drop, signed by whoever is signed in
 // (HttpApi 11.5, 13.6.2); then read the report again.
-async function upload(event) {
+async function uploadZip(event) {
   event.preventDefault();
   const file = byId("upload-file").files[0];
   const level = uploadLevels(view.report ? view.report.levels : []).find(
@@ -1040,7 +1040,7 @@ async function start() {
   // The main port shows only this page for the path, so Reload reads the
   // report again, with what has been found since.
   byId("reload").addEventListener("click", () => followReport());
-  byId("upload-form").addEventListener("submit", upload);
+  byId("upload-form").addEventListener("submit", uploadZip);
 
   try {
     view.you = await signedInHere();

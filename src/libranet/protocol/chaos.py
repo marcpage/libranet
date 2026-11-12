@@ -1,6 +1,6 @@
-"""A Chaos path, its levels, and what is proposed at them (HttpApi §13.6.1, §13.6.2).
+"""A Chaos path, its levels, and what is uploaded at them (HttpApi §13.6.1, §13.6.2).
 
-Beneath ``/chaos``, anyone may propose a bundle for any path, by placing a
+Beneath ``/chaos``, anyone may upload a bundle to any path, by placing a
 drop at one of the path's levels (Phase 7 Step 156). A **Chaos path** is the
 path beneath ``/chaos/``, percent-decoded as an application's is, a ``%2F``
 counting as a ``/``, and split into its elements, each a segment of an entry
@@ -19,14 +19,14 @@ what is left of the path after them::
 
 Elements are compared byte for byte, never case-folded or normalized.
 
-A **proposal** names the bundle to serve at a level, by its id or, for one
+An **upload** names the bundle to serve at a level, by its id or, for one
 stored encrypted, by the id carrying its key, and says when it was
-proposed. A reader ignores any other member::
+uploaded. A reader ignores any other member::
 
     {"bundle": "sha256/…", "created": "2026-11-07T15:04:05Z"}
 
-A signed proposal is a signed bundle whose ``contents`` is the JSON text of
-one, and an unsigned proposal is the JSON text itself.
+A signed upload is a signed bundle whose ``contents`` is the JSON text of
+one, and an unsigned upload is the JSON text itself.
 """
 
 from __future__ import annotations
@@ -56,8 +56,8 @@ _CREATED_MEMBER: Final = "created"
 class PassedOver(StrEnum):
     """Why a drop found at a level was not chosen, as the report says it (HttpApi §13.6.7)."""
 
-    # Neither a signed proposal nor an unsigned one.
-    NOT_A_PROPOSAL = "not-a-proposal"
+    # Neither a signed upload nor an unsigned one.
+    NOT_AN_UPLOAD = "not-an-upload"
 
     # Signed, but its signature does not check.
     BAD_SIGNATURE = "bad-signature"
@@ -68,10 +68,10 @@ class PassedOver(StrEnum):
     # Dated further ahead of the node's clock than the node allows.
     FUTURE = "future"
 
-    # Its proposer made a newer one at the same level.
+    # Its uploader made a newer one at the same level.
     SUPERSEDED = "superseded"
 
-    # Its proposer is distrusted by the scores that chose.
+    # Its uploader is distrusted by the scores that chose.
     DISTRUSTED = "distrusted"
 
     # Its bundle does not hold the rest.
@@ -94,7 +94,7 @@ class ChaosLevel:
 
     @property
     def drop(self) -> DropTarget:
-        """Where proposals for the level are placed."""
+        """Where uploads for the level are placed."""
         return DropTarget.of(self.target)
 
 
@@ -164,8 +164,8 @@ class ChaosPath:
 
 
 @dataclass(frozen=True)
-class ChaosProposal:
-    """A proposal: the ``bundle`` to serve at a level, and when it was ``created``.
+class ChaosUpload:
+    """An upload: the ``bundle`` to serve at a level, and when it was ``created``.
 
     Raises:
         ValueError: ``created`` is not a UTC time to the second.
@@ -175,11 +175,11 @@ class ChaosProposal:
     created: datetime
 
     def __post_init__(self) -> None:
-        check_moment(self.created, named="A proposal's created")
+        check_moment(self.created, named="An upload's created")
 
     @classmethod
-    def from_value(cls, value: object) -> ChaosProposal:
-        """The proposal the JSON ``value`` is, any member but its own ignored.
+    def from_value(cls, value: object) -> ChaosUpload:
+        """The upload the JSON ``value`` is, any member but its own ignored.
 
         Raises:
             ValueError: it is not an object, or its ``bundle`` names no
@@ -188,15 +188,15 @@ class ChaosProposal:
                 algorithm or a cipher this node lacks.
         """
         if not isinstance(value, dict):
-            raise ValueError("A proposal is a JSON object")
+            raise ValueError("An upload is a JSON object")
 
         return cls(
             PartPath.parse(string_field(value, _BUNDLE_MEMBER)),
-            moment_member(value.get(_CREATED_MEMBER), named=f'A proposal\'s "{_CREATED_MEMBER}"'),
+            moment_member(value.get(_CREATED_MEMBER), named=f'An upload\'s "{_CREATED_MEMBER}"'),
         )
 
     def value(self) -> dict[str, str]:
-        """The JSON object this proposal is, as :meth:`from_value` reads one."""
+        """The JSON object this upload is, as :meth:`from_value` reads one."""
         return {
             _BUNDLE_MEMBER: str(self.bundle),
             _CREATED_MEMBER: self.created.strftime(MOMENT_FORMAT),

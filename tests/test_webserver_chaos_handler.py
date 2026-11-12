@@ -25,7 +25,7 @@ from libranet.identity.people import NewIdentity, PersonKey, Username
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType, PathOutcome
 from libranet.problems import SESSION_REQUIRED, UNUSABLE_BUNDLE
-from libranet.protocol.chaos import ChaosPath, ChaosProposal
+from libranet.protocol.chaos import ChaosPath, ChaosUpload
 from libranet.webserver.app_handler import CONFIG_APP_POLICY
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_use import ApplicationUse
@@ -48,9 +48,9 @@ CHAOS_PORT = 8130
 MAIN_PORT = 8080
 RETRY_AFTER_SECONDS = 9
 BUNDLE = PartPath(ContentId.for_data(b"a Chaos site's bundle", "sha256"))
-DROP = ContentId.for_data(b"the drop proposing it", "sha256")
+DROP = ContentId.for_data(b"the drop uploading it", "sha256")
 BLOCK = ContentId.for_data(b"an identity block", "sha256")
-PROPOSAL = ChaosProposal(BUNDLE, datetime(2026, 11, 7, 15, 4, 5, tzinfo=UTC))
+UPLOAD = ChaosUpload(BUNDLE, datetime(2026, 11, 7, 15, 4, 5, tzinfo=UTC))
 # A page of two parts, of 9 and 6 bytes.
 PAGE_PARTS = (b"<p>Bread ", b"cake</p>")
 PAGE = b"".join(PAGE_PARTS)
@@ -131,10 +131,8 @@ class Site:
         return router
 
     def choose(self, path: str, level: int, entry: FileBundle | KnownOutcome) -> None:
-        """Have the resolver choose ``entry`` of the bundle proposed at ``level`` of ``path``."""
-        self.resolver.chosen = ChaosChoice(
-            ChaosPath.parse(path).level(level), DROP, PROPOSAL, entry
-        )
+        """Have the resolver choose ``entry`` of the bundle uploaded at ``level`` of ``path``."""
+        self.resolver.chosen = ChaosChoice(ChaosPath.parse(path).level(level), DROP, UPLOAD, entry)
 
     def hold(self, *parts: bytes, content_type: str | None = None) -> FileBundle:
         """The entry of a file joining ``parts``, which are held, given ``content_type``."""
@@ -526,7 +524,7 @@ def test_a_head_is_answered_as_a_get_without_a_part(tmp_path: Path, alice: Perso
 def test_a_file_bundles_own_file_is_typed_by_the_paths_last_element(
     site: Site, alice: PersonKey, content_type: str | None, served_as: str
 ) -> None:
-    # Proposed at chaos:/recipes/bread.html, where the rest is empty.
+    # Uploaded at chaos:/recipes/bread.html, where the rest is empty.
     site.choose("recipes/bread.html", 2, site.hold(*PAGE_PARTS, content_type=content_type))
 
     response = asked(

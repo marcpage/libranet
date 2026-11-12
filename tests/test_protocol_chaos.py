@@ -1,4 +1,4 @@
-"""Tests for Chaos paths, their levels, and proposals (HttpApi §13.6.1, §13.6.2)."""
+"""Tests for Chaos paths, their levels, and uploads (HttpApi §13.6.1, §13.6.2)."""
 
 from __future__ import annotations
 from datetime import UTC, datetime, timedelta, timezone
@@ -9,7 +9,7 @@ from libranet.bundle.errors import UnsupportedBundleError
 from libranet.bundle.parts import PartPath
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
-from libranet.protocol.chaos import ChaosLevel, ChaosPath, ChaosProposal
+from libranet.protocol.chaos import ChaosLevel, ChaosPath, ChaosUpload
 
 BUNDLE = PartPath(ContentId.for_data(b"a directory bundle", "sha256"))
 ENCRYPTED = PartPath(BUNDLE.content_id, bytes(range(32)))
@@ -112,24 +112,24 @@ def test_a_levels_drop_is_its_target_strings() -> None:
 
 
 @mark.parametrize("bundle", [BUNDLE, ENCRYPTED])
-def test_a_proposal_is_read_from_the_json_it_writes(bundle: PartPath) -> None:
-    proposal = ChaosProposal(bundle, CREATED)
+def test_an_upload_is_read_from_the_json_it_writes(bundle: PartPath) -> None:
+    upload = ChaosUpload(bundle, CREATED)
 
-    assert proposal.value() == {"bundle": str(bundle), "created": "2026-11-07T15:04:05Z"}
-    assert ChaosProposal.from_value(proposal.value()) == proposal
+    assert upload.value() == {"bundle": str(bundle), "created": "2026-11-07T15:04:05Z"}
+    assert ChaosUpload.from_value(upload.value()) == upload
 
 
-def test_a_proposals_other_members_are_ignored() -> None:
+def test_an_uploads_other_members_are_ignored() -> None:
     value = {"bundle": str(BUNDLE), "created": "2026-11-07T15:04:05Z", "title": "Recipes"}
 
-    assert ChaosProposal.from_value(value) == ChaosProposal(BUNDLE, CREATED)
+    assert ChaosUpload.from_value(value) == ChaosUpload(BUNDLE, CREATED)
 
 
 @mark.parametrize(
     "value",
     [
         [str(BUNDLE), "2026-11-07T15:04:05Z"],
-        "a proposal",
+        "an upload",
         {"created": "2026-11-07T15:04:05Z"},
         {"bundle": 7, "created": "2026-11-07T15:04:05Z"},
         {"bundle": "not an id", "created": "2026-11-07T15:04:05Z"},
@@ -142,14 +142,14 @@ def test_a_proposals_other_members_are_ignored() -> None:
         {"bundle": str(BUNDLE), "created": "2026-11-7T15:04:05Z"},
     ],
 )
-def test_what_is_not_a_proposal_is_refused(value: object) -> None:
+def test_what_is_not_an_upload_is_refused(value: object) -> None:
     with raises(ValueError):
-        ChaosProposal.from_value(value)
+        ChaosUpload.from_value(value)
 
 
-def test_a_proposal_naming_a_bundle_under_an_algorithm_this_node_lacks_is_unsupported() -> None:
+def test_an_upload_naming_a_bundle_under_an_algorithm_this_node_lacks_is_unsupported() -> None:
     with raises(UnsupportedBundleError):
-        ChaosProposal.from_value({"bundle": "md5/" + "0" * 32, "created": "2026-11-07T15:04:05Z"})
+        ChaosUpload.from_value({"bundle": "md5/" + "0" * 32, "created": "2026-11-07T15:04:05Z"})
 
 
 @mark.parametrize(
@@ -160,6 +160,6 @@ def test_a_proposal_naming_a_bundle_under_an_algorithm_this_node_lacks_is_unsupp
         datetime(2026, 11, 7, 15, 4, 5, 500000, tzinfo=UTC),
     ],
 )
-def test_a_proposal_is_made_only_at_a_utc_time_to_the_second(created: datetime) -> None:
+def test_an_upload_is_made_only_at_a_utc_time_to_the_second(created: datetime) -> None:
     with raises(ValueError, match="UTC time to the second"):
-        ChaosProposal(BUNDLE, created)
+        ChaosUpload(BUNDLE, created)

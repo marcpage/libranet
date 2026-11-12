@@ -1,21 +1,21 @@
-"""What each level of a Chaos path holds: what its search finds, and what that proposes.
+"""What each level of a Chaos path holds: what its search finds, and the uploads found.
 
 Each level's drop is searched as signing in searches one
-(:meth:`SearchHandler.fresh_results`), so that a proposal placed since the
+(:meth:`SearchHandler.fresh_results`), so that an upload placed since the
 last search is found at once, and the node's peers are asked for it too
 (Phase 4 Step 93). What the search found is kept for
 ``chaos.search_seconds``, so that a page's images and scripts, each resolved
-on its own, do not each search every level again (HttpApi §13.6.3). A
-proposal placed meanwhile is found once that time is up.
+on its own, do not each search every level again (HttpApi §13.6.3). An
+upload placed meanwhile is found once that time is up.
 
-Each drop found is read with its nonce stripped, as a signed proposal,
+Each drop found is read with its nonce stripped, as a signed upload,
 checked under its signer's key as ``GET /data/signed`` checks one, or else
-as an unsigned proposal (HttpApi §13.6.2, Phase 7 Step 156). What a drop
+as an unsigned upload (HttpApi §13.6.2, Phase 7 Step 156). What a drop
 holds never changes, so what is read and checked of it is kept, for the
 drops read last, and not read again. A drop or a signer's key not held is
 named, not asked for, since whoever reads decides whether to wait for it.
 
-What is passed over as no proposal, or as not checking, is logged at debug,
+What is passed over as no upload, or as not checking, is logged at debug,
 as anyone may place it, and a search lists whatever is nearest. What this
 node holds that is not what its id names, or what names an algorithm this
 node lacks, which an update may bring, is a warning.
@@ -43,7 +43,7 @@ from libranet.bundle.protection import strip_targeting
 from libranet.bundle.signing import SignedBundle
 from libranet.cas.content_id import ContentId
 from libranet.config.models import ChaosConfig
-from libranet.protocol.chaos import ChaosLevel, ChaosProposal, PassedOver
+from libranet.protocol.chaos import ChaosLevel, ChaosUpload, PassedOver
 from libranet.webserver.file_stream import PartReader
 from libranet.webserver.search_handler import SearchHandler
 
@@ -55,22 +55,22 @@ MAX_KEPT_DROPS: Final = 1000
 
 @dataclass(frozen=True)
 class DropRead:
-    """What a drop holds, read as a ``proposal``, signed by ``signer`` if it is signed.
+    """What a drop holds, read as an ``upload``, signed by ``signer`` if it is signed.
 
-    ``passed_over`` says why what it holds is no proposal to choose, if it is
+    ``passed_over`` says why what it holds is no upload to choose, if it is
     not. ``missing`` names what is not held and is needed to read it or check
     it: the drop itself, or its signer's key.
     """
 
-    proposal: ChaosProposal | None = None
+    upload: ChaosUpload | None = None
     signer: ContentId | None = None
     passed_over: PassedOver | None = None
     missing: ContentId | None = None
 
     def reason(self, shuns: Callable[[ContentId], bool], latest: datetime) -> PassedOver | None:
-        """Why this is passed over, before its proposer is looked at; ``None`` if it is not.
+        """Why this is passed over, before its uploader is looked at; ``None`` if it is not.
 
-        A proposal whose bundle ``shuns`` names is, and so is one dated after
+        An upload whose bundle ``shuns`` names is, and so is one dated after
         ``latest``.
         """
         if self.missing is not None:
@@ -79,13 +79,13 @@ class DropRead:
         if self.passed_over is not None:
             return self.passed_over
 
-        if self.proposal is None:
-            return PassedOver.NOT_A_PROPOSAL
+        if self.upload is None:
+            return PassedOver.NOT_AN_UPLOAD
 
-        if shuns(self.proposal.bundle.content_id):
+        if shuns(self.upload.bundle.content_id):
             return PassedOver.SHUNNED
 
-        return PassedOver.FUTURE if self.proposal.created > latest else None
+        return PassedOver.FUTURE if self.upload.created > latest else None
 
 
 class ChaosLevels:
@@ -149,7 +149,7 @@ class ChaosLevels:
         return found
 
     def read(self, drop: ContentId) -> DropRead:
-        """What ``drop`` holds, read as a proposal; kept once all it needs is held."""
+        """What ``drop`` holds, read as an upload; kept once all it needs is held."""
         with self._lock:
             kept = self._reads.get(drop)
 
@@ -169,7 +169,7 @@ class ChaosLevels:
         return read
 
     def _read_afresh(self, drop: ContentId) -> DropRead:
-        """What ``drop`` holds, read as a proposal."""
+        """What ``drop`` holds, read as an upload."""
         try:
             held = strip_targeting(self._held(drop))
 
@@ -179,30 +179,28 @@ class ChaosLevels:
 
         except BundleVerificationError as error:
             _LOGGER.warning("Passing over %s, as what is held for it is not it: %s", drop, error)
-            return DropRead(passed_over=PassedOver.NOT_A_PROPOSAL)
+            return DropRead(passed_over=PassedOver.NOT_AN_UPLOAD)
 
         if SignedBundle.is_signed(held):
             return self._signed(drop, held)
 
         try:
-            proposal = _proposal(drop, held.decode("utf-8"))
+            upload = _upload(drop, held.decode("utf-8"))
 
         except UnicodeDecodeError as error:
             # Only at debug, as anyone may place it, and a search lists
             # whatever is nearest.
             _LOGGER.debug("Passing over %s, as it is not UTF-8: %s", drop, error)
-            proposal = None
+            upload = None
 
         return (
-            DropRead(passed_over=PassedOver.NOT_A_PROPOSAL)
-            if proposal is None
-            else DropRead(proposal)
+            DropRead(passed_over=PassedOver.NOT_AN_UPLOAD) if upload is None else DropRead(upload)
         )
 
     def _signed(  # pylint: disable=too-many-return-statements
         self, drop: ContentId, held: bytes
     ) -> DropRead:
-        """What ``held``, the signed bundle in ``drop``, proposes, as its signer's key checks it."""
+        """The upload ``held``, the signed bundle in ``drop``, holds, as its signer's key checks."""
         try:
             signed = SignedBundle.decoded(held)
 
@@ -210,7 +208,7 @@ class ChaosLevels:
             # Only at debug, as anyone may place it, and a search lists
             # whatever is nearest.
             _LOGGER.debug("Passing over %s, as it is no signed bundle: %s", drop, error)
-            return DropRead(passed_over=PassedOver.NOT_A_PROPOSAL)
+            return DropRead(passed_over=PassedOver.NOT_AN_UPLOAD)
 
         except (BundleSignatureError, UnsupportedBundleError) as error:
             # A warning for an algorithm this node lacks, which an update may
@@ -223,21 +221,21 @@ class ChaosLevels:
             )
             return DropRead(passed_over=PassedOver.BAD_SIGNATURE)
 
-        proposal = _proposal(drop, signed.contents)
+        upload = _upload(drop, signed.contents)
 
-        if proposal is None:
-            return DropRead(passed_over=PassedOver.NOT_A_PROPOSAL)
+        if upload is None:
+            return DropRead(passed_over=PassedOver.NOT_AN_UPLOAD)
 
         if self._parts.shuns(signed.signer):
             _LOGGER.debug("Passing over %s, as the key of %s is shunned", drop, signed.signer)
-            return DropRead(proposal, signed.signer, PassedOver.BAD_SIGNATURE)
+            return DropRead(upload, signed.signer, PassedOver.BAD_SIGNATURE)
 
         try:
             signed.verified(self._held(signed.signer))
 
         except MissingContentError:
             # Not logged: it is named among what is missing.
-            return DropRead(proposal, signed.signer, missing=signed.signer)
+            return DropRead(upload, signed.signer, missing=signed.signer)
 
         except BundleVerificationError as error:
             # A signature error is one, and only at debug, as anyone may place
@@ -249,9 +247,9 @@ class ChaosLevels:
                 drop,
                 error,
             )
-            return DropRead(proposal, signed.signer, PassedOver.BAD_SIGNATURE)
+            return DropRead(upload, signed.signer, PassedOver.BAD_SIGNATURE)
 
-        return DropRead(proposal, signed.signer)
+        return DropRead(upload, signed.signer)
 
     def _held(self, content_id: ContentId) -> bytes:
         """What is held for ``content_id``, decompressed and checked against it.
@@ -263,10 +261,10 @@ class ChaosLevels:
         return b"".join(content_chunks(self._parts.content, content_id))
 
 
-def _proposal(drop: ContentId, text: str) -> ChaosProposal | None:
-    """The proposal ``text``, read from ``drop``, is the JSON text of; ``None`` if it is none."""
+def _upload(drop: ContentId, text: str) -> ChaosUpload | None:
+    """The upload ``text``, read from ``drop``, is the JSON text of; ``None`` if it is none."""
     try:
-        return ChaosProposal.from_value(loads(text))
+        return ChaosUpload.from_value(loads(text))
 
     except UnsupportedBundleError as error:
         _LOGGER.warning(
@@ -276,6 +274,6 @@ def _proposal(drop: ContentId, text: str) -> ChaosProposal | None:
     except (ValueError, RecursionError) as error:
         # Only at debug, as anyone may place it, and a search lists whatever
         # is nearest.
-        _LOGGER.debug("Passing over %s, as it holds no proposal: %s", drop, error)
+        _LOGGER.debug("Passing over %s, as it holds no upload: %s", drop, error)
 
     return None

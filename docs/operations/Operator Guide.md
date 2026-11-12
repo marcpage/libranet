@@ -1023,7 +1023,7 @@ out until the person signs in again.
 
 ### 6.7 Chaos Sites
 
-Beneath `/chaos`, anyone may propose a bundle for any path, by placing a
+Beneath `/chaos`, anyone may upload a bundle to any path, by placing a
 drop named for it, and each person is served what those they trust chose
 (HTTP API §13.6). The [App Developer Guide](App%20Developer%20Guide.md)
 §6.21 describes putting a site there. Nothing is registered: a path is
@@ -1058,9 +1058,9 @@ Three settings limit how a path is resolved:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `chaos.max_levels` | `16` | How many levels of a path are searched for proposals, the root's first; a deeper path is served only from a bundle proposed at one of them |
-| `chaos.future_seconds` | `300.0` | How far ahead of the node's clock a proposal may be dated and still be chosen |
-| `chaos.search_seconds` | `5.0` | How long what a level's search found is kept, so that a page's images and scripts do not each search again; a proposal placed meanwhile is found once it is up |
+| `chaos.max_levels` | `16` | How many levels of a path are searched for uploads, the root's first; a deeper path is served only from a bundle uploaded at one of them |
+| `chaos.future_seconds` | `300.0` | How far ahead of the node's clock an upload may be dated and still be chosen |
+| `chaos.search_seconds` | `5.0` | How long what a level's search found is kept, so that a page's images and scripts do not each search again; an upload placed meanwhile is found once it is up |
 
 A path is resolved within `network.app_wait_seconds`, 10 seconds by default,
 as an application's file is served within it. What has not arrived by then

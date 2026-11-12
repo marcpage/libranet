@@ -59,7 +59,7 @@ config
 Two reserved names are in use, though neither as an application's name:
 `config` for the administration application itself (§2.3), whichever bundle
 or shipped resources a node serves it from, and `chaos` for the Chaos
-endpoint (§13.6), where anyone may propose a bundle for any path. `web` is
+endpoint (§13.6), where anyone may upload a bundle to any path. `web` is
 reserved for the future.
 
 The root path `/` is itself a special application mapping.
@@ -3515,13 +3515,13 @@ flowchart TD
 
 ### 13.6. The Chaos Endpoint
 
-Beneath `/chaos`, anyone may propose a bundle for any path, and each person
+Beneath `/chaos`, anyone may upload a bundle to any path, and each person
 is served what those they trust chose. Nothing is registered there, as an
 application is. A node finds what to serve at a path by searching drops
 named for the path and for each directory above it (§9), and chooses among
-the bundles proposed there by the trust scores of whoever asks (§11.7), so
+the bundles uploaded there by the trust scores of whoever asks (§11.7), so
 two people asking for one path may be served different files. What a bundle
-proposed at a path serves, the files it holds beneath that path, is called
+uploaded at a path serves, the files it holds beneath that path, is called
 here a **Chaos site**. The node's own page saying what a path resolves to,
 and why, is the **Chaos page** (§13.6.6).
 
@@ -3547,7 +3547,7 @@ case-folded or normalized.
 A path has a **level** for the root and for each of its elements in turn,
 from the root down. Each level is a drop, whose target string (§9.3) is
 `chaos:/` followed by the elements down to the level, joined by `/`. A
-bundle proposed at a level is mounted there, and can serve only the paths
+bundle uploaded at a level is mounted there, and can serve only the paths
 beneath it. It serves a path only if it holds the level's **rest**: what is
 left of the path after the level's elements, followed by `index.html` for a
 path naming a directory.
@@ -3563,13 +3563,14 @@ The empty rest names a file bundle's own file, or a directory bundle's root
 (§12.1), to which the path is redirected with its `/` (§13.6.5).
 
 A node MAY search fewer levels than a path has, the shallowest first, so
-that a deeper path is served only from a bundle proposed at one of those it
+that a deeper path is served only from a bundle uploaded at one of those it
 searches. The reference node searches at most 16 by default (§21).
 
-#### 13.6.2 Proposals
+#### 13.6.2 Uploads
 
-A **proposal** names a bundle to serve at a level, and says when it was
-proposed:
+An **upload**, or a **Chaos upload** where it could be taken for content
+uploaded to a node (§7), names a bundle to serve at a level, and says when
+it was uploaded:
 
 ```json
 {"bundle": "sha256/…", "created": "2026-11-07T15:04:05Z"}
@@ -3578,42 +3579,42 @@ proposed:
 - **`bundle`** names a directory bundle or a file bundle, in either form a
   read into a bundle takes (§12.1): by its content identifier, or, for one
   stored encrypted, by the identifier that carries its key (§5).
-- **`created`** is when it was proposed, a UTC time to the second.
+- **`created`** is when it was uploaded, a UTC time to the second.
 
 A reader ignores any other member, so that a later version of this document
-can add one. Of two proposals, the **newer** is the one whose `created` is
+can add one. Of two uploads, the **newer** is the one whose `created` is
 later, and of two of the same moment, the one whose drop's id comes first.
 
-A **signed proposal** is a signed bundle
+A **signed upload** is a signed bundle
 ([Bundle Specification §5](BundleSpecification.md#5-signed-bundle)) whose
-`contents` is the JSON text of a proposal, as a page has the node make one
-with `POST /data/signed` (§11.5). Its signer is its **proposer**. An
-**unsigned proposal** is the JSON text of a proposal itself, as a page has
-the node make one with `POST /data/drop` (§9.6), and has no proposer. Either
+`contents` is the JSON text of an upload, as a page has the node make one
+with `POST /data/signed` (§11.5). Its signer is its **uploader**. An
+**unsigned upload** is the JSON text of an upload itself, as a page has
+the node make one with `POST /data/drop` (§9.6), and has no uploader. Either
 is placed at its level's drop, sharing at least as many leading bits with
 the target hash as a node's search returns (§6), 24 by default, so that a
-search of the drop finds it. Anyone may propose at any level. A proposal is
+search of the drop finds it. Anyone may upload at any level. An upload is
 never encrypted, since the node of each viewer reads it, though the bundle
-it names may be stored encrypted (§12.3). A proposal names a bundle, rather
-than holding one, so that one bundle may be proposed at many paths, and a
-bundle larger than a drop can hold (§9.6) may be proposed.
+it names may be stored encrypted (§12.3). An upload names a bundle, rather
+than holding one, so that one bundle may be uploaded at many paths, and a
+bundle larger than a drop can hold (§9.6) may be uploaded.
 
 A node reads each drop a level's search finds as `GET /data/signed` reads
 one (§11.5): what it holds before its last null byte (§9), as a signed
-proposal, checked under the key its `signer` names, or else as an unsigned
-proposal. It then passes over, in this order, each that is:
+upload, checked under the key its `signer` names, or else as an unsigned
+upload. It then passes over, in this order, each that is:
 
-1. neither a signed proposal nor an unsigned one (`not-a-proposal`), or a
+1. neither a signed upload nor an unsigned one (`not-an-upload`), or a
    signed one that does not check as §11.5 says, its `hash` or `signature`
    failing, or its `signer` naming no key that can sign (`bad-signature`);
-2. a proposal whose bundle the node has shunned, as §5.5 says (`shunned`);
+2. an upload whose bundle the node has shunned, as §5.5 says (`shunned`);
 3. dated further ahead of the node's clock than the node allows
    (`future`), so that one dated far ahead cannot be the newest for ever.
    The reference node allows 5 minutes by default (§21);
-4. any but the newest of a proposer's proposals left at the level
-   (`superseded`), so that a proposer's newer proposal replaces their
+4. any but the newest of an uploader's uploads left at the level
+   (`superseded`), so that an uploader's newer upload replaces their
    older ones, and they can take a path away from a bundle that still
-   holds it. Unsigned proposals have no proposer, and none supersedes
+   holds it. Unsigned uploads have no uploader, and none supersedes
    another.
 
 The words in parentheses are the reasons the report gives (§13.6.7).
@@ -3629,33 +3630,33 @@ node's own scores
 Only a local client signs in, so a client elsewhere cannot use Chaos.
 Scores still being built choose as they stand, and a person whose scores
 are not being built, as when their last session has just ended, has every
-proposer of no trust specified. Each request is resolved on its own, a
+uploader of no trust specified. Each request is resolved on its own, a
 page's images and scripts as much as the page, so that what a person sees
 follows their trust throughout.
 
-By the scores that choose, a proposal is:
+By the scores that choose, an upload is:
 
-- **trusted** if its proposer scores above 0, as the person themselves
+- **trusted** if its uploader scores above 0, as the person themselves
   does (§11.7);
-- **distrusted** if its proposer scores below 0, and is then never chosen
+- **distrusted** if its uploader scores below 0, and is then never chosen
   (`distrusted`);
-- of **no trust specified** if it is unsigned, or if its proposer scores 0
+- of **no trust specified** if it is unsigned, or if its uploader scores 0
   or has not been reached by the scores.
 
-A node chooses in two passes: first among the trusted proposals at every
+A node chooses in two passes: first among the trusted uploads at every
 level, from the root down, then among those of no trust specified, in the
-same way. At each level, it takes the proposals of the pass newest first,
+same way. At each level, it takes the uploads of the pass newest first,
 and chooses the first whose bundle holds the rest. A bundle holds the rest
 if it holds a file there, or a directory or a symbolic link, to which the
 path is then redirected (§13.6.5). A bundle that does not is passed over
 (`lacks-path`), and so is one that is not a bundle, cannot be read, or is
 password-protected (`unusable`), as a read into a bundle refuses one
-(§12.1). The first proposal chosen is served (§13.6.5). When neither pass
+(§12.1). The first upload chosen is served (§13.6.5). When neither pass
 chooses one, the path is `404 Not Found` (§13.6.6).
 
-So trust comes before depth. A proposal of no trust specified at `chaos:/`,
+So trust comes before depth. An upload of no trust specified at `chaos:/`,
 whose bundle holds `recipes/index.html`, does not take `/chaos/recipes/`
-from a trusted proposal at `chaos:/recipes`. Within a pass, a shallower
+from a trusted upload at `chaos:/recipes`. Within a pass, a shallower
 level comes first, so that whoever is trusted at a level decides each path
 beneath it that their bundle holds.
 
@@ -3663,9 +3664,9 @@ beneath it that their bundle holds.
 flowchart TD
     req["GET /chaos/a/b/c.html,<br/>on the Chaos port"] --> session{"Carries a session?"}
     session -->|no| refused["Not resolved (§13.6.4)"]
-    session -->|yes| trusted["Pass 1, by the person's scores:<br/>trusted proposals at chaos:/,<br/>chaos:/a, chaos:/a/b, chaos:/a/b/c.html"]
+    session -->|yes| trusted["Pass 1, by the person's scores:<br/>trusted uploads at chaos:/,<br/>chaos:/a, chaos:/a/b, chaos:/a/b/c.html"]
     trusted -->|"at the first level holding one,<br/>the newest whose bundle holds the rest"| serve["Serve it (§13.6.5)"]
-    trusted -->|none| unknown["Pass 2: proposals of no trust<br/>specified, at the same levels"]
+    trusted -->|none| unknown["Pass 2: uploads of no trust<br/>specified, at the same levels"]
     unknown -->|"as in pass 1"| serve
     unknown -->|none| missing["404 Not Found,<br/>or the Chaos page (§13.6.6)"]
 ```
@@ -3674,15 +3675,15 @@ A node searches each level's drop as a search of a drop by its target
 string does (§9.7), scanning what it holds each time, and starting a search
 of its peers, as any search does (§6). It MAY keep what a level's search
 found for a few seconds, so that a page's images and scripts, each resolved
-on its own, do not each search every level again. A proposal placed
+on its own, do not each search every level again. An upload placed
 meanwhile is then found once that time is up. The reference node keeps it
 for 5 seconds by default.
 
 What could change the choice and is not held, whether a drop a search
-found, a proposer's public key, or what a bundle needs for the node to tell
+found, an uploader's public key, or what a bundle needs for the node to tell
 whether it holds the rest, is asked for, as for any miss (§5.2), and waited
 for, as serving an application's file waits (§13.2), within one deadline for
-the whole request. A proposal still waiting when it passes is passed over
+the whole request. An upload still waiting when it passes is passed over
 (`pending`), so that a request made once what it waits for has arrived
 chooses with it. The reference node waits up to 10 seconds in all, by
 default.
@@ -3791,18 +3792,18 @@ when. A Chaos site's files are served only on the Chaos port, with
 
 The Chaos page shows what a Chaos path resolves to, and why: whether the
 scores that chose are complete; each level searched, with the address it
-serves and its drop; each proposal found there, with its proposer, when it
-was proposed, its bundle, whether that holds the rest, and why it was
-passed over; what is still missing; the proposal chosen; and a link to the
+serves and its drop; each upload found there, with its uploader, when it
+was uploaded, its bundle, whether that holds the rest, and why it was
+passed over; what is still missing; the upload chosen; and a link to the
 path on the Chaos port, to view what is served there. It reads all it shows
 from the report (§13.6.7), and its Reload reads the report again. To
 someone not signed in, it says to sign in. To a person signed in on the
-node's own machine, it lets them trust, distrust, or clear each proposer
+node's own machine, it lets them trust, distrust, or clear each uploader
 (§11.7), clearing leaving their score to the lists of those the person
 trusts, and upload a zip at the address of any level of the path but a
 file's own: the node makes a directory bundle of it (§12.3), and the page
-places a proposal of that, signed by the person (§11.5). It lets them
-download each bundle proposed as a zip (§12.5).
+places an upload of that, signed by the person (§11.5). It lets them
+download each bundle uploaded as a zip (§12.5).
 
 - **On the main port**, a `GET` or `HEAD` of any path beneath `/chaos` is
   answered `200 OK` with the Chaos page, whatever its query, and whether or
@@ -3854,7 +3855,7 @@ would be resolved, by the same scores, waiting as long, and answers
  "chosen": {"level": 1, "drop": "sha256/…"},
  "levels": [
    {"target": "chaos:/", "hash": "<target hash>", "rest": "a/b/c.html",
-    "proposals": [
+    "uploads": [
       {"drop": "sha256/…", "matching_bits": 26, "signer": "sha256/…",
        "score": 1, "step": 1, "bundle": "sha256/…",
        "created": "2026-11-07T15:04:05Z", "holds": false,
@@ -3867,30 +3868,30 @@ would be resolved, by the same scores, waiting as long, and answers
   chose, were complete (§11.7).
 - **`served_at`** is the address at which the path is served: on the Chaos
   port, at the host the request's `Host` header names.
-- **`chosen`** names the `level` and the `drop` of the proposal chosen, or
+- **`chosen`** names the `level` and the `drop` of the upload chosen, or
   is `null` when none was.
 - **`levels`** lists each level searched, from the root down: its
   `target` string, its target `hash` in lower-case hex, its `rest`, every
-  drop its search found, as `proposals`, and `missing`, the content
+  drop its search found, as `uploads`, and `missing`, the content
   identifiers of what it needs and does not hold yet, which the node has
   asked for.
-- **Each of `proposals`** gives the id of its `drop`, the `matching_bits`
-  that shares with the target hash, and its proposer's id as `signer`, with
+- **Each of `uploads`** gives the id of its `drop`, the `matching_bits`
+  that shares with the target hash, and its uploader's id as `signer`, with
   their `score` and `step` as §11.7 gives one identity's, all three `null`
-  for an unsigned proposal. `bundle` and `created` are as it says, and
-  `null` for what is not a proposal. `holds` says whether its bundle holds
+  for an unsigned upload. `bundle` and `created` are as it says, and
+  `null` for what is not an upload. `holds` says whether its bundle holds
   the rest, and is `null` where that was not asked. `passed_over` is why it
-  was passed over, and is `null` for the proposal chosen, and for any that
+  was passed over, and is `null` for the upload chosen, and for any that
   came after it, which were not looked at:
 
 | `passed_over` | Why |
 | --- | --- |
-| `not-a-proposal` | Neither a signed nor an unsigned proposal (§13.6.2) |
+| `not-an-upload` | Neither a signed nor an unsigned upload (§13.6.2) |
 | `bad-signature` | Signed, but its signature does not check (§13.6.2) |
 | `shunned` | The node has shunned its bundle (§13.6.2) |
 | `future` | Dated further ahead of the node's clock than the node allows (§13.6.2) |
-| `superseded` | Its proposer made a newer one at the same level (§13.6.2) |
-| `distrusted` | Its proposer is distrusted by the scores that chose (§13.6.3) |
+| `superseded` | Its uploader made a newer one at the same level (§13.6.2) |
+| `distrusted` | Its uploader is distrusted by the scores that chose (§13.6.3) |
 | `lacks-path` | Its bundle does not hold the rest (§13.6.3) |
 | `unusable` | Its bundle is not a bundle, cannot be read, or is password-protected (§13.6.3) |
 | `pending` | What it needs had not arrived in time (§13.6.3) |
@@ -4350,7 +4351,7 @@ whichever of its ports is asked, and whether to make an identity, take over,
 sign in, encrypt, or open a block (§11.3, §11.4, §11.6). It limits the
 trust lists a sign-in reads, by steps and by lists, and how long it looks
 for each (Trust Network §4.2, §4.3). It limits how many levels of a Chaos
-path it searches, and how far ahead of its clock a proposal may be dated
+path it searches, and how far ahead of its clock an upload may be dated
 (§13.6.1, §13.6.2).
 
 A request whose body is larger than the node takes is refused with
@@ -4371,7 +4372,7 @@ that must know a body's size before it reads it.
   (§9.6). A sign-in's trust scores reach at most 4 steps out and read at
   most 1,000 lists, spending up to 30 seconds looking for each (Trust
   Network §4.2, §4.3). It searches at most 16 levels of a Chaos path, and
-  passes over a proposal dated more than 5 minutes ahead of its clock
+  passes over an upload dated more than 5 minutes ahead of its clock
   (§13.6). The node's operator may change each of these limits
   but two, which are fixed: a page's request to make a drop, signed or not,
   takes at most 4 MiB, and any other JSON body 64 KiB.
