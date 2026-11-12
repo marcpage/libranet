@@ -7,10 +7,10 @@ served at ``/`` until an administrator changes it, is ``root/``, the
 administration page, served at ``/config`` until one changes that, is
 ``config/``, the movie library, served at ``/movie``, is ``movie/``, TV,
 served at ``/tv``, is ``tv/``, music, served at ``/music``, is
-``music/``, the user directory, served at ``/directory``, is
-``directory/``, mail, served at ``/mail``, is ``mail/``, the nodes known,
-served at ``/nodes``, is ``nodes/``, and Karma, served at ``/karma``, is
-``karma/``.
+``music/``, photos, served at ``/photos``, is ``photos/``, the user
+directory, served at ``/directory``, is ``directory/``, mail, served at
+``/mail``, is ``mail/``, the nodes known, served at ``/nodes``, is
+``nodes/``, and Karma, served at ``/karma``, is ``karma/``.
 """
 
 from libranet.applications.packaged import (

@@ -40,9 +40,10 @@ PACKAGED_APPLICATIONS: Final = Path(__file__).resolve().parent
 #: application (HttpApi §13), ``config`` the one serving ``/config``
 #: (HttpApi §2.3), ``movie`` the movie library (Phase 3 Step 67), ``tv``
 #: a person's TV series (TV App Step 144), ``music`` a person's music
-#: (Music App Step 149), ``directory`` the user directory (Phase 4 Step
-#: 92), ``mail`` mail between people (Phase 4 Step 82), ``nodes`` the
-#: nodes known (Phase 5 Step 108), and ``karma`` the Karma chain followed
+#: (Music App Step 149), ``photos`` a person's albums of photos (Photos
+#: App Step 161), ``directory`` the user directory (Phase 4 Step 92),
+#: ``mail`` mail between people (Phase 4 Step 82), ``nodes`` the nodes
+#: known (Phase 5 Step 108), and ``karma`` the Karma chain followed
 #: (Phase 6 Step 139). ``chaos`` is the Chaos page (Phase 7 Step 158),
 #: built with them, but never registered, since the name is reserved.
 SHIPPED_APPLICATIONS: Final = MappingProxyType(
@@ -52,6 +53,7 @@ SHIPPED_APPLICATIONS: Final = MappingProxyType(
         "movie": "movie",
         "tv": "tv",
         "music": "music",
+        "photos": "photos",
         "directory": "directory",
         "mail": "mail",
         "nodes": "nodes",
