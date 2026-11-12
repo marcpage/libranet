@@ -245,6 +245,52 @@
   button.tile { padding: 0; border: 0; border-radius: 2px; background: var(--surface); }
   .tile .cover { border-radius: 2px; }
 
+  /* A photo shown alone, on black, over the album, with its name and when it
+     was taken above it, and the photos before and after it at its sides. */
+  .viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    background: #000;
+    touch-action: none;
+  }
+
+  .viewer:focus { outline: none; }
+  .viewer-bar { display: flex; align-items: center; gap: 1rem; padding: 0.5rem 0.5rem 0.5rem 1rem; }
+  .viewer-caption { flex: 1 1 auto; min-width: 0; }
+  .viewer-caption > * { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .viewer-body { position: relative; flex: 1 1 auto; min-height: 0; }
+  .viewer-body > .state { position: absolute; top: 50%; left: 1rem; right: 1rem; margin: 0; text-align: center; transform: translateY(-50%); }
+
+  a.icon { display: inline-block; padding: 0.3rem; line-height: 0; border: 1px solid transparent; border-radius: 6px; color: var(--text); }
+  a.icon:hover { border-color: var(--border); }
+  a.icon:not([href]) { opacity: 0.6; }
+
+  .stage { position: absolute; inset: 0; overflow: hidden; cursor: zoom-in; }
+  .stage.zoomed { cursor: grab; }
+  .stage.dragging { cursor: grabbing; }
+
+  .stage img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    max-width: none;
+    transform-origin: 0 0;
+    /* The stage is what is touched, never the photo, which a swipe replaces
+       before the touch ends. */
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  .viewer button.side { position: absolute; top: 50%; transform: translateY(-50%); padding: 0.5rem; border-radius: 50%; background: rgb(0 0 0 / 0.45); }
+  .viewer button.side.previous { left: 0.5rem; }
+  .viewer button.side.next { right: 0.5rem; }
+  .viewer .side svg { width: 1.75rem; height: 1.75rem; }
+
   dialog {
     width: min(40rem, calc(100vw - 2rem));
     border: 1px solid var(--border);
@@ -259,6 +305,7 @@
   /* The keys, and what each does. */
   .keys { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 1rem; margin: 0; }
   .keys dd { margin: 0; }
+  h4.keys-heading { font-size: 0.95rem; margin: 1rem 0 0.5rem; }
 
   kbd {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -326,6 +373,39 @@
     </div>
   </section>
 </main>
+
+<div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-labelledby="viewer-name" tabindex="-1" hidden>
+  <div class="viewer-bar">
+    <div class="viewer-caption">
+      <strong id="viewer-name"></strong>
+      <span class="note" id="viewer-taken"></span>
+    </div>
+    <div class="icons">
+      <button type="button" class="icon" id="viewer-zoom" title="Zoom" aria-label="Zoom" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M16 16l5 5 M8 11h6 M11 8v6"/></svg>
+      </button>
+      <button type="button" class="icon" id="viewer-fullscreen" title="Full screen" aria-label="Full screen" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 9V4h5 M15 4h5v5 M20 15v5h-5 M9 20H4v-5"/></svg>
+      </button>
+      <a class="icon" id="viewer-download" title="Download" aria-label="Download" download>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12 M7 10l5 5 5-5 M4 15v5h16v-5"/></svg>
+      </a>
+      <button type="button" class="icon" id="viewer-close" title="Close" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12 M18 6L6 18"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="viewer-body">
+    <p class="state" id="viewer-state" role="status" hidden></p>
+    <div class="stage" id="viewer-stage"></div>
+    <button type="button" class="icon side previous" id="viewer-previous" title="Previous" aria-label="Previous">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <button type="button" class="icon side next" id="viewer-next" title="Next" aria-label="Next">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7"/></svg>
+    </button>
+  </div>
+</div>
 
 <dialog id="import-dialog" aria-labelledby="import-heading">
   <h3 id="import-heading">Import photos</h3>
@@ -412,13 +492,26 @@
     <dt><kbd>Page Up</kbd> <kbd>Page Down</kbd></dt>
     <dd>Move through the photos of the album open by a screen.</dd>
     <dt><kbd>Enter</kbd></dt>
-    <dd>Open the album with focus.</dd>
+    <dd>Open the album with focus, or show the photo with focus.</dd>
     <dt><kbd>Esc</kbd> <kbd>Backspace</kbd></dt>
     <dd>Back to the albums.</dd>
     <dt><kbd>N</kbd></dt>
     <dd>Make a new album.</dd>
     <dt><kbd>?</kbd> <kbd>/</kbd></dt>
     <dd>These keys.</dd>
+  </dl>
+  <h4 class="keys-heading">With a photo shown</h4>
+  <dl class="keys">
+    <dt><kbd>←</kbd> <kbd>→</kbd></dt>
+    <dd>The photo before, or after, in the album's order.</dd>
+    <dt><kbd>Z</kbd></dt>
+    <dd>Zoom to the photo's own pixels, or fit it to the window again.</dd>
+    <dt><kbd>F</kbd></dt>
+    <dd>Full screen, or leave it.</dd>
+    <dt><kbd>D</kbd></dt>
+    <dd>Download its original.</dd>
+    <dt><kbd>Esc</kbd></dt>
+    <dd>Back to the album, at the photo shown.</dd>
   </dl>
   <div class="buttons">
     <button type="button" class="secondary" data-close>Done</button>
@@ -573,8 +666,18 @@ const EDIT_BYTES = 3 * 1024 * 1024;
 const DEFAULT_RETRY_SECONDS = 5;
 const MAX_WAITS = 6;
 
-// How many times a cover is asked for before it is given up on.
+// How many times a cover, or a photo shown, is asked for before it is given
+// up on.
 const COVER_TRIES = 3;
+
+// How far a pointer moves on a photo shown before it drags it, rather than
+// clicks it, and how far across a touch moves to swipe to the photo before
+// or after, in pixels.
+const DRAG_PIXELS = 8;
+const SWIPE_PIXELS = 50;
+
+// How many pixels a turn of a mouse wheel of a line moves a photo zoomed.
+const WHEEL_LINE_PIXELS = 16;
 
 // A content id, plain or carrying the key of a bundle stored encrypted (HttpApi 5).
 const CONTENT_ID = /^[a-z0-9-]+\/[0-9a-f]+(?:\/[A-Za-z0-9:-]+\/[0-9a-f]+)?$/;
@@ -1571,6 +1674,7 @@ class Grid {
     this.bundle = album.bundle;
     this.tiles = before && before.id === album.id ? before.tiles : new Map();
     this.positions = new WeakMap();
+    this.places = new Map();
     this.current = null;
     this.months = [];
     this.days = [];
@@ -1606,7 +1710,19 @@ class Grid {
       const day = { month, key, at: this.days.length, photos: byDay.get(key).sort(inTakenOrder), tiles: [] };
       month.days.push(day);
       this.days.push(day);
+      day.photos.forEach(([folder], at) => this.places.set(folder, [day.at, at]));
     }
+  }
+
+  // Where the photo in `folder` is, [the day, and where in the day], or
+  // undefined if the grid does not hold it.
+  place(folder) {
+    return this.places.get(folder);
+  }
+
+  // The photo at `position`, [its folder, its entry in the index].
+  photoAt([day, at]) {
+    return this.days[day].photos[at];
   }
 
   // Shows it in `grid`, with the years and months listed in `nav`, the
@@ -1754,6 +1870,7 @@ class Grid {
       tile.addEventListener("click", () => {
         if (shownGrid && shownGrid.positions.has(tile)) {
           shownGrid.focus(shownGrid.positions.get(tile));
+          viewer.open(shownGrid, folder);
         }
       });
       this.tiles.set(folder, tile);
@@ -1938,6 +2055,464 @@ function stopGrid() {
   byId("photo-grid").replaceChildren();
   byId("photo-years").replaceChildren();
 }
+
+// A photo of the album open, shown alone, on black, over its grid, as large
+// as fits the window without being cropped, with its name and when it was
+// taken: its view, if it has one (Step 165), or else its original. Previous
+// and Next move through the album in the grid's order, and Close goes back
+// to the grid, at the photo shown. Zoom moves between fitting the window and
+// the photo's own pixels, each one of the screen's, dragged to see the rest.
+// Download saves its original under its file's name. The photos before and
+// after it are loaded ahead, so that moving to either is quick.
+class Viewer {
+  constructor() {
+    this.element = byId("viewer");
+    this.stage = byId("viewer-stage");
+    this.status = byId("viewer-state");
+    this.download = byId("viewer-download");
+    // The grid the photo shown is of, and its folder; what is shown of each
+    // photo, by "{bundle} {folder}", as described reads it; and how many
+    // photos have been shown, so that what is read for one shown before the
+    // photo shown is not shown.
+    this.grid = null;
+    this.folder = null;
+    this.described = new Map();
+    this.shown = 0;
+    // The photo's image, and its width and height, once known; whether it is
+    // zoomed; and where its upper left corner is in the stage, and its width
+    // and height as it is laid out.
+    this.image = null;
+    this.size = null;
+    this.zoomed = false;
+    this.offset = [0, 0];
+    this.laid = [0, 0];
+    // A drag of it, while the pointer is down, and whether the last moved,
+    // so that it is not taken for a click.
+    this.drag = null;
+    this.dragged = false;
+    // The images of the photos before and after it, loaded ahead.
+    this.ahead = [];
+    byId("viewer-fullscreen").hidden = !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+    this.listen();
+  }
+
+  listen() {
+    byId("viewer-close").addEventListener("click", () => this.close());
+    byId("viewer-previous").addEventListener("click", () => this.move(false));
+    byId("viewer-next").addEventListener("click", () => this.move(true));
+    byId("viewer-zoom").addEventListener("click", () => this.zoom());
+    byId("viewer-fullscreen").addEventListener("click", () => this.toggleFullscreen());
+    this.stage.addEventListener("pointerdown", (event) => this.pointerDown(event));
+    this.stage.addEventListener("pointermove", (event) => this.pointerMove(event));
+    this.stage.addEventListener("pointerup", (event) => this.pointerUp(event));
+    this.stage.addEventListener("pointercancel", (event) => this.pointerUp(event));
+    this.stage.addEventListener("click", (event) => this.click(event));
+    // A touch moved on it scrolls nothing, nor flings, so that a tap just
+    // after a swipe is not taken to stop a fling, and lost.
+    this.stage.addEventListener("touchmove", (event) => event.preventDefault(), { passive: false });
+    this.element.addEventListener("wheel", (event) => this.wheel(event), { passive: false });
+    window.addEventListener("resize", () => this.layout());
+
+    for (const name of ["fullscreenchange", "webkitfullscreenchange"]) {
+      document.addEventListener(name, () => this.showFullscreen());
+    }
+  }
+
+  isOpen() {
+    return !this.element.hidden;
+  }
+
+  // Shows the photo in `folder` of `grid`, over everything else on the page.
+  open(grid, folder) {
+    this.element.hidden = false;
+    this.holdBack(true);
+    this.element.focus();
+    this.present(grid, folder);
+  }
+
+  // Goes back to the grid, at the photo shown, leaving full screen first.
+  close() {
+    if (!this.isOpen()) {
+      return;
+    }
+
+    if (Viewer.fullscreenElement() === this.element) {
+      Viewer.leaveFullscreen();
+    }
+
+    const grid = this.current();
+    const position = grid === shownGrid ? grid.place(this.folder) : undefined;
+    this.element.hidden = true;
+    this.holdBack(false);
+    this.stage.replaceChildren();
+    this.image = null;
+    this.ahead = [];
+    this.described.clear();
+    this.grid = null;
+    this.folder = null;
+
+    if (position) {
+      grid.focus(position);
+    }
+  }
+
+  // Makes everything on the page but it, and the dialogs, inert, or no
+  // longer `inert`, so that what is under it is neither reached nor read.
+  holdBack(inert) {
+    for (const child of document.body.children) {
+      if (child !== this.element && !(child instanceof HTMLDialogElement) && !(child instanceof HTMLScriptElement)) {
+        child.inert = inert;
+      }
+    }
+  }
+
+  // The grid to move through: the one shown of the album, which grows as
+  // photos are added to it, if it holds the photo shown, or else the one
+  // that photo was shown from.
+  current() {
+    return shownGrid && shownGrid.id === this.grid.id && shownGrid.place(this.folder) ? shownGrid : this.grid;
+  }
+
+  // Shows the photo before the one shown, or after it if `after`, in the
+  // grid's order, if there is one.
+  move(after) {
+    const grid = this.current();
+    const position = grid.moved(grid.place(this.folder), after ? "ArrowRight" : "ArrowLeft");
+
+    if (position) {
+      this.present(grid, grid.photoAt(position)[0]);
+    }
+  }
+
+  // Shows the photo in `folder` of `grid`, fitting the window, its name and
+  // when it was taken as its entry in the index gives them, while what is
+  // shown of it is read.
+  async present(grid, folder) {
+    const position = grid.place(folder);
+    const [, entry] = grid.photoAt(position);
+    const sized = [entry.width, entry.height].every((side) => Number.isInteger(side) && side > 0);
+    const shown = this.shown + 1;
+    this.shown = shown;
+    this.grid = grid;
+    this.folder = folder;
+    this.zoomed = false;
+    this.size = sized ? [entry.width, entry.height] : null;
+    this.image = null;
+    this.ahead = [];
+    this.stage.replaceChildren();
+    this.stage.classList.remove("zoomed");
+    this.download.removeAttribute("href");
+    byId("viewer-zoom").setAttribute("aria-pressed", "false");
+    byId("viewer-name").textContent = isText(entry.name) ? entry.name : folder;
+    byId("viewer-taken").textContent = isText(entry.taken) ? takenText(entry.taken) : "Undated";
+    byId("viewer-previous").hidden = !grid.moved(position, "ArrowLeft");
+    byId("viewer-next").hidden = !grid.moved(position, "ArrowRight");
+    show(this.status, "Loading…");
+
+    // Focus kept within it, as when Next has it, and is hidden at the last.
+    if (focusLost()) {
+      this.element.focus();
+    }
+
+    const photo = await this.describe(grid, folder);
+
+    if (this.shown !== shown || !this.isOpen()) {
+      return;
+    }
+
+    this.download.href = photo.original;
+    this.download.download = photo.name;
+    this.load(photo);
+  }
+
+  // What is shown of the photo in `folder` of `grid`, as described reads it,
+  // read once.
+  describe(grid, folder) {
+    const key = `${grid.bundle} ${folder}`;
+
+    if (!this.described.has(key)) {
+      this.described.set(key, Viewer.described(grid.bundle, folder, grid.photoAt(grid.place(folder))[1]));
+    }
+
+    return this.described.get(key);
+  }
+
+  // What is shown of the photo in `folder` of the album `bundle`, whose
+  // entry in its index is `entry`: the name of the file it was imported
+  // from; where its original is read; and where what is shown of it is read,
+  // its view, if it has one, or else its original. Each as its info.json
+  // names it, or, if that cannot be read, as its entry does.
+  static async described(bundle, folder, entry) {
+    const info = await readEntry(bundle, `${PHOTOS}/${folder}/${INFO_FILE}`).catch((error) => {
+      console.warn(`What is known of a photo could not be read: ${error.message}`);
+      return null;
+    });
+    const known = isObject(info) ? info : {};
+    const file = (name) => (isText(name) && !name.includes("/") ? name : null);
+    const url = (name) => entryUrl(bundle, `${PHOTOS}/${folder}/${name}`);
+    const name = file(known.name) || file(entry.name) || folder;
+    const original = file(known.original) || originalName(name);
+    return { name, original: url(original), shown: url(file(known.view) || original) };
+  }
+
+  // Shows `photo`, as described gives it, asked for again a few times if the
+  // node is still fetching it, then loads the photos before and after it.
+  load(photo) {
+    const image = make("img");
+    let tries = 1;
+    image.alt = byId("viewer-name").textContent;
+    image.draggable = false;
+    image.addEventListener("load", () => {
+      if (this.image === image) {
+        this.size = [image.naturalWidth, image.naturalHeight];
+        show(this.status, "");
+        this.layout();
+        this.loadAhead();
+      }
+    });
+    image.addEventListener("error", () => {
+      if (this.image !== image) {
+        return;
+      }
+
+      if (tries >= COVER_TRIES) {
+        this.image = null;
+        image.remove();
+        show(this.status, "This photo could not be shown. Download it, to open it as it is.", true);
+        this.loadAhead();
+        return;
+      }
+
+      tries += 1;
+      setTimeout(() => {
+        if (this.image === image) {
+          image.src = photo.shown;
+        }
+      }, DEFAULT_RETRY_SECONDS * 1000);
+    });
+    this.image = image;
+    this.stage.replaceChildren(image);
+    image.src = photo.shown;
+    this.layout();
+  }
+
+  // Loads the photos before and after the one shown, so that moving to
+  // either is quick.
+  loadAhead() {
+    const grid = this.current();
+    const position = grid.place(this.folder);
+    const shown = this.shown;
+
+    for (const key of ["ArrowLeft", "ArrowRight"]) {
+      const near = grid.moved(position, key);
+
+      if (near) {
+        this.describe(grid, grid.photoAt(near)[0]).then((photo) => {
+          if (this.shown === shown && this.isOpen()) {
+            const image = new Image();
+            image.src = photo.shown;
+            image.decode().catch(() => undefined);
+            this.ahead.push(image);
+          }
+        });
+      }
+    }
+  }
+
+  // How large the photo is shown, for each of its pixels: as large as fits
+  // the stage, or, zoomed, one of the screen's.
+  scale() {
+    const [width, height] = this.size;
+    return this.zoomed ? 1 / (window.devicePixelRatio || 1)
+      : Math.min(this.stage.clientWidth / width, this.stage.clientHeight / height);
+  }
+
+  // Lays the photo out in the stage, as large as scale says: centered along
+  // each side it fits within, and along each it does not, where it was moved
+  // to, though never so far as to leave black beyond its edge.
+  layout() {
+    const image = this.image;
+
+    if (!image) {
+      return;
+    }
+
+    image.style.visibility = this.size ? "" : "hidden";
+
+    if (!this.size) {
+      return;
+    }
+
+    const scale = this.scale();
+    const room = [this.stage.clientWidth, this.stage.clientHeight];
+    this.laid = this.size.map((side) => side * scale);
+    this.offset = this.offset.map((offset, side) => (this.laid[side] <= room[side]
+      ? (room[side] - this.laid[side]) / 2 : Math.min(0, Math.max(room[side] - this.laid[side], offset))));
+    image.style.width = `${this.laid[0]}px`;
+    image.style.height = `${this.laid[1]}px`;
+    image.style.transform = `translate(${this.offset[0]}px, ${this.offset[1]}px)`;
+    this.stage.classList.toggle("zoomed", this.zoomed);
+    byId("viewer-zoom").setAttribute("aria-pressed", String(this.zoomed));
+  }
+
+  // Moves between fitting the window and the photo's own pixels, keeping
+  // the point of it at `x` and `y` in the stage, or else its middle, where
+  // it is.
+  zoom(x = this.stage.clientWidth / 2, y = this.stage.clientHeight / 2) {
+    if (!this.image || !this.size) {
+      return;
+    }
+
+    const point = [x, y];
+    const within = point.map((at, side) => Math.min(1, Math.max(0, (at - this.offset[side]) / this.laid[side])));
+    this.zoomed = !this.zoomed;
+    const scale = this.scale();
+    this.offset = point.map((at, side) => at - within[side] * this.size[side] * scale);
+    this.layout();
+  }
+
+  // A pointer pressed on the photo, which drags it, zoomed, or else, on a
+  // touch screen, swipes to the photo before or after.
+  pointerDown(event) {
+    this.dragged = false;
+
+    if (!event.isPrimary || event.button !== 0) {
+      return;
+    }
+
+    this.drag = {
+      id: event.pointerId,
+      from: [event.clientX, event.clientY],
+      offset: this.offset,
+      moved: false,
+      touch: event.pointerType !== "mouse",
+    };
+    this.stage.setPointerCapture(event.pointerId);
+  }
+
+  pointerMove(event) {
+    const drag = this.drag;
+
+    if (!drag || drag.id !== event.pointerId) {
+      return;
+    }
+
+    const moved = [event.clientX - drag.from[0], event.clientY - drag.from[1]];
+    drag.moved = drag.moved || Math.hypot(...moved) > DRAG_PIXELS;
+
+    if (drag.moved && this.zoomed) {
+      this.stage.classList.add("dragging");
+      this.offset = drag.offset.map((offset, side) => offset + moved[side]);
+      this.layout();
+    }
+  }
+
+  // The pointer let go, or taken away, as when the browser takes over a
+  // touch.
+  pointerUp(event) {
+    const drag = this.drag;
+
+    if (!drag || drag.id !== event.pointerId) {
+      return;
+    }
+
+    const [across, down] = [event.clientX - drag.from[0], event.clientY - drag.from[1]];
+    this.drag = null;
+    this.dragged = drag.moved;
+    this.stage.classList.remove("dragging");
+
+    if (event.type === "pointerup" && drag.touch && !this.zoomed && Math.abs(across) >= SWIPE_PIXELS
+        && Math.abs(across) > Math.abs(down)) {
+      this.move(across < 0);
+    }
+  }
+
+  // A click on the photo zooms it, at the point clicked, unless it ends a drag.
+  click(event) {
+    if (this.dragged) {
+      this.dragged = false;
+      return;
+    }
+
+    const stage = this.stage.getBoundingClientRect();
+    this.zoom(event.clientX - stage.left, event.clientY - stage.top);
+  }
+
+  // A wheel turned over it moves the photo, zoomed, and nothing under it.
+  wheel(event) {
+    event.preventDefault();
+
+    if (!this.zoomed || !this.image) {
+      return;
+    }
+
+    const pixels = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? WHEEL_LINE_PIXELS : 1;
+    this.offset = [this.offset[0] - event.deltaX * pixels, this.offset[1] - event.deltaY * pixels];
+    this.layout();
+  }
+
+  // What is shown full screen, if anything, as this browser says.
+  static fullscreenElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement || null;
+  }
+
+  static leaveFullscreen() {
+    const leave = document.exitFullscreen || document.webkitExitFullscreen;
+    Promise.resolve(leave.call(document))
+      .catch((error) => console.warn(`The photo is still shown full screen: ${error.message}`));
+  }
+
+  // Shows it full screen, or leaves full screen, as this browser can.
+  toggleFullscreen() {
+    if (byId("viewer-fullscreen").hidden) {
+      return;
+    }
+
+    if (Viewer.fullscreenElement()) {
+      Viewer.leaveFullscreen();
+      return;
+    }
+
+    const enter = this.element.requestFullscreen || this.element.webkitRequestFullscreen;
+    Promise.resolve(enter.call(this.element))
+      .catch((error) => console.warn(`The photo was not shown full screen: ${error.message}`));
+  }
+
+  // Says whether it is shown full screen.
+  showFullscreen() {
+    byId("viewer-fullscreen").setAttribute("aria-pressed", String(Viewer.fullscreenElement() === this.element));
+  }
+
+  // Hears every key while it is open, but while a dialog is open over it:
+  // the left and right arrow keys move to the photo before or after, `Z`
+  // zooms, `F` shows it full screen, `D` downloads its original, Escape
+  // closes it, and `?` or `/` shows the keys.
+  key(event) {
+    const key = String(event.key).toLowerCase();
+    const keys = {
+      escape: () => this.close(),
+      arrowleft: () => this.move(false),
+      arrowright: () => this.move(true),
+      z: () => this.zoom(),
+      f: () => this.toggleFullscreen(),
+      d: () => this.download.click(),
+      "?": () => byId("keys-dialog").showModal(),
+      "/": () => byId("keys-dialog").showModal(),
+    };
+    const ignored = event.altKey || event.ctrlKey || event.metaKey || event.isComposing
+      || document.querySelector("dialog[open]") || !Object.hasOwn(keys, key) || (event.repeat && !key.startsWith("arrow"));
+
+    if (ignored) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    keys[key]();
+  }
+}
+
+const viewer = new Viewer();
 
 function openAlbum(id) {
   state.open = id;
@@ -2559,6 +3134,13 @@ function folderOf(file) {
   return folder;
 }
 
+// The name a photo's original is kept under in its folder, of the file named
+// `name` it was imported from: that name, unless it is that of the thumbnail
+// or of what is known of the photo, so that neither takes its place.
+function originalName(name) {
+  return [THUMB_FILE, INFO_FILE].includes(name) ? `original ${name}` : name;
+}
+
 // The name an import gives the first album it makes, made at `date`:
 // IMPORT_NAME, then the local date and time to the minute.
 function importName(date) {
@@ -2645,7 +3227,7 @@ class ImportingPhoto {
     const drawn = await thumbnail(file, type);
     const taken = photo.taken();
     const thumb = drawn && drawn.base64 ? THUMB_FILE : undefined;
-    const original = [THUMB_FILE, INFO_FILE].includes(photo.name) ? `original ${photo.name}` : photo.name;
+    const original = originalName(photo.name);
     const info = {
       name: photo.name,
       kind: PHOTO_KIND,
@@ -3147,6 +3729,12 @@ const SHORTCUTS = {
 };
 
 window.addEventListener("keydown", (event) => {
+  // A photo shown hears the keys, rather than the page under it.
+  if (viewer.isOpen()) {
+    viewer.key(event);
+    return;
+  }
+
   const target = event.target instanceof Element ? event.target : document.body;
   const key = String(event.key).toLowerCase();
   const ignored = event.altKey || event.ctrlKey || event.metaKey || event.isComposing || event.repeat

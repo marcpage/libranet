@@ -34,7 +34,7 @@ and can be built alongside any phase.
 
 ## 2. What It Adds
 
-Twelve steps, the first three built:
+Twelve steps, the first four built:
 
 - **Importing a file encrypted.** The node's one change. Step 160.
 - **The photos application, and its albums.** Step 161.
@@ -534,9 +534,9 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 163 — Viewing a Photo
+## Step 163 — Viewing a Photo ✅
 
-**Issue:** to be made (§4), from #477. **Depends on:** Step 162.
+**Issue:** #671, from #477. **Depends on:** Step 162.
 
 Settled with the user:
 
@@ -569,6 +569,77 @@ My calls, not yet reviewed:
 fitting the window and at their own pixels; moving through an album from
 the first to the last; downloading; full screen; and on a phone's width
 and a touch screen.
+
+Built, in one change set, the page alone, on Step 162's. It was checked on
+a node of its own in headless Chromium, with photos made for the purpose
+and kept out of the repository, imported as Step 162 imports them: photos
+4,000 by 3,000, 1,200 by 1,800, 2,000 square, a PNG of 640 by 360, a
+panorama of 6,000 by 1,500, and a JPEG turned by its orientation, each
+fitting the window, uncropped, and the one turned shown upright, 1,200 by
+1,600; the album moved through from its first photo to its last in the
+grid's order, with no Previous at the first, no Next at the last, and the
+right arrow key at the last doing nothing; the photo after loaded before it
+was moved to; a photo named `thumb.jpg` shown from its original, `original
+thumb.jpg`, and downloaded, with `D`, as `thumb.jpg`, its bytes the
+original's; `Z` showing a photo at its own pixels, dragged, stopping at its
+edges, moved by the wheel with the page under it not scrolled, and fitting
+the window again; a click zooming with the point clicked kept under the
+pointer; full screen, with `F`, and left again; `?` showing the keys over
+it, and Escape closing only those; Escape and Close going back to the grid,
+the photo shown having focus; Enter on a photo showing it; Tab kept within
+it; a photo the node would not give shown as one that could not be shown,
+after three tries, with Download; and at a phone's width, with a touch
+screen: a tap showing a photo, swipes moving to the photo after and before,
+a tap zooming, and a swipe, zoomed, dragging. Safari is yet to be checked.
+
+Calls made while building it, not yet reviewed:
+
+- **Not a `dialog` element.** The viewer is a layer of the page over all
+  else, which is made inert while it is open, since a browser shows no
+  `dialog` full screen.
+- **The name and when taken are in a bar above the photo**, with Zoom, Full
+  screen, Download, and Close, so that nothing covers the photo but
+  Previous and Next, at its sides. Each is hidden at the end of the album,
+  and moving does not go round from the last to the first.
+- **Its own pixels are the screen's**: one of the photo's to each of the
+  screen's, so that on a screen of twice the density it is half as large
+  as the page measures it. A photo smaller than the window is enlarged to
+  fit it, and so zooming shows it smaller.
+- **Zoomed at the point clicked**, which stays under the pointer, or, with
+  `Z`, at the middle. Dragged, it stops at its edges, and a wheel, or two
+  fingers on a trackpad, moves it too. A pointer moved less than 8 pixels
+  clicks rather than drags.
+- **Each photo moved to fits the window**, though the one before was
+  zoomed.
+- **Shown at once**, at the width and height its entry in the index gives,
+  and named and dated as the entry does, while what is shown of it is read:
+  its original, or its view, as its `info.json` names them, or, if that
+  cannot be read, its original as an import names it.
+- **The photos before and after are loaded** once the photo shown is, so
+  that it is loaded first.
+- **A photo that cannot be shown** is asked for three times, five seconds
+  apart, as a cover is, while the node may be fetching it, and then the
+  viewer says so, with Download.
+- **The arrow keys, held, go on moving**, where every other key is heard
+  once.
+- **A swipe** is a touch moved at least 50 pixels, more across than down,
+  with the photo fitting the window. Zoomed, a touch drags it. A touch
+  moved on the photo is cancelled, so that it scrolls nothing under it,
+  and so that Chromium does not take a tap just after a swipe to stop a
+  fling, and lose it, as it did without.
+- **Full screen is offered only where the browser can show the viewer full
+  screen**, which is not on an iPhone, whose Safari shows only a video so.
+- **`?` shows the keys** over the viewer, and the keys dialog lists those of
+  a photo shown.
+
+**Open questions:**
+
+- **A large photo fetched from another node** shows nothing but Loading
+  until it comes. Whether its thumbnail should be shown, enlarged, in the
+  meantime.
+- **The controls are always shown**, full screen too. Whether they should
+  hide while the pointer is still, as a slideshow's do (Step 169).
+- **Pinching to zoom** was not asked, and a touch screen zooms with a tap.
 
 ---
 
@@ -963,7 +1034,7 @@ and this table then given their numbers.
 | #477 | Implementing the photos application, split into the issues below, then Step 161 — The Photos Application and Its Albums | 160 to 171, then 161 |
 | #669 | Importing a file encrypted | 160 |
 | #670 | Step 162 — Importing Photos into a New Album | 162 |
-| *to be made* | Step 163 — Viewing a Photo | 163 |
+| #671 | Step 163 — Viewing a Photo | 163 |
 | *to be made* | Step 164 — Reading a Photo's Details | 164 |
 | *to be made* | Step 165 — Photos No Browser Shows as They Are | 165 |
 | *to be made* | Step 166 — Videos | 166 |
