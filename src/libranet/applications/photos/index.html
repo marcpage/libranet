@@ -1,0 +1,1639 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Photos</title>
+<style>
+  /* Always black, as photos look best on it, with a cool blue for accents. */
+  :root {
+    --background: #000;
+    --surface: #141414;
+    --text: #f2f2f2;
+    --muted: #a3a3a3;
+    --border: #333;
+    --accent: #3d7eff;
+    --accent-text: #fff;
+    --bad: #ff8a80;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  header, main { max-width: 76rem; margin: 0 auto; padding: 0 1rem; }
+  header {
+    padding-top: 2.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+  }
+  main { padding-bottom: 2rem; }
+  header .toolbar { margin: 0; }
+
+  /* What has focus from the keyboard, plain on the black. */
+  :focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+  /* Home, the node's front page, in the upper right corner of every page. */
+  .home {
+    position: absolute;
+    top: 0.75rem;
+    right: 1rem;
+    font-size: 1.5rem;
+    line-height: 1;
+    text-decoration: none;
+  }
+  h1 { font-size: 1.5rem; margin: 0; }
+  h2 { font-size: 1.15rem; margin: 0; }
+  h3 { font-size: 1.05rem; margin: 0 0 0.75rem; }
+
+  .subtitle, .hint, .note { color: var(--muted); }
+  .subtitle { margin: 0.25rem 0 0; }
+  .hint { margin: 0 0 0.75rem; }
+  .note { font-size: 0.9em; }
+  .state { margin: 1rem 0 0; }
+  .result { margin: 0.75rem 0 0; }
+  .error { color: var(--bad); }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 0; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; margin: 1rem 0 0; }
+
+  button {
+    font: inherit;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 0.4rem 0.9rem;
+    background: var(--accent);
+    color: var(--accent-text);
+    cursor: pointer;
+  }
+
+  button.secondary { background: transparent; color: var(--text); }
+  button.danger { background: transparent; color: var(--bad); border-color: var(--bad); }
+  button:disabled { opacity: 0.6; cursor: default; }
+
+  /* A button shown as an icon alone, which it is named for. */
+  button.icon { padding: 0.3rem; line-height: 0; background: transparent; color: var(--text); border-color: transparent; }
+  button.icon:hover:not(:disabled) { border-color: var(--border); }
+  button.icon.danger { color: var(--bad); }
+
+  .icon svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--muted); }
+  label.wide { flex: 1 1 16rem; }
+  .fields { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; margin: 0 0 0.75rem; }
+
+  input {
+    font: inherit;
+    font-size: 1rem;
+    color: var(--text);
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.4rem 0.55rem;
+  }
+
+  /* The albums, newest first, each a tile: its cover, its name, how many
+     photos it holds, and the days of its first and last. */
+  .tiles {
+    list-style: none;
+    margin: 1.5rem 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    gap: 1.25rem 1rem;
+  }
+
+  @media (max-width: 30rem) {
+    .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 0.75rem; }
+  }
+
+  .tiles li { display: flex; flex-direction: column; }
+
+  button.pick {
+    display: block;
+    width: 100%;
+    padding: 0.35rem;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+  }
+
+  button.pick:hover { border-color: var(--border); }
+
+  .cover {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 6px;
+    background: var(--surface);
+  }
+
+  span.cover { display: flex; align-items: center; justify-content: center; color: var(--muted); }
+  span.cover svg { width: 30%; height: 30%; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+  .caption { display: block; padding: 0.4rem 0.15rem 0; }
+  .caption strong, .caption .note { display: block; overflow-wrap: anywhere; }
+
+  /* The album open: its name, with Back before it, and what changes it after. */
+  .title-row { display: flex; align-items: center; gap: 0.5rem; margin: 1.5rem 0 0; }
+  .title-row h2 { overflow-wrap: anywhere; }
+  .icons { display: flex; flex: none; gap: 0.25rem; }
+  .title-row > .icons:first-child { margin-left: -0.3rem; }
+  .facts { margin: 0.5rem 0 0; }
+
+  dialog {
+    width: min(40rem, calc(100vw - 2rem));
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  dialog::backdrop { background: rgb(0 0 0 / 0.6); }
+
+  /* The keys, and what each does. */
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 1rem; margin: 0; }
+  .keys dd { margin: 0; }
+
+  kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.05rem 0.35rem;
+    background: var(--background);
+  }
+</style>
+</head>
+<body>
+<a class="home" href="/" title="Home" aria-label="Home">&#x1F3E0;</a>
+<header>
+  <div>
+    <h1>Photos</h1>
+    <p class="subtitle" id="client-note">Asking the node&hellip;</p>
+  </div>
+  <div class="toolbar">
+    <button type="button" class="icon changes-only" id="new-album" title="New album" aria-label="New album" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8 M8 12h8"/></svg>
+    </button>
+    <button type="button" class="icon" id="show-keys" title="Keys" aria-label="Keys">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.75 2.17C12.5 12.1 12 12.6 12 13.5V14 M12 17.5v.01"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+  <noscript><p>This page needs JavaScript.</p></noscript>
+  <p class="state" id="page-state" role="status" hidden></p>
+
+  <div id="chooser">
+    <p class="state" id="chooser-state" role="status" hidden></p>
+    <ul class="tiles" id="album-list" aria-label="Albums"></ul>
+  </div>
+
+  <section id="album" aria-labelledby="album-name" hidden>
+    <div class="title-row">
+      <div class="icons">
+        <button type="button" class="icon" id="back" title="Back to the albums" aria-label="Back to the albums">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 12H5 M11 6l-6 6 6 6"/></svg>
+        </button>
+      </div>
+      <h2 id="album-name"></h2>
+      <div class="icons">
+        <button type="button" class="icon changes-only" id="rename-album" title="Rename" aria-label="Rename" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
+        </button>
+        <button type="button" class="icon danger changes-only" id="remove-album" title="Remove album" aria-label="Remove album" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16 M9 7V4h6v3 M6 7l1 14h10l1-14 M10 11v6 M14 11v6"/></svg>
+        </button>
+      </div>
+    </div>
+    <p class="note facts" id="album-facts"></p>
+    <p class="result" id="album-result" role="status" hidden></p>
+  </section>
+</main>
+
+<dialog id="new-dialog" aria-labelledby="new-heading">
+  <form id="new-form">
+    <h3 id="new-heading">New album</h3>
+    <div class="fields">
+      <label class="wide">Name <input id="new-name" required autocomplete="off"></label>
+    </div>
+    <p class="hint">Your list of albums is kept at a drop of yours, signed by you and encrypted for
+    you alone, so that you find it on any node you sign in on. An album itself is held by the
+    network, encrypted, and can be read only by whoever is given its id.</p>
+    <p class="result" id="new-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Make</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="rename-dialog" aria-labelledby="rename-heading">
+  <form id="rename-form">
+    <h3 id="rename-heading">Rename the album</h3>
+    <div class="fields">
+      <label class="wide">Name <input id="rename-name" required autocomplete="off"></label>
+    </div>
+    <p class="result" id="rename-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="remove-dialog" aria-labelledby="remove-heading">
+  <form id="remove-form">
+    <h3 id="remove-heading"></h3>
+    <p class="hint">It is taken out of your albums, with every photo it holds. Photos it shares with
+    another album stay in that one.</p>
+    <p class="result" id="remove-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit" class="danger">Remove album</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="keys-dialog" aria-labelledby="keys-heading">
+  <h3 id="keys-heading">Keys</h3>
+  <p class="hint">Anywhere on the page but in a field, and while no other dialog is open.</p>
+  <dl class="keys">
+    <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt>
+    <dd>Move through the albums, as they are laid out, from the one with focus.</dd>
+    <dt><kbd>Home</kbd> <kbd>End</kbd></dt>
+    <dd>To the first album, or the last.</dd>
+    <dt><kbd>Enter</kbd></dt>
+    <dd>Open the album with focus.</dd>
+    <dt><kbd>Esc</kbd> <kbd>Backspace</kbd></dt>
+    <dd>Back to the albums.</dd>
+    <dt><kbd>N</kbd></dt>
+    <dd>Make a new album.</dd>
+    <dt><kbd>?</kbd> <kbd>/</kbd></dt>
+    <dd>These keys.</dd>
+  </dl>
+  <div class="buttons">
+    <button type="button" class="secondary" data-close>Done</button>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+
+// The endpoints this page uses (HttpApi 2.4, 12.3). What a bundle holds is
+// read at DATA, then its id, then a path (HttpApi 12.1).
+const CLIENT = "/data/client";
+const BUNDLES = "/data/bundles";
+const DATA = "/data/";
+const SESSION = "/data/session";
+const SIGNED = "/data/signed";
+const DROPS = "/data/drop";
+const ENCRYPTED = "/data/encrypted/";
+
+// Where a person's albums are listed, "photos albums:{id}": in versions at
+// the drop, each signed by them and encrypted for them (HttpApi 9, 11.5,
+// 11.6). The node keeps no albums for whoever is not signed in.
+const ALBUMS_PREFIX = "photos albums:";
+
+// How many random bytes make an album's id, as it is made.
+const ALBUM_ID_BYTES = 16;
+
+// What each version placed asks the node to search for its nonce, matching as
+// many bits as a node's search returns by default, so that it is found.
+const DROP_SECONDS = 1;
+const DROP_MINIMUM_BITS = 24;
+
+// Where this browser remembers the album last open, by its id.
+const REMEMBERED = "photos.album";
+
+// Why nothing is changed for whoever is signed in with their fallback
+// password, before the fallback takes over: nothing they keep is signed
+// (HttpApi 11.4, 11.5).
+const FALLBACK_REFUSAL = "Signed in with your fallback password, nothing you keep is changed until your fallback takes over.";
+
+// What an album's bundle holds: each photo as a folder of PHOTOS, named by
+// the first 16 hex digits of the hash of its original's file bundle; and in
+// INDEX, what the album's grid needs of each, in a file for each month its
+// photos were taken in, YYYY-MM.json, and one, undated.json, for those with
+// no date, each {"photos": {"<photo folder>": {…}}}. A month of more photos
+// than one file holds is split into parts, the second YYYY-MM.2.json, the
+// third YYYY-MM.3.json, and so on, so that none is too large to write in one
+// request.
+const PHOTOS = "photos";
+const INDEX = "index";
+const UNDATED = "undated";
+const PHOTO_FOLDER = /^[0-9a-f]{16}$/;
+const INDEX_FILE = /^(\d{4}-(?:0[1-9]|1[0-2])|undated)(?:\.([2-9]|[1-9]\d+))?\.json$/;
+const PART_PHOTOS = 2000;
+
+// A photo's thumbnail, in its folder, which is what shows an album's cover.
+const THUMB_FILE = "thumb.jpg";
+
+// How large a request to make a bundle is let grow, in bytes, well short of
+// the most the node takes (HttpApi 21), so that photos merged into an album
+// are added in as many requests as they need.
+const EDIT_BYTES = 3 * 1024 * 1024;
+
+// What a 503 that does not say is waited for, and how many are waited out
+// before the answer is given up on.
+const DEFAULT_RETRY_SECONDS = 5;
+const MAX_WAITS = 6;
+
+// How many times a cover is asked for before it is given up on.
+const COVER_TRIES = 3;
+
+// A content id, plain or carrying the key of a bundle stored encrypted (HttpApi 5).
+const CONTENT_ID = /^[a-z0-9-]+\/[0-9a-f]+(?:\/[A-Za-z0-9:-]+\/[0-9a-f]+)?$/;
+
+const state = {
+  // Whether this browser is on the node's own machine (HttpApi 2.4).
+  local: false,
+  // Whoever is signed in (HttpApi 11.4), whose own albums are kept, or null,
+  // for whom none are.
+  owner: null,
+  // Their albums, each an Album, newest first.
+  albums: [],
+  // Whether their albums could not be read, so that nothing is changed.
+  unread: false,
+  // The id of the album open, or null while the albums are shown.
+  open: null,
+};
+
+function byId(id) {
+  return document.getElementById(id);
+}
+
+function make(tag, text, className) {
+  const node = document.createElement(tag);
+
+  if (text !== undefined && text !== null) {
+    node.textContent = String(text);
+  }
+
+  if (className) {
+    node.className = className;
+  }
+
+  return node;
+}
+
+function show(element, message, isError = false) {
+  element.textContent = message;
+  element.classList.toggle("error", isError);
+  element.hidden = !message;
+}
+
+function sleep(seconds) {
+  return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+}
+
+function isObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isText(value) {
+  return typeof value === "string" && value !== "";
+}
+
+function plural(count, one, many) {
+  return count === 1 ? `1 ${one}` : `${count.toLocaleString()} ${many}`;
+}
+
+// An album's name as albums are told apart by it, ignoring case.
+function nameKey(name) {
+  return name.toLowerCase();
+}
+
+function sameName(one, other) {
+  return nameKey(one) === nameKey(other);
+}
+
+// The day `day`, as YYYY-MM-DD, as the browser shows a date.
+function dateText(day) {
+  const [year, month, date] = day.split("-").map(Number);
+  return new Date(year, month - 1, date).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+// How long `headers` say to wait before asking again (HttpApi 5.2): at least a
+// second, so that a Retry-After of 0 does not ask again at once, and the
+// default when they do not say.
+function retryAfter(headers) {
+  const seconds = Number.parseInt(headers.get("Retry-After") || "", 10);
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.max(seconds, 1) : DEFAULT_RETRY_SECONDS;
+}
+
+// The node could not be reached at all.
+class Unreachable extends Error {}
+
+// An answer that is not what was asked for, saying what the node said of it.
+class Refusal extends Error {
+  constructor(result) {
+    const problem = isObject(result.value) ? result.value : {};
+    super(problem.detail || problem.title || `The node answered ${result.status}.`);
+    this.status = result.status;
+  }
+}
+
+// One request to the node. `value` is the body read as JSON, or null. What
+// changes is never answered from the browser's cache; what a bundle holds
+// never changes, and may be.
+async function call(method, path, { body, headers = {}, cache = "no-store" } = {}) {
+  const init = { method, cache, headers: { ...headers } };
+
+  if (body !== undefined) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+
+  let response;
+
+  try {
+    response = await fetch(path, init);
+  } catch (error) {
+    throw new Unreachable(`The node could not be reached: ${error.message}`);
+  }
+
+  const text = await response.text();
+  let value = null;
+
+  try {
+    value = text ? JSON.parse(text) : null;
+  } catch (error) {
+    value = null;
+  }
+
+  return { status: response.status, ok: response.ok, headers: response.headers, value };
+}
+
+// As call, but waiting out the 503s the node answers while it fetches what it lacks.
+async function patiently(method, path, options) {
+  for (let waits = 0; ; waits += 1) {
+    const result = await call(method, path, options);
+
+    if (result.status !== 503 || waits >= MAX_WAITS) {
+      return result;
+    }
+
+    await sleep(retryAfter(result.headers));
+  }
+}
+
+function encodedPath(path) {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+// Where the entry at `path` in `bundle` is read. The empty path is the
+// bundle's root, which needs its "/" (HttpApi 12.1).
+function entryUrl(bundle, path) {
+  return `${DATA}${bundle}/${encodedPath(path)}`;
+}
+
+// The JSON at `path` in `bundle`: a file, or a directory's entries.
+async function readEntry(bundle, path) {
+  const result = await patiently("GET", entryUrl(bundle, path), { cache: "default" });
+
+  if (!result.ok) {
+    throw new Refusal(result);
+  }
+
+  if (result.value === null) {
+    throw new Error(`${path} is not JSON.`);
+  }
+
+  return result.value;
+}
+
+// `value` as a JSON file holds it, `keys` first, in their order, then any
+// others it has, leaving out any undefined.
+function jsonText(keys, value) {
+  const ordered = {};
+
+  for (const key of [...keys, ...Object.keys(value)]) {
+    if (!(key in ordered) && value[key] !== undefined) {
+      ordered[key] = value[key];
+    }
+  }
+
+  return `${JSON.stringify(ordered, null, 2)}\n`;
+}
+
+// `value` without its members that are undefined.
+function defined(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, each]) => each !== undefined));
+}
+
+// Makes a bundle (HttpApi 12.3) and returns its id.
+async function makeBundle(edit) {
+  const result = await patiently("POST", BUNDLES, { body: edit });
+
+  if (!result.ok || !isObject(result.value) || typeof result.value.bundle !== "string") {
+    throw new Refusal(result);
+  }
+
+  return result.value.bundle;
+}
+
+// Makes a new version of the bundle `base`, with the entries `add` names
+// added, and those `remove` names removed, as makeBundle takes them, in as
+// many requests as keep each within what the node takes, and returns the
+// last one's id. The requests are made in the order `add` names the entries,
+// so that an index named after its photos is never written before them.
+async function editInParts(base, add, remove = []) {
+  const encoder = new TextEncoder();
+  let bundle = base;
+  let part = {};
+  let size = 0;
+
+  for (const [path, entry] of Object.entries(add)) {
+    const bytes = encoder.encode(JSON.stringify({ [path]: entry })).length;
+
+    if (size + bytes > EDIT_BYTES && Object.keys(part).length > 0) {
+      bundle = await makeBundle({ base: bundle, add: part });
+      part = {};
+      size = 0;
+    }
+
+    part[path] = entry;
+    size += bytes;
+  }
+
+  return makeBundle({ base: bundle, add: part, remove });
+}
+
+// The day the photo an entry of an album's index describes was taken, as
+// YYYY-MM-DD, from its `taken`, a local date and time; or null if it is
+// undated.
+function dayTaken(entry) {
+  return isText(entry.taken) && /^\d{4}-\d{2}-\d{2}(?:T|$)/.test(entry.taken) ? entry.taken.slice(0, 10) : null;
+}
+
+// The entries of an album's index, each [folder, entry], in order of when
+// each photo was taken, the undated first, then of their folders.
+function inTakenOrder(one, other) {
+  const [oneTaken, otherTaken] = [one[1].taken, other[1].taken].map((taken) => (isText(taken) ? taken : ""));
+
+  if (oneTaken !== otherTaken) {
+    return oneTaken < otherTaken ? -1 : 1;
+  }
+
+  return one[0] < other[0] ? -1 : 1;
+}
+
+// The name of a file of an album's index: the `part`th of the month `month`,
+// YYYY-MM or undated, the first of which is numbered nothing.
+function indexName(month, part) {
+  return part === 1 ? `${month}.json` : `${month}.${part}.json`;
+}
+
+// What an album's index says of the photos it holds: the entry of each, by
+// its folder, in the month it is listed in; the names of the files each
+// month was read from; and the months of the files that could not be read,
+// whose photos it is not changed for.
+class AlbumIndex {
+  constructor() {
+    this.months = new Map();
+    this.folders = new Map();
+    this.names = new Map();
+    this.unread = new Set();
+  }
+
+  // The names of the files of the index of `bundle`: none, of an album
+  // holding no photos yet.
+  static async names(bundle) {
+    let listing;
+
+    try {
+      listing = await readEntry(bundle, INDEX);
+    } catch (error) {
+      if (error.status === 404) {
+        return [];
+      }
+
+      throw error;
+    }
+
+    return isObject(listing) && isObject(listing.entries)
+      ? Object.keys(listing.entries).filter((name) => INDEX_FILE.test(name)) : [];
+  }
+
+  // The index of `bundle`, of the files `names` of it, or of every file of
+  // it, each read at once.
+  static async read(bundle, names = null) {
+    const read = names || await AlbumIndex.names(bundle);
+    const files = await Promise.all(read.map((name) => readEntry(bundle, `${INDEX}/${name}`).catch((error) => {
+      console.warn(`${INDEX}/${name} of an album could not be read: ${error.message}`);
+      return null;
+    })));
+    const index = new AlbumIndex();
+    read.forEach((name, at) => index.addFile(name, files[at]));
+    return index;
+  }
+
+  // The days the first and the last dated photo of the album `bundle` were
+  // taken, each YYYY-MM-DD, or null if none is: read from the files of its
+  // index of the first month and the last.
+  static async span(bundle) {
+    const names = await AlbumIndex.names(bundle);
+    const months = [...new Set(names.map((name) => INDEX_FILE.exec(name)[1]))].filter((month) => month !== UNDATED).sort();
+
+    if (months.length === 0) {
+      return null;
+    }
+
+    const ends = new Set([months[0], months[months.length - 1]]);
+    const index = await AlbumIndex.read(bundle, names.filter((name) => ends.has(INDEX_FILE.exec(name)[1])));
+    return index.span();
+  }
+
+  // Adds what the file of the index named `name` holds, `file`, or null if
+  // it could not be read.
+  addFile(name, file) {
+    const month = INDEX_FILE.exec(name)[1];
+    this.names.set(month, [...(this.names.get(month) || []), name]);
+
+    if (!isObject(file) || !isObject(file.photos)) {
+      this.unread.add(month);
+      return;
+    }
+
+    for (const [folder, entry] of Object.entries(file.photos)) {
+      if (PHOTO_FOLDER.test(folder) && isObject(entry)) {
+        this.set(month, folder, entry);
+      } else {
+        console.warn(`Passing over ${folder} in ${INDEX}/${name}: it is not a photo this page reads.`);
+      }
+    }
+  }
+
+  // Lists the photo in `folder` in the month `month`, as `entry` describes it.
+  set(month, folder, entry) {
+    if (!this.months.has(month)) {
+      this.months.set(month, new Map());
+    }
+
+    this.months.get(month).set(folder, entry);
+    this.folders.set(folder, month);
+  }
+
+  holds(folder) {
+    return this.folders.has(folder);
+  }
+
+  // How many photos it lists.
+  get size() {
+    return this.folders.size;
+  }
+
+  // The days its first and its last dated photo were taken, as span gives them.
+  span() {
+    const days = [...this.months].filter(([month]) => month !== UNDATED)
+      .flatMap(([, entries]) => [...entries.values()].map(dayTaken)).filter(Boolean).sort();
+    return days.length ? { first: days[0], last: days[days.length - 1] } : null;
+  }
+
+  // The files of the months `months` written again, as makeBundle takes
+  // them: those to add, each month in as many parts as it needs, and those
+  // to remove, each a part read that is needed no longer.
+  files(months) {
+    const add = {};
+    const remove = [];
+
+    for (const month of months) {
+      if (this.unread.has(month)) {
+        throw new Error("Part of an album could not be read, so it is not changed. Reload the page, and try again.");
+      }
+
+      const entries = [...(this.months.get(month) || [])].sort(inTakenOrder);
+      const written = new Set();
+
+      for (let at = 0; at < entries.length; at += PART_PHOTOS) {
+        const name = indexName(month, at / PART_PHOTOS + 1);
+        written.add(name);
+        add[`${INDEX}/${name}`] = { text: jsonText(["photos"], { photos: Object.fromEntries(entries.slice(at, at + PART_PHOTOS)) }) };
+      }
+
+      for (const name of this.names.get(month) || []) {
+        if (!written.has(name)) {
+          remove.push(`${INDEX}/${name}`);
+        }
+      }
+    }
+
+    return { add, remove };
+  }
+}
+
+// One of a person's albums, as their list names it: its id, made at random
+// as it is made, so that one renamed on one node and changed on another
+// stays one; its name; its newest bundle; how many photos it holds; the
+// folder of the photo shown for it, if any; when it was made; and when it
+// last changed. `from` holds the bundles of the versions of it that bundle
+// replaces, which a version of the list naming one of them replaces too.
+class Album {
+  constructor({ id, name, bundle, count = 0, cover, created, changed }, from = [bundle]) {
+    this.id = id;
+    this.name = name;
+    this.bundle = bundle;
+    this.count = count;
+    this.cover = cover;
+    this.created = created;
+    this.changed = changed;
+    this.from = new Set([...from, bundle]);
+  }
+
+  // A new album named `name`, its bundle `bundle`, holding no photos.
+  static made(name, bundle) {
+    const bytes = crypto.getRandomValues(new Uint8Array(ALBUM_ID_BYTES));
+    const id = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const now = new Date().toISOString();
+    return new Album({ id, name, bundle, count: 0, created: now, changed: now });
+  }
+
+  // The album `value` is, as a version lists it, or null if it is none.
+  static read(value) {
+    const read = isObject(value) && isText(value.id) && isText(value.name) && isText(value.bundle)
+      && CONTENT_ID.test(value.bundle) && isText(value.created) && isText(value.changed);
+
+    if (!read) {
+      console.warn("Passing over an album this page does not read.");
+      return null;
+    }
+
+    return new Album({
+      id: value.id,
+      name: value.name,
+      bundle: value.bundle,
+      count: Number.isInteger(value.count) && value.count >= 0 ? value.count : 0,
+      cover: isText(value.cover) && PHOTO_FOLDER.test(value.cover) ? value.cover : undefined,
+      created: value.created,
+      changed: value.changed,
+    });
+  }
+
+  // As a version lists it.
+  value() {
+    const { id, name, bundle, count, cover, created, changed } = this;
+    return defined({ id, name, bundle, count, cover, created, changed });
+  }
+
+  // As changed now, with `changes` made, holding what it held too.
+  with(changes) {
+    return new Album({ ...this.value(), ...changes, changed: new Date().toISOString() }, this.from);
+  }
+
+  // Replacing the versions of it whose bundles `from` names, too.
+  replacing(from) {
+    return new Album(this.value(), [...this.from, ...from]);
+  }
+
+  // Where its cover is shown from, or null, if it has none.
+  coverUrl() {
+    return this.cover ? entryUrl(this.bundle, `${PHOTOS}/${this.cover}/${THUMB_FILE}`) : null;
+  }
+}
+
+// Of the albums `one` and `other`, each {album, version}, the version id ""
+// standing for what this page holds, whether `one` changed after `other`,
+// or, of two changed in the same moment, is of the version whose drop's id
+// comes first.
+function changedFirst(one, other) {
+  if (one.album.changed !== other.album.changed) {
+    return one.album.changed > other.album.changed ? -1 : 1;
+  }
+
+  return one.version === other.version ? 0 : (one.version < other.version ? -1 : 1);
+}
+
+// Albums in the order they are shown: the newest first, by when each was
+// made.
+function newestFirst(one, other) {
+  if (one.created !== other.created) {
+    return one.created > other.created ? -1 : 1;
+  }
+
+  return one.id < other.id ? -1 : 1;
+}
+
+// The album that `candidates`, each {album, version}, the versions of one
+// album, merge into: the one that changed last, with each photo the others
+// hold and it does not, and their entries in the index, added to it, in a
+// bundle of its own. One the others add no photo to is kept as it is. An
+// album that cannot be read is passed over, and is not among those it
+// replaces, so that the next version of the list does not replace any
+// version naming it.
+async function mergedAlbum(candidates) {
+  const [newest, ...rest] = [...candidates].sort(changedFirst);
+  const album = newest.album;
+  const from = new Set(album.from);
+  const others = new Map();
+
+  // Each bundle once, as more than one version may name it.
+  for (const { album: other } of rest) {
+    if (!from.has(other.bundle) && !others.has(other.bundle)) {
+      others.set(other.bundle, other);
+    }
+  }
+
+  if (others.size === 0) {
+    return album;
+  }
+
+  let index;
+
+  try {
+    index = await AlbumIndex.read(album.bundle);
+  } catch (error) {
+    console.warn(`“${album.name}” could not be read, so its versions are not merged: ${error.message}`);
+    return album;
+  }
+
+  if (index.unread.size > 0) {
+    console.warn(`Part of “${album.name}” could not be read, so its versions are not merged.`);
+    return album;
+  }
+
+  const add = {};
+  const months = new Set();
+  let cover = album.cover;
+
+  for (const other of others.values()) {
+    let theirs;
+
+    try {
+      theirs = await AlbumIndex.read(other.bundle);
+    } catch (error) {
+      console.warn(`A version of “${other.name}” could not be read, so it is not merged: ${error.message}`);
+      continue;
+    }
+
+    for (const [month, entries] of theirs.months) {
+      for (const [folder, entry] of entries) {
+        if (!index.holds(folder)) {
+          index.set(month, folder, entry);
+          months.add(month);
+          add[`${PHOTOS}/${folder}`] = { from: other.bundle, path: `${PHOTOS}/${folder}` };
+        }
+      }
+    }
+
+    cover = cover || (other.cover && index.holds(other.cover) ? other.cover : undefined);
+
+    if (theirs.unread.size === 0) {
+      other.from.forEach((bundle) => from.add(bundle));
+    }
+  }
+
+  if (months.size === 0) {
+    return album.replacing(from);
+  }
+
+  const files = index.files(months);
+  const bundle = await editInParts(album.bundle, { ...add, ...files.add }, files.remove);
+  return album.with({ bundle, count: index.size, cover }).replacing(from);
+}
+
+// The albums the versions `versions`, each {id, albums}, and `held`, those
+// this page holds already, list, merged: each album, found by its id, as
+// mergedAlbum merges it, and an album one lists and another does not kept,
+// newest first. With them, the ids of the versions merged whole, which the
+// next version of the list placed replaces: each version every album of
+// which is replaced by the album merged.
+async function mergedAlbums(versions, held) {
+  const candidates = new Map();
+  const add = (album, version) => {
+    candidates.set(album.id, [...(candidates.get(album.id) || []), { album, version }]);
+  };
+
+  held.forEach((album) => add(album, ""));
+  versions.forEach(({ id, albums }) => albums.forEach((album) => add(album, id)));
+  const merged = new Map();
+
+  // One after another, as each may read an index of many files.
+  for (const [id, each] of candidates) {
+    merged.set(id, await mergedAlbum(each));
+  }
+
+  const replaced = versions.filter(({ albums }) => albums.every((album) => merged.get(album.id).from.has(album.bundle)));
+  return { albums: [...merged.values()].sort(newestFirst), replaced: replaced.map(({ id }) => id) };
+}
+
+// The ids a search of the drop `target` finds (HttpApi 9.7). The node finds
+// only what shares enough leading bits with its hash to have been placed there.
+async function foundAt(target) {
+  const search = await call("GET", `${DROPS}/${encodeURIComponent(target)}`);
+  const answered = search.ok && isObject(search.value) && isText(search.value.target) &&
+    Array.isArray(search.value.results);
+
+  if (!answered) {
+    throw new Refusal(search);
+  }
+
+  return search.value.results.filter((id) => isText(id) && CONTENT_ID.test(id));
+}
+
+// The session ended while the page was open (HttpApi 11.4).
+class SessionEnded extends Error {
+  constructor() {
+    super("Your session has ended. Reload the page, and sign in again.");
+  }
+}
+
+// The list of albums kept for whoever is signed in: a version at their drop,
+// or more than one, made apart, on two nodes say, merged as they are read.
+// No albums are kept for whoever is not signed in.
+class Kept {
+  // The drop of whoever is signed in.
+  static target() {
+    return `${ALBUMS_PREFIX}${state.owner.id}`;
+  }
+
+  // The person's albums, every version of their list merged, with those
+  // this page holds already, `held`, as mergedAlbums merges them.
+  static async read(held = []) {
+    const ids = await foundAt(Kept.target());
+    const opened = await Promise.all(ids.map((id) => Kept.version(id)));
+    const versions = ids.map((id, at) => (opened[at] ? { id, albums: opened[at] } : null)).filter(Boolean);
+    return mergedAlbums(versions, held);
+  }
+
+  // The albums the version at the drop `id` lists, opened with the key of
+  // whoever is signed in (HttpApi 11.6); null if it is not held, or is not a
+  // version they signed.
+  static async version(id) {
+    const contents = await openVersion(id);
+
+    if (!isObject(contents) || !Array.isArray(contents.albums)) {
+      console.warn(`Passing over ${id}: it is no version of your albums.`);
+      return null;
+    }
+
+    return contents.albums.map((value) => Album.read(value)).filter(Boolean);
+  }
+
+  // Places `albums` as a version of the person's list, signed by them and
+  // encrypted for them, then blocks the versions it replaces, `replaced`
+  // (HttpApi 5.5), so that they do not push the newest out of a search.
+  static async place(albums, replaced) {
+    await placeVersion(Kept.target(), { albums: albums.map((album) => album.value()) });
+
+    for (const id of replaced) {
+      const shunned = await call("DELETE", `${DATA}${id}`);
+
+      if (!shunned.ok) {
+        console.warn(`The replaced version ${id} was not shunned: ${new Refusal(shunned).message}`);
+      }
+    }
+  }
+}
+
+// Places a version holding `contents` at the drop `target`, signed by
+// whoever is signed in and encrypted for them (HttpApi 11.5, 11.6), and
+// returns its id.
+async function placeVersion(target, contents) {
+  const result = await patiently("POST", SIGNED, {
+    body: {
+      target,
+      text: JSON.stringify(contents),
+      seconds: DROP_SECONDS,
+      minimum_bits: DROP_MINIMUM_BITS,
+      encrypt: { for: state.owner.id },
+    },
+  });
+
+  if (result.status === 401) {
+    throw new SessionEnded();
+  }
+
+  if (result.status === 403) {
+    throw new Error(FALLBACK_REFUSAL);
+  }
+
+  // A version is a drop, which holds so much at most, as the node stores it.
+  if (result.status === 413) {
+    throw new Error("You keep more albums than one version of your list of them can hold, so this is not changed. Remove an album, and try again.");
+  }
+
+  if (!result.ok || !isObject(result.value) || !isText(result.value.id)) {
+    throw new Refusal(result);
+  }
+
+  return result.value.id;
+}
+
+// What the version at the drop `id` holds, as JSON, opened with the key of
+// whoever is signed in (HttpApi 11.6); null if it is not held, or is not a
+// version they signed.
+async function openVersion(id) {
+  const result = await patiently("GET", `${ENCRYPTED}${id}`);
+
+  if (result.status === 401) {
+    throw new SessionEnded();
+  }
+
+  const value = result.value;
+
+  if (!result.ok || !isObject(value) || value.signer !== state.owner.id || !isText(value.contents)) {
+    console.warn(`Passing over ${id}: it is no version of yours held here.`);
+    return null;
+  }
+
+  try {
+    return JSON.parse(value.contents);
+  } catch (error) {
+    return null;
+  }
+}
+
+// Whether the albums are changed: for whoever is signed in, once they are
+// read, unless with their fallback password before the fallback takes over
+// (HttpApi 11.4), as nothing is signed then.
+function canChange() {
+  const owner = state.owner;
+  return Boolean(owner) && !state.unread && !(isText(owner.fallback_for) && !isText(owner.fallback));
+}
+
+// Changes to the albums are made one at a time, each from the list the one
+// before it made.
+let changing = Promise.resolve();
+
+function serially(action) {
+  const run = changing.then(action);
+  changing = run.catch(() => undefined);
+  return run;
+}
+
+// Makes the change `change` gives of the albums, and keeps it, in turn with
+// every other change. The versions of the list are read again for it, and
+// any made elsewhere since this page read them, on another node say, are
+// merged with the albums it holds first. `change` is given the albums so
+// merged, and gives the albums to keep, or the same list, to keep nothing.
+async function changeAlbums(change) {
+  if (!canChange()) {
+    throw new Error(state.owner ? FALLBACK_REFUSAL : "No one is signed in, so no albums are kept. Sign in on the home page.");
+  }
+
+  await serially(async () => {
+    const { albums, replaced } = await Kept.read(state.albums);
+    const changed = change(albums);
+
+    if (changed !== albums) {
+      await Kept.place(changed, replaced);
+    }
+
+    state.albums = [...changed].sort(newestFirst);
+    render();
+  });
+}
+
+// An error if an album of `albums` but the one whose id is `id` is named
+// `name`, ignoring case.
+function refuseHeld(albums, name, id = null) {
+  const held = albums.find((album) => album.id !== id && sameName(album.name, name));
+
+  if (held) {
+    throw new Error(`You have an album named “${held.name}” already. Give this one a name of its own.`);
+  }
+}
+
+function recall() {
+  try {
+    const id = localStorage.getItem(REMEMBERED);
+    return isText(id) ? id : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function remember(id) {
+  try {
+    localStorage.setItem(REMEMBERED, id);
+  } catch (error) {
+    console.warn(`This browser cannot remember the album open: ${error.message}`);
+  }
+}
+
+function forget() {
+  try {
+    localStorage.removeItem(REMEMBERED);
+  } catch (error) {
+    console.warn(`This browser cannot forget the album open: ${error.message}`);
+  }
+}
+
+// The days of the first and the last photo of each album, by its bundle, as
+// AlbumIndex.span reads them, each read once.
+const spans = new Map();
+
+function spanOf(bundle) {
+  if (!spans.has(bundle)) {
+    spans.set(bundle, AlbumIndex.span(bundle).catch((error) => {
+      console.warn(`The days of an album's photos could not be read: ${error.message}`);
+      spans.delete(bundle);
+      return null;
+    }));
+  }
+
+  return spans.get(bundle);
+}
+
+function spanText(span) {
+  return span.first === span.last ? dateText(span.first) : `${dateText(span.first)} – ${dateText(span.last)}`;
+}
+
+function countText(album) {
+  return album.count ? plural(album.count, "photo", "photos") : "No photos";
+}
+
+// The album open, or null.
+function openAlbumOf() {
+  return state.albums.find((album) => album.id === state.open) || null;
+}
+
+// Shows the albums, or the album open, as kept.
+function render() {
+  if (state.open !== null && !openAlbumOf()) {
+    state.open = null;
+    forget();
+  }
+
+  byId("chooser").hidden = state.open !== null;
+  byId("album").hidden = state.open === null;
+
+  if (state.open === null) {
+    renderAlbums();
+  } else {
+    renderAlbum(openAlbumOf());
+  }
+}
+
+// The albums, each a tile, newest first. The one that had focus keeps it.
+function renderAlbums() {
+  const list = byId("album-list");
+  const focused = list.contains(document.activeElement) ? document.activeElement.dataset.id : null;
+  list.replaceChildren(...state.albums.map((album) => albumTile(album)));
+
+  if (state.owner && !state.unread) {
+    show(byId("chooser-state"), state.albums.length ? "" : (canChange() ? "You keep no albums yet. Make one." : "You keep no albums."));
+  }
+
+  if (focused) {
+    focusAlbum(focused);
+  }
+}
+
+// The tile of `album`: its cover, its name, how many photos it holds, and
+// the days of its first and last, once read.
+function albumTile(album) {
+  const item = make("li");
+  const pick = make("button", null, "pick");
+  const caption = make("span", null, "caption");
+  const days = make("span", null, "note");
+  pick.type = "button";
+  pick.dataset.id = album.id;
+  days.hidden = true;
+  caption.append(make("strong", album.name), make("span", countText(album), "note"), days);
+  pick.append(coverImage(album.coverUrl()), caption);
+  pick.addEventListener("click", () => openAlbum(album.id));
+  item.append(pick);
+
+  if (album.count > 0) {
+    spanOf(album.bundle).then((span) => {
+      if (span) {
+        show(days, spanText(span));
+      }
+    });
+  }
+
+  return item;
+}
+
+function noCover() {
+  const placeholder = make("span", null, "cover");
+  placeholder.setAttribute("aria-hidden", "true");
+  placeholder.innerHTML = '<svg viewBox="0 0 24 24" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>';
+  return placeholder;
+}
+
+// The cover at `url`, loaded as it is scrolled to, and asked for again a few
+// times if the node is still fetching it; a placeholder if `url` is null.
+function coverImage(url) {
+  if (!url) {
+    return noCover();
+  }
+
+  const image = make("img", null, "cover");
+  let tries = 1;
+  image.alt = "";
+  image.loading = "lazy";
+  image.addEventListener("error", () => {
+    if (tries >= COVER_TRIES) {
+      image.replaceWith(noCover());
+      return;
+    }
+
+    tries += 1;
+    setTimeout(() => { image.src = url; }, DEFAULT_RETRY_SECONDS * 1000);
+  });
+  image.src = url;
+  return image;
+}
+
+// Gives focus to the tile of the album whose id is `id`, or else the first.
+function focusAlbum(id) {
+  const picks = [...byId("album-list").querySelectorAll("button.pick")];
+  const pick = picks.find((each) => each.dataset.id === id) || picks[0];
+
+  if (pick) {
+    pick.focus();
+  }
+}
+
+// The album open: its name, how many photos it holds, and the days of its
+// first and last, once read.
+function renderAlbum(album) {
+  const facts = byId("album-facts");
+  byId("album-name").textContent = album.name;
+  facts.textContent = album.count ? countText(album) : "This album holds no photos.";
+
+  if (album.count > 0) {
+    spanOf(album.bundle).then((span) => {
+      if (span && state.open === album.id && byId("album-name").textContent === album.name) {
+        facts.textContent = `${countText(album)}, taken ${spanText(span)}`;
+      }
+    });
+  }
+}
+
+function openAlbum(id) {
+  state.open = id;
+  remember(id);
+  show(byId("album-result"), "");
+  render();
+  byId("back").focus();
+}
+
+// Back to the albums, at the one that was open.
+function backToAlbums() {
+  const id = state.open;
+
+  if (id === null) {
+    return;
+  }
+
+  state.open = null;
+  forget();
+  render();
+  focusAlbum(id);
+}
+
+function openNew() {
+  if (byId("new-album").hidden) {
+    return;
+  }
+
+  byId("new-form").reset();
+  show(byId("new-result"), "");
+  byId("new-dialog").showModal();
+}
+
+// Makes an album of the name given, holding no photos, and opens it.
+async function makeAlbum() {
+  const name = byId("new-name").value.trim();
+
+  if (!name) {
+    throw new Error("Give the album a name.");
+  }
+
+  refuseHeld(state.albums, name);
+  const album = Album.made(name, await makeBundle({ encrypted: true, add: {} }));
+  await changeAlbums((albums) => {
+    refuseHeld(albums, name);
+    return [...albums, album];
+  });
+  byId("new-dialog").close();
+  openAlbum(album.id);
+  return null;
+}
+
+function openRename() {
+  const album = openAlbumOf();
+  byId("rename-name").value = album.name;
+  show(byId("rename-result"), "");
+  byId("rename-dialog").showModal();
+  byId("rename-name").select();
+}
+
+// Renames the album open as given.
+async function renameAlbum() {
+  const name = byId("rename-name").value.trim();
+  const id = state.open;
+
+  if (!name) {
+    throw new Error("Give the album a name.");
+  }
+
+  await changeAlbums((albums) => {
+    const album = albums.find((each) => each.id === id);
+
+    if (!album || album.name === name) {
+      return albums;
+    }
+
+    refuseHeld(albums, name, id);
+    return albums.map((each) => (each.id === id ? each.with({ name }) : each));
+  });
+  byId("rename-dialog").close();
+  return null;
+}
+
+function openRemove() {
+  byId("remove-heading").textContent = `Remove “${openAlbumOf().name}”?`;
+  show(byId("remove-result"), "");
+  byId("remove-dialog").showModal();
+}
+
+// Takes the album open out of the person's albums. Its bundle is left to be
+// evicted, as anything the node no longer needs is.
+async function removeAlbum() {
+  const id = state.open;
+  await changeAlbums((albums) => albums.filter((album) => album.id !== id));
+  byId("remove-dialog").close();
+  return null;
+}
+
+// Runs `action` with `control` disabled, and says what it returned in
+// `message`. An action returns [text, isError], or nothing to say nothing.
+async function perform(control, message, action) {
+  const focused = document.activeElement === control;
+  control.disabled = true;
+
+  try {
+    const outcome = await action();
+
+    if (outcome) {
+      show(message, ...outcome);
+    } else {
+      show(message, "");
+    }
+  } catch (error) {
+    show(message, error.message, true);
+  } finally {
+    control.disabled = false;
+
+    if (focused) {
+      regainFocus(control);
+    }
+  }
+}
+
+// Whether nothing on the page has focus: the page itself has it, or what
+// had it is no longer shown.
+function focusLost() {
+  const active = document.activeElement;
+  return !active || active === document.body || active.getClientRects().length === 0;
+}
+
+// Gives focus back to `control`, which lost it as it was disabled, unless
+// something else has taken it: or, if `control` cannot take it, to Back, if
+// an album is open, or else to the first album. If `control` opened a
+// dialog, once the dialog closes.
+function regainFocus(control) {
+  const opened = [...document.querySelectorAll("dialog[open]")].find((dialog) => !dialog.contains(control));
+
+  if (opened) {
+    opened.addEventListener("close", () => regainFocus(control), { once: true });
+    return;
+  }
+
+  if (!focusLost()) {
+    return;
+  }
+
+  control.focus();
+
+  if (document.activeElement !== control && state.open !== null) {
+    byId("back").focus();
+  } else if (document.activeElement !== control) {
+    focusAlbum(null);
+  }
+}
+
+function onSubmit(id, message, action) {
+  const form = byId(id);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    perform(form.querySelector("button[type=submit]"), byId(message), action);
+  });
+}
+
+// The button of `buttons` in the row above `from`, or below it if `below`,
+// nearest it across; or null, if there is no such row.
+function across(buttons, from, below) {
+  const origin = from.getBoundingClientRect();
+  const middle = (rect) => rect.left + rect.width / 2;
+  const beyond = buttons.map((button) => ({ button, rect: button.getBoundingClientRect() }))
+    .filter(({ rect }) => (below ? rect.top >= origin.bottom : rect.bottom <= origin.top));
+  const tops = beyond.map(({ rect }) => rect.top);
+  const row = below ? Math.min(...tops) : Math.max(...tops);
+  const distance = ({ rect }) => Math.abs(middle(rect) - middle(origin));
+  const nearest = beyond.filter(({ rect }) => Math.abs(rect.top - row) < 1)
+    .sort((one, other) => distance(one) - distance(other))[0];
+  return nearest ? nearest.button : null;
+}
+
+// Moves focus through the buttons shown of `list` that `selector` matches,
+// from the keyboard, and only from one of them: the arrow keys to the one
+// beside, above, or below, as they are laid out, and Home and End to the
+// first and the last.
+function arrowKeys(list, selector = "button") {
+  list.addEventListener("keydown", (event) => {
+    const buttons = [...list.querySelectorAll(selector)].filter((button) => button.getClientRects().length > 0);
+    const at = buttons.indexOf(event.target);
+    const moves = {
+      ArrowLeft: () => buttons[at - 1],
+      ArrowRight: () => buttons[at + 1],
+      ArrowUp: () => across(buttons, event.target, false),
+      ArrowDown: () => across(buttons, event.target, true),
+      Home: () => buttons[0],
+      End: () => buttons[buttons.length - 1],
+    };
+    const move = moves[event.key];
+
+    if (at < 0 || !move || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      return;
+    }
+
+    event.preventDefault();
+    const next = move();
+
+    if (next) {
+      next.focus();
+    }
+  });
+}
+
+// An arrow key, Home, or End, with the albums shown but none with focus,
+// gives focus to the first, or, for End, the last.
+function intoAlbums(key) {
+  const picks = [...byId("album-list").querySelectorAll("button.pick")];
+  picks[key === "end" ? picks.length - 1 : 0].focus();
+}
+
+// Whether `intoAlbums` has albums to move into, from `target`, which has focus.
+function canMoveInto(target) {
+  return state.open === null && !target.closest("#album-list")
+    && byId("album-list").querySelector("button.pick") !== null;
+}
+
+async function askClient() {
+  try {
+    const result = await call("GET", CLIENT);
+    return result.ok && isObject(result.value) && result.value.local === true;
+  } catch (error) {
+    console.warn(error.message);
+    return false;
+  }
+}
+
+// Who is signed in, as the node says (HttpApi 11.4); null if no one is, or
+// this client cannot say. Only a local client is signed in.
+async function askSession() {
+  try {
+    const result = await call("GET", SESSION);
+    const signed = result.ok && isObject(result.value) && isText(result.value.id) && CONTENT_ID.test(result.value.id);
+    return signed ? result.value : null;
+  } catch (error) {
+    console.warn(error.message);
+    return null;
+  }
+}
+
+// Shows what changes the albums only while they can be changed.
+function showChanges() {
+  for (const element of document.querySelectorAll(".changes-only")) {
+    element.hidden = !canChange();
+  }
+}
+
+async function start() {
+  state.local = await askClient();
+  state.owner = state.local ? await askSession() : null;
+  showChanges();
+
+  // Only whoever is signed in keeps albums; for everyone else there are
+  // none. Signed in with a fallback password, they are not changed.
+  if (!state.owner) {
+    byId("client-note").textContent = state.local
+      ? "This browser is on the node's own machine, but no one is signed in, so it keeps no albums. Sign in on the home page to keep albums of your own."
+      : "This browser is not on the node's own machine, so no one is signed in on it, and it keeps no albums. A person signs in on the home page, on the node's own machine.";
+    return;
+  }
+
+  show(byId("client-note"), canChange() ? "" : "Signed in with your fallback password, nothing you keep is changed until your fallback takes over, and your albums are kept for your own key, which signing in as your fallback does not open.");
+  const status = byId("page-state");
+  show(status, "Reading your albums…");
+
+  try {
+    state.albums = (await Kept.read()).albums;
+  } catch (error) {
+    state.unread = true;
+    showChanges();
+    show(status, `Your albums could not be read: ${error.message}`, true);
+    return;
+  }
+
+  show(status, "");
+
+  // The album last open is opened again. One no longer kept, as when the
+  // browser remembers it of someone else, is forgotten.
+  const remembered = recall();
+
+  if (remembered && state.albums.some((album) => album.id === remembered)) {
+    openAlbum(remembered);
+    return;
+  }
+
+  if (remembered) {
+    forget();
+  }
+
+  render();
+  focusAlbum(null);
+}
+
+// Keys anywhere but in a field, and while no dialog is open. Each is heard
+// before the element with focus hears it.
+const SHORTCUTS = {
+  escape: backToAlbums,
+  backspace: backToAlbums,
+  n: openNew,
+  arrowleft: intoAlbums,
+  arrowright: intoAlbums,
+  arrowup: intoAlbums,
+  arrowdown: intoAlbums,
+  home: intoAlbums,
+  end: intoAlbums,
+  "?": () => byId("keys-dialog").showModal(),
+  "/": () => byId("keys-dialog").showModal(),
+};
+
+window.addEventListener("keydown", (event) => {
+  const target = event.target instanceof Element ? event.target : document.body;
+  const key = String(event.key).toLowerCase();
+  const ignored = event.altKey || event.ctrlKey || event.metaKey || event.isComposing || event.repeat
+    || document.querySelector("dialog[open]") || target.closest("input, select, textarea")
+    || !Object.hasOwn(SHORTCUTS, key) || (SHORTCUTS[key] === intoAlbums && !canMoveInto(target));
+
+  if (ignored) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  SHORTCUTS[key](key);
+}, true);
+
+arrowKeys(byId("album-list"), "button.pick");
+
+for (const control of document.querySelectorAll("[data-close]")) {
+  control.addEventListener("click", () => control.closest("dialog").close());
+}
+
+byId("show-keys").addEventListener("click", () => byId("keys-dialog").showModal());
+byId("new-album").addEventListener("click", openNew);
+byId("back").addEventListener("click", backToAlbums);
+byId("rename-album").addEventListener("click", openRename);
+byId("remove-album").addEventListener("click", openRemove);
+
+onSubmit("new-form", "new-result", makeAlbum);
+onSubmit("rename-form", "rename-result", renameAlbum);
+onSubmit("remove-form", "remove-result", removeAlbum);
+
+start();
+</script>
+</body>
+</html>

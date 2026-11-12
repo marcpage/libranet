@@ -31,6 +31,7 @@ is placed at its target, and links to the documents that define it.
 | [`tv offline:{id}`](#316-tv-series-kept-offline) | A version for each series a person keeps offline | The TV application | The person | For the person | In use |
 | [`music library:{id}`](#317-music-libraries) | The versions of a person's library of music | The music application | The person | For the person | In use |
 | [`music offline:{id}`](#319-music-playlists-kept-offline) | A version for each playlist a person keeps offline | The music application | The person | For the person | In use |
+| [`photos albums:{id}`](#320-photo-albums) | The versions of a person's list of albums of photos | The photos application | The person | For the person | In use |
 | [`node:{id}`](#39-what-a-node-says-of-itself) | The versions of what a node says of itself | The node | The node | No | In use |
 | [`karma transaction:{validation}`](#310-karma-transaction-blocks) | Karma's transaction blocks, and transactions put up for them | Anyone | Its builder; each transaction by its sender | No | In use |
 | [`karma validation:{validation}`](#311-karma-validation-blocks) | Karma's validation blocks | Anyone | Its builder; each stake by its staker | No | In use |
@@ -53,6 +54,7 @@ flowchart TB
         pid --> tmdb["movie tmdb:{id}<br/>their TMDB key (§3.14)"]
         pid --> tv["tv series:{id}<br/>tv offline:{id}<br/>their TV series (§3.15, §3.16)"]
         pid --> music["music library:{id}<br/>music offline:{id}<br/>their music (§3.17, §3.19)"]
+        pid --> photos["photos albums:{id}<br/>their albums of photos (§3.20)"]
     end
     subgraph node["A node"]
         direction LR
@@ -734,3 +736,44 @@ archived or not.
   [HTTP API §12.4](HttpApi.md#124-keeping-content-offline) for the
   archives;
   [App Developer Guide §6.19](../operations/App%20Developer%20Guide.md#619-keeping-content-offline).
+
+### 3.20 Photo Albums
+
+**Target:** `photos albums:{id}`
+
+A person's list of albums of photos names each album, with its newest
+bundle: `{"albums": [{"id", "name", "bundle", "count", "cover", "created",
+"changed"}, …]}`. `id` is made at random as the album is, so that an album
+renamed on one node and changed on another stays one; `count` is how many
+photos it holds; `cover`, if it has one, is the folder of the photo shown
+for it; `created` is when it was made, and `changed` when it last changed.
+No two albums are of the same name, ignoring case. Each bundle is
+encrypted, so that only whoever is given its id can read it. It holds
+`photos/`, each photo in a folder named by the first 16 hex digits of the
+hash of its original's file bundle, and `index/`, what an album's grid
+needs of every photo, in a file for each month its photos were taken in,
+`index/{yyyy}-{mm}.json`, and `index/undated.json` for those with no date,
+each `{"photos": {"<photo folder>": {…}}}`. A month of more than 2,000
+photos is split into parts, `index/{yyyy}-{mm}.2.json` and on. An album
+holding no photos has no `index/`. The list is kept in versions, so that it
+follows the person from node to node, and versions made apart, on two nodes
+say, are merged as they are read. The node keeps no albums for a client no
+one is signed in on.
+
+- **Placed by** the photos application, with `POST /data/signed`, given
+  `encrypt: {for: id}`, whenever the person's albums change: as one is
+  made, renamed, or removed.
+- **Signed** by the person, then **encrypted** for the person.
+- **Bits:** placed matching at least 24, searched for 1 second.
+- **Reading:** a reader passes over every version that does not open for
+  the person, or that they did not sign, and every album listed that is not
+  such an object. It merges every version left: each album, found by its
+  `id`, at the version that changed it last, and of two changed in the same
+  moment, the one whose drop's id comes first, with each photo the others
+  hold and it does not, and their entries in `index/`, added to it, in a
+  bundle of its own. Merging adds photos, and never removes any, and an
+  album one version lists and another does not is kept. Each change places
+  a version holding every album merged, and shuns the versions read, which
+  it replaces, as for movie collections (§3.12), but for any naming an
+  album it could not merge whole.
+- **Defined in:** [Photos App](../implementation/Photos%20App.md) Step 161.

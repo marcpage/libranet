@@ -1,5 +1,5 @@
 """Tests for the applications shipped with the node, and the root, ``/config``, movie,
-TV, music, directory, mail, nodes, and Karma pages, and the Chaos page.
+TV, music, photos, directory, mail, nodes, and Karma pages, and the Chaos page.
 
 Which way they were shipped, built into a wheel or run from source, is known
 only to the layered source, and is tested through it.
@@ -94,11 +94,13 @@ KARMA_APPLICATION = "karma"
 CHAOS_PAGE = "chaos"
 TV_APPLICATION = "tv"
 MUSIC_APPLICATION = "music"
+PHOTOS_APPLICATION = "photos"
 ROOT_PAGE_SOURCE = PACKAGED_APPLICATIONS / "root" / "index.html"
 CONFIG_PAGE_SOURCE = PACKAGED_APPLICATIONS / "config" / "index.html"
 MOVIE_PAGE_SOURCE = PACKAGED_APPLICATIONS / "movie" / "index.html"
 TV_PAGE_SOURCE = PACKAGED_APPLICATIONS / "tv" / "index.html"
 MUSIC_PAGE_SOURCE = PACKAGED_APPLICATIONS / "music" / "index.html"
+PHOTOS_PAGE_SOURCE = PACKAGED_APPLICATIONS / "photos" / "index.html"
 DIRECTORY_PAGE_SOURCE = PACKAGED_APPLICATIONS / "directory" / "index.html"
 MAIL_PAGE_SOURCE = PACKAGED_APPLICATIONS / "mail" / "index.html"
 NODES_PAGE_SOURCE = PACKAGED_APPLICATIONS / "nodes" / "index.html"
@@ -189,6 +191,11 @@ def music_page(content: LayeredSource, built: PackagedApplications) -> str:
 
 
 @fixture
+def photos_page(content: LayeredSource, built: PackagedApplications) -> str:
+    return index_page(built.bundles[PHOTOS_APPLICATION], content).decode("utf-8")
+
+
+@fixture
 def directory_page(content: LayeredSource, built: PackagedApplications) -> str:
     return index_page(built.bundles[DIRECTORY_APPLICATION], content).decode("utf-8")
 
@@ -266,7 +273,7 @@ def router_for(
     )
 
 
-def test_the_node_ships_the_root_config_movie_tv_music_directory_mail_nodes_and_karma_applications(
+def test_the_node_ships_the_root_config_movie_tv_music_photos_directory_mail_nodes_and_karma_apps(
     built: PackagedApplications,
 ) -> None:
     # And the Chaos page, built with them.
@@ -283,6 +290,7 @@ def test_the_node_ships_the_root_config_movie_tv_music_directory_mail_nodes_and_
             KARMA_APPLICATION,
             TV_APPLICATION,
             MUSIC_APPLICATION,
+            PHOTOS_APPLICATION,
             CHAOS_PAGE,
         }
     )
@@ -487,6 +495,7 @@ def test_each_page_showing_a_node_offers_the_details_the_issue_names(
         "movie_page",
         "tv_page",
         "music_page",
+        "photos_page",
         "karma_page",
         "chaos_page",
     ],
@@ -505,7 +514,15 @@ def test_each_page_reading_drops_reads_whatever_the_node_finds_there(
 
 @mark.parametrize(
     "page_fixture",
-    ["config_page", "directory_page", "mail_page", "movie_page", "tv_page", "music_page"],
+    [
+        "config_page",
+        "directory_page",
+        "mail_page",
+        "movie_page",
+        "tv_page",
+        "music_page",
+        "photos_page",
+    ],
 )
 def test_each_page_placing_drops_places_them_where_a_nodes_search_finds_them(
     request: FixtureRequest, page_fixture: str
@@ -781,6 +798,81 @@ def test_the_music_page_takes_as_songs_the_files_the_plan_names(music_page: str)
         "wv",
         "mka",
     }
+
+
+def test_the_photos_application_is_built_from_its_directory(photos_page: str) -> None:
+    assert photos_page == PHOTOS_PAGE_SOURCE.read_text(encoding="utf-8")
+
+
+def test_the_photos_page_is_one_self_contained_document(photos_page: str) -> None:
+    assert photos_page.startswith("<!doctype html>")
+    # Nothing is loaded from a file of its own, or from anywhere else: an
+    # album, and every photo in it, comes from the node.
+    assert "<link" not in photos_page
+    assert findall(r"<script[^>]*\bsrc", photos_page) == []
+    assert "url(" not in photos_page.split("<style>", 1)[1].split("</style>", 1)[0]
+    assert "http:" not in photos_page
+    assert "https:" not in photos_page
+
+
+def test_the_photos_page_calls_only_endpoints_the_node_serves(photos_page: str) -> None:
+    called = set(findall(r'"(/data/[^"]*)"', photos_page))
+    hex_digits = "0123456789abcdef" * 4
+
+    # No store: the node keeps no albums for whoever is not signed in.
+    assert called == {
+        CLIENT_PATH,
+        BUNDLES_PATH,
+        "/data/",
+        SESSION_PATH,
+        SIGNED_PATH,
+        DROP_PATH,
+        f"{ENCRYPTED_PATH}/",
+    }
+    # A person's albums: searched at their drop, each version opened, and
+    # those replaced shunned.
+    target = quote(f"photos albums:sha256/{hex_digits}", safe="")
+    assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{target}")
+    assert fullmatch(ENCRYPTED_PATTERN, f"{ENCRYPTED_PATH}/sha256/{hex_digits}")
+    assert fullmatch(DATA_PATTERN, f"/data/sha256/{hex_digits}")
+    # An album's index, and the thumbnail of its cover in its folder.
+    album = f"/data/sha256/{hex_digits}/AES256-CBC/{hex_digits}"
+    assert fullmatch(BUNDLE_PATTERN, f"{album}/index/2024-05.json")
+    assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/thumb.jpg")
+
+
+def test_the_photos_page_keeps_albums_where_the_plan_names_them(photos_page: str) -> None:
+    assert 'const ALBUMS_PREFIX = "photos albums:";' in photos_page
+    assert 'const REMEMBERED = "photos.album";' in photos_page
+    assert 'const PHOTOS = "photos";' in photos_page
+    assert 'const INDEX = "index";' in photos_page
+
+
+def test_the_photos_page_reads_an_albums_index_by_month_as_the_plan_names_it(
+    photos_page: str,
+) -> None:
+    [pattern] = findall(r"^const INDEX_FILE = /(.*)/;$", photos_page, MULTILINE)
+    named = [
+        "2024-05.json",
+        "2024-12.json",
+        "undated.json",
+        "2024-05.2.json",
+        "2024-05.12.json",
+        "undated.3.json",
+    ]
+    not_named = ["2024-13.json", "2024-5.json", "2024-05.1.json", "2024-05.02.json", "05.json"]
+
+    assert [name for name in named if fullmatch(pattern, name)] == named
+    assert [name for name in not_named if fullmatch(pattern, name)] == []
+    # A month of more photos than this is split into parts.
+    assert "const PART_PHOTOS = 2000;" in photos_page
+
+
+def test_the_photos_page_is_black_as_the_movie_and_tv_pages_are_dark(photos_page: str) -> None:
+    assert '<meta name="color-scheme" content="dark">' in photos_page
+    assert "--background: #000;" in photos_page
+    # Dark, even when the system is set to light.
+    assert "prefers-color-scheme" not in photos_page
 
 
 def test_the_directory_application_is_built_from_its_directory(directory_page: str) -> None:
@@ -1082,6 +1174,7 @@ def test_the_config_page_links_its_node_to_its_page_on_the_main_port(config_page
     [
         "movie_page",
         "tv_page",
+        "photos_page",
         "directory_page",
         "mail_page",
         "nodes_page",
@@ -1259,6 +1352,7 @@ def test_the_config_page_makes_a_user_with_a_fallback_password(config_page: str)
         # Trusted, so served without a sandbox, and to a remote client, which only plays.
         (MOVIE_APPLICATION, "/movie/", MOVIE_PAGE_SOURCE, "203.0.113.42", {}, None),
         (TV_APPLICATION, "/tv/", TV_PAGE_SOURCE, "203.0.113.42", {}, None),
+        (PHOTOS_APPLICATION, "/photos/", PHOTOS_PAGE_SOURCE, "203.0.113.42", {}, None),
         (DIRECTORY_APPLICATION, "/directory/", DIRECTORY_PAGE_SOURCE, "203.0.113.42", {}, None),
         (MAIL_APPLICATION, "/mail/", MAIL_PAGE_SOURCE, "203.0.113.42", {}, None),
         (NODES_APPLICATION, "/nodes/", NODES_PAGE_SOURCE, "203.0.113.42", {}, None),
