@@ -1,4 +1,4 @@
-"""Tests for resolving a Chaos path: whose scores, which proposal, and why (HttpApi §13.6)."""
+"""Tests for resolving a Chaos path: whose scores, which upload, and why (HttpApi §13.6)."""
 
 from __future__ import annotations
 from datetime import UTC, datetime, timedelta
@@ -27,7 +27,7 @@ from libranet.identity.people import NewIdentity, PersonKey, Username
 from libranet.identity.trust import TrustScore, TrustScores
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType, PathOutcome
-from libranet.protocol.chaos import ChaosPath, ChaosProposal, PassedOver
+from libranet.protocol.chaos import ChaosPath, ChaosUpload, PassedOver
 from libranet.protocol.search import LocalSearch, SearchCache
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_use import ApplicationUse
@@ -170,7 +170,7 @@ class Chaos:
 
         return content_id
 
-    def propose(
+    def upload(
         self,
         target: str,
         bundle: PartPath,
@@ -179,8 +179,8 @@ class Chaos:
         ago_seconds: float = 0,
         stored: bool = True,
     ) -> ContentId:
-        """``bundle`` proposed at ``target``, signed ``by`` someone or not, ``ago_seconds`` ago."""
-        text = dumps(ChaosProposal(bundle, NOW - timedelta(seconds=ago_seconds)).value())
+        """``bundle`` uploaded at ``target``, signed ``by`` someone or not, ``ago_seconds`` ago."""
+        text = dumps(ChaosUpload(bundle, NOW - timedelta(seconds=ago_seconds)).value())
         data = text.encode("utf-8") if by is None else by.signed(text).encoded()
         return self.place(target, data, stored=stored)
 
@@ -272,7 +272,7 @@ def resolver(chaos: Chaos) -> ChaosResolver:
     return chaos.resolver()
 
 
-def test_a_path_with_nothing_proposed_resolves_to_nothing(chaos: Chaos, alice: PersonKey) -> None:
+def test_a_path_with_nothing_uploaded_resolves_to_nothing(chaos: Chaos, alice: PersonKey) -> None:
     chaos.people = Builds(TrustScores(alice.person_id, {}))
     resolution = resolved(chaos.resolver(), "recipes/", chaos.signed_in(alice))
 
@@ -286,35 +286,35 @@ def test_a_path_with_nothing_proposed_resolves_to_nothing(chaos: Chaos, alice: P
                 "target": "chaos:/",
                 "hash": DropTarget.of("chaos:/").hex,
                 "rest": "recipes/index.html",
-                "proposals": [],
+                "uploads": [],
                 "missing": [],
             },
             {
                 "target": "chaos:/recipes",
                 "hash": DropTarget.of("chaos:/recipes").hex,
                 "rest": "index.html",
-                "proposals": [],
+                "uploads": [],
                 "missing": [],
             },
         ],
     }
 
 
-def test_an_unsigned_proposal_whose_bundle_holds_the_rest_is_chosen(
+def test_an_unsigned_upload_whose_bundle_holds_the_rest_is_chosen(
     chaos: Chaos, resolver: ChaosResolver
 ) -> None:
     recipes = bundle("recipes")
-    drop = chaos.propose(ROOT, recipes, ago_seconds=60)
+    drop = chaos.upload(ROOT, recipes, ago_seconds=60)
     chaos.hold(recipes, "recipes/cake.html")
 
     resolution = resolved(resolver, "recipes/cake.html")
 
     assert resolution.chosen is not None
     assert (resolution.chosen.level.number, resolution.chosen.drop) == (0, drop)
-    assert resolution.chosen.proposal == ChaosProposal(recipes, NOW - timedelta(minutes=1))
+    assert resolution.chosen.upload == ChaosUpload(recipes, NOW - timedelta(minutes=1))
     assert resolution.chosen.entry == FILE
     assert resolution.value()["chosen"] == {"level": 0, "drop": str(drop)}
-    assert resolution.value()["levels"][0]["proposals"] == [
+    assert resolution.value()["levels"][0]["uploads"] == [
         {
             "drop": str(drop),
             "matching_bits": matching_bits(DropTarget.of(ROOT).hex, drop.hash),
@@ -334,7 +334,7 @@ def test_a_bundle_holding_a_directory_or_a_link_at_the_rest_holds_it(
     chaos: Chaos, resolver: ChaosResolver
 ) -> None:
     recipes = bundle("recipes")
-    drop = chaos.propose("chaos:/recipes", recipes)
+    drop = chaos.upload("chaos:/recipes", recipes)
     chaos.answer(recipes, "", PathOutcome.REDIRECT)
 
     resolution = resolved(resolver, "recipes")
@@ -344,14 +344,14 @@ def test_a_bundle_holding_a_directory_or_a_link_at_the_rest_holds_it(
     assert resolution.chosen.entry == KnownOutcome(PathOutcome.REDIRECT, "/", "it is so")
 
 
-def test_a_trusted_proposal_deeper_down_is_chosen_over_one_of_no_trust_specified_above_it(
+def test_a_trusted_upload_deeper_down_is_chosen_over_one_of_no_trust_specified_above_it(
     chaos: Chaos, alice: PersonKey, resolver: ChaosResolver, bob: PersonKey
 ) -> None:
     chaos.people = Builds(trusting(alice.person_id, (bob.person_id,)))
     resolver = chaos.resolver()
     anyone, trusted = bundle("anyone's"), bundle("Bob's")
-    unsigned = chaos.propose(ROOT, anyone)
-    signed = chaos.propose("chaos:/recipes", trusted, by=bob, ago_seconds=3600)
+    unsigned = chaos.upload(ROOT, anyone)
+    signed = chaos.upload("chaos:/recipes", trusted, by=bob, ago_seconds=3600)
     chaos.hold(anyone, "recipes/index.html")
     chaos.hold(trusted, "index.html")
 
@@ -364,14 +364,14 @@ def test_a_trusted_proposal_deeper_down_is_chosen_over_one_of_no_trust_specified
     assert found(resolution, signed).value()["step"] == 1
 
 
-def test_of_trusted_proposals_the_shallowest_level_holding_the_rest_is_chosen(
+def test_of_trusted_uploads_the_shallowest_level_holding_the_rest_is_chosen(
     chaos: Chaos, alice: PersonKey, bob: PersonKey, carol: PersonKey
 ) -> None:
     chaos.people = Builds(trusting(alice.person_id, (bob.person_id, carol.person_id)))
     resolver = chaos.resolver()
     shallow, deep = bundle("Bob's"), bundle("Carol's")
-    above = chaos.propose(ROOT, shallow, by=bob, ago_seconds=3600)
-    below = chaos.propose("chaos:/recipes", deep, by=carol)
+    above = chaos.upload(ROOT, shallow, by=bob, ago_seconds=3600)
+    below = chaos.upload("chaos:/recipes", deep, by=carol)
     chaos.hold(shallow, "recipes/index.html")
     chaos.hold(deep, "index.html")
 
@@ -385,9 +385,9 @@ def test_at_a_level_the_newest_holding_the_rest_is_chosen_and_those_older_not_lo
     chaos: Chaos, resolver: ChaosResolver
 ) -> None:
     newest, middle, oldest = bundle("newest"), bundle("middle"), bundle("oldest")
-    lacking = chaos.propose(ROOT, newest, ago_seconds=1)
-    holding = chaos.propose(ROOT, middle, ago_seconds=2)
-    older = chaos.propose(ROOT, oldest, ago_seconds=3)
+    lacking = chaos.upload(ROOT, newest, ago_seconds=1)
+    holding = chaos.upload(ROOT, middle, ago_seconds=2)
+    older = chaos.upload(ROOT, oldest, ago_seconds=3)
     chaos.answer(newest, "cake.html", PathOutcome.NOT_FOUND)
     chaos.hold(middle, "cake.html")
     chaos.hold(oldest, "cake.html")
@@ -401,11 +401,11 @@ def test_at_a_level_the_newest_holding_the_rest_is_chosen_and_those_older_not_lo
     ] == [(False, PassedOver.LACKS_PATH), (True, None), (None, None)]
 
 
-def test_of_two_proposals_of_one_moment_the_one_whose_drop_sorts_first_is_the_newer(
+def test_of_two_uploads_of_one_moment_the_one_whose_drop_sorts_first_is_the_newer(
     chaos: Chaos, resolver: ChaosResolver
 ) -> None:
     first, second = bundle("first"), bundle("second")
-    drops = [chaos.propose(ROOT, first), chaos.propose(ROOT, second)]
+    drops = [chaos.upload(ROOT, first), chaos.upload(ROOT, second)]
     chaos.hold(first, "cake.html")
     chaos.hold(second, "cake.html")
 
@@ -414,14 +414,14 @@ def test_of_two_proposals_of_one_moment_the_one_whose_drop_sorts_first_is_the_ne
     assert chosen_drop(resolution) == min(drops, key=str)
 
 
-def test_a_proposers_newest_proposal_supersedes_their_older_ones_though_it_lacks_the_rest(
+def test_an_uploaders_newest_upload_supersedes_their_older_ones_though_it_lacks_the_rest(
     chaos: Chaos, alice: PersonKey, bob: PersonKey
 ) -> None:
     chaos.people = Builds(trusting(alice.person_id, (bob.person_id,)))
     resolver = chaos.resolver()
     taken_away, kept = bundle("Bob's new"), bundle("Bob's old")
-    newer = chaos.propose(ROOT, taken_away, by=bob, ago_seconds=1)
-    older = chaos.propose(ROOT, kept, by=bob, ago_seconds=2)
+    newer = chaos.upload(ROOT, taken_away, by=bob, ago_seconds=1)
+    older = chaos.upload(ROOT, kept, by=bob, ago_seconds=2)
     chaos.answer(taken_away, "cake.html", PathOutcome.NOT_FOUND)
     chaos.hold(kept, "cake.html")
 
@@ -433,16 +433,16 @@ def test_a_proposers_newest_proposal_supersedes_their_older_ones_though_it_lacks
     assert found(resolution, older).holds is None
 
 
-def test_one_proposers_proposals_do_not_supersede_anothers_nor_unsigned_ones_each_other(
+def test_one_uploaders_uploads_do_not_supersede_anothers_nor_unsigned_ones_each_other(
     chaos: Chaos, alice: PersonKey, bob: PersonKey, carol: PersonKey
 ) -> None:
     chaos.people = Builds(trusting(alice.person_id, (bob.person_id, carol.person_id)))
     resolver = chaos.resolver()
     drops = [
-        chaos.propose(ROOT, bundle("Bob's"), by=bob, ago_seconds=1),
-        chaos.propose(ROOT, bundle("Carol's"), by=carol, ago_seconds=2),
-        chaos.propose(ROOT, bundle("one"), ago_seconds=3),
-        chaos.propose(ROOT, bundle("another"), ago_seconds=4),
+        chaos.upload(ROOT, bundle("Bob's"), by=bob, ago_seconds=1),
+        chaos.upload(ROOT, bundle("Carol's"), by=carol, ago_seconds=2),
+        chaos.upload(ROOT, bundle("one"), ago_seconds=3),
+        chaos.upload(ROOT, bundle("another"), ago_seconds=4),
     ]
 
     for name in ("Bob's", "Carol's", "one", "another"):
@@ -453,14 +453,14 @@ def test_one_proposers_proposals_do_not_supersede_anothers_nor_unsigned_ones_eac
     assert [found(resolution, drop).passed_over for drop in drops] == [PassedOver.LACKS_PATH] * 4
 
 
-def test_a_newer_proposal_dated_too_far_ahead_supersedes_nothing(
+def test_a_newer_upload_dated_too_far_ahead_supersedes_nothing(
     chaos: Chaos, alice: PersonKey, bob: PersonKey
 ) -> None:
     chaos.people = Builds(trusting(alice.person_id, (bob.person_id,)))
     resolver = chaos.resolver()
     ahead, kept = bundle("ahead"), bundle("kept")
-    future = chaos.propose(ROOT, ahead, by=bob, ago_seconds=-301)
-    older = chaos.propose(ROOT, kept, by=bob, ago_seconds=60)
+    future = chaos.upload(ROOT, ahead, by=bob, ago_seconds=-301)
+    older = chaos.upload(ROOT, kept, by=bob, ago_seconds=60)
     chaos.hold(ahead, "cake.html")
     chaos.hold(kept, "cake.html")
 
@@ -471,11 +471,11 @@ def test_a_newer_proposal_dated_too_far_ahead_supersedes_nothing(
 
 
 @mark.parametrize("ahead_seconds, chosen", [(299, True), (300, True), (301, False)])
-def test_a_proposal_may_be_dated_no_further_ahead_than_the_node_allows(
+def test_an_upload_may_be_dated_no_further_ahead_than_the_node_allows(
     chaos: Chaos, resolver: ChaosResolver, ahead_seconds: int, chosen: bool
 ) -> None:
     ahead = bundle("ahead")
-    drop = chaos.propose(ROOT, ahead, ago_seconds=-ahead_seconds)
+    drop = chaos.upload(ROOT, ahead, ago_seconds=-ahead_seconds)
     chaos.hold(ahead, "cake.html")
 
     resolution = resolved(resolver, "cake.html")
@@ -484,22 +484,22 @@ def test_a_proposal_may_be_dated_no_further_ahead_than_the_node_allows(
     assert found(resolution, drop).passed_over == (None if chosen else PassedOver.FUTURE)
 
 
-def test_how_far_ahead_a_proposal_may_be_dated_is_a_setting(chaos: Chaos) -> None:
+def test_how_far_ahead_an_upload_may_be_dated_is_a_setting(chaos: Chaos) -> None:
     resolver = chaos.resolver(ChaosConfig(future_seconds=0))
     ahead = bundle("ahead")
-    drop = chaos.propose(ROOT, ahead, ago_seconds=-1)
+    drop = chaos.upload(ROOT, ahead, ago_seconds=-1)
     chaos.hold(ahead, "cake.html")
 
     assert found(resolved(resolver, "cake.html"), drop).passed_over == PassedOver.FUTURE
 
 
-def test_a_distrusted_proposers_proposal_is_never_chosen(
+def test_a_distrusted_uploaders_upload_is_never_chosen(
     chaos: Chaos, alice: PersonKey, carol: PersonKey
 ) -> None:
     chaos.people = Builds(trusting(alice.person_id, distrusted=(carol.person_id,)))
     resolver = chaos.resolver()
     carols = bundle("Carol's")
-    drop = chaos.propose(ROOT, carols, by=carol)
+    drop = chaos.upload(ROOT, carols, by=carol)
     chaos.hold(carols, "cake.html")
 
     resolution = resolved(resolver, "cake.html", chaos.signed_in(alice))
@@ -509,16 +509,16 @@ def test_a_distrusted_proposers_proposal_is_never_chosen(
     assert (found(resolution, drop).score, found(resolution, drop).step) == (-1, 1)
 
 
-def test_a_proposer_scoring_zero_or_not_reached_is_of_no_trust_specified(
+def test_an_uploader_scoring_zero_or_not_reached_is_of_no_trust_specified(
     chaos: Chaos, alice: PersonKey, bob: PersonKey, carol: PersonKey
 ) -> None:
     chaos.people = Builds(TrustScores(alice.person_id, {bob.person_id: TrustScore(0, 1)}))
     resolver = chaos.resolver()
     bobs, carols, anyones = bundle("Bob's"), bundle("Carol's"), bundle("anyone's")
     drops = [
-        chaos.propose(ROOT, bobs, by=bob, ago_seconds=3),
-        chaos.propose(ROOT, carols, by=carol, ago_seconds=2),
-        chaos.propose(ROOT, anyones, ago_seconds=1),
+        chaos.upload(ROOT, bobs, by=bob, ago_seconds=3),
+        chaos.upload(ROOT, carols, by=carol, ago_seconds=2),
+        chaos.upload(ROOT, anyones, ago_seconds=1),
     ]
 
     for each in (bobs, carols, anyones):
@@ -535,11 +535,11 @@ def test_a_proposer_scoring_zero_or_not_reached_is_of_no_trust_specified(
     ]
 
 
-def test_a_proposal_whose_bundle_is_shunned_is_passed_over(
+def test_an_upload_whose_bundle_is_shunned_is_passed_over(
     chaos: Chaos, resolver: ChaosResolver
 ) -> None:
     shunned = bundle("shunned")
-    drop = chaos.propose(ROOT, shunned)
+    drop = chaos.upload(ROOT, shunned)
     chaos.hold(shunned, "cake.html")
     write_atomically(chaos.storage.shunned_list_path, ShunnedContent.body([shunned.content_id]))
 
@@ -549,14 +549,14 @@ def test_a_proposal_whose_bundle_is_shunned_is_passed_over(
     assert found(resolution, drop).passed_over == PassedOver.SHUNNED
 
 
-def test_what_is_neither_a_signed_nor_an_unsigned_proposal_is_reported_passed_over(
+def test_what_is_neither_a_signed_nor_an_unsigned_upload_is_reported_passed_over(
     chaos: Chaos, resolver: ChaosResolver
 ) -> None:
     drop = chaos.place(ROOT, b"not JSON")
 
     candidate = found(resolved(resolver, "cake.html"), drop)
 
-    assert candidate.passed_over == PassedOver.NOT_A_PROPOSAL
+    assert candidate.passed_over == PassedOver.NOT_AN_UPLOAD
     assert candidate.value()["bundle"] is None
     assert candidate.value()["created"] is None
 
@@ -566,8 +566,8 @@ def test_a_bundle_that_cannot_be_read_or_is_protected_is_unusable(
     chaos: Chaos, resolver: ChaosResolver, outcome: PathOutcome
 ) -> None:
     unusable, usable = bundle("unusable"), bundle("usable")
-    newer = chaos.propose(ROOT, unusable, ago_seconds=1)
-    older = chaos.propose(ROOT, usable, ago_seconds=2)
+    newer = chaos.upload(ROOT, unusable, ago_seconds=1)
+    older = chaos.upload(ROOT, usable, ago_seconds=2)
     chaos.answer(unusable, "cake.html", outcome)
     chaos.hold(usable, "cake.html")
 
@@ -584,8 +584,8 @@ def test_a_bundle_not_resolved_in_time_is_pending_and_asked_for_and_the_next_loo
     chaos: Chaos, resolver: ChaosResolver
 ) -> None:
     unresolved, resolved_one = bundle("unresolved"), bundle("resolved")
-    newer = chaos.propose(ROOT, unresolved, ago_seconds=1)
-    older = chaos.propose(ROOT, resolved_one, ago_seconds=2)
+    newer = chaos.upload(ROOT, unresolved, ago_seconds=1)
+    older = chaos.upload(ROOT, resolved_one, ago_seconds=2)
     chaos.hold(resolved_one, "cake.html")
     started = monotonic()
 
@@ -603,7 +603,7 @@ def test_a_bundle_resolved_within_the_wait_is_looked_at(
     chaos: Chaos, resolver: ChaosResolver
 ) -> None:
     late = bundle("late")
-    drop = chaos.propose(ROOT, late)
+    drop = chaos.upload(ROOT, late)
     timer = Timer(WAIT_SECONDS / 3, chaos.answer, (late, "cake.html", PathOutcome.REDIRECT))
     timer.start()
 
@@ -624,8 +624,8 @@ def test_each_person_signed_in_is_served_by_their_own_scores(
     )
     resolver = chaos.resolver()
     bobs, carols = bundle("Bob's"), bundle("Carol's")
-    by_bob = chaos.propose(ROOT, bobs, by=bob, ago_seconds=2)
-    by_carol = chaos.propose(ROOT, carols, by=carol, ago_seconds=1)
+    by_bob = chaos.upload(ROOT, bobs, by=bob, ago_seconds=2)
+    by_carol = chaos.upload(ROOT, carols, by=carol, ago_seconds=1)
     chaos.hold(bobs, "cake.html")
     chaos.hold(carols, "cake.html")
 
@@ -635,12 +635,12 @@ def test_each_person_signed_in_is_served_by_their_own_scores(
     assert (chosen_drop(for_alice), chosen_drop(for_bob)) == (by_bob, by_carol)
 
 
-def test_the_person_signed_in_trusts_their_own_proposals(chaos: Chaos, alice: PersonKey) -> None:
+def test_the_person_signed_in_trusts_their_own_uploads(chaos: Chaos, alice: PersonKey) -> None:
     chaos.people = Builds(trusting(alice.person_id))
     resolver = chaos.resolver()
     alices, anyones = bundle("Alice's"), bundle("anyone's")
-    mine = chaos.propose(ROOT, alices, by=alice, ago_seconds=60)
-    chaos.propose(ROOT, anyones)
+    mine = chaos.upload(ROOT, alices, by=alice, ago_seconds=60)
+    chaos.upload(ROOT, anyones)
     chaos.hold(alices, "cake.html")
     chaos.hold(anyones, "cake.html")
 
@@ -657,7 +657,7 @@ def test_scores_being_built_choose_as_they_stand_and_are_said_to_be_incomplete(
     chaos.people = Builds(trusting(alice.person_id, (bob.person_id,), needed=(bob.person_id,)))
     resolver = chaos.resolver()
     bobs = bundle("Bob's")
-    drop = chaos.propose(ROOT, bobs, by=bob)
+    drop = chaos.upload(ROOT, bobs, by=bob)
     chaos.hold(bobs, "cake.html")
 
     resolution = resolved(resolver, "cake.html", chaos.signed_in(alice))
@@ -667,13 +667,13 @@ def test_scores_being_built_choose_as_they_stand_and_are_said_to_be_incomplete(
 
 
 @mark.parametrize("signed_in", [True, False])
-def test_with_no_scores_every_proposer_is_of_no_trust_specified_and_the_nodes_choose_for_none(
+def test_with_no_scores_every_uploader_is_of_no_trust_specified_and_the_nodes_choose_for_none(
     chaos: Chaos, resolver: ChaosResolver, alice: PersonKey, carol: PersonKey, signed_in: bool
 ) -> None:
     # Alice's scores are not being built, or no one is signed in, and no
     # other scores, the node's own among them, take their place.
     carols = bundle("Carol's")
-    drop = chaos.propose(ROOT, carols, by=carol)
+    drop = chaos.upload(ROOT, carols, by=carol)
     chaos.hold(carols, "cake.html")
 
     resolution = resolved(resolver, "cake.html", chaos.signed_in(alice) if signed_in else None)
@@ -686,7 +686,7 @@ def test_with_no_scores_every_proposer_is_of_no_trust_specified_and_the_nodes_ch
 def test_a_drop_found_and_not_held_is_asked_for_and_pending_once_the_wait_is_up(
     chaos: Chaos, resolver: ChaosResolver
 ) -> None:
-    drop = chaos.propose(ROOT, bundle("elsewhere"), stored=False)
+    drop = chaos.upload(ROOT, bundle("elsewhere"), stored=False)
     started = monotonic()
 
     resolution = resolved(resolver, "cake.html")
@@ -701,7 +701,7 @@ def test_a_drop_found_and_not_held_is_asked_for_and_pending_once_the_wait_is_up(
 def test_a_deadline_given_is_waited_until_and_no_longer(
     chaos: Chaos, resolver: ChaosResolver
 ) -> None:
-    drop = chaos.propose(ROOT, bundle("elsewhere"), stored=False)
+    drop = chaos.upload(ROOT, bundle("elsewhere"), stored=False)
     started = monotonic()
 
     resolution = resolver.resolve(
@@ -714,7 +714,7 @@ def test_a_deadline_given_is_waited_until_and_no_longer(
 
 def test_a_drop_arriving_within_the_wait_is_read(chaos: Chaos, resolver: ChaosResolver) -> None:
     late = bundle("late")
-    drop = chaos.propose(ROOT, late, stored=False)
+    drop = chaos.upload(ROOT, late, stored=False)
     chaos.hold(late, "cake.html")
     timer = Timer(WAIT_SECONDS / 3, chaos.truth.write, (drop, chaos.later))
     timer.start()
@@ -729,7 +729,7 @@ def test_a_drop_arriving_within_the_wait_is_read(chaos: Chaos, resolver: ChaosRe
     assert resolution.levels[0].missing == ()
 
 
-def test_a_trusted_proposers_key_not_held_is_waited_for_asked_for_and_pending(
+def test_a_trusted_uploaders_key_not_held_is_waited_for_asked_for_and_pending(
     chaos: Chaos,
     alice: PersonKey,
 ) -> None:
@@ -737,7 +737,7 @@ def test_a_trusted_proposers_key_not_held_is_waited_for_asked_for_and_pending(
     chaos.people = Builds(trusting(alice.person_id, (dave.person_id,)))
     resolver = chaos.resolver()
     daves = bundle("Dave's")
-    drop = chaos.propose(ROOT, daves, by=dave)
+    drop = chaos.upload(ROOT, daves, by=dave)
     chaos.hold(daves, "cake.html")
     started = monotonic()
 
@@ -760,9 +760,9 @@ def test_a_key_or_drop_that_cannot_change_the_choice_is_asked_for_but_not_waited
     )
     resolver = chaos.resolver()
     carols = bundle("Carol's")
-    chaos.propose(ROOT, bundle("Dave's"), by=dave)
-    elsewhere = chaos.propose("chaos:/cake.html", bundle("elsewhere"), stored=False)
-    chosen = chaos.propose(ROOT, carols, by=carol)
+    chaos.upload(ROOT, bundle("Dave's"), by=dave)
+    elsewhere = chaos.upload("chaos:/cake.html", bundle("elsewhere"), stored=False)
+    chosen = chaos.upload(ROOT, carols, by=carol)
     chaos.hold(carols, "cake.html")
     started = monotonic()
 
@@ -783,7 +783,7 @@ def test_what_a_levels_search_found_is_kept_for_the_search_seconds(
     late = bundle("late")
     chaos.hold(late, "cake.html")
     assert resolved(resolver, "cake.html").chosen is None
-    drop = chaos.propose(ROOT, late)
+    drop = chaos.upload(ROOT, late)
 
     chaos.ticks.now = 4.9
     kept = resolved(resolver, "cake.html")
@@ -798,7 +798,7 @@ def test_what_a_levels_search_found_is_kept_for_the_search_seconds(
 def test_no_more_levels_are_searched_than_the_node_allows(chaos: Chaos) -> None:
     resolver = chaos.resolver(ChaosConfig(max_levels=2))
     deep = bundle("deep")
-    chaos.propose("chaos:/a/b", deep)
+    chaos.upload("chaos:/a/b", deep)
     chaos.hold(deep, "c.html")
 
     resolution = resolved(resolver, "a/b/c.html")
@@ -812,7 +812,7 @@ def test_an_encrypted_bundle_is_looked_into_with_its_key(
 ) -> None:
     plain = bundle("encrypted")
     encrypted = PartPath(plain.content_id, bytes(range(32)))
-    drop = chaos.propose(ROOT, encrypted)
+    drop = chaos.upload(ROOT, encrypted)
     chaos.hold(encrypted, "cake.html")
     chaos.answer(plain, "cake.html", PathOutcome.NOT_FOUND)
 
@@ -826,7 +826,7 @@ def test_an_answer_for_a_bundle_that_is_no_entry_and_no_outcome_passing_it_over_
     chaos: Chaos, caplog: LogCaptureFixture
 ) -> None:
     resolver = chaos.resolver(paths=OddPaths)
-    drop = chaos.propose(ROOT, bundle("odd"))
+    drop = chaos.upload(ROOT, bundle("odd"))
 
     with caplog.at_level(ERROR, logger=RESOLVER_LOGGER):
         resolution = resolved(resolver, "cake.html")

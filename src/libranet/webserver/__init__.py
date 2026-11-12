@@ -24,7 +24,7 @@ the Karma heads they follow, and ask for its own (Phase 6 Step 130). A person
 signed in pays, and stakes, through the node, which signs for them (Phase 6
 Step 137). A peer of lower Karma than the others connected, that pushes nothing
 the node seeks, is closed (Phase 6 Step 142). What a path beneath ``/chaos``
-resolves to, for whom, and why, is read from the bundles proposed at the
+resolves to, for whom, and why, is read from the bundles uploaded at the
 drops of its levels, by the trust of whoever asks (Phase 7 Step 156), and
 served on the main port, or, to whoever is signed in, on the Chaos port, a
 port of its own (Phase 7 Step 157). The Chaos page, on the main port alone,

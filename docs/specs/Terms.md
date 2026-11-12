@@ -446,10 +446,10 @@ point.
 
 ### `/chaos`
 
-The reserved namespace of the Chaos endpoint, where anyone may propose a bundle
+The reserved namespace of the Chaos endpoint, where anyone may upload a bundle
 for any path, and each person is served what those they trust chose. A path has
 a level for the root and for each of its elements, each a drop, and a node
-chooses the newest trusted proposal at the shallowest level whose bundle holds
+chooses the newest trusted upload at the shallowest level whose bundle holds
 the rest of the path, or else the newest of no trust specified. It is only for
 someone signed in, who is served on the Chaos port, by their scores. On the main
 port, every path beneath `/chaos` is the Chaos page, the node's own page saying
@@ -457,9 +457,9 @@ what the path resolves to, and why, which a bare `?` on the Chaos port, and a
 page found there for no one, lead to.
 
 - **Sources:** [HTTP API §13.6](HttpApi.md#136-the-chaos-endpoint),
-  [Known Drops §3.18](KnownDrops.md#318-chaos-proposals),
+  [Known Drops §3.18](KnownDrops.md#318-chaos-uploads),
   [High-Level Design §3.3.1](HighLevelDesign.md#331-reserved-top-level-paths).
-- **See also:** [Chaos Port](#chaos-port), [Chaos Proposal](#chaos-proposal),
+- **See also:** [Chaos Port](#chaos-port), [Chaos Upload](#chaos-upload),
   [Reserved Names](#reserved-names), [Sandbox](#sandbox), [Score](#score).
 
 ### Chaos Port
@@ -475,15 +475,15 @@ meant for the node's own pages, and it is one origin for every Chaos site.
 - **See also:** [`/chaos`](#chaos), [`/config` Port](#config-port),
   [Main Port](#main-port), [Origin](#origin), [Session](#session).
 
-### Chaos Proposal
+### Chaos Upload
 
 A drop at a level of a Chaos path, `chaos:/{path}`, naming a bundle to serve
-there and when it was proposed, signed by its proposer or by no one. A
-proposer's newest proposal at a level replaces their older ones there, and one
+there and when it was uploaded, signed by its uploader or by no one. An
+uploader's newest upload at a level replaces their older ones there, and one
 dated too far ahead is passed over.
 
-- **Sources:** [HTTP API §13.6.2](HttpApi.md#1362-proposals),
-  [Known Drops §3.18](KnownDrops.md#318-chaos-proposals).
+- **Sources:** [HTTP API §13.6.2](HttpApi.md#1362-uploads),
+  [Known Drops §3.18](KnownDrops.md#318-chaos-uploads).
 - **See also:** [`/chaos`](#chaos), [Drop](#drop),
   [Signed Bundle](#signed-bundle), [Target String](#target-string).
 

@@ -1,26 +1,26 @@
-"""Resolving a Chaos path: which proposal serves it, for whom, and why (HttpApi §13.6).
+"""Resolving a Chaos path: which upload serves it, for whom, and why (HttpApi §13.6).
 
 A request for a path beneath ``/chaos`` is resolved by the trust scores of
 the person whose session it carries, as ``GET /data/trust`` reads them
 (:class:`ChaosScores`). Chaos is only for someone signed in, so the node's
-own scores choose for no one (Phase 7 Step 159). A proposer scoring above 0
-is trusted, and one below 0 distrusted. A proposal that is unsigned, or
-whose proposer scores 0 or is not reached, is of no trust specified (HttpApi
+own scores choose for no one (Phase 7 Step 159). An uploader scoring above 0
+is trusted, and one below 0 distrusted. An upload that is unsigned, or
+whose uploader scores 0 or is not reached, is of no trust specified (HttpApi
 §13.6.3).
 
 What each level's drop holds is found and read as
 :class:`~libranet.webserver.chaos_levels.ChaosLevels` reads it.
 
-A proposal is passed over, with the reason kept (:class:`PassedOver`), if it
+An upload is passed over, with the reason kept (:class:`PassedOver`), if it
 is not one, or does not check; if its bundle is shunned; if it is dated more
-than ``chaos.future_seconds`` ahead of the node's clock; if its proposer
-placed a newer one at the level; or if its proposer is distrusted. The
+than ``chaos.future_seconds`` ahead of the node's clock; if its uploader
+placed a newer one at the level; or if its uploader is distrusted. The
 others are taken in two passes: first the trusted ones at every level, from
 the root down, then those of no trust specified. At each level, those of the
 pass are taken newest first, and the first whose bundle holds the rest, as
 :meth:`BundlePaths.entry` answers, is chosen.
 
-What could change the choice and is not held, a drop or a proposer's key, is
+What could change the choice and is not held, a drop or an uploader's key, is
 asked for, as any miss is (HttpApi §5.2), and waited for within one deadline,
 ``network.app_wait_seconds``, within which the unbundler's answers are waited
 for too. What is still not known when it passes is pending, and named in the
@@ -40,7 +40,7 @@ from libranet.cas.prefix import matching_bits
 from libranet.config.models import ChaosConfig
 from libranet.identity.trust import TrustScores, TrustState
 from libranet.messaging.events import PathOutcome
-from libranet.protocol.chaos import ChaosLevel, ChaosPath, ChaosProposal, PassedOver
+from libranet.protocol.chaos import ChaosLevel, ChaosPath, ChaosUpload, PassedOver
 from libranet.webserver.app_outcomes import KnownOutcome
 from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.chaos_levels import ChaosLevels, DropRead
@@ -58,7 +58,7 @@ _OUTCOME_REASONS: Final = {
     PathOutcome.PROTECTED: PassedOver.UNUSABLE,
 }
 
-# The passes proposals are chosen in: the trusted, then those of no trust
+# The passes uploads are chosen in: the trusted, then those of no trust
 # specified (HttpApi §13.6.3).
 _PASSES: Final = (TrustState.TRUSTED, TrustState.UNKNOWN)
 
@@ -86,7 +86,7 @@ class ChaosScores:
         """The scores that resolve ``request``; ``None`` if none are being built for it.
 
         A request carrying no session has none, nor does one from a person
-        whose last session ended since it was looked up. Every proposer is
+        whose last session ended since it was looked up. Every uploader is
         then of no trust specified.
         """
         session = self.sessions.session(request)
@@ -113,14 +113,14 @@ class ChaosCandidate:
 
     def value(self) -> dict[str, Any]:
         """The JSON object the report gives this candidate as (HttpApi §13.6.7)."""
-        proposal = self.read.proposal
+        upload = self.read.upload
         return {
             "drop": str(self.drop),
             "matching_bits": self.matching_bits,
             "signer": None if self.read.signer is None else str(self.read.signer),
             "score": self.score,
             "step": self.step,
-            **({"bundle": None, "created": None} if proposal is None else proposal.value()),
+            **({"bundle": None, "created": None} if upload is None else upload.value()),
             "holds": self.holds,
             "passed_over": None if self.passed_over is None else str(self.passed_over),
         }
@@ -140,21 +140,21 @@ class LevelResolution:
             "target": self.level.target,
             "hash": self.level.drop.hex,
             "rest": self.level.rest,
-            "proposals": [candidate.value() for candidate in self.candidates],
+            "uploads": [candidate.value() for candidate in self.candidates],
             "missing": [str(content_id) for content_id in self.missing],
         }
 
 
 @dataclass(frozen=True)
 class ChaosChoice:
-    """The proposal chosen: at ``level``, from ``drop``, and its bundle's ``entry`` at the rest.
+    """The upload chosen: at ``level``, from ``drop``, and its bundle's ``entry`` at the rest.
 
     The entry is a file's, or the redirect to where the rest leads.
     """
 
     level: ChaosLevel
     drop: ContentId
-    proposal: ChaosProposal
+    upload: ChaosUpload
     entry: FileBundle | KnownOutcome
 
 
@@ -163,7 +163,7 @@ class ChaosResolution:
     """What ``path`` resolved to, and whether the scores that chose were ``complete``.
 
     ``levels`` are those searched, from the root down, and ``chosen`` the
-    proposal chosen, if any was.
+    upload chosen, if any was.
     """
 
     path: ChaosPath
@@ -188,8 +188,8 @@ class ChaosResolution:
 class _Resolving:
     """One request's resolution, as it goes: its ``scores``, and what it waits on, until when.
 
-    A proposal dated after ``latest`` is passed over. ``reads`` holds what is read of each
-    drop found, and ``checked`` why each proposal whose bundle was looked at
+    An upload dated after ``latest`` is passed over. ``reads`` holds what is read of each
+    drop found, and ``checked`` why each upload whose bundle was looked at
     was passed over, ``None`` for the one chosen.
     """
 
@@ -209,7 +209,7 @@ class _Resolving:
         return value["score"], value["step"]
 
     def trust(self, read: DropRead) -> TrustState:
-        """What the scores make of the proposer of ``read``: of unknown trust if unsigned."""
+        """What the scores make of the uploader of ``read``: of unknown trust if unsigned."""
         return (
             TrustState.UNKNOWN if read.signer is None else TrustState.of(self.score(read.signer)[0])
         )
@@ -217,8 +217,8 @@ class _Resolving:
     def waits_on(self, read: DropRead, trust: TrustState) -> bool:
         """Whether the pass of ``trust`` waits for what ``read`` lacks, as it could change it.
 
-        A drop not held could hold anyone's proposal, so the first pass waits
-        for it, and a proposer's key is waited for by the pass of their trust.
+        A drop not held could hold anyone's upload, so the first pass waits
+        for it, and an uploader's key is waited for by the pass of their trust.
         """
         if read.missing is None:
             return False
@@ -226,7 +226,7 @@ class _Resolving:
         return trust == TrustState.TRUSTED if read.signer is None else self.trust(read) == trust
 
     def holds(self, drop: ContentId) -> bool | None:
-        """Whether the bundle ``drop`` proposes holds the rest; ``None`` if that was not found."""
+        """Whether the bundle ``drop``'s upload names holds the rest; ``None`` if not found."""
         if drop not in self.checked:
             return None
 
@@ -263,22 +263,22 @@ class _Resolving:
 
     def candidates(
         self, found: Iterable[ContentId], trust: TrustState, shuns: Callable[[ContentId], bool]
-    ) -> list[tuple[ContentId, ChaosProposal]]:
-        """The proposals ``found`` of ``trust`` not passed over, newest first, by drop."""
+    ) -> list[tuple[ContentId, ChaosUpload]]:
+        """The uploads ``found`` of ``trust`` not passed over, newest first, by drop."""
         return [
-            (drop, proposal)
+            (drop, upload)
             for drop, reason in sorted(
                 self.standing(found, shuns).items(), key=lambda item: self._newest_first(item[0])
             )
             if reason is None
-            and (proposal := self.reads[drop].proposal) is not None
+            and (upload := self.reads[drop].upload) is not None
             and self.trust(self.reads[drop]) == trust
         ]
 
     def _newest_first(self, drop: ContentId) -> tuple[float, str]:
         """Where ``drop`` goes among a level's: the latest created first, then the id first."""
-        proposal = self.reads[drop].proposal
-        created = 0.0 if proposal is None else proposal.created.timestamp()
+        upload = self.reads[drop].upload
+        created = 0.0 if upload is None else upload.created.timestamp()
         return -created, str(drop)
 
 
@@ -286,7 +286,7 @@ class ChaosResolver:
     """Resolves Chaos paths, by the scores ``scores`` says, as ``settings`` limit it.
 
     What each level holds is as ``levels`` reads it, and its bundles' entries
-    as ``paths`` reads them, waiting as it waits. Proposals are dated by
+    as ``paths`` reads them, waiting as it waits. Uploads are dated by
     ``wall_clock``. Any number of request threads may resolve at once.
     """
 
@@ -350,19 +350,19 @@ class ChaosResolver:
     def _chosen(
         self, found: dict[ChaosLevel, tuple[ContentId, ...]], resolving: _Resolving
     ) -> ChaosChoice | None:
-        """The proposal chosen among those ``found`` at each level, in two passes; if any is."""
+        """The upload chosen among those ``found`` at each level, in two passes; if any is."""
         shuns = self._paths.parts.shuns
 
         for trust in _PASSES:
             for level, drops in found.items():
                 self._waited(drops, trust, resolving)
 
-                for drop, proposal in resolving.candidates(drops, trust, shuns):
-                    entry = self._entry(proposal, level.rest, resolving.deadline)
+                for drop, upload in resolving.candidates(drops, trust, shuns):
+                    entry = self._entry(upload, level.rest, resolving.deadline)
                     resolving.checked[drop] = entry if isinstance(entry, PassedOver) else None
 
                     if not isinstance(entry, PassedOver):
-                        return ChaosChoice(level, drop, proposal, entry)
+                        return ChaosChoice(level, drop, upload, entry)
 
         return None
 
@@ -372,7 +372,7 @@ class ChaosResolver:
         """Wait, until the deadline, for what ``drops`` need that would change a pass of ``trust``.
 
         That is, in the first pass, each drop not held, and the key of each
-        trusted proposer, and in the second, the key of each proposer of no
+        trusted uploader, and in the second, the key of each uploader of no
         trust specified.
         """
         while True:
@@ -388,12 +388,12 @@ class ChaosResolver:
                     resolving.wait.ask(read.missing)
 
     def _entry(
-        self, proposal: ChaosProposal, rest: str, deadline: float
+        self, upload: ChaosUpload, rest: str, deadline: float
     ) -> FileBundle | KnownOutcome | PassedOver:
-        """The entry at ``rest`` in the bundle ``proposal`` names; or why it is passed over."""
+        """The entry at ``rest`` in the bundle ``upload`` names; or why it is passed over."""
         # Looked at as whatever it is, so that an answer of a kind this does
         # not know is logged, rather than taken for another.
-        found: object = self._paths.entry(proposal.bundle, rest, deadline)
+        found: object = self._paths.entry(upload.bundle, rest, deadline)
 
         if found is None:
             return PassedOver.PENDING
@@ -408,10 +408,10 @@ class ChaosResolver:
             reason = _OUTCOME_REASONS.get(found.outcome)
 
             if reason is not None:
-                # Only at debug, as anyone may propose any bundle.
+                # Only at debug, as anyone may upload any bundle.
                 _LOGGER.debug(
                     "Passing over %s at %r, as it is %s: %s",
-                    proposal.bundle.content_id,
+                    upload.bundle.content_id,
                     rest,
                     found.outcome,
                     found.detail,
@@ -420,7 +420,7 @@ class ChaosResolver:
 
         _LOGGER.error(
             "Passing over %s at %r, as %r is neither an entry nor an outcome passing it over",
-            proposal.bundle.content_id,
+            upload.bundle.content_id,
             rest,
             found,
         )

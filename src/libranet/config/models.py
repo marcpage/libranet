@@ -1003,17 +1003,17 @@ class ChaosConfig(_Section):
     """Resolving a path beneath ``/chaos`` (HttpApi §13.6, Phase 7 Step 156)."""
 
     # How many of a path's levels are searched, the shallowest first, so
-    # that a deeper path is served only from a bundle proposed at one of
+    # that a deeper path is served only from a bundle uploaded at one of
     # them (HttpApi §13.6.1).
     max_levels: int = Field(default=16, ge=1)
 
-    # How far ahead of the node's clock a proposal may be dated, so that one
+    # How far ahead of the node's clock an upload may be dated, so that one
     # dated far ahead is not the newest for ever (HttpApi §13.6.2).
     future_seconds: float = Field(default=300.0, ge=0)
 
     # How long what a level's search found is kept, so that a page's images
     # and scripts, each resolved on its own, do not each search every level
-    # again (HttpApi §13.6.3). A proposal placed meanwhile is found once it
+    # again (HttpApi §13.6.3). An upload placed meanwhile is found once it
     # is up.
     search_seconds: float = Field(default=5.0, ge=0)
 

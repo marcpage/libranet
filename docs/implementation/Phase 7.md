@@ -8,7 +8,7 @@ Version 0.1 • November 2026
 
 This document plans the Chaos endpoint: pages that anyone may put at any
 path beneath `/chaos`, and that each person sees as the people they trust
-choose. Anyone may propose a bundle for a path, by placing a drop named
+choose. Anyone may upload a bundle to a path, by placing a drop named
 for it. A node serving a path beneath `/chaos` looks at the drop for each
 part of the path, from the root down, and serves the newest bundle holding
 the rest of the path, preferring one signed by someone the viewer trusts.
@@ -16,7 +16,7 @@ Chaos is only for someone signed in, and every request their browser
 makes for a Chaos path follows their trust: the page, its images and
 scripts, and each link followed from it. A path for which no bundle is
 found is answered with a page saying what was looked at. The same page,
-reached by ending any address with `?`, shows every bundle proposed for
+reached by ending any address with `?`, shows every bundle uploaded to
 the path, lets the viewer trust or distrust whoever signed each, and lets
 them download a bundle as a zip or upload one of their own.
 
@@ -75,9 +75,9 @@ The milestone's description, as it is:
 Five steps, each built on the one before it:
 
 - **The specification.** HTTP API gains a section for the Chaos
-  endpoint, and Known Drops the drop a proposal is placed at. Step 155.
+  endpoint, and Known Drops the drop an upload is placed at. Step 155.
 - **Resolving a path.** Which bundle a path beneath `/chaos` names, for
-  whom, and why each other proposal was passed over. Step 156.
+  whom, and why each other upload was passed over. Step 156.
 - **Serving `/chaos`.** For whoever is signed in, on a port of the node's
   own, where every request their browser makes carries their session, and
   so follows their trust. For anyone else, on the main port, in a sandbox.
@@ -93,7 +93,7 @@ Five steps, each built on the one before it:
 
 A path beneath `/chaos/` has a **level** for the root and for each of its
 elements in turn. Each level is a drop, named `chaos:/` and the level's
-elements. A bundle proposed at a level is mounted there, and must hold the
+elements. A bundle uploaded at a level is mounted there, and must hold the
 **rest** of the path, what is left after the level's elements:
 
 | Level | Drop | Rest, for `/chaos/a/b/c.html` |
@@ -112,15 +112,15 @@ flowchart TD
     port -->|main| page["200, the Chaos page"]
     port -->|Chaos| session{"Carries a session?"}
     session -->|no| signin["302 to the Chaos page for a page opened,<br/>401 for anything else"]
-    session -->|yes| trusted["Pass 1, by the person's scores: proposals whose signer is trusted,<br/>at chaos:/, chaos:/a, chaos:/a/b, chaos:/a/b/c.html"]
+    session -->|yes| trusted["Pass 1, by the person's scores: uploads whose signer is trusted,<br/>at chaos:/, chaos:/a, chaos:/a/b, chaos:/a/b/c.html"]
     trusted -->|"at the shallowest level holding one,<br/>the newest holding the rest"| serve["Serve it"]
-    trusted -->|none| unknown["Pass 2: proposals of no trust specified,<br/>at the same levels"]
+    trusted -->|none| unknown["Pass 2: uploads of no trust specified,<br/>at the same levels"]
     unknown -->|"as in pass 1"| serve
     unknown -->|none| missing["404; a page opened is sent<br/>to the Chaos page"]
 ```
 
 Each request is resolved so, a page's images and scripts as much as the
-page. Distrusted signers' proposals are never chosen. The order of the two
+page. Distrusted signers' uploads are never chosen. The order of the two
 passes is this plan's, not the milestone's (Step 156, and §6). This is as
 Step 159 leaves it. Before it, the main port served Chaos sites, in a
 sandbox and by the node's own scores, to whoever was not signed in, and
@@ -166,7 +166,7 @@ their trust, for every request their browser makes for one.
 What is written:
 
 - **HTTP API §13.6, The Chaos Endpoint** (new), with every rule Steps 156
-  to 159 build: a path's levels and their drops; what a proposal is, signed
+  to 159 build: a path's levels and their drops; what an upload is, signed
   or not; whose scores choose, and how; the Chaos port, and what each port
   serves, with what headers; the `404` and the page a bare `?` shows; and
   the report that page reads, `GET /data/chaos/{path}`. A sequence diagram,
@@ -201,16 +201,16 @@ Calls made in writing it, not yet reviewed:
 
 - **The open items of §6 are written in as this plan's calls**, so that a
   ruling against one changes the specification, not code.
-- **A proposal's other members are ignored**, as a trust list's are (Trust
+- **An upload's other members are ignored**, as a trust list's are (Trust
   Network §3.1), so that a later version can add one.
-- **What is passed over before a proposer's newest is found.** A proposal
+- **What is passed over before an uploader's newest is found.** An upload
   that is not one, or whose signature, bundle, or date passes it over, does
-  not supersede the proposer's older ones. One whose bundle lacks the
-  rest, is unusable, or is still pending does, so that a proposer can take
+  not supersede the uploader's older ones. One whose bundle lacks the
+  rest, is unusable, or is still pending does, so that an uploader can take
   a path away.
 - **The report's `null`s.** `signer`, `score`, and `step` are `null` for an
-  unsigned proposal, `bundle` and `created` for what is not a proposal,
-  `holds` where it was not asked, and `passed_over` for the proposal chosen
+  unsigned upload, `bundle` and `created` for what is not an upload,
+  `holds` where it was not asked, and `passed_over` for the upload chosen
   and every one after it, which is not looked at.
 - **Every cookie of the session's name is tried** (HttpApi §11.4), as the
   node already does, so that a Chaos site's script cannot hide the session
@@ -238,7 +238,7 @@ Steps 99 and 113.
 
 Settled in the milestone:
 
-- **Anyone may propose a bundle** for a path.
+- **Anyone may upload a bundle** for a path.
 - **Each level is a drop**, from the root, adding one element at a time,
   to the last.
 - **The newest of those signed by trusted people that hold the rest** of
@@ -260,30 +260,30 @@ What is built:
   first i elements, joined by `/`. Elements are compared byte for byte, as
   bundle paths are (BundleSpecification §1): never case-folded or
   normalized.
-- **A proposal** (`ChaosProposal`, with `from_value` and `value`, in
+- **An upload** (`ChaosUpload`, with `from_value` and `value`, in
   `protocol/chaos.py`):
 
   ```json
   {"bundle": "sha256/…", "created": "2026-11-07T15:04:05Z"}
   ```
 
-  `bundle` names the bundle proposed, a directory bundle or a file bundle,
+  `bundle` names the bundle uploaded, a directory bundle or a file bundle,
   in either form a read into a bundle takes (HttpApi §12.1), and `created`
-  when it was proposed, in UTC, to the second. A **signed proposal** is a
-  signed bundle (BundleSpecification §5) whose `contents` is a proposal,
-  placed with `POST /data/signed`. An **unsigned proposal** is the proposal
+  when it was uploaded, in UTC, to the second. A **signed upload** is a
+  signed bundle (BundleSpecification §5) whose `contents` is an upload,
+  placed with `POST /data/signed`. An **unsigned upload** is the upload
   itself, placed with `POST /data/drop`. Either is placed at its level's
   drop, matching at least as many bits as a search returns
   (`storage.search_min_bits`).
 - **Reading a level** (`ChaosResolver`, `webserver/chaos_resolver.py`).
   The drop is searched as signing in searches one
-  (`SearchHandler.fresh_results`), so that a proposal placed since the last
+  (`SearchHandler.fresh_results`), so that an upload placed since the last
   search is found at once, and the node's peers are asked for it too
   (Phase 4 Step 93). Each result held is read with its nonce stripped, as a
-  signed proposal, checked under its signer's key as `GET /data/signed`
-  checks one, or else as an unsigned proposal. Each proposal is passed
+  signed upload, checked under its signer's key as `GET /data/signed`
+  checks one, or else as an unsigned upload. Each upload is passed
   over, with the reason kept, if:
-  - it is neither (`not-a-proposal`), or its signature does not check
+  - it is neither (`not-an-upload`), or its signature does not check
     (`bad-signature`);
   - its bundle is shunned (`shunned`);
   - it is dated more than `chaos.future_seconds` ahead of the node's clock
@@ -294,19 +294,19 @@ What is built:
 
   What is found and not held, a drop or a signer's key, is asked for, as
   any miss is (HttpApi §5.2), and named as missing. What a drop holds never
-  changes, so a proposal read and checked is kept by its drop's id, for the
+  changes, so an upload read and checked is kept by its drop's id, for the
   1,000 drops read last, and not read again. What a level's search found
   is kept for `chaos.search_seconds`, so that a page's images and scripts,
   each resolved, do not each search every level again.
 - **Whose scores choose.** Those of the person signed in, if the request
   carries their session (HttpApi §11.4), as `GET /data/trust` reads them,
   and otherwise the node's own (Phase 5 Step 113). A signer scoring above 0
-  is **trusted**, and one below 0 **distrusted**. A proposal that is
+  is **trusted**, and one below 0 **distrusted**. An upload that is
   unsigned, or whose signer scores 0 or is not reached, is of **no trust
   specified**.
-- **Choosing.** Two passes: first the trusted proposals at every level,
+- **Choosing.** Two passes: first the trusted uploads at every level,
   from the root down, then those of no trust specified, the same way. At
-  each level, its proposals of the pass are taken newest first, and the
+  each level, its uploads of the pass are taken newest first, and the
   first whose bundle holds the rest is chosen. Whether it does is as
   `BundlePaths.entry` answers (Phase 3 Steps 65 and 71): a file, or a
   directory or symbolic link to be redirected to, holds it, a path not
@@ -318,53 +318,53 @@ What is built:
   known when it passes is left out (`pending`), named in the resolution,
   and asked for, so that the page's Reload finds it.
 - **The resolution** (`ChaosResolution`): each level with its drop, its
-  target hash, and its rest; each proposal with its drop's id, how many
+  target hash, and its rest; each upload with its drop's id, how many
   bits it shares with the target hash, its signer and their score, its
-  bundle, when it was proposed, whether it holds the rest, and why it was
+  bundle, when it was uploaded, whether it holds the rest, and why it was
   passed over; what is missing; whose scores chose, and whether they are
-  complete; and the proposal chosen, if any. Its `value()` is the report of
+  complete; and the upload chosen, if any. Its `value()` is the report of
   Step 158.
 - **Settings**, in a new `chaos` section of the configuration and of
   `examples/libranet.yaml`: `max_levels`, the levels searched, the
   shallowest first, 16 by default, so that a deeper path is served only
   from a bundle at one of those levels; `future_seconds`, how far ahead of
-  the clock a proposal may be dated, 300 by default; and `search_seconds`,
+  the clock an upload may be dated, 300 by default; and `search_seconds`,
   how long what a level's search found is kept, 5 by default.
 
 My calls, not yet reviewed:
 
 - **Two passes, which departs from the milestone.** Read literally, the
-  milestone takes a level's proposals of no trust specified before the
+  milestone takes a level's uploads of no trust specified before the
   next level's trusted ones. Then anyone could take over a trusted site from
-  a shallower drop: an unsigned proposal at `chaos:/` whose bundle holds
+  a shallower drop: an unsigned upload at `chaos:/` whose bundle holds
   `recipes/index.html` would beat one at `chaos:/recipes` signed by someone
   the viewer trusts. Two passes put trust first, at whatever level.
-- **No trust specified** is an unsigned proposal, or one whose signer
+- **No trust specified** is an unsigned upload, or one whose signer
   scores 0 or is not reached.
 - **The node's own scores** for whoever is not signed in. That is every
   client not on the node's own machine, since only a local client signs in.
   The node's operator then decides what a stranger sees. Without them, a
-  stranger would see only proposals of no trust specified, and none would
+  stranger would see only uploads of no trust specified, and none would
   be passed over.
-- **Newest by `created`**, which the proposal says: a drop has no date of
-  its own. Without the limit on dating ahead, a proposal dated 9999 would
+- **Newest by `created`**, which the upload says: a drop has no date of
+  its own. Without the limit on dating ahead, an upload dated 9999 would
   win for ever.
-- **A signer's newest proposal at a level replaces their older ones**,
+- **A signer's newest upload at a level replaces their older ones**,
   before whether it holds the rest is asked. Otherwise no one could take a
-  path away: an older proposal still holding it would win.
-- **A proposal names a bundle**, rather than being one. A drop must fit
-  in one object, and one bundle can then be proposed at many paths.
+  path away: an older upload still holding it would win.
+- **An upload names a bundle**, rather than being one. A drop must fit
+  in one object, and one bundle can then be uploaded at many paths.
 - **What a level's search found is kept for 5 seconds**, so that a page of
-  many images searches each level once, not once for each image. A
-  proposal placed meanwhile is found up to 5 seconds later.
+  many images searches each level once, not once for each image. An
+  upload placed meanwhile is found up to 5 seconds later.
 - **`chaos:/` with a slash**, so that a level's drop reads as its path.
 - **The limits are settings**, as other policy numbers only this node uses
   are, with the specification's values as defaults.
 
-**Testable in isolation:** tests of paths and proposals, and of the
+**Testable in isolation:** tests of paths and uploads, and of the
 resolver with a fake store, search, scores, and bundle entries: each pass,
-each level, each reason a proposal is passed over, a signer's newer
-proposal lacking the path, the node's scores for a request with no session,
+each level, each reason an upload is passed over, a signer's newer
+upload lacking the path, the node's scores for a request with no session,
 what a level's search found kept and then searched again, and what is still
 pending when the deadline passes.
 
@@ -375,8 +375,8 @@ and 1,414 of tests. That is over twice the estimate, and over 500, so it is
 split where it reads in three, each a commit of its own. Most of the lines
 are docstrings, comments, and blank lines.
 
-- **Set 1, paths, proposals, and settings** (253 lines, and 201 of tests):
-  `ChaosPath`, `ChaosLevel`, `ChaosProposal`, and the words of the report,
+- **Set 1, paths, uploads, and settings** (253 lines, and 201 of tests):
+  `ChaosPath`, `ChaosLevel`, `ChaosUpload`, and the words of the report,
   `PassedOver` and `ChoosingScores`, in `protocol/chaos.py`, and
   `ChaosConfig`, the `chaos` section, with `examples/libranet.yaml`.
 - **Set 2, reading a level** (285 lines, and 386 of tests): `ChaosLevels`
@@ -395,43 +395,43 @@ settings with `network.chaos_port`, as that step says.
 Calls made in building it, not yet reviewed:
 
 - **Only what could change the choice is waited for.** The first pass
-  waits for each drop not held, which could hold anyone's proposal, and for
-  the key of each trusted proposer; the second, for the key of each
-  proposer of no trust specified. A distrusted proposer's key, and what a
+  waits for each drop not held, which could hold anyone's upload, and for
+  the key of each trusted uploader; the second, for the key of each
+  uploader of no trust specified. A distrusted uploader's key, and what a
   level below the one chosen lacks, are asked for and named as missing,
   but not waited for, so that a page's images are not each held up for
   `network.app_wait_seconds` by what cannot change what they are served.
-- **A signed proposal whose proposer's key is not held is pending**, and
-  so is every other proposal of theirs, since none is checked. It shows its
-  proposer and their score in the report, unchecked.
+- **A signed upload whose uploader's key is not held is pending**, and
+  so is every other upload of theirs, since none is checked. It shows its
+  uploader and their score in the report, unchecked.
 - **A bad signature names the signer it claims** where the signature fails
   under their key, so that the page can show whom it claims to be from.
   One whose `hash` is not of its `contents` names none. So Step 158's page
   should offer no Trust or Distrust beside a bad signature.
-- **A proposer's key the node has shunned is a bad signature**, since it is
+- **An uploader's key the node has shunned is a bad signature**, since it is
   never fetched, rather than pending on every request.
 - **A signed bundle hashed under an algorithm this node lacks, or whose
   signer is named under one**, is a bad signature, as its signer names no
   key that can sign for it here (HttpApi §13.6.2), logged at warning.
-- **A proposal naming a bundle under an algorithm or a cipher this node
-  lacks is not a proposal**, logged at warning, rather than unusable, so
-  it does not supersede its proposer's older ones.
+- **An upload naming a bundle under an algorithm or a cipher this node
+  lacks is not an upload**, logged at warning, rather than unusable, so
+  it does not supersede its uploader's older ones.
 - **A drop is read as UTF-8 alone**, though `json.loads` reads UTF-16 and
   UTF-32 too, since JSON text is UTF-8 (RFC 8259 §8.1).
-- **What is held for a drop that is not what its id names** is not a
-  proposal, logged at warning.
+- **What is held for a drop that is not what its id names** is not an
+  upload, logged at warning.
 - **The reasons a drop is passed over for what it holds**, and for being
   superseded or distrusted, are reported for every drop at every level,
-  even below the proposal chosen. Only the reasons found by looking into a
+  even below the upload chosen. Only the reasons found by looking into a
   bundle, `lacks-path`, `unusable`, and a bundle's `pending`, are left
-  `null`, with `holds`, for the proposals after the one chosen. That is how
+  `null`, with `holds`, for the uploads after the one chosen. That is how
   this reads HttpApi §13.6.7's "any that came after it": those taken in
   the passes after it, not those passed over before the passes.
 - **A session whose person has no scores**, as when their last session
   ends while a request is resolved, is resolved by the node's scores, and
   reported as `node`.
 - **No scores at all**, as before the node's build starts, make every
-  proposer of no trust specified, and the scores not complete.
+  uploader of no trust specified, and the scores not complete.
 - **A `%2F` ending a path names a directory**, as a `/` does, and a path
   beneath `/chaos/` beginning with `/` names nothing, its first element
   being empty, rather than naming the root.
@@ -440,7 +440,7 @@ Calls made in building it, not yet reviewed:
   without asking the unbundler again.
 - **`ChaosResolution.value()` leaves out `served_at`**, which only the
   handler knows, as it knows the ports and the `Host`; Step 158 adds it.
-- **A proposal's moment is read as a Karma member's is**
+- **An upload's moment is read as a Karma member's is**
   (`protocol/karma_members.py`), strictly as `2026-11-07T15:04:05Z`.
 
 ---
@@ -584,9 +584,9 @@ Calls made in building it, not yet reviewed:
   content type its last element's name gives, if its bundle gives none.
 - **A file the bundle chosen cannot serve from its parts is `500`**, as an
   application's is, not the `400` of a read into a bundle, since the path
-  names no bundle. It is logged at debug, as anyone may propose any bundle,
+  names no bundle. It is logged at debug, as anyone may upload any bundle,
   or at warning for an algorithm or a cipher the node lacks. The next
-  proposal is not tried instead.
+  upload is not tried instead.
 - **A redirect names `/chaos` in lower case**, and each element above the
   level percent-encoded.
 - **`/chaos` is routed only given `node`, `peers`, and the Chaos port** to
@@ -604,7 +604,7 @@ Settled in the milestone:
 
 - **A `404` shows all the stats, with a reload button.**
 - **A `?` at the end of any address shows the same page**, with the
-  bundles proposed, their dates, and their signers.
+  bundles uploaded, their dates, and their signers.
 - **Trust, distrust, or clear the rating** of a signer, where clearing
   takes the person's own entry away and leaves the trust network to score
   them.
@@ -639,7 +639,7 @@ What is built:
    "chosen": {"level": 1, "drop": "sha256/…"},
    "levels": [
      {"target": "chaos:/", "hash": "<target hash>", "rest": "a/b/c.html",
-      "proposals": [
+      "uploads": [
         {"drop": "sha256/…", "matching_bits": 26, "signer": "sha256/…",
          "score": 1, "step": 1, "bundle": "sha256/…",
          "created": "2026-11-07T15:04:05Z", "holds": false,
@@ -660,9 +660,9 @@ What is built:
   §2.5 already relies on them to keep out an untrusted application.
 - **What the page shows**: the path, whose scores chose and whether they
   are complete, and the bundle chosen, with a link to the path where it is
-  served. For each level: its drop, and each proposal, with its signer,
+  served. For each level: its drop, and each upload, with its signer,
   their mark (⚪🟢🟡🔴, as Phase 5 Step 106 shows them) and name, when it
-  was proposed, its bundle, whether it holds the rest, and why it was
+  was uploaded, its bundle, whether it holds the rest, and why it was
   passed over, with a link reading into its bundle at the rest (HttpApi
   §12.1); then what is still missing. **Reload** asks for the path again,
   so that what has been found since is served. While anything is pending,
@@ -687,7 +687,7 @@ My calls, not yet reviewed:
 - **Any `Referer` beneath `/chaos`** on the main port is the page's, rather
   than only one ending in `?`. `RefererPage` drops the `?` as `urlsplit`
   does, and browsers may not send it.
-- **A proposal not chosen is shown by reading into its bundle**, which is
+- **An upload not chosen is shown by reading into its bundle**, which is
   sandboxed with no scripts, rather than at a path of the Chaos port.
 - **A signer's name** is the one they give themselves (Phase 4 Step 80),
   read as the user directory reads it, with their id beside it.
@@ -706,9 +706,9 @@ and the page, 822 lines. The bare `?` is `Request.has_query`, with
 `bare_query()`. `ChaosPage` and `ChaosReport` are in
 `webserver/chaos_handler.py`. The page is `applications/chaos/index.html`,
 shipped as `chaos` in `SHIPPED_APPLICATIONS`. It was checked live in
-headless Chrome on a throwaway node, with an unsigned proposal chosen:
+headless Chrome on a throwaway node, with an unsigned upload chosen:
 Chrome sends the bare `?` as the address has it. It has not been checked in
-Safari, nor signed in, nor with a signed proposal, so the Trust, Distrust,
+Safari, nor signed in, nor with a signed upload, so the Trust, Distrust,
 and Clear buttons have not been seen live.
 
 Calls made in building it, not yet reviewed:
@@ -740,7 +740,7 @@ Calls made in building it, not yet reviewed:
   `/data/chaos/...` is never read as a hash algorithm, and a method other
   than `GET` is `405`.
 - **The mark is by the scores the report says chose**, from its `score`:
-  ⚪ only where none is given. An unsigned proposal has no mark, and is
+  ⚪ only where none is given. An unsigned upload has no mark, and is
   shown as unsigned.
 - **The page reads the report again every 2 seconds while anything is
   missing, or pending, or the scores are not complete**, and again after
@@ -750,14 +750,14 @@ Calls made in building it, not yet reviewed:
   and shows this page again if not.
 - **A signer's name is their handle, or else their first and last names**,
   as mail names a person, linked to their page in the user directory.
-- **A proposal's bundle is linked at the rest of its level**, the root with
+- **An upload's bundle is linked at the rest of its level**, the root with
   its `/`.
 - **Trust, Distrust, and Clear disable the choice the person's own list
   holds**, as the user directory does, only when the person's scores chose.
 
 ---
 
-## Step 159 — Uploading and Downloading a Zip
+## Step 159 — Uploading and Downloading a Zip ✅
 
 **Kind:** a change to what Steps 157 and 158 built, new node code, and the
 page. **Issue:** #659 (§7.5).
@@ -772,8 +772,8 @@ Ruled on 2026-11-11:
 - **Upload, not propose.** A person uploads a bundle to a path. Whether
   anyone is served it depends on what others uploaded and on each viewer's
   trust, which is why the endpoint is called Chaos. This step's page says
-  upload. The specification, the code, and the report keep "proposal"
-  until they are renamed, everywhere, as a change of its own (§6).
+  upload. The specification, the code, and the report kept "proposal"
+  until #682 renamed it, everywhere, as a change of its own (§6).
 - **Chaos is only for someone signed in.** Without a person's trust to
   choose by, it makes no sense.
 - **The main port's `/chaos` is only the Chaos page**, for every path
@@ -837,7 +837,7 @@ building it, not yet reviewed:
 - **The Chaos port checks for a session before the path**, so a request
   without one for a path naming nothing is `401`, or sent to the Chaos
   page.
-- **A person whose scores are not being built** has every proposer of no
+- **A person whose scores are not being built** has every uploader of no
   trust specified, rather than being answered as one without a session:
   it happens only when their last session has just ended.
 - **The Chaos port's `401` carries no `WWW-Authenticate`**, as the other
@@ -945,8 +945,8 @@ Calls made in building it, not yet reviewed:
   goes on without asking if it still cannot tell.
 - **After an upload, the zip chosen is cleared and the base URL kept**, so
   that another can go to the same place.
-- **The node's answers in Python still say "proposed"**, as in a `404`'s
-  detail, until the rename (§6).
+- **The node's answers in Python still said "proposed"**, as in a `404`'s
+  detail, until #682 renamed them (§6).
 
 My calls, not yet reviewed:
 
@@ -1006,6 +1006,7 @@ where it went. The issue of each step was made from the text in §7.
 | #657 | Serving `/chaos` (§7.3) | 157 |
 | #658 | The Chaos page (§7.4) | 158 |
 | #659 | Uploading and downloading a zip (§7.5) | 159 |
+| #682 | Renaming Chaos "proposals" to "uploads" everywhere | None: a rename after Step 159 (§6) |
 
 ## 5. Suggested Build Order
 
@@ -1013,7 +1014,7 @@ where it went. The issue of each step was made from the text in §7.
 | --- | --- | --- |
 | 1 | 155 | Settles the rules of §6 before any code depends on them. |
 | 2 | 156 | Every other step serves or shows what it resolves. |
-| 3 | 157 | The endpoint itself; it is usable once this is built, by proposals placed from a script. |
+| 3 | 157 | The endpoint itself; it is usable once this is built, by uploads placed from a script. |
 | 4 | 158 | Shows what Step 157 chose, and why, and lets the viewer change it through whom they trust. |
 | 5 | 159 | Lets a person upload from a browser, and is needed least. |
 
@@ -1038,10 +1039,11 @@ Ruled on 2026-11-11, while planning Step 159 again:
   same path there (Step 159).
 - **Upload, not propose.** A person uploads a bundle to a path, and whether
   anyone sees it depends on what others uploaded and on each viewer's
-  trust: that is the chaos. "Propose", "proposal", and "proposer" are to
-  be renamed everywhere, in the specifications, the guides, this plan, the
-  code, the tests, the report's members, and the page, as a change of its
-  own, after Step 159.
+  trust: that is the chaos. "Propose", "proposal", and "proposer" were
+  renamed "upload", "upload", and "uploader" everywhere, in the
+  specifications, the guides, this plan, the code, the tests, the report's
+  members, and the page, by #682, a change of its own after Step 159. Only
+  the milestone's description, quoted in §2.1, still says propose.
 - **Download and upload** (Step 159): a `.zip` both ways, and nothing else
   to start with. The node makes a directory bundle of a zip, and serves a
   bundle as one.
@@ -1050,14 +1052,14 @@ Still to be ruled on, each this plan's call. Step 155 writes each into the
 specification as it stands, to be changed there if ruled otherwise:
 
 - **Trust before depth** (Step 156): two passes, every level's trusted
-  proposals before any of no trust specified, rather than the milestone's
-  order, which lets a shallower proposal of no trust specified override a
+  uploads before any of no trust specified, rather than the milestone's
+  order, which lets a shallower upload of no trust specified override a
   trusted one.
 - **No trust specified** (Step 156): unsigned, or signed by someone
   scoring 0 or not reached.
-- **Newest** (Step 156): by the proposal's `created`, those dated more than
+- **Newest** (Step 156): by the upload's `created`, those dated more than
   5 minutes ahead passed over, and each signer's newest alone counting.
-- **What a drop holds** (Step 156): a proposal naming a bundle, rather
+- **What a drop holds** (Step 156): an upload naming a bundle, rather
   than the bundle.
 - **A port of its own** (Step 157), the way this plan follows the ruling
   above. What it costs: a third port; one origin shared by every Chaos
@@ -1068,8 +1070,8 @@ specification as it stands, to be changed there if ruled otherwise:
 
 Not asked by the milestone, and not planned:
 
-- **Shunning an unsigned proposal.** A signer can be distrusted, but an
-  unsigned proposal cannot, so the only way to keep one off a node is to
+- **Shunning an unsigned upload.** A signer can be distrusted, but an
+  unsigned upload cannot, so the only way to keep one off a node is to
   shun its drop (HttpApi §5.5). The Chaos page could offer that.
 - **Whether a browser sends a bare `?`.** Chrome does (Step 158). Safari
   is still to be checked. Since Step 159, only the Chaos port looks for it.
@@ -1093,7 +1095,7 @@ Write the Chaos endpoint into the specifications before any code depends
 on it, once the open items of the plan's §6 are ruled on:
 
 - HTTP API §13.6 (new), The Chaos Endpoint: a path's levels and their
-  drops (`chaos:/`, `chaos:/a`, ...), what a proposal is, signed or not,
+  drops (`chaos:/`, `chaos:/a`, ...), what an upload is, signed or not,
   whose scores choose and how, the Chaos port and what each port serves,
   the 404, the page a bare `?` shows, and the report,
   `GET /data/chaos/{path}`.
@@ -1120,28 +1122,28 @@ nothing still calls `/chaos` reserved for the future.
 Plan: docs/implementation/Phase 7.md, Step 156.
 
 Work out which bundle a path beneath `/chaos` names, for whom, and why
-every other proposal was passed over:
+every other upload was passed over:
 
-- `ChaosPath` and `ChaosProposal` (`protocol/chaos.py`): a path's levels,
-  their drops and rests, and a proposal,
+- `ChaosPath` and `ChaosUpload` (`protocol/chaos.py`): a path's levels,
+  their drops and rests, and an upload,
   `{"bundle": "sha256/…", "created": "…"}`, signed or not.
 - `ChaosResolver` (`webserver/chaos_resolver.py`): search each level's
   drop and the node's peers, check each signature, and pass over what is
-  not a proposal, is shunned, dated ahead, superseded by its signer's
+  not an upload, is shunned, dated ahead, superseded by its signer's
   newer one, or distrusted.
 - Choose by the scores of the person whose session the request carries,
-  whatever it asks for, or else the node's own: trusted proposals at every
+  whatever it asks for, or else the node's own: trusted uploads at every
   level from the root down, then those of no trust specified; at a level,
   the newest whose bundle holds the rest.
 - Wait within `network.app_wait_seconds` for what could change the
   choice, and name what is still pending.
-- `ChaosResolution`, with every level, proposal, and reason, as the report
+- `ChaosResolution`, with every level, upload, and reason, as the report
   will give it.
 - Settings `chaos.max_levels` (16), `chaos.future_seconds` (300), and
   `chaos.search_seconds` (5).
 
 Done when the resolver's tests cover each pass, each level, and each
-reason a proposal is passed over.
+reason an upload is passed over.
 ```
 
 ### 7.3 Step 157
@@ -1202,12 +1204,12 @@ through whom they trust:
   served for whoever asks, for the node's own pages, `no-store`.
 - A `Referer` beneath `/chaos` on the main port is the Chaos page's, a
   trusted application's.
-- The page shows every level, proposal, signer (mark and name), date,
+- The page shows every level, upload, signer (mark and name), date,
   whether it holds the rest, why it was passed over, and the one chosen,
   with Reload, and Trust, Distrust, and Clear beside each signer for a
   client signed in on the node's machine.
 
-Done when the `404` and the `?` page show every proposal of a path with
+Done when the `404` and the `?` page show every upload of a path with
 its reason, Trust, Distrust, and Clear change what is chosen, and Chrome
 and Safari both send the bare `?`.
 ```

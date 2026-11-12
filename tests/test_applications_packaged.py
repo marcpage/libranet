@@ -1577,12 +1577,12 @@ def test_the_chaos_page_calls_only_endpoints_the_node_serves(chaos_page: str) ->
     assert "encodeURIComponent(target)" in chaos_page
     assert fullmatch(SIGNED_PATTERN, f"/data/signed/{some_id}")
     assert fullmatch(TRUST_PATTERN, f"{TRUST_PATH}/{some_id}")
-    # Reading into a proposal's bundle at the rest, the root with its /.
+    # Reading into an upload's bundle at the rest, the root with its /.
     assert fullmatch(BUNDLE_PATTERN, f"/data/{some_id}/b/c.html")
     assert fullmatch(BUNDLE_PATTERN, f"/data/{some_id}/")
 
 
-def test_the_chaos_page_says_why_each_proposal_was_passed_over(chaos_page: str) -> None:
+def test_the_chaos_page_says_why_each_upload_was_passed_over(chaos_page: str) -> None:
     [said] = findall(r"const PASSED_OVER = \{(.*?)\n\};", chaos_page, DOTALL)
     # Each reason the report gives (HttpApi 13.6.7), quoted or not.
     named = set(findall(r'^  "?([a-z-]+)"?:', said, MULTILINE))

@@ -7,7 +7,7 @@ request bodies the backup module acts on, the bundles local
 clients ask the web server to make, the drops pages ask it to make, signed,
 encrypted, or neither, the identities and sign-ins local clients ask for,
 the changes to a trust list they ask for, the paths beneath ``/chaos`` and
-the bundles proposed for them, the addresses an operator asks
+the bundles uploaded to them, the addresses an operator asks
 the node to connect to, the head of the Karma chain the node follows, its
 generations, every holder's balance, the node's payments queued, and the
 transactions it carries, as the Karma module writes them, the amounts,
@@ -47,7 +47,7 @@ from libranet.protocol.chaos import (
     INDEX_FILE,
     ChaosLevel,
     ChaosPath,
-    ChaosProposal,
+    ChaosUpload,
     PassedOver,
 )
 from libranet.protocol.client_origin import is_local_client, parsed_address
@@ -207,7 +207,7 @@ __all__ = [
     "CarriedTransaction",
     "ChaosLevel",
     "ChaosPath",
-    "ChaosProposal",
+    "ChaosUpload",
     "ConnectingRequest",
     "CopySource",
     "DialRequest",

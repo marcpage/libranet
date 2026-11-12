@@ -496,18 +496,18 @@ karma:
   stake_percent: 10.0
 
 chaos:
-  # How many of a path beneath /chaos's levels are searched for proposals,
+  # How many of a path beneath /chaos's levels are searched for uploads,
   # the shallowest first: the root's, and one for each element of the path
-  # (HTTP API §13.6.1). A deeper path is served only from a bundle proposed
+  # (HTTP API §13.6.1). A deeper path is served only from a bundle uploaded
   # at one of them.
   max_levels: 16
-  # How far ahead of the node's clock, in seconds, a proposal may be dated
+  # How far ahead of the node's clock, in seconds, an upload may be dated
   # and still be chosen, so that one dated far ahead is not the newest for
   # ever.
   future_seconds: 300.0
   # How long, in seconds, what a level's search found is kept, so that a
   # page's images and scripts, each resolved on its own, do not each search
-  # every level again. A proposal placed meanwhile is found once it is up.
+  # every level again. An upload placed meanwhile is found once it is up.
   search_seconds: 5.0
 
 local:

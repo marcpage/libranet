@@ -19,7 +19,7 @@ from libranet.config.models import ChaosConfig, StorageConfig
 from libranet.identity.people import NewIdentity, PersonKey
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
-from libranet.protocol.chaos import ChaosLevel, ChaosPath, ChaosProposal, PassedOver
+from libranet.protocol.chaos import ChaosLevel, ChaosPath, ChaosUpload, PassedOver
 from libranet.protocol.search import LocalSearch, SearchCache
 from libranet.webserver.chaos_levels import ChaosLevels, DropRead
 from libranet.webserver.file_stream import PartReader
@@ -30,7 +30,7 @@ MINIMUM_BITS = 16
 NOW = datetime(2026, 11, 7, 15, 4, 5, tzinfo=UTC)
 ROOT = ChaosPath.parse("cake.html").level(0)
 BUNDLE = PartPath(ContentId.for_data(b"a directory bundle", "sha256"))
-PROPOSAL = ChaosProposal(BUNDLE, NOW)
+UPLOAD = ChaosUpload(BUNDLE, NOW)
 SHUNNED = PartPath(ContentId.for_data(b"a shunned bundle", "sha256"))
 LEVELS_LOGGER = "libranet.webserver.chaos_levels"
 
@@ -131,13 +131,13 @@ def place(truth: CasStore, data: bytes, level: ChaosLevel = ROOT) -> ContentId:
     return content_id
 
 
-def signed(signer: PersonKey, proposal: ChaosProposal = PROPOSAL) -> bytes:
-    """``proposal`` signed by ``signer``, as a signed proposal is placed."""
-    return signer.signed(dumps(proposal.value())).encoded()
+def signed(signer: PersonKey, upload: ChaosUpload = UPLOAD) -> bytes:
+    """``upload`` signed by ``signer``, as a signed upload is placed."""
+    return signer.signed(dumps(upload.value())).encoded()
 
 
-def unsigned(proposal: ChaosProposal = PROPOSAL) -> bytes:
-    return dumps(proposal.value()).encode("utf-8")
+def unsigned(upload: ChaosUpload = UPLOAD) -> bytes:
+    return dumps(upload.value()).encode("utf-8")
 
 
 def test_what_a_levels_drop_holds_is_found_and_the_peers_asked_for_it(
@@ -185,24 +185,24 @@ def test_how_long_a_search_is_kept_is_a_setting(
     assert levels.found(ROOT) == (drop,)
 
 
-def test_an_unsigned_proposal_is_read_as_it_is(levels: ChaosLevels, truth: CasStore) -> None:
+def test_an_unsigned_upload_is_read_as_it_is(levels: ChaosLevels, truth: CasStore) -> None:
     drop = place(truth, unsigned())
 
-    assert levels.read(drop) == DropRead(PROPOSAL)
+    assert levels.read(drop) == DropRead(UPLOAD)
 
 
-def test_a_signed_proposal_is_read_checked_under_its_signers_key(
+def test_a_signed_upload_is_read_checked_under_its_signers_key(
     levels: ChaosLevels, truth: CasStore, bob: PersonKey
 ) -> None:
     drop = place(truth, signed(bob))
 
-    assert levels.read(drop) == DropRead(PROPOSAL, bob.person_id)
+    assert levels.read(drop) == DropRead(UPLOAD, bob.person_id)
 
 
-def test_a_proposals_other_members_are_ignored(levels: ChaosLevels, truth: CasStore) -> None:
-    drop = place(truth, dumps({**PROPOSAL.value(), "title": "Cakes"}).encode("utf-8"))
+def test_an_uploads_other_members_are_ignored(levels: ChaosLevels, truth: CasStore) -> None:
+    drop = place(truth, dumps({**UPLOAD.value(), "title": "Cakes"}).encode("utf-8"))
 
-    assert levels.read(drop) == DropRead(PROPOSAL)
+    assert levels.read(drop) == DropRead(UPLOAD)
 
 
 @mark.parametrize(
@@ -210,49 +210,49 @@ def test_a_proposals_other_members_are_ignored(levels: ChaosLevels, truth: CasSt
     [
         b"not JSON",
         b"\xff\xfe{}",
-        dumps(PROPOSAL.value()).encode("utf-16"),
+        dumps(UPLOAD.value()).encode("utf-16"),
         b'{"bundle": 7, "created": "2026-11-07T15:04:05Z"}',
         b'["a", "list"]',
         b'{"signature": "a signed bundle missing its fields"}',
     ],
 )
-def test_what_is_neither_a_signed_nor_an_unsigned_proposal_is_not_one(
+def test_what_is_neither_a_signed_nor_an_unsigned_upload_is_not_one(
     levels: ChaosLevels, truth: CasStore, data: bytes
 ) -> None:
     drop = place(truth, data)
 
-    assert levels.read(drop) == DropRead(passed_over=PassedOver.NOT_A_PROPOSAL)
+    assert levels.read(drop) == DropRead(passed_over=PassedOver.NOT_AN_UPLOAD)
 
 
-def test_a_signed_bundle_holding_no_proposal_is_not_one(
+def test_a_signed_bundle_holding_no_upload_is_not_one(
     levels: ChaosLevels, truth: CasStore, bob: PersonKey
 ) -> None:
     drop = place(truth, bob.signed(dumps({"version": 1})).encoded())
 
-    assert levels.read(drop) == DropRead(passed_over=PassedOver.NOT_A_PROPOSAL)
+    assert levels.read(drop) == DropRead(passed_over=PassedOver.NOT_AN_UPLOAD)
 
 
-def test_a_signed_proposal_not_signed_with_its_signers_key_is_a_bad_signature(
+def test_a_signed_upload_not_signed_with_its_signers_key_is_a_bad_signature(
     levels: ChaosLevels, truth: CasStore, bob: PersonKey, carol: PersonKey
 ) -> None:
-    text = dumps(PROPOSAL.value())
+    text = dumps(UPLOAD.value())
     forged = SignedBundle(carol.person_id, text, bob.signed(text).signature)
     drop = place(truth, forged.encoded())
 
-    assert levels.read(drop) == DropRead(PROPOSAL, carol.person_id, PassedOver.BAD_SIGNATURE)
+    assert levels.read(drop) == DropRead(UPLOAD, carol.person_id, PassedOver.BAD_SIGNATURE)
 
 
-def test_a_signed_proposal_whose_hash_is_not_of_its_contents_is_a_bad_signature(
+def test_a_signed_upload_whose_hash_is_not_of_its_contents_is_a_bad_signature(
     levels: ChaosLevels, truth: CasStore, bob: PersonKey
 ) -> None:
     value = SignedBundle.decoded(signed(bob)).value()
-    value["contents"] = dumps(ChaosProposal(BUNDLE, NOW - timedelta(days=1)).value())
+    value["contents"] = dumps(ChaosUpload(BUNDLE, NOW - timedelta(days=1)).value())
     drop = place(truth, dumps(value).encode("utf-8"))
 
     assert levels.read(drop) == DropRead(passed_over=PassedOver.BAD_SIGNATURE)
 
 
-def test_a_proposal_signed_in_a_way_this_node_cannot_check_is_a_bad_signature_and_logged(
+def test_an_upload_signed_in_a_way_this_node_cannot_check_is_a_bad_signature_and_logged(
     levels: ChaosLevels, truth: CasStore, bob: PersonKey, caplog: LogCaptureFixture
 ) -> None:
     value = {**SignedBundle.decoded(signed(bob)).value(), "algorithm": "sha3-256"}
@@ -265,16 +265,16 @@ def test_a_proposal_signed_in_a_way_this_node_cannot_check_is_a_bad_signature_an
     assert f"Passing over {drop}, as it cannot be checked" in caplog.text
 
 
-def test_a_proposal_whose_signers_key_is_shunned_is_a_bad_signature(
+def test_an_upload_whose_signers_key_is_shunned_is_a_bad_signature(
     storage: StorageConfig, levels: ChaosLevels, truth: CasStore, bob: PersonKey
 ) -> None:
     drop = place(truth, signed(bob))
     write_atomically(storage.shunned_list_path, ShunnedContent.body([bob.person_id]))
 
-    assert levels.read(drop) == DropRead(PROPOSAL, bob.person_id, PassedOver.BAD_SIGNATURE)
+    assert levels.read(drop) == DropRead(UPLOAD, bob.person_id, PassedOver.BAD_SIGNATURE)
 
 
-def test_a_proposal_whose_signers_key_held_is_not_it_is_a_bad_signature_and_logged(
+def test_an_upload_whose_signers_key_held_is_not_it_is_a_bad_signature_and_logged(
     levels: ChaosLevels, truth: CasStore, bob: PersonKey, caplog: LogCaptureFixture
 ) -> None:
     drop = place(truth, signed(bob))
@@ -283,11 +283,11 @@ def test_a_proposal_whose_signers_key_held_is_not_it_is_a_bad_signature_and_logg
     with caplog.at_level(WARNING, logger=LEVELS_LOGGER):
         read = levels.read(drop)
 
-    assert read == DropRead(PROPOSAL, bob.person_id, PassedOver.BAD_SIGNATURE)
+    assert read == DropRead(UPLOAD, bob.person_id, PassedOver.BAD_SIGNATURE)
     assert f"Passing over {drop}, as it does not check" in caplog.text
 
 
-def test_a_drop_held_that_is_not_what_its_id_names_is_no_proposal_and_logged(
+def test_a_drop_held_that_is_not_what_its_id_names_is_no_upload_and_logged(
     levels: ChaosLevels, truth: CasStore, caplog: LogCaptureFixture
 ) -> None:
     drop = place(truth, unsigned())
@@ -296,11 +296,11 @@ def test_a_drop_held_that_is_not_what_its_id_names_is_no_proposal_and_logged(
     with caplog.at_level(WARNING, logger=LEVELS_LOGGER):
         read = levels.read(drop)
 
-    assert read == DropRead(passed_over=PassedOver.NOT_A_PROPOSAL)
+    assert read == DropRead(passed_over=PassedOver.NOT_AN_UPLOAD)
     assert f"Passing over {drop}, as what is held for it is not it" in caplog.text
 
 
-def test_a_proposal_naming_a_bundle_under_an_algorithm_this_node_lacks_is_logged(
+def test_an_upload_naming_a_bundle_under_an_algorithm_this_node_lacks_is_logged(
     levels: ChaosLevels, truth: CasStore, caplog: LogCaptureFixture
 ) -> None:
     text = dumps({"bundle": "md5/" + "0" * 32, "created": "2026-11-07T15:04:05Z"})
@@ -309,7 +309,7 @@ def test_a_proposal_naming_a_bundle_under_an_algorithm_this_node_lacks_is_logged
     with caplog.at_level(WARNING, logger=LEVELS_LOGGER):
         read = levels.read(drop)
 
-    assert read == DropRead(passed_over=PassedOver.NOT_A_PROPOSAL)
+    assert read == DropRead(passed_over=PassedOver.NOT_AN_UPLOAD)
     assert f"Passing over {drop}, as it names a bundle this node cannot read" in caplog.text
 
 
@@ -320,10 +320,10 @@ def test_a_drop_not_held_is_missing_and_read_once_it_is(
     missing = levels.read(drop)
     truth.write(drop, data)
 
-    assert (missing, levels.read(drop)) == (DropRead(missing=drop), DropRead(PROPOSAL))
+    assert (missing, levels.read(drop)) == (DropRead(missing=drop), DropRead(UPLOAD))
 
 
-def test_a_signed_proposal_whose_signers_key_is_not_held_names_it_missing(
+def test_a_signed_upload_whose_signers_key_is_not_held_names_it_missing(
     levels: ChaosLevels, truth: CasStore
 ) -> None:
     dave = NewIdentity.generate(2048).key
@@ -331,8 +331,8 @@ def test_a_signed_proposal_whose_signers_key_is_not_held_names_it_missing(
     missing = levels.read(drop)
     truth.write(dave.person_id, dave.public_key)
 
-    assert missing == DropRead(PROPOSAL, dave.person_id, missing=dave.person_id)
-    assert levels.read(drop) == DropRead(PROPOSAL, dave.person_id)
+    assert missing == DropRead(UPLOAD, dave.person_id, missing=dave.person_id)
+    assert levels.read(drop) == DropRead(UPLOAD, dave.person_id)
 
 
 def test_a_drop_read_is_kept_and_not_read_again(levels: ChaosLevels, truth: CasStore) -> None:
@@ -340,7 +340,7 @@ def test_a_drop_read_is_kept_and_not_read_again(levels: ChaosLevels, truth: CasS
     first = levels.read(drop)
     truth.delete(drop)
 
-    assert levels.read(drop) == first == DropRead(PROPOSAL)
+    assert levels.read(drop) == first == DropRead(UPLOAD)
 
 
 def test_the_drop_read_least_recently_is_let_go_of_past_as_many_as_are_kept(
@@ -348,7 +348,7 @@ def test_the_drop_read_least_recently_is_let_go_of_past_as_many_as_are_kept(
 ) -> None:
     levels = reading(storage, truth, recorder, ticks, max_kept_drops=2)
     first, second, third = (
-        place(truth, unsigned(ChaosProposal(BUNDLE, NOW - timedelta(seconds=ago))))
+        place(truth, unsigned(ChaosUpload(BUNDLE, NOW - timedelta(seconds=ago))))
         for ago in range(3)
     )
 
@@ -372,15 +372,15 @@ def test_at_least_one_drop_is_kept(
     "read, reason",
     [
         (DropRead(missing=BUNDLE.content_id), PassedOver.PENDING),
-        (DropRead(PROPOSAL, BUNDLE.content_id, missing=BUNDLE.content_id), PassedOver.PENDING),
+        (DropRead(UPLOAD, BUNDLE.content_id, missing=BUNDLE.content_id), PassedOver.PENDING),
         (DropRead(passed_over=PassedOver.BAD_SIGNATURE), PassedOver.BAD_SIGNATURE),
-        (DropRead(), PassedOver.NOT_A_PROPOSAL),
-        (DropRead(ChaosProposal(SHUNNED, NOW)), PassedOver.SHUNNED),
-        (DropRead(ChaosProposal(BUNDLE, NOW + timedelta(seconds=1))), PassedOver.FUTURE),
-        (DropRead(PROPOSAL), None),
+        (DropRead(), PassedOver.NOT_AN_UPLOAD),
+        (DropRead(ChaosUpload(SHUNNED, NOW)), PassedOver.SHUNNED),
+        (DropRead(ChaosUpload(BUNDLE, NOW + timedelta(seconds=1))), PassedOver.FUTURE),
+        (DropRead(UPLOAD), None),
     ],
 )
-def test_what_a_drop_holds_may_pass_it_over_before_its_proposer_is_looked_at(
+def test_what_a_drop_holds_may_pass_it_over_before_its_uploader_is_looked_at(
     read: DropRead, reason: PassedOver | None
 ) -> None:
     assert read.reason(lambda content_id: content_id == SHUNNED.content_id, NOW) == reason
