@@ -261,7 +261,31 @@
   .viewer-bar { display: flex; align-items: center; gap: 1rem; padding: 0.5rem 0.5rem 0.5rem 1rem; }
   .viewer-caption { flex: 1 1 auto; min-width: 0; }
   .viewer-caption > * { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .viewer-body { position: relative; flex: 1 1 auto; min-height: 0; }
+  .viewer-main { display: flex; flex: 1 1 auto; min-height: 0; }
+  .viewer-body { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; }
+
+  /* Details, beside the photo, or below it at a phone's width, scrolled
+     within itself and nothing under it. */
+  .viewer-details {
+    flex: 0 0 20rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    padding: 0.75rem 1rem 1rem;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  @media (max-width: 40rem) {
+    .viewer-main { flex-direction: column; }
+    .viewer-details { flex: 0 0 auto; max-height: 45%; border-left: 0; border-top: 1px solid var(--border); }
+  }
+
+  .details { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.5rem 1rem; margin: 0; }
+  .details dt { color: var(--muted); }
+  .details dd { margin: 0; overflow-wrap: anywhere; }
+  .details dd > * { display: block; }
+  .details a { color: var(--accent); }
   .viewer-body > .state { position: absolute; top: 50%; left: 1rem; right: 1rem; margin: 0; text-align: center; transform: translateY(-50%); }
 
   a.icon { display: inline-block; padding: 0.3rem; line-height: 0; border: 1px solid transparent; border-radius: 6px; color: var(--text); }
@@ -381,6 +405,9 @@
       <span class="note" id="viewer-taken"></span>
     </div>
     <div class="icons">
+      <button type="button" class="icon" id="viewer-info" title="Details" aria-label="Details" aria-pressed="false" aria-controls="viewer-details">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 11v6 M12 7.5v.01"/></svg>
+      </button>
       <button type="button" class="icon" id="viewer-zoom" title="Zoom" aria-label="Zoom" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M16 16l5 5 M8 11h6 M11 8v6"/></svg>
       </button>
@@ -395,15 +422,21 @@
       </button>
     </div>
   </div>
-  <div class="viewer-body">
-    <p class="state" id="viewer-state" role="status" hidden></p>
-    <div class="stage" id="viewer-stage"></div>
-    <button type="button" class="icon side previous" id="viewer-previous" title="Previous" aria-label="Previous">
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
-    </button>
-    <button type="button" class="icon side next" id="viewer-next" title="Next" aria-label="Next">
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7"/></svg>
-    </button>
+  <div class="viewer-main">
+    <div class="viewer-body">
+      <p class="state" id="viewer-state" role="status" hidden></p>
+      <div class="stage" id="viewer-stage"></div>
+      <button type="button" class="icon side previous" id="viewer-previous" title="Previous" aria-label="Previous">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <button type="button" class="icon side next" id="viewer-next" title="Next" aria-label="Next">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+    <aside class="viewer-details" id="viewer-details" aria-labelledby="details-heading" hidden>
+      <h3 id="details-heading">Details</h3>
+      <dl class="details" id="details-list"></dl>
+    </aside>
   </div>
 </div>
 
@@ -504,6 +537,8 @@
   <dl class="keys">
     <dt><kbd>←</kbd> <kbd>→</kbd></dt>
     <dd>The photo before, or after, in the album's order.</dd>
+    <dt><kbd>I</kbd></dt>
+    <dd>Its details: when it was taken, the camera, and where, or hide them.</dd>
     <dt><kbd>Z</kbd></dt>
     <dd>Zoom to the photo's own pixels, or fit it to the window again.</dd>
     <dt><kbd>F</kbd></dt>
@@ -575,12 +610,108 @@ const THUMB_FILE = "thumb.jpg";
 // What else a photo's folder holds, beside its original under the name of
 // the file it was imported from: what is known of it, its members in this
 // order. `kind` is PHOTO_KIND, `taken` a local date and time, and
-// `taken_from` where that came from: TAKEN_FROM_NAME or TAKEN_FROM_MODIFIED.
+// `taken_from` where that came from: TAKEN_FROM_EXIF, TAKEN_FROM_NAME, or
+// TAKEN_FROM_MODIFIED. What its Exif gives: `offset`, from UTC, as
+// "+09:00", of when it was taken; `orientation`; `camera`, {"make",
+// "model", "lens"}; `exposure`, {"iso", "aperture", "shutter",
+// "focal_length"}, the shutter in seconds and the focal length in
+// millimetres; and `location`, {"latitude", "longitude", "altitude"}, in
+// degrees and metres.
 const INFO_FILE = "info.json";
-const INFO_KEYS = ["name", "kind", "taken", "taken_from", "width", "height", "size", "original", "thumb"];
+const INFO_KEYS = [
+  "name", "kind", "taken", "taken_from", "offset", "width", "height", "orientation", "size", "camera", "exposure",
+  "location", "original", "thumb",
+];
 const PHOTO_KIND = "photo";
+const TAKEN_FROM_EXIF = "exif";
 const TAKEN_FROM_NAME = "name";
 const TAKEN_FROM_MODIFIED = "modified";
+
+// Where each `taken_from` says when a photo was taken came from, as its
+// details say it.
+const TAKEN_FROM_TEXT = {
+  [TAKEN_FROM_EXIF]: "As the photo itself says",
+  [TAKEN_FROM_NAME]: "From its file's name",
+  [TAKEN_FROM_MODIFIED]: "From when its file was last changed",
+};
+
+// How much of a photo's original is read for its details (HttpApi 12.1,
+// 19), as the music page reads a song's tags: this much at its start, and
+// at most this much more, as much as its metadata says it holds.
+const DETAILS_HEAD = 64 * 1024;
+const DETAILS_MOST = 16 * 1024 * 1024;
+
+// How many segments, or chunks, of a photo's file are walked through for its
+// Exif, at most, so that a file that is not what it seems is not read on
+// forever.
+const MOST_CHUNKS = 256;
+
+// What starts a PNG, and what starts the Exif of a JPEG's APP1 segment,
+// before its TIFF header.
+const PNG_SIGNATURE = "\x89PNG\r\n\x1a\n";
+const EXIF_HEADER = "Exif\0\0";
+
+// The Exif tags read (Exif 2.32 4.6.4, 4.6.5), by number: of the image, in
+// its first image file directory, and of the photo, in the Exif directory
+// that names; and of where it was taken, in the GPS directory it names
+// (Exif 2.32 4.6.6). The tags of the two first never share a number.
+const EXIF_TAGS = {
+  Make: 0x010f,
+  Model: 0x0110,
+  Orientation: 0x0112,
+  DateTime: 0x0132,
+  ExifIFDPointer: 0x8769,
+  GPSInfoIFDPointer: 0x8825,
+  ExposureTime: 0x829a,
+  FNumber: 0x829d,
+  ISOSpeedRatings: 0x8827,
+  DateTimeOriginal: 0x9003,
+  DateTimeDigitized: 0x9004,
+  OffsetTime: 0x9010,
+  OffsetTimeOriginal: 0x9011,
+  OffsetTimeDigitized: 0x9012,
+  FocalLength: 0x920a,
+  SubSecTime: 0x9290,
+  SubSecTimeOriginal: 0x9291,
+  SubSecTimeDigitized: 0x9292,
+  PixelXDimension: 0xa002,
+  PixelYDimension: 0xa003,
+  LensModel: 0xa434,
+};
+const GPS_TAGS = {
+  GPSLatitudeRef: 0x0001,
+  GPSLatitude: 0x0002,
+  GPSLongitudeRef: 0x0003,
+  GPSLongitude: 0x0004,
+  GPSAltitudeRef: 0x0005,
+  GPSAltitude: 0x0006,
+};
+
+// When a photo was taken, as its Exif gives it: the first of these dates
+// and times it holds, each with the offset from UTC and the fraction of a
+// second that go with it.
+const EXIF_DATES = [
+  ["DateTimeOriginal", "OffsetTimeOriginal", "SubSecTimeOriginal"],
+  ["DateTimeDigitized", "OffsetTimeDigitized", "SubSecTimeDigitized"],
+  ["DateTime", "OffsetTime", "SubSecTime"],
+];
+
+// A date and time as Exif gives one, "2024:05:14 09:30:12", or with dashes
+// and a T, as some programs write it; and an offset from UTC, "+09:00".
+const EXIF_DATE = /^(\d{4})[:-](\d\d)[:-](\d\d)[ T](\d\d):(\d\d):(\d\d)/;
+const OFFSET = /^[+-]\d\d:\d\d$/;
+
+// How many bytes each value of each type of a TIFF entry read takes (TIFF
+// 6.0 2; Exif 2.32 4.6.2, and Exif 3.0's UTF-8), by the type's number: BYTE,
+// ASCII, SHORT, LONG, RATIONAL, UNDEFINED, which some programs write a BYTE
+// as, IFD, and UTF-8. Entries of any other type are not read.
+const TIFF_TYPES = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 13: 4, 129: 1 };
+const TIFF_TEXTS = new Set([2, 129]);
+const TIFF_RATIONAL = 5;
+
+// Where Details links a photo's place to, on Google Maps, before its
+// latitude and longitude. Nothing is sent there until the link is followed.
+const MAPS_SEARCH = "https://www.google.com/maps/search/?api=1&query=";
 
 // How many hex digits of the hash of a photo's original's file bundle name
 // its folder.
@@ -734,6 +865,10 @@ function isText(value) {
   return typeof value === "string" && value !== "";
 }
 
+function isPositive(value) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
 function plural(count, one, many) {
   return count === 1 ? `1 ${one}` : `${count.toLocaleString()} ${many}`;
 }
@@ -775,6 +910,16 @@ function localTime(date) {
   const two = (number) => String(number).padStart(2, "0");
   return `${String(date.getFullYear()).padStart(4, "0")}-${two(date.getMonth() + 1)}-${two(date.getDate())}`
     + `T${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`;
+}
+
+// The local date and time `digits` give, [year, month, day, hours, minutes,
+// seconds], each as written, as a photo's `taken` gives it; or null if it is
+// no real date and time.
+function takenOf(digits) {
+  const [year, month, day, hours, minutes, seconds] = digits.map(Number);
+  const date = new Date(year, month - 1, day);
+  const real = date.getMonth() === month - 1 && date.getDate() === day && hours < 24 && minutes < 60 && seconds < 60;
+  return real ? `${digits[0]}-${digits[1]}-${digits[2]}T${digits[3]}:${digits[4]}:${digits[5]}` : null;
 }
 
 function formatSize(bytes) {
@@ -912,6 +1057,13 @@ function jsonText(keys, value) {
 // `value` without its members that are undefined.
 function defined(value) {
   return Object.fromEntries(Object.entries(value).filter(([, each]) => each !== undefined));
+}
+
+// `value` without its members that are undefined, or undefined, if it has
+// no others.
+function filled(value) {
+  const kept = defined(value);
+  return Object.keys(kept).length ? kept : undefined;
 }
 
 // Makes a bundle (HttpApi 12.3) and returns its id.
@@ -2056,6 +2208,118 @@ function stopGrid() {
   byId("photo-years").replaceChildren();
 }
 
+// Details, beside the photo shown, or below it at a phone's width: its name,
+// when it was taken, and where that came from, its width and height, its
+// size, the camera and lens, the exposure, and where it was taken, with a
+// link to the place on Google Maps. What is not known of it is left out. It
+// stays open as the person moves from photo to photo, until it is closed.
+class DetailsPanel {
+  constructor() {
+    this.element = byId("viewer-details");
+    this.list = byId("details-list");
+    this.control = byId("viewer-info");
+  }
+
+  isOpen() {
+    return !this.element.hidden;
+  }
+
+  // Opens it, or closes it.
+  toggle() {
+    this.element.hidden = this.isOpen();
+    this.control.setAttribute("aria-pressed", String(this.isOpen()));
+  }
+
+  // Shows what is known of the photo named `name`: as `info`, its
+  // info.json, gives it, or else as `entry`, its entry in the index, does.
+  show(name, info, entry) {
+    const known = { ...entry, ...info };
+    const camera = isObject(known.camera) ? known.camera : {};
+    const rows = [
+      ["Name", [name]],
+      ["Taken", DetailsPanel.taken(known)],
+      ["Pixels", DetailsPanel.pixels(known)],
+      ["Size", [formatSize(known.size)]],
+      ["Camera", DetailsPanel.camera(camera)],
+      ["Lens", [camera.lens]],
+      ["Exposure", DetailsPanel.exposure(known.exposure)],
+      ["Where", DetailsPanel.place(known.location)],
+    ];
+
+    this.list.replaceChildren(...rows.flatMap(([term, lines]) => {
+      const shown = lines.filter((line) => line instanceof Node || isText(line));
+      const description = make("dd");
+      description.append(...shown.map((line) => (line instanceof Node ? line : make("span", line))));
+      return shown.length ? [make("dt", term), description] : [];
+    }));
+  }
+
+  // When it was taken, as the camera wrote it, with its offset from UTC, if
+  // known, and where that came from.
+  static taken(known) {
+    if (!isText(known.taken)) {
+      return ["Undated"];
+    }
+
+    const offset = isText(known.offset) && OFFSET.test(known.offset) ? `, UTC${known.offset}` : "";
+    const from = Object.hasOwn(TAKEN_FROM_TEXT, known.taken_from) ? make("span", TAKEN_FROM_TEXT[known.taken_from], "note") : null;
+    return [`${takenText(known.taken)}${offset}`, from];
+  }
+
+  // Its width and height, as seen.
+  static pixels({ width, height }) {
+    const sized = [width, height].every((side) => Number.isInteger(side) && side > 0);
+    return sized ? [`${width.toLocaleString()} × ${height.toLocaleString()}`] : [];
+  }
+
+  // The camera, by its make and model, the make left out where the model
+  // names it already, as many do.
+  static camera({ make: maker, model }) {
+    const [made, named] = [maker, model].map((text) => (isText(text) ? text : ""));
+    return [named.toLowerCase().startsWith(made.toLowerCase()) ? named : `${made} ${named}`.trim()];
+  }
+
+  // The aperture, the shutter's time, the ISO, and the focal length, as a
+  // camera shows each, each kept on one line: the shutter's time as a
+  // fraction of a second, if it is a quarter of one or less.
+  static exposure(exposure) {
+    const { iso, aperture, shutter, focal_length: focal } = isObject(exposure) ? exposure : {};
+    const one = (number) => number.toLocaleString(undefined, { maximumFractionDigits: 1 });
+    const said = [
+      isPositive(aperture) ? `ƒ/${one(aperture)}` : null,
+      isPositive(shutter) ? (shutter <= 0.25 ? `1/${Math.round(1 / shutter)} s` : `${one(shutter)} s`) : null,
+      Number.isInteger(iso) && iso > 0 ? `ISO ${iso}` : null,
+      isPositive(focal) ? `${one(focal)} mm` : null,
+    ].filter(Boolean);
+    return said.length ? [said.join(" · ")] : [];
+  }
+
+  // Where it was taken, in degrees, north or south, and east or west, with
+  // its altitude, if known; and Show on Google Maps, a link to the place,
+  // opened in a new tab, which tells Google nothing of the page it was
+  // followed from.
+  static place(location) {
+    const { latitude, longitude, altitude } = isObject(location) ? location : {};
+    const placed = [latitude, longitude].every((value) => typeof value === "number" && Number.isFinite(value))
+      && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180;
+
+    if (!placed) {
+      return [];
+    }
+
+    const degrees = (value, ahead, behind) => `${Math.abs(value).toFixed(5)}° ${value < 0 ? behind : ahead}`;
+    const coordinate = (value) => value.toFixed(7).replace(/\.?0+$/, "");
+    const high = typeof altitude === "number" && Number.isFinite(altitude)
+      ? make("span", `${Math.abs(Math.round(altitude)).toLocaleString()} m ${altitude < 0 ? "below" : "above"} sea level`, "note")
+      : null;
+    const link = make("a", "Show on Google Maps");
+    link.href = `${MAPS_SEARCH}${coordinate(latitude)},${coordinate(longitude)}`;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    return [`${degrees(latitude, "N", "S")}, ${degrees(longitude, "E", "W")}`, high, link];
+  }
+}
+
 // A photo of the album open, shown alone, on black, over its grid, as large
 // as fits the window without being cropped, with its name and when it was
 // taken: its view, if it has one (Step 165), or else its original. Previous
@@ -2092,11 +2356,14 @@ class Viewer {
     this.dragged = false;
     // The images of the photos before and after it, loaded ahead.
     this.ahead = [];
+    // Its details, shown beside it, or not.
+    this.panel = new DetailsPanel();
     byId("viewer-fullscreen").hidden = !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
     this.listen();
   }
 
   listen() {
+    byId("viewer-info").addEventListener("click", () => this.toggleDetails());
     byId("viewer-close").addEventListener("click", () => this.close());
     byId("viewer-previous").addEventListener("click", () => this.move(false));
     byId("viewer-next").addEventListener("click", () => this.move(true));
@@ -2185,12 +2452,13 @@ class Viewer {
   }
 
   // Shows the photo in `folder` of `grid`, fitting the window, its name and
-  // when it was taken as its entry in the index gives them, while what is
-  // shown of it is read.
+  // when it was taken, and its details, as its entry in the index gives
+  // them, while what is shown of it, and what is known of it, is read.
   async present(grid, folder) {
     const position = grid.place(folder);
     const [, entry] = grid.photoAt(position);
     const sized = [entry.width, entry.height].every((side) => Number.isInteger(side) && side > 0);
+    const name = isText(entry.name) ? entry.name : folder;
     const shown = this.shown + 1;
     this.shown = shown;
     this.grid = grid;
@@ -2203,10 +2471,11 @@ class Viewer {
     this.stage.classList.remove("zoomed");
     this.download.removeAttribute("href");
     byId("viewer-zoom").setAttribute("aria-pressed", "false");
-    byId("viewer-name").textContent = isText(entry.name) ? entry.name : folder;
+    byId("viewer-name").textContent = name;
     byId("viewer-taken").textContent = isText(entry.taken) ? takenText(entry.taken) : "Undated";
     byId("viewer-previous").hidden = !grid.moved(position, "ArrowLeft");
     byId("viewer-next").hidden = !grid.moved(position, "ArrowRight");
+    this.panel.show(name, {}, entry);
     show(this.status, "Loading…");
 
     // Focus kept within it, as when Next has it, and is hidden at the last.
@@ -2222,6 +2491,7 @@ class Viewer {
 
     this.download.href = photo.original;
     this.download.download = photo.name;
+    this.panel.show(photo.name, photo.info, entry);
     this.load(photo);
   }
 
@@ -2239,9 +2509,10 @@ class Viewer {
 
   // What is shown of the photo in `folder` of the album `bundle`, whose
   // entry in its index is `entry`: the name of the file it was imported
-  // from; where its original is read; and where what is shown of it is read,
-  // its view, if it has one, or else its original. Each as its info.json
-  // names it, or, if that cannot be read, as its entry does.
+  // from; where its original is read; where what is shown of it is read,
+  // its view, if it has one, or else its original, each as its info.json
+  // names it, or, if that cannot be read, as its entry does; and its
+  // info.json, or {}.
   static async described(bundle, folder, entry) {
     const info = await readEntry(bundle, `${PHOTOS}/${folder}/${INFO_FILE}`).catch((error) => {
       console.warn(`What is known of a photo could not be read: ${error.message}`);
@@ -2252,7 +2523,7 @@ class Viewer {
     const url = (name) => entryUrl(bundle, `${PHOTOS}/${folder}/${name}`);
     const name = file(known.name) || file(entry.name) || folder;
     const original = file(known.original) || originalName(name);
-    return { name, original: url(original), shown: url(file(known.view) || original) };
+    return { name, original: url(original), shown: url(file(known.view) || original), info: known };
   }
 
   // Shows `photo`, as described gives it, asked for again a few times if the
@@ -2438,8 +2709,13 @@ class Viewer {
     this.zoom(event.clientX - stage.left, event.clientY - stage.top);
   }
 
-  // A wheel turned over it moves the photo, zoomed, and nothing under it.
+  // A wheel turned over it moves the photo, zoomed, and nothing under it,
+  // but over Details, which it scrolls.
   wheel(event) {
+    if (this.panel.element.contains(event.target)) {
+      return;
+    }
+
     event.preventDefault();
 
     if (!this.zoomed || !this.image) {
@@ -2448,6 +2724,13 @@ class Viewer {
 
     const pixels = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? WHEEL_LINE_PIXELS : 1;
     this.offset = [this.offset[0] - event.deltaX * pixels, this.offset[1] - event.deltaY * pixels];
+    this.layout();
+  }
+
+  // Shows Details beside the photo, or hides it, and lays the photo out
+  // again in the room left.
+  toggleDetails() {
+    this.panel.toggle();
     this.layout();
   }
 
@@ -2484,15 +2767,16 @@ class Viewer {
   }
 
   // Hears every key while it is open, but while a dialog is open over it:
-  // the left and right arrow keys move to the photo before or after, `Z`
-  // zooms, `F` shows it full screen, `D` downloads its original, Escape
-  // closes it, and `?` or `/` shows the keys.
+  // the left and right arrow keys move to the photo before or after, `I`
+  // shows its details, `Z` zooms, `F` shows it full screen, `D` downloads
+  // its original, Escape closes it, and `?` or `/` shows the keys.
   key(event) {
     const key = String(event.key).toLowerCase();
     const keys = {
       escape: () => this.close(),
       arrowleft: () => this.move(false),
       arrowright: () => this.move(true),
+      i: () => this.toggleDetails(),
       z: () => this.zoom(),
       f: () => this.toggleFullscreen(),
       d: () => this.download.click(),
@@ -2665,17 +2949,15 @@ class PhotoFile {
     return Number.isInteger(this.entry.size) && this.entry.size >= 0 ? this.entry.size : undefined;
   }
 
-  // When it was taken, until Step 164 reads it from the photo, {taken, from}:
+  // When it was taken, where the photo itself does not say, {taken, from}:
   // a local date and time from a date and time in its name, or else from the
   // time the folder's listing gives it as modified; or null, if neither does.
   taken() {
     for (const found of this.name.matchAll(NAME_TAKEN)) {
-      const [year, month, day, hours, minutes, seconds] = [1, 3, 4, 5, 7, 8].map((at) => Number(found[at]));
-      const date = new Date(year, month - 1, day);
-      const real = date.getMonth() === month - 1 && date.getDate() === day && hours < 24 && minutes < 60 && seconds < 60;
+      const taken = takenOf([1, 3, 4, 5, 7, 8].map((at) => found[at]));
 
-      if (real) {
-        return { taken: `${found[1]}-${found[3]}-${found[4]}T${found[5]}:${found[7]}:${found[8]}`, from: TAKEN_FROM_NAME };
+      if (taken) {
+        return { taken, from: TAKEN_FROM_NAME };
       }
     }
 
@@ -3055,29 +3337,515 @@ async function askAfterImports() {
   }
 }
 
-// The whole file `file` at the node, waiting out the 503s it answers while
-// it fetches what it lacks.
-async function fileBlob(file) {
-  for (let waits = 0; ; waits += 1) {
-    let response;
+// Bytes read of a file, and the numbers and text they hold, big-endian
+// unless `little`, as the music page reads them.
+class Bytes {
+  constructor(array) {
+    this.array = array;
+    this.view = new DataView(array.buffer, array.byteOffset, array.byteLength);
+    this.length = array.length;
+  }
 
-    try {
-      response = await fetch(`${DATA}${file}/`, { cache: "no-store" });
-    } catch (error) {
-      throw new Unreachable(`The node could not be reached: ${error.message}`);
+  static empty() {
+    return new Bytes(new Uint8Array(0));
+  }
+
+  // `parts`, each Bytes, one after another.
+  static joined(parts) {
+    const array = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
+    let at = 0;
+
+    for (const part of parts) {
+      array.set(part.array, at);
+      at += part.length;
     }
+
+    return new Bytes(array);
+  }
+
+  // Whether the `count` bytes from `at` are held.
+  holds(at, count) {
+    return at >= 0 && count >= 0 && at + count <= this.length;
+  }
+
+  u8(at) {
+    return this.view.getUint8(at);
+  }
+
+  u16(at, little = false) {
+    return this.view.getUint16(at, little);
+  }
+
+  u32(at, little = false) {
+    return this.view.getUint32(at, little);
+  }
+
+  // The `count` bytes from `at`, each as a character, as the name of a
+  // chunk is given; or "" if they are not all held.
+  ascii(at, count) {
+    return this.holds(at, count) ? String.fromCharCode(...this.array.subarray(at, at + count)) : "";
+  }
+
+  // The bytes from `start` to `end` as UTF-8, of which ASCII is a part.
+  text(start = 0, end = this.length) {
+    return new TextDecoder().decode(this.array.subarray(start, end));
+  }
+
+  slice(start, end = this.length) {
+    return new Bytes(this.array.subarray(start, end));
+  }
+}
+
+// A file the node holds as a file bundle, read whole, or a range at a time
+// (HttpApi 12.1, 19), as the music page reads a song's, and no more of it in
+// all than its metadata, at most DETAILS_MOST, and DETAILS_HEAD at its
+// start. What was read last is kept, so that what is read next within it,
+// or on from it, is not asked for again; and at least DETAILS_HEAD is read
+// at once, so that the segments or chunks of a format are not asked for one
+// at a time.
+class StoredFile {
+  constructor(file) {
+    this.url = `${DATA}${file}/`;
+    // Its size, once a range of it says it.
+    this.size = null;
+    this.kept = { start: 0, bytes: Bytes.empty() };
+    this.left = DETAILS_MOST + DETAILS_HEAD;
+  }
+
+  // The node's answer to a GET of the file with `headers`, waiting out the
+  // 503s it answers while it fetches what it lacks.
+  async fetched(headers = {}) {
+    for (let waits = 0; ; waits += 1) {
+      let response;
+
+      try {
+        response = await fetch(this.url, { headers, cache: "no-store" });
+      } catch (error) {
+        throw new Unreachable(`The node could not be reached: ${error.message}`);
+      }
+
+      if (response.status !== 503 || waits >= MAX_WAITS) {
+        return response;
+      }
+
+      await response.body?.cancel();
+      await sleep(retryAfter(response.headers));
+    }
+  }
+
+  // Why `response` is not the range of the file asked for.
+  static async refusal(response) {
+    let value = null;
 
     if (response.ok) {
-      return response.blob();
+      await response.body?.cancel();
+      return new Error("The node sent the whole file, not the part of it asked for.");
     }
 
-    if (response.status !== 503 || waits >= MAX_WAITS) {
-      const value = await response.json().catch(() => null);
-      throw new Refusal({ status: response.status, value });
+    try {
+      value = await response.json();
+    } catch (error) {
+      value = null;
     }
 
-    await response.body?.cancel();
-    await sleep(retryAfter(response.headers));
+    return new Refusal({ status: response.status, value });
+  }
+
+  // The whole file.
+  async blob() {
+    const response = await this.fetched();
+
+    if (!response.ok) {
+      throw await StoredFile.refusal(response);
+    }
+
+    return response.blob();
+  }
+
+  // The `count` bytes from `start`, or as many as the file holds from there.
+  async at(start, count) {
+    const { start: from, bytes } = this.kept;
+    const end = from + bytes.length;
+    const size = this.size === null ? Infinity : this.size;
+
+    if (start >= from && Math.min(start + count, size) <= end) {
+      return bytes.slice(start - from, Math.min(start + count, size) - from);
+    }
+
+    if (start >= size) {
+      return Bytes.empty();
+    }
+
+    const resumed = start >= from && start <= end;
+    const first = resumed ? end : start;
+    const more = await this.read(first, Math.max(start + count - first, DETAILS_HEAD));
+    const held = resumed ? Bytes.joined([bytes.slice(start - from), more]) : more;
+    this.kept = { start, bytes: held };
+    return held.slice(0, count);
+  }
+
+  // The `count` bytes from `first`, or as many as the file holds from there.
+  async read(first, count) {
+    if (count > this.left) {
+      throw new Error(`Its metadata holds more than the ${formatSize(DETAILS_MOST)} read of it.`);
+    }
+
+    const response = await this.fetched({ Range: `bytes=${first}-${first + count - 1}` });
+    const sized = /\/(\d+)$/.exec(response.headers.get("Content-Range") || "");
+
+    if (sized) {
+      this.size = Number(sized[1]);
+    }
+
+    if (response.status === 416) {
+      await response.body?.cancel();
+      return Bytes.empty();
+    }
+
+    if (response.status !== 206) {
+      throw await StoredFile.refusal(response);
+    }
+
+    const bytes = new Bytes(new Uint8Array(await response.arrayBuffer()));
+    this.left -= bytes.length;
+    return bytes;
+  }
+}
+
+// The TIFF structure a photo's Exif is kept in (TIFF 6.0 2; Exif 2.32
+// 4.6.2): a header giving its byte order, and where its first image file
+// directory is; each directory a count of its entries, then the entries;
+// and each entry its tag, its type, how many values it holds, and those
+// values, or, if they take more than four bytes, where they are, counted
+// from the header.
+class Tiff {
+  constructor(bytes) {
+    const order = bytes.ascii(0, 2);
+    this.bytes = bytes;
+    this.little = order === "II";
+
+    if ((order !== "II" && order !== "MM") || !bytes.holds(0, 8) || bytes.u16(2, this.little) !== 42) {
+      throw new Error("Its Exif is not of the structure Exif is kept in.");
+    }
+
+    this.first = bytes.u32(4, this.little);
+  }
+
+  // The entries of the directory at `at`, by tag, each {type, count, at},
+  // where its values are, those of a type not read left out; none, if `at`
+  // is no directory held. A directory is never within the header.
+  directory(at) {
+    const { bytes, little } = this;
+    const entries = new Map();
+
+    if (!Number.isInteger(at) || at < 8 || !bytes.holds(at, 2)) {
+      return entries;
+    }
+
+    for (let index = 0, count = bytes.u16(at, little); index < count; index += 1) {
+      const entry = at + 2 + index * 12;
+
+      if (!bytes.holds(entry, 12)) {
+        break;
+      }
+
+      const type = bytes.u16(entry + 2, little);
+      const values = bytes.u32(entry + 4, little);
+      const size = (TIFF_TYPES[type] || 0) * values;
+      const where = size <= 4 ? entry + 8 : bytes.u32(entry + 8, little);
+
+      if (Object.hasOwn(TIFF_TYPES, type) && bytes.holds(where, size)) {
+        entries.set(bytes.u16(entry, little), { type, count: values, at: where });
+      }
+    }
+
+    return entries;
+  }
+
+  // The text `entry` holds, to its first null, trimmed; or undefined, if it
+  // holds none, or it is empty.
+  text(entry) {
+    if (!entry || !TIFF_TEXTS.has(entry.type)) {
+      return undefined;
+    }
+
+    return this.bytes.text(entry.at, entry.at + entry.count).split("\0")[0].trim() || undefined;
+  }
+
+  // The `index`th value `entry` holds, as a number, a RATIONAL's numerator
+  // over its denominator; or undefined, if it holds no such number, or a
+  // RATIONAL's denominator is 0.
+  number(entry, index = 0) {
+    if (!entry || TIFF_TEXTS.has(entry.type) || index >= entry.count) {
+      return undefined;
+    }
+
+    const { bytes, little } = this;
+    const size = TIFF_TYPES[entry.type];
+    const at = entry.at + index * size;
+
+    if (entry.type === TIFF_RATIONAL) {
+      const denominator = bytes.u32(at + 4, little);
+      return denominator ? bytes.u32(at, little) / denominator : undefined;
+    }
+
+    if (size === 1) {
+      return bytes.u8(at);
+    }
+
+    return size === 2 ? bytes.u16(at, little) : bytes.u32(at, little);
+  }
+}
+
+// The Exif of a photo, `bytes`, from its TIFF header on, or from an
+// EXIF_HEADER before it, as some programs write the Exif of a PNG or a WebP:
+// the tags of its first image file directory and its Exif directory, and of
+// its GPS directory, of each only those EXIF_TAGS and GPS_TAGS name read.
+class Exif {
+  constructor(bytes) {
+    const tiff = new Tiff(bytes.ascii(0, 6) === EXIF_HEADER ? bytes.slice(6) : bytes);
+    const image = tiff.directory(tiff.first);
+    this.tiff = tiff;
+    this.tags = new Map([...image, ...tiff.directory(tiff.number(image.get(EXIF_TAGS.ExifIFDPointer)))]);
+    this.gps = tiff.directory(tiff.number(image.get(EXIF_TAGS.GPSInfoIFDPointer)));
+  }
+
+  // The entry of the tag named `name`, in EXIF_TAGS or GPS_TAGS, or undefined.
+  entry(name) {
+    return Object.hasOwn(GPS_TAGS, name) ? this.gps.get(GPS_TAGS[name]) : this.tags.get(EXIF_TAGS[name]);
+  }
+
+  text(name) {
+    return this.tiff.text(this.entry(name));
+  }
+
+  number(name, index = 0) {
+    return this.tiff.number(this.entry(name), index);
+  }
+
+  // `number`, if it is a whole number above 0, or else undefined.
+  static whole(number) {
+    return Number.isInteger(number) && number > 0 ? number : undefined;
+  }
+
+  // `number`, if it is above 0, to six significant digits, so that a
+  // fraction is kept as nearly as it is shown; or else undefined.
+  static measured(number) {
+    return isPositive(number) ? Number(number.toPrecision(6)) : undefined;
+  }
+
+  // What it gives of the photo, as its info.json keeps it: when it was
+  // taken, and its offset; its width and height as seen, turned a quarter
+  // as its orientation says, which browsers draw it by; its orientation;
+  // the camera; its exposure; and where it was taken. What it does not give
+  // is left out.
+  details() {
+    const orientation = this.number("Orientation");
+    const turned = orientation >= 5 && orientation <= 8;
+    const [width, height] = ["PixelXDimension", "PixelYDimension"].map((name) => Exif.whole(this.number(name)));
+    const sized = width && height;
+    return defined({
+      ...this.taken(),
+      width: sized ? (turned ? height : width) : undefined,
+      height: sized ? (turned ? width : height) : undefined,
+      orientation: orientation >= 1 && orientation <= 8 ? orientation : undefined,
+      camera: filled({ make: this.text("Make"), model: this.text("Model"), lens: this.text("LensModel") }),
+      exposure: filled({
+        iso: Exif.whole(this.number("ISOSpeedRatings")),
+        aperture: Exif.measured(this.number("FNumber")),
+        shutter: Exif.measured(this.number("ExposureTime")),
+        focal_length: Exif.measured(this.number("FocalLength")),
+      }),
+      location: this.location(),
+    });
+  }
+
+  // When the photo was taken, {taken, offset}, as the first of EXIF_DATES
+  // it gives says: a local date and time, as written, with the fraction of a
+  // second given with it, and the offset from UTC given with it; or {}.
+  taken() {
+    for (const [date, offset, fraction] of EXIF_DATES) {
+      const found = EXIF_DATE.exec(this.text(date) || "");
+      const taken = found && takenOf(found.slice(1));
+
+      if (taken) {
+        const [subsecond, zone] = [this.text(fraction) || "", this.text(offset) || ""];
+        return {
+          taken: /^\d+$/.test(subsecond) ? `${taken}.${subsecond}` : taken,
+          offset: OFFSET.test(zone) ? zone : undefined,
+        };
+      }
+    }
+
+    return {};
+  }
+
+  // Where the photo was taken, {latitude, longitude, altitude}: in degrees,
+  // those south and west below 0, each from its degrees, minutes, and
+  // seconds, and in metres, those below sea level below 0. Undefined unless
+  // its latitude and longitude are both given, each with its reference, and
+  // are not both 0, which a camera with no place to give may write.
+  location() {
+    const degrees = (name) => {
+      const [whole, minutes = 0, seconds = 0] = [0, 1, 2].map((index) => this.number(name, index));
+      return whole === undefined ? undefined : whole + minutes / 60 + seconds / 3600;
+    };
+    const [north, east] = ["GPSLatitudeRef", "GPSLongitudeRef"].map((name) => (this.text(name) || "").toUpperCase());
+    const [latitude, longitude] = [degrees("GPSLatitude"), degrees("GPSLongitude")];
+    const placed = ["N", "S"].includes(north) && ["E", "W"].includes(east) && latitude <= 90 && longitude <= 180
+      && (latitude > 0 || longitude > 0);
+
+    if (!placed) {
+      return undefined;
+    }
+
+    const altitude = this.number("GPSAltitude");
+    // Below the sea, or, as Exif 3.0 adds, below the ellipsoid, is odd.
+    const below = this.number("GPSAltitudeRef") % 2 === 1;
+    return defined({
+      latitude: Number((north === "S" ? -latitude : latitude).toFixed(7)),
+      longitude: Number((east === "W" ? -longitude : longitude).toFixed(7)),
+      altitude: altitude === undefined ? undefined : Number((below ? -altitude : altitude).toFixed(1)),
+    });
+  }
+}
+
+// What a photo's file gives of it, read as it is imported, before it is
+// added, as the music page reads a song's tags: its Exif, from a JPEG's
+// APP1 segment, a PNG's eXIf chunk, or a WebP's EXIF chunk, its format known
+// by its first bytes. Of a format it does not read, nothing is.
+class PhotoDetails {
+  constructor(source) {
+    this.source = source;
+  }
+
+  // What the photo whose original is the file bundle `file`, named `name`,
+  // gives of itself, as Exif.details gives it, as much as could be read.
+  static async read(file, name) {
+    try {
+      const exif = await new PhotoDetails(new StoredFile(file)).exif();
+      return exif ? new Exif(exif).details() : {};
+    } catch (error) {
+      console.warn(`The details of “${name}” were not read: ${error.message}`);
+      return {};
+    }
+  }
+
+  // Its Exif, or null if it holds none this page reads.
+  async exif() {
+    const head = await this.source.at(0, 12);
+
+    if (head.ascii(0, 3) === "\xff\xd8\xff") {
+      return this.jpegExif();
+    }
+
+    if (head.ascii(0, 8) === PNG_SIGNATURE) {
+      return this.pngExif();
+    }
+
+    return head.ascii(0, 4) === "RIFF" && head.ascii(8, 4) === "WEBP" ? this.webpExif() : null;
+  }
+
+  // The Exif of a JPEG, in an APP1 segment before its image data: its
+  // segments walked from its start, each a marker, 0xFF then its kind, and
+  // but for the markers that stand alone, its size, counting itself (ITU-T
+  // T.81 B.1.1; Exif 2.32 4.5.4). A marker may be padded with more 0xFF.
+  async jpegExif() {
+    for (let at = 2, count = 0; count < MOST_CHUNKS; count += 1) {
+      const header = await this.source.at(at, 4);
+
+      if (header.length < 4 || header.u8(0) !== 0xff) {
+        return null;
+      }
+
+      const marker = header.u8(1);
+      const alone = marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7);
+
+      // The start of its image data, SOS, or its end, EOI.
+      if (marker === 0xda || marker === 0xd9) {
+        return null;
+      }
+
+      if (marker === 0xff || alone) {
+        at += marker === 0xff ? 1 : 2;
+        continue;
+      }
+
+      const size = header.u16(2);
+
+      if (size < 2) {
+        return null;
+      }
+
+      // APP1, which holds XMP too.
+      if (marker === 0xe1) {
+        const segment = await this.source.at(at + 4, size - 2);
+
+        if (segment.ascii(0, 6) === EXIF_HEADER) {
+          return segment.slice(6);
+        }
+      }
+
+      at += 2 + size;
+    }
+
+    return null;
+  }
+
+  // The Exif of a PNG, in its eXIf chunk, which comes before its image data,
+  // IDAT: its chunks walked from after its signature, each its size,
+  // big-endian, its type, its data, and a check of it (PNG Third Edition
+  // 5.3, and its eXIf chunk).
+  async pngExif() {
+    for (let at = PNG_SIGNATURE.length, count = 0; count < MOST_CHUNKS; count += 1) {
+      const header = await this.source.at(at, 8);
+      const type = header.ascii(4, 4);
+
+      if (header.length < 8 || type === "IDAT" || type === "IEND") {
+        return null;
+      }
+
+      const size = header.u32(0);
+
+      if (type === "eXIf") {
+        return size <= DETAILS_MOST ? this.source.at(at + 8, size) : null;
+      }
+
+      at += 12 + size;
+    }
+
+    return null;
+  }
+
+  // The Exif of a WebP, in its EXIF chunk, after its image data: its chunks
+  // walked from after its RIFF header, each its type, its size,
+  // little-endian, and its data, padded to an even size. Only a WebP of the
+  // extended format, which starts with VP8X, holds Exif, and says so in
+  // VP8X's flags (RFC 9649, the extended format).
+  async webpExif() {
+    const first = await this.source.at(12, 9);
+
+    if (first.ascii(0, 4) !== "VP8X" || !first.holds(8, 1) || !(first.u8(8) & 0x08)) {
+      return null;
+    }
+
+    for (let at = 12, count = 0; count < MOST_CHUNKS; count += 1) {
+      const header = await this.source.at(at, 8);
+
+      if (header.length < 8) {
+        return null;
+      }
+
+      const size = header.u32(4, true);
+
+      if (header.ascii(0, 4) === "EXIF") {
+        return size <= DETAILS_MOST ? this.source.at(at + 8, size) : null;
+      }
+
+      at += 8 + size + (size % 2);
+    }
+
+    return null;
   }
 }
 
@@ -3090,7 +3858,7 @@ async function thumbnail(file, type) {
   let url = null;
 
   try {
-    const blob = await fileBlob(file);
+    const blob = await new StoredFile(file).blob();
     const image = new Image();
     url = URL.createObjectURL(type ? new Blob([blob], { type }) : blob);
     image.src = url;
@@ -3222,10 +3990,13 @@ class ImportingPhoto {
     }
 
     this.bar.removeAttribute("value");
-    this.note.textContent = "Making its thumbnail…";
+    this.note.textContent = "Reading its details, and making its thumbnail…";
     const type = photo.contentType();
-    const drawn = await thumbnail(file, type);
-    const taken = photo.taken();
+    const [drawn, details] = await Promise.all([thumbnail(file, type), PhotoDetails.read(file, photo.name)]);
+    // When it was taken, and its width and height as seen, are the photo's
+    // own: what its Exif says, and what the browser draws.
+    const taken = details.taken ? { taken: details.taken, from: TAKEN_FROM_EXIF } : photo.taken();
+    const sized = drawn || details;
     const thumb = drawn && drawn.base64 ? THUMB_FILE : undefined;
     const original = originalName(photo.name);
     const info = {
@@ -3233,9 +4004,14 @@ class ImportingPhoto {
       kind: PHOTO_KIND,
       taken: taken ? taken.taken : undefined,
       taken_from: taken ? taken.from : undefined,
-      width: drawn ? drawn.width : undefined,
-      height: drawn ? drawn.height : undefined,
+      offset: details.offset,
+      width: sized.width,
+      height: sized.height,
+      orientation: details.orientation,
       size: photo.size(),
+      camera: details.camera,
+      exposure: details.exposure,
+      location: details.location,
       original,
       thumb,
     };

@@ -34,7 +34,7 @@ and can be built alongside any phase.
 
 ## 2. What It Adds
 
-Twelve steps, the first four built:
+Twelve steps, the first five built:
 
 - **Importing a file encrypted.** The node's one change. Step 160.
 - **The photos application, and its albums.** Step 161.
@@ -643,10 +643,9 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 164 — Reading a Photo's Details
+## Step 164 — Reading a Photo's Details ✅
 
-**Issue:** to be made (§4), from #477. **Depends on:** Step 162; Music App
-Step 150.
+**Issue:** #672, from #477. **Depends on:** Step 162; Music App Step 150.
 
 Settled with the user:
 
@@ -704,6 +703,88 @@ as `exiftool` and kept out of the repository: a JPEG with every field read;
 a PNG and a WebP with Exif; a location south and west; a date with an
 offset and with none; a photo with no Exif, dated from its name; and Show
 on Google Maps opening the place.
+
+Built, in one change set, the page alone, on Step 163's. The page's own
+reading of Exif was checked in Node, against a stand-in for the node that
+serves ranges, with photos made by Pillow, as `exiftool` was not at hand,
+and kept out of the repository: JPEGs with every field read, their Exif
+big-endian and little-endian; a PNG and a WebP with Exif, south and west,
+below sea level, and with no offset; a JPEG whose Exif comes after an ICC
+profile of 100 kB, read on from its first 64 KiB in a second range; a JPEG
+whose date is all zeros; a WebP of each simple format, holding none, and
+read no further than its first range; a PNG whose eXIf comes after its
+image data, not read; a file that is no photo; a JPEG cut short, of which
+what was read was kept; and a node that sends a whole file rather than the
+range asked for, warned of, and nothing read. Then, on a node of its own,
+in headless Chromium: a folder of nine of them imported, each `info.json`
+keeping what its Exif gives as this step names it, `taken_from` `exif`, and
+the index the same `taken`; a JPEG turned by its orientation, 6, kept with
+it as 800 by 1,200, as seen; the grid showing each on the day its Exif
+gives, the one whose date is all zeros dated from its name, and one with no
+Exif from its time modified; Details, by its icon and by `I`, showing each
+photo's, following the photo moved to, and hidden again, with the photo
+laid out again in the room left; the wheel over Details scrolling it, and
+nothing under it; Show on Google Maps opening the place in a new tab, with
+no opener and no referrer, its request answered in the browser so that
+nothing reached Google; `?` listing `I`; and a phone's width, with Details
+below the photo. Safari is yet to be checked.
+
+Calls made while building it, not yet reviewed:
+
+- **Details is a panel beside the photo**, not a dialog, so that it stays
+  open as the person moves from photo to photo; below it at a phone's
+  width, at most 45% of the height. The photo is laid out again in the room
+  left. A row the photo gives nothing for is left out.
+- **Each date with its own offset and fraction of a second.**
+  `DateTimeDigitized` is read with `OffsetTimeDigitized` and
+  `SubSecTimeDigitized`, and `DateTime` with `OffsetTime` and `SubSecTime`,
+  as Exif pairs them, where the step names only those of
+  `DateTimeOriginal`. A date that is no real date, as one of zeros, is
+  passed over for the next.
+- **The fraction of a second is kept in `taken`**, as written, as
+  `2024-05-14T09:30:12.345`, which sorts and groups as `taken` did.
+- **The width and height** are as the browser draws the photo, as in Step
+  162, since an edited photo's Exif may give the size it had before. Its
+  `PixelXDimension` and `PixelYDimension`, turned by its orientation, are
+  kept only for a photo the browser cannot draw (Step 165).
+- **Numbers kept:** the aperture, shutter, and focal length to six
+  significant digits, the shutter in seconds and the focal length in
+  millimetres; the latitude and longitude to seven decimal places, about a
+  centimetre; and the altitude to a tenth of a metre.
+- **A location** needs its latitude and its longitude, each with its
+  reference, and one at 0, 0 is taken as none, as a camera with no place to
+  give may write it. An altitude's reference that is odd is below, as Exif
+  3.0 adds 2 and 3 to the 0 and 1 of before.
+- **Read leniently:** an `UNDEFINED` value as a `BYTE`, as Pillow writes
+  `GPSAltitudeRef`; a directory named by the `IFD` type as by `LONG`; Exif
+  3.0's UTF-8 type; `ASCII` as UTF-8, which many cameras write; and
+  `Exif\0\0` before the TIFF header of a PNG's or a WebP's Exif, as some
+  programs write it.
+- **A PNG's eXIf is looked for before its image data**, `IDAT`, where the
+  PNG specification places it and browsers read it. A WebP is read on only
+  if `VP8X` says it holds Exif, so that one with none costs one range.
+- **Read as the thumbnail is drawn**, the original read whole for the
+  thumbnail and by ranges for its details at once. The music page's
+  `StoredFile` replaces the page's own reading of a file whole.
+- **As a camera shows it:** the shutter as a fraction of a second, if it is
+  a quarter of one or less, as `1/125 s`, and the aperture as `ƒ/1.8`. The
+  make is left out where the model names it already, as `Canon EOS R5`.
+- **The time shown is as the camera wrote it**, with its offset after it,
+  as `UTC+09:00`, and where it came from below. A place is shown to five
+  decimal places of a degree, about a metre, and its altitude to the metre,
+  above or below sea level.
+
+**Open questions:**
+
+- **Photos imported before this step** keep the details they have, so that
+  Details shows no camera, exposure, or place for them. Whether a photo
+  shown with none read should have its Exif read then, as Step 165 makes a
+  view of a photo later.
+- **The original is read twice** as it is imported: whole for its
+  thumbnail, and by ranges for its details. Whether the details of a JPEG,
+  a PNG, or a WebP should be read from the whole file read for the
+  thumbnail instead, which would save the ranges, though Step 165's raw
+  files, which no browser draws, are still read by ranges.
 
 ---
 
@@ -1035,7 +1116,7 @@ and this table then given their numbers.
 | #669 | Importing a file encrypted | 160 |
 | #670 | Step 162 — Importing Photos into a New Album | 162 |
 | #671 | Step 163 — Viewing a Photo | 163 |
-| *to be made* | Step 164 — Reading a Photo's Details | 164 |
+| #672 | Step 164 — Reading a Photo's Details | 164 |
 | *to be made* | Step 165 — Photos No Browser Shows as They Are | 165 |
 | *to be made* | Step 166 — Videos | 166 |
 | *to be made* | Step 167 — Copying, Moving, and Removing Photos | 167 |
