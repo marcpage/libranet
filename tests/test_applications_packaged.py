@@ -806,16 +806,13 @@ def test_the_photos_application_is_built_from_its_directory(photos_page: str) ->
 
 def test_the_photos_page_is_one_self_contained_document(photos_page: str) -> None:
     assert photos_page.startswith("<!doctype html>")
-    # Nothing is loaded from a file of its own, or from anywhere else but
-    # what the TV page reaches, of which it starts as a copy.
+    # Nothing is loaded from a file of its own, or from anywhere else: an
+    # album, and every photo in it, comes from the node.
     assert "<link" not in photos_page
     assert findall(r"<script[^>]*\bsrc", photos_page) == []
     assert "url(" not in photos_page.split("<style>", 1)[1].split("</style>", 1)[0]
     assert "http:" not in photos_page
-    assert set(findall(r"https:[^\"`\s]*", photos_page)) <= {
-        "https://api.themoviedb.org/3",
-        "https://image.tmdb.org/t/p",
-    }
+    assert "https:" not in photos_page
 
 
 def test_the_photos_page_calls_only_endpoints_the_node_serves(photos_page: str) -> None:
@@ -825,19 +822,57 @@ def test_the_photos_page_calls_only_endpoints_the_node_serves(photos_page: str) 
     # No store: the node keeps no albums for whoever is not signed in.
     assert called == {
         CLIENT_PATH,
-        "/data/directory",
-        IMPORTS_PATH,
         BUNDLES_PATH,
         "/data/",
         SESSION_PATH,
         SIGNED_PATH,
         DROP_PATH,
         f"{ENCRYPTED_PATH}/",
-        ARCHIVES_PATH,
     }
-    assert fullmatch(DIRECTORY_PATTERN, "/data/directory/Pictures/2024")
+    # A person's albums: searched at their drop, each version opened, and
+    # those replaced shunned.
+    target = quote(f"photos albums:sha256/{hex_digits}", safe="")
+    assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{target}")
     assert fullmatch(ENCRYPTED_PATTERN, f"{ENCRYPTED_PATH}/sha256/{hex_digits}")
     assert fullmatch(DATA_PATTERN, f"/data/sha256/{hex_digits}")
+    # An album's index, and the thumbnail of its cover in its folder.
+    album = f"/data/sha256/{hex_digits}/AES256-CBC/{hex_digits}"
+    assert fullmatch(BUNDLE_PATTERN, f"{album}/index/2024-05.json")
+    assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/thumb.jpg")
+
+
+def test_the_photos_page_keeps_albums_where_the_plan_names_them(photos_page: str) -> None:
+    assert 'const ALBUMS_PREFIX = "photos albums:";' in photos_page
+    assert 'const REMEMBERED = "photos.album";' in photos_page
+    assert 'const PHOTOS = "photos";' in photos_page
+    assert 'const INDEX = "index";' in photos_page
+
+
+def test_the_photos_page_reads_an_albums_index_by_month_as_the_plan_names_it(
+    photos_page: str,
+) -> None:
+    [pattern] = findall(r"^const INDEX_FILE = /(.*)/;$", photos_page, MULTILINE)
+    named = [
+        "2024-05.json",
+        "2024-12.json",
+        "undated.json",
+        "2024-05.2.json",
+        "2024-05.12.json",
+        "undated.3.json",
+    ]
+    not_named = ["2024-13.json", "2024-5.json", "2024-05.1.json", "2024-05.02.json", "05.json"]
+
+    assert [name for name in named if fullmatch(pattern, name)] == named
+    assert [name for name in not_named if fullmatch(pattern, name)] == []
+    # A month of more photos than this is split into parts.
+    assert "const PART_PHOTOS = 2000;" in photos_page
+
+
+def test_the_photos_page_is_black_as_the_movie_and_tv_pages_are_dark(photos_page: str) -> None:
+    assert '<meta name="color-scheme" content="dark">' in photos_page
+    assert "--background: #000;" in photos_page
+    # Dark, even when the system is set to light.
+    assert "prefers-color-scheme" not in photos_page
 
 
 def test_the_directory_application_is_built_from_its_directory(directory_page: str) -> None:

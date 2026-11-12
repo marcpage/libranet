@@ -34,7 +34,7 @@ and can be built alongside any phase.
 
 ## 2. What It Adds
 
-Twelve steps:
+Twelve steps, the first two built:
 
 - **Importing a file encrypted.** The node's one change. Step 160.
 - **The photos application, and its albums.** Step 161.
@@ -137,10 +137,10 @@ by a range, from `/data/{id}/` and from a bundle that holds it.
 
 ---
 
-## Step 161 — The Photos Application and Its Albums
+## Step 161 — The Photos Application and Its Albums ✅
 
-**Issue:** to be made (§4), from #477. **Depends on:** Phase 3 Steps 67 to
-74; Phase 4 Steps 78, 79; TV App Step 144.
+**Issue:** #477. **Depends on:** Phase 3 Steps 67 to 74; Phase 4 Steps 78,
+79; TV App Step 144.
 
 Settled with the user:
 
@@ -250,6 +250,88 @@ and versions made apart, merged as they are read.
   of 100,000 photos, made on a node of its own, is opened, and a photo
   added to it, to see that each is quick enough. If not, the limit is
   lowered, and the user asked.
+
+Built, in two change sets: the TV page copied to `applications/photos/` as
+it is, with the application registered and its tests; then the changes
+albums make. It was checked on nodes of their own in headless Chromium:
+albums made, opened, renamed, and removed, and a name held refused,
+ignoring case, both in making one and in renaming one; the album open
+remembered, and opened again after a reload; every key; the list read on a
+second node, signed in as the same person, with the covers and the days of
+the photos fetched from the first, and an album made there read back on the
+first; versions made apart, naming albums of photos made for the purpose,
+merged as they are read, each album at the version that changed it last,
+with each photo the others hold, and its entry in the index, added to it,
+and a month of 2,500 photos written as parts of 2,000 and 500; the next
+change shunning every version read; signed in with a fallback password;
+and a phone's width. Safari is yet to be checked.
+
+**Whether 100,000 photos is too many.** An album of 100,000 photos, of
+300,050 entries in 50 months, was built in the store of a node of its own,
+with what `POST /data/bundles` uses, since building it through that
+endpoint is slower still (below). On this machine, the first read into each
+new version of it took about 10 seconds, as the node read the whole album;
+after that, its index, 50 files, was read in about a fifth of a second, the
+days of its first and last photo in less, and the page listed it in half a
+second. Adding a photo to it, with its month's index written again, took
+about 10 seconds, and adding 50 at once about 12, nearly all of it the node
+reading the album whole. So an album that large opens, but each batch of an
+import into it (Step 162) costs about 10 seconds more than it does in an
+album of a few photos. Building it through `POST /data/bundles` took longer
+again: the node takes out of the base whatever lies at each path added by
+looking through every entry of it, so that a request adding 5,000 photos to
+an album of 45,000 took about 100 seconds. The limit is kept at 100,000 for
+now, as no step before 162 adds a photo, and the user is asked below.
+
+Calls made while building it, not yet reviewed:
+
+- **Only what albums need is kept of the TV page**: its look, signing in,
+  and reading, merging, and placing versions. Browsing the folders,
+  importing, video, TMDB, and keeping offline are left out, to be taken
+  from the TV and music pages again by the steps that need them, so that
+  this step's page holds nothing it does not use.
+- **Import is left out until Step 162**, which builds it, rather than shown
+  doing nothing. The upper right corner has New album and Keys.
+- **An album open** shows how many photos it holds and the days of its
+  first and last. Its grid is Step 162's.
+- **A new album's bundle is empty**, with no `photos/` and no `index/`, as
+  a music library starts. Every empty album's bundle has the same id, as
+  each is encrypted by its bytes, which tells no one anything.
+- **The days of an album's first and last photo** are read from its index,
+  from the files of its first month and its last, as its tile is shown, and
+  are not kept in the list, which holds only what this step names.
+- **Merging.** An album whose versions add no photo to the newest is kept
+  as it is. One they do is a new bundle, marked changed as it is merged, so
+  that it is the newest from then on; it keeps the newest's cover, or, if
+  that has none, takes the cover of a version merged into it. A version
+  that does not open, or naming an album that could not be read whole, is
+  not shunned by the next change. Photos merged in are added in as many
+  requests as keep each under 3 MiB, their folders before the index.
+- **The index** is written in order of when each photo was taken, and of
+  its folder.
+- **Albums are newest first** by `created`, and of two made in the same
+  moment, by `id`.
+- **Back is before the album's name**, and Rename and Remove album after
+  it.
+- **The arrow keys, Home, and End** give focus to the first album, or to
+  the last for End, when no album has it. Escape and Backspace do nothing
+  but with an album open.
+- **Remove album** asks in a dialog naming the album, and says that its
+  photos stay in any other album holding them.
+
+**Open questions:**
+
+- **Whether 100,000 photos is too many**, given the times above, and
+  whether the node's edit of a large bundle should be made quicker instead:
+  not looking through every entry of the base for each path added, and not
+  reading the whole of the base when only a few paths change.
+- **Signed in with a fallback password**, the albums are not read, as the
+  Music App's Step 149 found of a library: the page searches the fallback's
+  own drop, and each version is encrypted for the person's key, which the
+  session does not hold. The page says so, and lists no albums.
+- **An album removed comes back** while a node still finds a version naming
+  it that it has not shunned, as one made apart on another node, since a
+  node shuns only for itself (HttpApi §5.5).
 
 ---
 
@@ -785,9 +867,8 @@ and this table then given their numbers.
 | Issue | Asks for | Step |
 | --- | --- | --- |
 | #476 | Defining the photos application | None: this plan |
-| #477 | Implementing the photos application, split into the issues below | 160 to 171 |
+| #477 | Implementing the photos application, split into the issues below, then Step 161 — The Photos Application and Its Albums | 160 to 171, then 161 |
 | #669 | Importing a file encrypted | 160 |
-| *to be made* | Step 161 — The Photos Application and Its Albums | 161 |
 | *to be made* | Step 162 — Importing Photos into a New Album | 162 |
 | *to be made* | Step 163 — Viewing a Photo | 163 |
 | *to be made* | Step 164 — Reading a Photo's Details | 164 |

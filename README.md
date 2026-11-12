@@ -54,6 +54,7 @@ see [Project Status](#project-status).
     - [Watch movies](#watch-movies)
     - [Watch TV](#watch-tv)
     - [Listen to music](#listen-to-music)
+    - [Look at photos](#look-at-photos)
     - [Use and share applications](#use-and-share-applications)
     - [Put a site at any path](#put-a-site-at-any-path)
   - [How It Works](#how-it-works)
@@ -234,6 +235,23 @@ TV application's, with `S` for Shuffle, `L` for the playlists, and `[` and
 for you alone, as your series are, so the music application keeps none for
 a browser no one is signed in on.
 
+### Look at photos
+
+Every node also ships a photos application, at `/photos/` on the node,
+which is black, as photos look best on it. It is a way to look at your
+photos and to share them, not a backup of them. Every photo is in an
+album, and the page opens on your albums, newest first, each shown by its
+cover, its name, how many photos it holds, and the days of its first photo
+and its last. Signed in, in a browser on the node's own computer, make a
+new album, and open, rename, or remove one. Two albums are never of the same
+name. The arrow keys move through the albums, Enter opens one, Escape or
+Backspace goes back, `N` makes a new album, and `?` shows the keys. Your
+albums are kept for you alone, each encrypted, and are read on any node you
+sign in on, which fetches them from the network as it needs them, so the
+photos application keeps none for a browser no one is signed in on.
+Importing photos into an album, and looking at them, are the next steps of
+its [plan](docs/implementation/Photos%20App.md).
+
 ### Use and share applications
 
 Any collection of web pages can be served as an application. Give your node
@@ -319,8 +337,8 @@ uv run libranet
 Then open `http://127.0.0.1:8080/` in a browser. That is your node's front
 page, which says who the node is and links to its applications: the movie
 library at `http://127.0.0.1:8080/movie/`, TV at
-`http://127.0.0.1:8080/tv/`, music at `http://127.0.0.1:8080/music/`, the
-user directory at
+`http://127.0.0.1:8080/tv/`, music at `http://127.0.0.1:8080/music/`,
+photos at `http://127.0.0.1:8080/photos/`, the user directory at
 `http://127.0.0.1:8080/directory/`, mail at `http://127.0.0.1:8080/mail/`,
 the nodes it knows at `http://127.0.0.1:8080/nodes/`, the Karma chain it
 follows at `http://127.0.0.1:8080/karma/`, and the administration page,
@@ -439,7 +457,7 @@ you say so on `/config`.
 | [Movie App Plan](docs/implementation/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 83, 85–88, and 115, all built |
 | [TV App Plan](docs/implementation/TV%20App.md) | The TV application: steps 144–148, all built |
 | [Music App Plan](docs/implementation/Music%20App.md) | The music application: steps 149–154, steps 149 to 153 built |
-| [Photos App Plan](docs/implementation/Photos%20App.md) | The photos application: steps 160–171, planned |
+| [Photos App Plan](docs/implementation/Photos%20App.md) | The photos application: steps 160–171, steps 160 and 161 built |
 | [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |
 | [File Layout](docs/implementation/File%20Layout.md) | Every file a node reads or writes, and the settings that move them |
 | [Database Schema](docs/implementation/Database%20Schema.md) | The statistics database's tables, and what reads and writes them |
