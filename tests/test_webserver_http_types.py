@@ -84,6 +84,57 @@ def test_stalled_body_is_incomplete() -> None:
         body.read()
 
 
+def test_a_body_is_copied_to_a_file_unkept_a_megabyte_at_a_time() -> None:
+    data = bytes(range(256)) * 9000
+    stream = BytesIO(data + b"the next request")
+    body = RequestBody(len(data), stream)
+    copied = BytesIO()
+
+    body.copy_to(copied)
+
+    assert copied.getvalue() == data
+    assert body.consumed
+    assert stream.read() == b"the next request"
+
+    with raises(ValueError):
+        body.read()
+
+    with raises(ValueError):
+        body.copy_to(BytesIO())
+
+
+def test_a_body_already_read_is_copied_from_what_was_read() -> None:
+    body = RequestBody.of(b"payload")
+    copied = BytesIO()
+
+    assert body.read() == b"payload"
+    body.copy_to(copied)
+
+    assert copied.getvalue() == b"payload"
+
+
+def test_a_body_of_unknown_length_cannot_be_copied() -> None:
+    with raises(ValueError):
+        RequestBody(None, BytesIO(b"5\r\nhello\r\n0\r\n\r\n")).copy_to(BytesIO())
+
+
+@mark.parametrize(
+    ("body", "said"),
+    [
+        (RequestBody(10, BytesIO(b"short")), "5 of 10"),
+        (RequestBody(10, StalledStream()), "Timed out"),
+    ],
+)
+def test_a_body_copied_short_is_incomplete_and_not_consumed(body: RequestBody, said: str) -> None:
+    with raises(IncompleteBodyError, match=said):
+        body.copy_to(BytesIO())
+
+    assert not body.consumed
+
+    with raises(ValueError):
+        body.read()
+
+
 def test_invalid_bodies_are_refused() -> None:
     with raises(ValueError):
         RequestBody(-1, BytesIO())

@@ -101,6 +101,13 @@ from libranet.webserver.bundle_paths import (
     content_type_for,
 )
 from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
+from libranet.webserver.bundle_zips import (
+    UNIX_SYSTEM,
+    ZIP_MEDIA_TYPE,
+    BundlesHandler,
+    ZipBundleMaker,
+    ZipEntryError,
+)
 from libranet.webserver.byte_range import BYTES_UNIT, ByteRange
 from libranet.webserver.chaos_handler import (
     CHAOS_METHODS,
@@ -467,8 +474,10 @@ __all__ = [
     "TRUST_LIST_KIND",
     "TRUST_PATH",
     "TRUST_PATTERN",
+    "UNIX_SYSTEM",
     "UNTRUSTED_APP_HEADERS",
     "USERS_PATH",
+    "ZIP_MEDIA_TYPE",
     "AppHandler",
     "Application",
     "ApplicationListHandler",
@@ -492,6 +501,7 @@ __all__ = [
     "BundleLimits",
     "BundlePaths",
     "BundleReadHandler",
+    "BundlesHandler",
     "ByteRange",
     "ChaosCandidate",
     "ChaosChoice",
@@ -612,6 +622,8 @@ __all__ = [
     "VersionEdits",
     "VersionParser",
     "WebServerModule",
+    "ZipBundleMaker",
+    "ZipEntryError",
     "basic_credentials",
     "body_or_refusal",
     "build_config_router",

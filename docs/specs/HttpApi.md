@@ -473,7 +473,10 @@ machine's own. Each of these endpoints therefore makes the checks of
 
 A request body is read as JSON only if its `Content-Type` is
 `application/json`, with or without parameters, and any other is answered
-`415 Unsupported Media Type`. No response from these endpoints carries
+`415 Unsupported Media Type`, but for a zip made a bundle, of
+`application/zip` (§12.3). A page on another site can send neither without
+the node agreeing first, as it can send a form's types. No response from
+these endpoints carries
 `Access-Control-Allow-Origin`, or any other header granting a cross-origin
 request.
 
@@ -3046,6 +3049,42 @@ the page uses rather than one it works out. It reads no bundle the JSON
 names. A bundle that is not well-formed, or that does not fit in one
 object even compressed (§8), is `400 Bad Request`.
 
+A page has the node make a directory bundle of a zip by sending the zip
+itself, as it is, rather than JSON:
+
+```http
+POST /data/bundles
+Content-Type: application/zip
+Content-Length: 1048576
+
+<the zip>
+```
+
+The zip's bytes come as they are, not as base64 within JSON, so it may hold
+files of any size, up to as large a body as the node takes in all (§21). A
+body that does not declare its length is `411 Length Required`. The node
+makes a new bundle, with no base, not encrypted, and answers
+`201 Created` as above:
+
+- **Each file** is cut into parts as an import cuts one (§12.2), and kept
+  with no times or permissions.
+- **Each directory** holding nothing is kept, as a metadata-only entry
+  ([Bundle Specification §3.1](BundleSpecification.md#31-fields)).
+- **Each symbolic link**, an entry made on Unix whose mode says it is one,
+  is kept as one, its target what the entry holds.
+- **A zip all of whose entries lie in one folder**, as compressing a folder
+  in macOS's Finder or Windows' File Explorer makes one, is made a bundle of
+  that folder's contents.
+
+A node MAY leave out entries it takes to be no part of what was zipped,
+such as those macOS's Finder adds of its own. The reference node leaves out
+an entry with an element of its name matching one of the patterns its
+configuration names, and all beneath it, `__MACOSX` and `.DS_Store` by
+default. A body that is not a zip, and a zip with an entry whose name is
+not an entry path, one encrypted, one compressed in a way the node cannot
+read, one failing its check, a name given twice, or an entry beneath a
+file, is `400 Bad Request`, saying which entry.
+
 ---
 
 ### 12.4 Keeping Content Offline
@@ -4264,8 +4303,8 @@ that must know a body's size before it reads it.
   1 MiB with a signed request, as it takes an object (HighLevelDesign
   §4.3), and a node or seek list, or a peer's search answer, of at most
   4 MiB once decompressed. A page's request to make bundles takes at most
-  4 MiB, a value in an application's store 64 KiB, and the store itself
-  1 MiB. It reads a bundle of at most 16 MiB once decompressed or decrypted.
+  4 MiB, and a zip it sends to be made one 16 GiB (§12.3), a value in an
+  application's store 64 KiB, and the store itself 1 MiB. It reads a bundle of at most 16 MiB once decompressed or decrypted.
   A drop's search takes at most 60 seconds, and matches at most 32 bits
   (§9.6). A sign-in's trust scores reach at most 4 steps out and read at
   most 1,000 lists, spending up to 30 seconds looking for each (Trust

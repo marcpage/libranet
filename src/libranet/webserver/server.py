@@ -115,6 +115,7 @@ from libranet.webserver.bundle_edits import (
 )
 from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
+from libranet.webserver.bundle_zips import ZIP_MEDIA_TYPE, BundlesHandler, ZipBundleMaker
 from libranet.webserver.chaos_handler import (
     CHAOS_METHODS,
     CHAOS_PATTERN,
@@ -419,7 +420,22 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
                 max_bundle_bytes=storage.max_decompressed_bundle_bytes,
             ),
         )
-        router.add("POST", BUNDLES_PATH, LocalOnly(OwnPageOnly(edits, pages, trusted=True), checks))
+        zips = ZipBundleMaker(
+            uploads,
+            storage.data_dir,
+            storage.max_object_bytes,
+            max_zip_bytes=node.network.max_bundles_zip_bytes,
+            excluded_names=node.network.zip_excluded_names,
+        )
+        router.add(
+            "POST",
+            BUNDLES_PATH,
+            LocalOnly(
+                OwnPageOnly(BundlesHandler(edits, zips), pages, trusted=True),
+                checks,
+                or_else=(ZIP_MEDIA_TYPE,),
+            ),
+        )
         drops = DropHandler(
             uploads,
             storage.max_object_bytes,

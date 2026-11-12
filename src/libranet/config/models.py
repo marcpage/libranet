@@ -126,6 +126,15 @@ TARGET_BITS: Final = 256
 #: poster as base64 beside the rest of an edit (HttpApi §21, Phase 3 Step 72).
 DEFAULT_MAX_BUNDLES_REQUEST_BYTES: Final = 4 * MIB
 
+#: The largest zip a page may send to be made a bundle, by default: room for
+#: a site holding a film (HttpApi §12.3, §21, Phase 7 Step 159). It is written
+#: to disk before it is read.
+DEFAULT_MAX_BUNDLES_ZIP_BYTES: Final = 16 * 1024 * MIB
+
+#: What a zip made a bundle leaves out, by default: what macOS's Finder adds
+#: of its own as it compresses a folder (HttpApi §12.3, Phase 7 Step 159).
+DEFAULT_ZIP_EXCLUDED_NAMES: Final = ("__MACOSX", ".DS_Store")
+
 #: How large a bundle is read once decompressed or decrypted, by default.
 #: Bundle JSON is mostly paths and hex hashes, which compress about 2-4 times,
 #: so 1 MiB as stored is well within it (HttpApi §21).
@@ -211,6 +220,19 @@ class NetworkConfig(_Section):
     # request gives, such as a poster, come as base64, a third larger than
     # they are. Provisional default.
     max_bundles_request_bytes: int = Field(default=DEFAULT_MAX_BUNDLES_REQUEST_BYTES, ge=1)
+
+    # The largest zip a page may send to be made a bundle (HttpApi §12.3,
+    # §21, Phase 7 Step 159). It comes as it is, not as base64, and is
+    # written to a temporary file beside the store before it is read, so as
+    # much room again is needed. A larger one is refused unread. Provisional
+    # default.
+    max_bundles_zip_bytes: int = Field(default=DEFAULT_MAX_BUNDLES_ZIP_BYTES, ge=1)
+
+    # What a zip made a bundle leaves out: an entry with an element of its
+    # name matching one of these shell-style patterns, case sensitively,
+    # and all beneath it (Phase 7 Step 159). By default, what macOS's Finder
+    # adds of its own.
+    zip_excluded_names: tuple[str, ...] = DEFAULT_ZIP_EXCLUDED_NAMES
 
     # How long a person's session goes unused before it ends, the private
     # key it holds in the web server's memory with it (HttpApi §11.4, Phase

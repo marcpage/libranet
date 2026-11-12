@@ -137,6 +137,8 @@ The settings an operator is most likely to change:
 | `network.client_grace_requests` | `12` | How many requests a peer connected to the node is kept for, whatever its Karma (§4.8) |
 | `network.client_value_seconds` | `600.0` | How long a peer holding less Karma than both the median of those connected and the node is kept, after those requests, once it pushes nothing the node seeks (§4.8) |
 | `network.client_keep_count` | `16` | How many peers connected to the node it keeps, closing none for its Karma unless more are connected (§4.8) |
+| `network.max_bundles_zip_bytes` | `17179869184` | The largest zip, 16 GiB, a page may send to be made a bundle; it is written to a temporary file beside the store first, so as much room again is needed |
+| `network.zip_excluded_names` | `["__MACOSX", ".DS_Store"]` | What a zip made a bundle leaves out: entries with an element of their name matching one of these shell-style patterns, case sensitively, and all beneath them |
 | `peers.search_relays` | `2` | How many times a search this node starts may be passed on, from peer to peer; each node passing it on asks every peer it has |
 | `peers.turned_away_rest_seconds` | `3600.0` | How long the node waits before dialing again a peer that turned it away, closing the connection once it had answered (§4.8) |
 | `peers.seed_file` | `null` | The node's first peers (§3.1) |

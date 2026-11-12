@@ -17,7 +17,7 @@ from http import HTTPStatus
 from io import BytesIO
 from json import loads
 from logging import getLogger
-from typing import Any, Final, Iterable, Mapping, Protocol
+from typing import IO, Any, Final, Iterable, Mapping, Protocol
 from urllib.parse import unquote
 
 from libranet.cas.content_id import ContentId
@@ -43,6 +43,9 @@ CACHED_FOR_GOOD: Final[Mapping[str, str]] = {"Cache-Control": IMMUTABLE_CACHE_CO
 #: guesses from its body. Reads into a bundle and untrusted applications send
 #: it (HttpApi §12.1, §13.5).
 NOT_SNIFFED: Final[Mapping[str, str]] = {"X-Content-Type-Options": "nosniff"}
+
+# How much of a body copied away is read from the connection at once.
+_COPY_CHUNK_BYTES: Final = 1024 * 1024
 
 #: The methods that only read. A HEAD is answered as a GET would be, with
 #: the body left out (RFC 9110 §9.3.2).
@@ -76,6 +79,9 @@ class RequestBody:
         self._length_bytes = length_bytes
         self._stream = stream
         self._data: bytes | None = b"" if length_bytes == 0 else None
+        # Whether copy_to() began reading the body, and whether it finished.
+        self._copying = False
+        self._copied = False
 
     @classmethod
     def of(cls, data: bytes) -> RequestBody:
@@ -90,20 +96,21 @@ class RequestBody:
     @property
     def consumed(self) -> bool:
         """Whether no unread body bytes remain on the connection."""
-        return self._data is not None
+        return self._data is not None or self._copied
 
     def read(self) -> bytes:
         """The whole body; later calls return the same bytes.
 
         Raises:
-            ValueError: the body's length is not known.
+            ValueError: the body's length is not known, or it was copied
+                away, unkept.
             IncompleteBodyError: the connection closed or timed out first.
         """
         if self._data is not None:
             return self._data
 
-        if self._length_bytes is None or self._stream is None:
-            raise ValueError("A body of unknown length cannot be read")
+        if self._length_bytes is None or self._stream is None or self._copying:
+            raise ValueError("A body of unknown length, or copied away, cannot be read")
 
         try:
             data = self._stream.read(self._length_bytes)
@@ -118,6 +125,45 @@ class RequestBody:
 
         self._data = data
         return data
+
+    def copy_to(self, sink: IO[bytes]) -> None:
+        """Write the whole body to ``sink``, a megabyte at a time, never holding it whole.
+
+        A body already read is written from what was read. One copied away
+        is not kept, and cannot be read or copied again.
+
+        Raises:
+            ValueError: the body's length is not known, or it was copied
+                away before.
+            IncompleteBodyError: the connection closed or timed out first.
+        """
+        if self._data is not None:
+            sink.write(self._data)
+            return
+
+        if self._length_bytes is None or self._stream is None or self._copying:
+            raise ValueError("A body of unknown length, or copied away, cannot be copied")
+
+        self._copying = True
+        left_bytes = self._length_bytes
+
+        while left_bytes > 0:
+            try:
+                data = self._stream.read(min(left_bytes, _COPY_CHUNK_BYTES))
+
+            except TimeoutError as error:
+                raise IncompleteBodyError("Timed out reading the request body") from error
+
+            if not data:
+                raise IncompleteBodyError(
+                    f"Request body ended after {self._length_bytes - left_bytes} "
+                    f"of {self._length_bytes} bytes"
+                )
+
+            sink.write(data)
+            left_bytes -= len(data)
+
+        self._copied = True
 
 
 @dataclass(frozen=True)
@@ -167,6 +213,13 @@ class Request:  # pylint: disable=too-many-instance-attributes
         """Whether the client that sent it is on this machine (HttpApi §2.4)."""
         return is_local_client(self.client_address, reached=self.server_address)
 
+    def media_type(self) -> str:
+        """The media type the request's ``Content-Type`` names, in lower case; empty if none.
+
+        Parameters after the type, such as a ``charset``, are left out.
+        """
+        return (self.header("Content-Type") or "").partition(";")[0].strip().lower()
+
     def carries_json(self) -> bool:
         """Whether the request says its body is JSON: its ``Content-Type`` is ``application/json``.
 
@@ -175,19 +228,22 @@ class Request:  # pylint: disable=too-many-instance-attributes
         only once the node agrees (HttpApi §2.3.3). Parameters after the
         type, such as a ``charset``, are ignored.
         """
-        media_type = (self.header("Content-Type") or "").partition(";")[0].strip().lower()
-        return media_type == JSON_CONTENT_TYPE
+        return self.media_type() == JSON_CONTENT_TYPE
 
-    def require_json(self) -> None:
-        """Raise unless the request :meth:`carries_json`.
+    def require_json(self, *, or_else: tuple[str, ...] = ()) -> None:
+        """Raise unless the request :meth:`carries_json`, or a body of a media type in ``or_else``.
+
+        Each of ``or_else`` must be one no form sends, which a page on another
+        site cannot send without asking this node first, as for JSON.
 
         Raises:
             UnsupportedMediaTypeError: the ``Content-Type`` is not
-                ``application/json``.
+                ``application/json``, nor one of ``or_else``.
         """
-        if not self.carries_json():
+        if not (self.carries_json() or self.media_type() in or_else):
+            accepted = " or ".join((JSON_CONTENT_TYPE, *or_else))
             raise UnsupportedMediaTypeError(
-                f"A request body's Content-Type must be {JSON_CONTENT_TYPE}, "
+                f"A request body's Content-Type must be {accepted}, "
                 f"got {self.header('Content-Type')!r}"
             )
 

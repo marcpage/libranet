@@ -12,6 +12,7 @@ from contextlib import closing, contextmanager
 from errno import EADDRINUSE
 from hashlib import sha256
 from http.client import HTTPConnection, HTTPResponse, IncompleteRead
+from io import BytesIO
 from json import dumps, loads
 from logging import DEBUG, ERROR, WARNING, getLogger
 from pathlib import Path
@@ -21,6 +22,7 @@ from threading import Thread
 from time import monotonic, sleep
 from typing import Any, Callable, Iterator, Mapping
 from urllib.parse import quote
+from zipfile import ZipFile
 from zlib import compress
 
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
@@ -3206,6 +3208,30 @@ def test_the_config_port_reads_the_nodes_karma_and_keeps_the_share_it_stakes(
     assert asked("PUT", {"stake_percent": 5}) == (200, {"stake_percent": 5})
     assert asked("GET")[1]["stake_percent"] == 5
     assert loads((storage.karma_dir / "staking.json").read_bytes()) == {"stake_percent": 5}
+
+
+def test_a_local_client_makes_a_bundle_of_a_zip(
+    local_connection: HTTPConnection,
+    storage: StorageConfig,
+) -> None:
+    zipped = BytesIO()
+
+    with ZipFile(zipped, "w") as archive:
+        archive.writestr("site/index.html", b"<p>Bread</p>")
+
+    local_connection.request(
+        "POST",
+        "/data/bundles",
+        body=zipped.getvalue(),
+        headers={"Content-Type": "application/zip", **_from_page(local_connection, "/movie/")},
+    )
+    response = local_connection.getresponse()
+    answered = loads(response.read())
+    assert response.status == 201, answered
+    made = ContentId.parse(answered["bundle"])
+
+    assert response.status == 201
+    assert CasStore.for_node(storage, SERVER_IDENTITY.node_id).exists(made)
 
 
 def test_bundles_are_made_only_by_a_node_that_knows_its_id(
