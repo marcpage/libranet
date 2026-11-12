@@ -920,6 +920,34 @@ Calls made in building it, not yet reviewed:
   `/data/zip/{bundle}/`, saved as the last element of its base URL,
   `b.zip`, or `chaos.zip` at the root.
 
+Set 3 was built as the page alone, about 230 lines, and the page's words
+now say upload rather than propose. Checked live on a throwaway node: a zip
+holding a 5 MiB file was made a bundle over a real connection, sent back
+as a zip holding the same bytes, and made the same bundle again; an upload
+placed signed was chosen, and served on the Chaos port, its page and the
+large file; and the Chaos port answered `401` without a session, and sent
+a page opened without one, and a bare `?`, to the main port. In headless
+Chrome, the page offered `/chaos/` and `/chaos/tarts/` for
+`/chaos/tarts/plum.html`, the latter first, uploaded a zip there, showed
+it chosen, and offered it as `tarts.zip`. Not checked: Safari, a zip
+lacking the rest, which asks first, and the download saved by a browser.
+Calls made in building it, not yet reviewed:
+
+- **Only a person signed in on the node's own machine sees the upload
+  form**, as only they can make bundles and sign. Download is offered to
+  whoever sees the page.
+- **A file's own level is offered neither for upload nor download**: a
+  directory bundle cannot serve it, and a file bundle is no directory to
+  zip.
+- **The zip is sent with `XMLHttpRequest`**, not `fetch`, to show how much
+  of it is sent.
+- **The check that the bundle holds the rest waits out one `503`**, and
+  goes on without asking if it still cannot tell.
+- **After an upload, the zip chosen is cleared and the base URL kept**, so
+  that another can go to the same place.
+- **The node's answers in Python still say "proposed"**, as in a `404`'s
+  detail, until the rename (§6).
+
 My calls, not yet reviewed:
 
 - **One endpoint, two forms.** A zip is made a bundle by

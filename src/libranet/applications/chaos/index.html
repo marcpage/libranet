@@ -150,8 +150,9 @@
     Each signer's mark is from those scores: &#x1F7E2; above 0, trusted;
     &#x1F7E1; 0, neither; &#x1F534; below 0, distrusted; and &#x26AA; where
     there are no scores to show.
-    Ending any address beneath <code>/chaos</code> with <code>?</code> shows
-    this page for it.
+    On this node's own port, every address beneath <code>/chaos</code> shows
+    this page for it, and on the Chaos port, ending one with <code>?</code>
+    comes back to it.
   </footer>
 </main>
 <script>
@@ -967,8 +968,8 @@ async function upload(event) {
     }
 
     sayUpload(`Uploaded at ${baseUrl(level)}.`, "chosen", null);
-    byId("upload-form").reset();
-    showUploadLevels(view.report.levels);
+    // The zip alone is cleared: where it went is kept for the next.
+    byId("upload-file").value = "";
     followReport();
   } catch (error) {
     sayUpload(error.message, "error", null);
