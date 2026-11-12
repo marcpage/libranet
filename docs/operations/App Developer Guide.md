@@ -533,6 +533,32 @@ it as one object, and answers `201 Created` with the id it is stored at. Use
 that id, since the node writes the JSON its own way first. A bundle that is
 not well-formed, or does not fit in an object, is `400`.
 
+**A zip, both ways.** A page sends a zip the person chose, as it is, to
+have the node make a new directory bundle of it, files of any size and all:
+
+```js
+const response = await fetch("/data/bundles", {
+  method: "POST",
+  headers: { "Content-Type": "application/zip" },
+  body: file, // a File from an <input type="file" accept=".zip">
+});
+const { bundle } = await response.json();
+```
+
+Each file becomes a file entry, with no times or permissions, each folder
+holding nothing a directory, and each Unix symbolic link a link. A zip all
+of whose entries lie in one folder, as macOS and Windows make one of a
+folder, gives that folder's contents, and what macOS's Finder adds of its
+own, `__MACOSX` and `.DS_Store`, is left out. A zip is limited to 16 GiB,
+unless the node's operator sets another limit. One the node cannot make a
+bundle of, as one with an entry named `../escape.html`, is `400`, saying
+which entry. Any client has a directory in a bundle as a zip with
+`GET /data/zip/{id}/{path}`, the root with the empty path, and a link to it
+with `download` saves it: each file is stored uncompressed, and the zip is
+sent as it is made, so a part that does not come in time leaves the
+download unfinished. A zip downloaded so, and sent back unchanged, gives
+the same bundle, if the first held no times or permissions.
+
 ### 6.6 The Application's Store
 
 Content never changes, so what an application needs to keep as it changes,
@@ -1596,15 +1622,15 @@ someone the viewer trusts more proposed one holding it. At every level,
 from the root down, proposals by those the viewer trusts come first, then
 those of no trust specified; one by someone they distrust is never served.
 
-Whoever is signed in is served on the node's Chaos port, a port of its
-own, without a sandbox. Anyone else is served on the node's port, in the
-sandbox of an untrusted application (§4), where every `fetch` fails, so
-load scripts with a plain `<script src>`. Link to, and load, only paths
-relative to the page, or beginning `/chaos/`, which work on either port,
-and never write a port in. Nothing but `/chaos` is served on the Chaos
-port, and what serves only the node's own pages refuses a Chaos site, so a
-site shows what the network holds by holding it in its bundle, or by
-linking to another Chaos path.
+**Chaos is only for someone signed in.** A Chaos site is served on the
+node's Chaos port, a port of its own, without a sandbox, and only to a
+browser carrying a session; anything else asked for there without one is
+`401`. The node's port serves no Chaos site, only the Chaos page below.
+Link to, and load, only paths relative to the page, or beginning
+`/chaos/`, and never write a port in. Nothing but `/chaos` is served on the
+Chaos port, and what serves only the node's own pages refuses a Chaos
+site, so a site shows what the network holds by holding it in its bundle,
+or by linking to another Chaos path.
 
 **Every Chaos site shares one origin**, the Chaos port's. There, one site
 can read any Chaos path and what another keeps in `localStorage`, and can
@@ -1613,15 +1639,20 @@ with your site's path. Every answer beneath `/chaos` carries
 `Cache-Control: no-store`, since what is chosen depends on who asks, and
 when.
 
-**Seeing why.** An address beneath `/chaos` ending in a bare `?`, as
-`/chaos/recipes/?`, opens the node's **Chaos page** for its path, and so
-does a path for which nothing is chosen. It shows each level searched,
-every proposal found there, with its signer, date, and bundle, why each was
-passed over, and which was chosen, and lets a person signed in on the
-node's machine trust, distrust, or clear each signer. It is served on the
-node's port alone, outside any sandbox, and no page may frame it. A query
-with anything in it, such as `?about`, is your site's, as any other is, so
-use one of those, never a bare `?`, for a page of your own.
+**Seeing why.** On the node's port, every path beneath `/chaos` is the
+node's **Chaos page** for that path. On the Chaos port, an address ending
+in a bare `?`, as `/chaos/recipes/?`, opens it, and so does a page for
+which nothing is chosen, or one opened without a session. It shows each
+level searched, at the address it serves, every proposal found there, with
+its signer, date, and bundle, why each was passed over, and which was
+chosen, and lets a person signed in on the node's machine trust, distrust,
+or clear each signer. Its **View content** links to the path on the Chaos
+port. Signed in on the node's machine, a person uploads a zip there, which
+the page has the node make a bundle of (§6.5) and proposes, signed, at the
+address chosen, and downloads any bundle listed as a zip. It is served on
+the node's port alone, outside any sandbox, and no page may frame it. A query with anything in it, such as `?about`, is your
+site's, as any other is, so use one of those, never a bare `?`, for a page
+of your own.
 
 The node's own pages read what the Chaos page shows, the **report**, from
 any client:
@@ -1630,7 +1661,7 @@ any client:
 const response = await fetch(`/data/chaos/${path}`, { cache: "no-store" });
 const report = await response.json();
 // report.chosen is {level, drop}, or null when nothing is chosen.
-// report.served_at is where the path is served for whoever asked.
+// report.served_at is the path on the Chaos port.
 // Each of report.levels[i].proposals has its signer, score, bundle,
 // created, holds, and passed_over.
 ```
@@ -1638,9 +1669,9 @@ const report = await response.json();
 `path` is spelled as it is beneath `/chaos/`, percent-encoded, and is empty
 for the root. The node resolves it as a request for the path would be, by
 the same person's scores, and may wait as long, up to
-`network.app_wait_seconds`. `served_at` is on the Chaos port for a person
-signed in, and on the node's port for anyone else. A path that names
-nothing is `404`. HTTP API §13.6.7 gives every member, and each reason a
+`network.app_wait_seconds`. A browser no one is signed in on is `401`, and
+a path that names nothing is `404`. HTTP API §13.6.7 gives every member,
+and each reason a
 proposal is passed over. A Chaos site cannot read the report: it is not one
 of the node's own pages, on either port.
 

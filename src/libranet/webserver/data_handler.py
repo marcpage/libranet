@@ -72,6 +72,7 @@ DATA_ENDPOINT_NAMES: Final = (
     "archives",
     "karma",
     "chaos",
+    "zip",
 )
 
 DATA_PATTERN: Final = (

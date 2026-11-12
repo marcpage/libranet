@@ -17,8 +17,9 @@ port at a loopback address, or another of this machine's. The exception
 ``/config`` makes for a link the operator follows is not made, since none of
 these endpoints is a page. A body that does not say it is JSON is ``415``,
 as a page on another site can send a form's types without asking this node
-first. All of this is checked before the endpoint sees the request, or reads
-its body.
+first, but for an endpoint also taking another type no form sends, as
+making bundles takes a zip (Phase 7 Step 159). All of this is checked before
+the endpoint sees the request, or reads its body.
 
 The checks keep other sites' pages out (Phase 3 Step 68), and an
 application the operator has not trusted, which is served in a sandbox whose
@@ -36,7 +37,7 @@ by a name of its own on the network.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass
 from http import HTTPStatus
 from logging import getLogger
 from typing import Final
@@ -63,15 +64,20 @@ def client_handler(request: Request) -> Response:
 class LocalOnly:
     """``handler``, served only to a local client, and only to this node's own pages.
 
-    ``checks`` say whether a request is another site's page's.
+    ``checks`` say whether a request is another site's page's. A body is
+    taken only if it is JSON, or of a media type in ``or_else``, each one no
+    form sends.
     """
 
     handler: Handler
     checks: SiteChecks
+    _: KW_ONLY
+    or_else: tuple[str, ...] = ()
 
     def __call__(self, request: Request) -> Response:
         refused = local_refusal(request, self.checks)
-        return OwnSiteOnly(self.handler, self.checks)(request) if refused is None else refused
+        guarded = OwnSiteOnly(self.handler, self.checks, or_else=self.or_else)
+        return guarded(request) if refused is None else refused
 
 
 @dataclass(frozen=True)
@@ -80,11 +86,14 @@ class OwnSiteOnly:
 
     ``checks`` say whether a browser says another site's page made it. Its
     ``Host`` is not checked, so that a client elsewhere can reach this node
-    by a name of its own on the network.
+    by a name of its own on the network. A body is taken only if it is JSON,
+    or of a media type in ``or_else``, each one no form sends.
     """
 
     handler: Handler
     checks: SiteChecks
+    _: KW_ONLY
+    or_else: tuple[str, ...] = ()
 
     def __call__(self, request: Request) -> Response:
         refusal = self.checks.page_refusal(request)
@@ -95,7 +104,7 @@ class OwnSiteOnly:
 
         try:
             if request.body.length_bytes != 0:
-                request.require_json()
+                request.require_json(or_else=self.or_else)
 
         except UnsupportedMediaTypeError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)

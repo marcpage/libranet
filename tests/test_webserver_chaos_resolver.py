@@ -27,7 +27,7 @@ from libranet.identity.people import NewIdentity, PersonKey, Username
 from libranet.identity.trust import TrustScore, TrustScores
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType, PathOutcome
-from libranet.protocol.chaos import ChaosPath, ChaosProposal, ChoosingScores, PassedOver
+from libranet.protocol.chaos import ChaosPath, ChaosProposal, PassedOver
 from libranet.protocol.search import LocalSearch, SearchCache
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_use import ApplicationUse
@@ -44,7 +44,6 @@ from libranet.webserver.http_types import Request
 from libranet.webserver.search_handler import SearchHandler
 from libranet.webserver.sessions import Session, Sessions
 
-NODE = ContentId.for_data(b"this node's public key", "sha256")
 BLOCK = ContentId.for_data(b"an identity block", "sha256")
 HASH_BITS = 256
 # The fewest bits the search returns, fewer than a node's, to be quick to match.
@@ -111,7 +110,6 @@ class Chaos:
         self.recorder = Recorder()
         self.sessions = Sessions(HOUR_SECONDS)
         self.people = Builds()
-        self.node = Builds(TrustScores(NODE, {}))
         self.ticks = Ticks()
         # What the last drop placed but not stored holds, to store later.
         self.later = b""
@@ -150,7 +148,7 @@ class Chaos:
         return ChaosResolver(
             ChaosLevels(self.search, paths_read.parts, settings, clock=self.ticks),
             paths_read,
-            ChaosScores(self.sessions, self.people, NODE, self.node),
+            ChaosScores(self.sessions, self.people),
             settings,
             wall_clock=NOW.timestamp,
         )
@@ -274,15 +272,13 @@ def resolver(chaos: Chaos) -> ChaosResolver:
     return chaos.resolver()
 
 
-def test_a_path_with_nothing_proposed_resolves_to_nothing_by_the_nodes_scores(
-    resolver: ChaosResolver,
-) -> None:
-    resolution = resolved(resolver, "recipes/")
+def test_a_path_with_nothing_proposed_resolves_to_nothing(chaos: Chaos, alice: PersonKey) -> None:
+    chaos.people = Builds(TrustScores(alice.person_id, {}))
+    resolution = resolved(chaos.resolver(), "recipes/", chaos.signed_in(alice))
 
     assert resolution.chosen is None
     assert resolution.value() == {
         "path": "recipes/",
-        "scores": "node",
         "complete": True,
         "chosen": None,
         "levels": [
@@ -349,9 +345,9 @@ def test_a_bundle_holding_a_directory_or_a_link_at_the_rest_holds_it(
 
 
 def test_a_trusted_proposal_deeper_down_is_chosen_over_one_of_no_trust_specified_above_it(
-    chaos: Chaos, resolver: ChaosResolver, bob: PersonKey
+    chaos: Chaos, alice: PersonKey, resolver: ChaosResolver, bob: PersonKey
 ) -> None:
-    chaos.node = Builds(trusting(NODE, (bob.person_id,)))
+    chaos.people = Builds(trusting(alice.person_id, (bob.person_id,)))
     resolver = chaos.resolver()
     anyone, trusted = bundle("anyone's"), bundle("Bob's")
     unsigned = chaos.propose(ROOT, anyone)
@@ -359,7 +355,7 @@ def test_a_trusted_proposal_deeper_down_is_chosen_over_one_of_no_trust_specified
     chaos.hold(anyone, "recipes/index.html")
     chaos.hold(trusted, "index.html")
 
-    resolution = resolved(resolver, "recipes/")
+    resolution = resolved(resolver, "recipes/", chaos.signed_in(alice))
 
     assert chosen_drop(resolution) == signed
     assert found(resolution, unsigned).passed_over is None
@@ -369,9 +365,9 @@ def test_a_trusted_proposal_deeper_down_is_chosen_over_one_of_no_trust_specified
 
 
 def test_of_trusted_proposals_the_shallowest_level_holding_the_rest_is_chosen(
-    chaos: Chaos, bob: PersonKey, carol: PersonKey
+    chaos: Chaos, alice: PersonKey, bob: PersonKey, carol: PersonKey
 ) -> None:
-    chaos.node = Builds(trusting(NODE, (bob.person_id, carol.person_id)))
+    chaos.people = Builds(trusting(alice.person_id, (bob.person_id, carol.person_id)))
     resolver = chaos.resolver()
     shallow, deep = bundle("Bob's"), bundle("Carol's")
     above = chaos.propose(ROOT, shallow, by=bob, ago_seconds=3600)
@@ -379,7 +375,7 @@ def test_of_trusted_proposals_the_shallowest_level_holding_the_rest_is_chosen(
     chaos.hold(shallow, "recipes/index.html")
     chaos.hold(deep, "index.html")
 
-    resolution = resolved(resolver, "recipes/")
+    resolution = resolved(resolver, "recipes/", chaos.signed_in(alice))
 
     assert chosen_drop(resolution) == above
     assert found(resolution, below).passed_over is None
@@ -419,9 +415,9 @@ def test_of_two_proposals_of_one_moment_the_one_whose_drop_sorts_first_is_the_ne
 
 
 def test_a_proposers_newest_proposal_supersedes_their_older_ones_though_it_lacks_the_rest(
-    chaos: Chaos, bob: PersonKey
+    chaos: Chaos, alice: PersonKey, bob: PersonKey
 ) -> None:
-    chaos.node = Builds(trusting(NODE, (bob.person_id,)))
+    chaos.people = Builds(trusting(alice.person_id, (bob.person_id,)))
     resolver = chaos.resolver()
     taken_away, kept = bundle("Bob's new"), bundle("Bob's old")
     newer = chaos.propose(ROOT, taken_away, by=bob, ago_seconds=1)
@@ -429,7 +425,7 @@ def test_a_proposers_newest_proposal_supersedes_their_older_ones_though_it_lacks
     chaos.answer(taken_away, "cake.html", PathOutcome.NOT_FOUND)
     chaos.hold(kept, "cake.html")
 
-    resolution = resolved(resolver, "cake.html")
+    resolution = resolved(resolver, "cake.html", chaos.signed_in(alice))
 
     assert resolution.chosen is None
     assert found(resolution, newer).passed_over == PassedOver.LACKS_PATH
@@ -438,9 +434,9 @@ def test_a_proposers_newest_proposal_supersedes_their_older_ones_though_it_lacks
 
 
 def test_one_proposers_proposals_do_not_supersede_anothers_nor_unsigned_ones_each_other(
-    chaos: Chaos, bob: PersonKey, carol: PersonKey
+    chaos: Chaos, alice: PersonKey, bob: PersonKey, carol: PersonKey
 ) -> None:
-    chaos.node = Builds(trusting(NODE, (bob.person_id, carol.person_id)))
+    chaos.people = Builds(trusting(alice.person_id, (bob.person_id, carol.person_id)))
     resolver = chaos.resolver()
     drops = [
         chaos.propose(ROOT, bundle("Bob's"), by=bob, ago_seconds=1),
@@ -452,15 +448,15 @@ def test_one_proposers_proposals_do_not_supersede_anothers_nor_unsigned_ones_eac
     for name in ("Bob's", "Carol's", "one", "another"):
         chaos.answer(bundle(name), "cake.html", PathOutcome.NOT_FOUND)
 
-    resolution = resolved(resolver, "cake.html")
+    resolution = resolved(resolver, "cake.html", chaos.signed_in(alice))
 
     assert [found(resolution, drop).passed_over for drop in drops] == [PassedOver.LACKS_PATH] * 4
 
 
 def test_a_newer_proposal_dated_too_far_ahead_supersedes_nothing(
-    chaos: Chaos, bob: PersonKey
+    chaos: Chaos, alice: PersonKey, bob: PersonKey
 ) -> None:
-    chaos.node = Builds(trusting(NODE, (bob.person_id,)))
+    chaos.people = Builds(trusting(alice.person_id, (bob.person_id,)))
     resolver = chaos.resolver()
     ahead, kept = bundle("ahead"), bundle("kept")
     future = chaos.propose(ROOT, ahead, by=bob, ago_seconds=-301)
@@ -468,7 +464,7 @@ def test_a_newer_proposal_dated_too_far_ahead_supersedes_nothing(
     chaos.hold(ahead, "cake.html")
     chaos.hold(kept, "cake.html")
 
-    resolution = resolved(resolver, "cake.html")
+    resolution = resolved(resolver, "cake.html", chaos.signed_in(alice))
 
     assert chosen_drop(resolution) == older
     assert found(resolution, future).passed_over == PassedOver.FUTURE
@@ -497,14 +493,16 @@ def test_how_far_ahead_a_proposal_may_be_dated_is_a_setting(chaos: Chaos) -> Non
     assert found(resolved(resolver, "cake.html"), drop).passed_over == PassedOver.FUTURE
 
 
-def test_a_distrusted_proposers_proposal_is_never_chosen(chaos: Chaos, carol: PersonKey) -> None:
-    chaos.node = Builds(trusting(NODE, distrusted=(carol.person_id,)))
+def test_a_distrusted_proposers_proposal_is_never_chosen(
+    chaos: Chaos, alice: PersonKey, carol: PersonKey
+) -> None:
+    chaos.people = Builds(trusting(alice.person_id, distrusted=(carol.person_id,)))
     resolver = chaos.resolver()
     carols = bundle("Carol's")
     drop = chaos.propose(ROOT, carols, by=carol)
     chaos.hold(carols, "cake.html")
 
-    resolution = resolved(resolver, "cake.html")
+    resolution = resolved(resolver, "cake.html", chaos.signed_in(alice))
 
     assert resolution.chosen is None
     assert found(resolution, drop).passed_over == PassedOver.DISTRUSTED
@@ -512,9 +510,9 @@ def test_a_distrusted_proposers_proposal_is_never_chosen(chaos: Chaos, carol: Pe
 
 
 def test_a_proposer_scoring_zero_or_not_reached_is_of_no_trust_specified(
-    chaos: Chaos, bob: PersonKey, carol: PersonKey
+    chaos: Chaos, alice: PersonKey, bob: PersonKey, carol: PersonKey
 ) -> None:
-    chaos.node = Builds(TrustScores(NODE, {bob.person_id: TrustScore(0, 1)}))
+    chaos.people = Builds(TrustScores(alice.person_id, {bob.person_id: TrustScore(0, 1)}))
     resolver = chaos.resolver()
     bobs, carols, anyones = bundle("Bob's"), bundle("Carol's"), bundle("anyone's")
     drops = [
@@ -526,7 +524,7 @@ def test_a_proposer_scoring_zero_or_not_reached_is_of_no_trust_specified(
     for each in (bobs, carols, anyones):
         chaos.answer(each, "cake.html", PathOutcome.NOT_FOUND)
 
-    resolution = resolved(resolver, "cake.html")
+    resolution = resolved(resolver, "cake.html", chaos.signed_in(alice))
 
     # Taken together, in the second pass, newest first.
     assert [found(resolution, drop).passed_over for drop in drops] == [PassedOver.LACKS_PATH] * 3
@@ -618,11 +616,12 @@ def test_a_bundle_resolved_within_the_wait_is_looked_at(
     assert chosen_drop(resolution) == drop
 
 
-def test_a_person_signed_in_is_served_by_their_scores_and_anyone_else_by_the_nodes(
+def test_each_person_signed_in_is_served_by_their_own_scores(
     chaos: Chaos, alice: PersonKey, bob: PersonKey, carol: PersonKey
 ) -> None:
-    chaos.people = Builds(trusting(alice.person_id, (bob.person_id,)))
-    chaos.node = Builds(trusting(NODE, (carol.person_id,)))
+    chaos.people = Builds(
+        trusting(alice.person_id, (bob.person_id,)), trusting(bob.person_id, (carol.person_id,))
+    )
     resolver = chaos.resolver()
     bobs, carols = bundle("Bob's"), bundle("Carol's")
     by_bob = chaos.propose(ROOT, bobs, by=bob, ago_seconds=2)
@@ -631,10 +630,9 @@ def test_a_person_signed_in_is_served_by_their_scores_and_anyone_else_by_the_nod
     chaos.hold(carols, "cake.html")
 
     for_alice = resolved(resolver, "cake.html", chaos.signed_in(alice))
-    for_anyone = resolved(resolver, "cake.html")
+    for_bob = resolved(resolver, "cake.html", chaos.signed_in(bob))
 
-    assert (for_alice.scores, chosen_drop(for_alice)) == (ChoosingScores.PERSON, by_bob)
-    assert (for_anyone.scores, chosen_drop(for_anyone)) == (ChoosingScores.NODE, by_carol)
+    assert (chosen_drop(for_alice), chosen_drop(for_bob)) == (by_bob, by_carol)
 
 
 def test_the_person_signed_in_trusts_their_own_proposals(chaos: Chaos, alice: PersonKey) -> None:
@@ -653,14 +651,6 @@ def test_the_person_signed_in_trusts_their_own_proposals(chaos: Chaos, alice: Pe
     assert found(resolution, mine).value()["step"] == 0
 
 
-def test_a_person_whose_scores_are_not_built_is_served_by_the_nodes(
-    chaos: Chaos, resolver: ChaosResolver, alice: PersonKey
-) -> None:
-    resolution = resolved(resolver, "cake.html", chaos.signed_in(alice))
-
-    assert resolution.scores == ChoosingScores.NODE
-
-
 def test_scores_being_built_choose_as_they_stand_and_are_said_to_be_incomplete(
     chaos: Chaos, alice: PersonKey, bob: PersonKey
 ) -> None:
@@ -676,19 +666,21 @@ def test_scores_being_built_choose_as_they_stand_and_are_said_to_be_incomplete(
     assert resolution.value()["complete"] is False
 
 
-def test_with_no_scores_at_all_every_proposer_is_of_no_trust_specified(
-    chaos: Chaos, carol: PersonKey
+@mark.parametrize("signed_in", [True, False])
+def test_with_no_scores_every_proposer_is_of_no_trust_specified_and_the_nodes_choose_for_none(
+    chaos: Chaos, resolver: ChaosResolver, alice: PersonKey, carol: PersonKey, signed_in: bool
 ) -> None:
-    chaos.node = Builds()
-    resolver = chaos.resolver()
+    # Alice's scores are not being built, or no one is signed in, and no
+    # other scores, the node's own among them, take their place.
     carols = bundle("Carol's")
     drop = chaos.propose(ROOT, carols, by=carol)
     chaos.hold(carols, "cake.html")
 
-    resolution = resolved(resolver, "cake.html")
+    resolution = resolved(resolver, "cake.html", chaos.signed_in(alice) if signed_in else None)
 
     assert chosen_drop(resolution) == drop
-    assert (found(resolution, drop).score, resolution.complete) == (0, False)
+    assert (found(resolution, drop).score, found(resolution, drop).step) == (0, None)
+    assert resolution.complete is False
 
 
 def test_a_drop_found_and_not_held_is_asked_for_and_pending_once_the_wait_is_up(
@@ -739,16 +731,17 @@ def test_a_drop_arriving_within_the_wait_is_read(chaos: Chaos, resolver: ChaosRe
 
 def test_a_trusted_proposers_key_not_held_is_waited_for_asked_for_and_pending(
     chaos: Chaos,
+    alice: PersonKey,
 ) -> None:
     dave = NewIdentity.generate(2048).key
-    chaos.node = Builds(trusting(NODE, (dave.person_id,)))
+    chaos.people = Builds(trusting(alice.person_id, (dave.person_id,)))
     resolver = chaos.resolver()
     daves = bundle("Dave's")
     drop = chaos.propose(ROOT, daves, by=dave)
     chaos.hold(daves, "cake.html")
     started = monotonic()
 
-    resolution = resolved(resolver, "cake.html")
+    resolution = resolved(resolver, "cake.html", chaos.signed_in(alice))
 
     assert monotonic() - started >= WAIT_SECONDS
     assert resolution.chosen is None
@@ -759,10 +752,12 @@ def test_a_trusted_proposers_key_not_held_is_waited_for_asked_for_and_pending(
 
 
 def test_a_key_or_drop_that_cannot_change_the_choice_is_asked_for_but_not_waited_for(
-    chaos: Chaos, carol: PersonKey
+    chaos: Chaos, alice: PersonKey, carol: PersonKey
 ) -> None:
     dave = NewIdentity.generate(2048).key
-    chaos.node = Builds(trusting(NODE, (carol.person_id,), distrusted=(dave.person_id,)))
+    chaos.people = Builds(
+        trusting(alice.person_id, (carol.person_id,), distrusted=(dave.person_id,))
+    )
     resolver = chaos.resolver()
     carols = bundle("Carol's")
     chaos.propose(ROOT, bundle("Dave's"), by=dave)
@@ -771,7 +766,7 @@ def test_a_key_or_drop_that_cannot_change_the_choice_is_asked_for_but_not_waited
     chaos.hold(carols, "cake.html")
     started = monotonic()
 
-    resolution = resolved(resolver, "cake.html")
+    resolution = resolved(resolver, "cake.html", chaos.signed_in(alice))
 
     assert monotonic() - started < WAIT_SECONDS
     assert chosen_drop(resolution) == chosen

@@ -12,13 +12,13 @@ choose. Anyone may propose a bundle for a path, by placing a drop named
 for it. A node serving a path beneath `/chaos` looks at the drop for each
 part of the path, from the root down, and serves the newest bundle holding
 the rest of the path, preferring one signed by someone the viewer trusts.
-For a person signed in, every request their browser makes for a Chaos
-path follows their trust: the page, its images and scripts, and each link
-followed from it. A path for which no bundle is found is answered with a
-page saying what was looked at. The same page, reached by ending any
-address with `?`, shows every bundle proposed for the path, lets the
-viewer trust or distrust whoever signed each, and lets them download a
-bundle or propose one of their own.
+Chaos is only for someone signed in, and every request their browser
+makes for a Chaos path follows their trust: the page, its images and
+scripts, and each link followed from it. A path for which no bundle is
+found is answered with a page saying what was looked at. The same page,
+reached by ending any address with `?`, shows every bundle proposed for
+the path, lets the viewer trust or distrust whoever signed each, and lets
+them download a bundle as a zip or upload one of their own.
 
 Every step below comes from an issue in the GitHub **Phase 7 - Chaos
 endpoint** milestone. Issue #595 asks for this plan, and has no text of
@@ -33,11 +33,11 @@ and the steps after it build what it says.
 Nothing here changes the architecture of Phase 1 §2: the same supervisor,
 the same dispatcher, the same module processes, the same filesystem CAS,
 and the same invariant that only the stats module opens SQLite. The Chaos
-endpoint is served by the web server, on its main port and, for whoever is
-signed in, on a port of its own (Step 157), from the building blocks it
-has: the search of a drop and of the node's peers, signed content checked,
-the trust scores of whoever is signed in and the node's own, reading into a
-bundle, and making bundles and drops.
+endpoint is served by the web server, on a port of its own (Step 157),
+with the Chaos page on its main port (Steps 158 and 159), from the
+building blocks it has: the search of a drop and of the node's peers,
+signed content checked, the trust scores of whoever is signed in, reading
+into a bundle, and making bundles and drops.
 
 The web endpoint of Phase 8 (#596) is to work as this one does, but with
 an owner for each path, who delegates the paths beneath it. Step 156's
@@ -85,7 +85,9 @@ Five steps, each built on the one before it:
 - **The Chaos page.** What a path resolves to, and why, shown for a `404`
   and for any address ending in `?`, with Trust, Distrust, and Clear for
   each signer. Step 158.
-- **Proposing and downloading a bundle**, on the Chaos page. Step 159.
+- **Uploading and downloading a zip**, on the Chaos page, with Chaos
+  only for someone signed in, and the main port's `/chaos` only the Chaos
+  page. Step 159.
 
 ### 2.3 How a Path Is Resolved
 
@@ -106,21 +108,23 @@ A path ending in `/` names that directory's `index.html`, so the rest of
 
 ```mermaid
 flowchart TD
-    req["GET /chaos/a/b/c.html"] --> session{"Carries a session?"}
-    session -->|"yes, on the main port"| moved["302 to the same path<br/>on the Chaos port"]
-    session -->|"yes, on the Chaos port"| person["Scores: the person's"]
-    session -->|no| node["Scores: the node's own"]
-    person --> trusted["Pass 1: proposals whose signer is trusted,<br/>at chaos:/, chaos:/a, chaos:/a/b, chaos:/a/b/c.html"]
-    node --> trusted
-    trusted -->|"at the shallowest level holding one,<br/>the newest holding the rest"| serve["Serve it: as it is on the Chaos port,<br/>in a sandbox on the main port"]
+    req["GET /chaos/a/b/c.html"] --> port{"Which port?"}
+    port -->|main| page["200, the Chaos page"]
+    port -->|Chaos| session{"Carries a session?"}
+    session -->|no| signin["302 to the Chaos page for a page opened,<br/>401 for anything else"]
+    session -->|yes| trusted["Pass 1, by the person's scores: proposals whose signer is trusted,<br/>at chaos:/, chaos:/a, chaos:/a/b, chaos:/a/b/c.html"]
+    trusted -->|"at the shallowest level holding one,<br/>the newest holding the rest"| serve["Serve it"]
     trusted -->|none| unknown["Pass 2: proposals of no trust specified,<br/>at the same levels"]
     unknown -->|"as in pass 1"| serve
-    unknown -->|none| missing["404, and the Chaos page"]
+    unknown -->|none| missing["404; a page opened is sent<br/>to the Chaos page"]
 ```
 
 Each request is resolved so, a page's images and scripts as much as the
 page. Distrusted signers' proposals are never chosen. The order of the two
-passes is this plan's, not the milestone's (Step 156, and §6).
+passes is this plan's, not the milestone's (Step 156, and §6). This is as
+Step 159 leaves it. Before it, the main port served Chaos sites, in a
+sandbox and by the node's own scores, to whoever was not signed in, and
+sent whoever was to the Chaos port.
 
 ## 3. How to Read the Steps Below
 
@@ -137,8 +141,9 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   asking, to be reviewed before the step is built. Every call is listed in
   §6 too.
 - **Change sets.** Each step is one change set, under the 500 new lines
-  of Python (not counting tests) past which CLAUDE.md asks for a split.
-  Step 158's page and Step 159 are HTML and script, not Python.
+  of Python (not counting tests) past which CLAUDE.md asks for a split,
+  but Step 159, which is three, so that its change to Steps 157 and 158 is
+  reviewed alone. The Chaos page is HTML and script, not Python.
 - **Testing.** The Python is tested as the web server's is, with fakes for
   the store, the search, the scores, and the bundles read. The Chaos page
   has no automated tests but those of `tests/test_applications_packaged.py`;
@@ -590,7 +595,7 @@ Calls made in building it, not yet reviewed:
 
 ---
 
-## Step 158 — The Chaos Page
+## Step 158 — The Chaos Page ✅
 
 **Kind:** new node code, and a page. **Issue:** #658 (§7.4).
 **Depends on:** Steps 156 and 157; Phase 5 Steps 97, 100, and 106.
@@ -752,57 +757,239 @@ Calls made in building it, not yet reviewed:
 
 ---
 
-## Step 159 — Proposing and Downloading a Bundle
+## Step 159 — Uploading and Downloading a Zip
 
-**Kind:** improvement in the UI: the page alone. **Issue:** #659 (§7.5).
+**Kind:** a change to what Steps 157 and 158 built, new node code, and the
+page. **Issue:** #659 (§7.5).
 **Depends on:** Step 158; Phase 3 Steps 69 and 72; Phase 4 Steps 80 and
 89.
 
 Settled in the milestone: the page lets a viewer download and upload a
 bundle to the address it is open on.
 
-What is built:
+Ruled on 2026-11-11:
 
-- **Proposing**, on a local client, from a dialog of the Chaos page. The
-  person chooses files, a folder, or a `.zip` from their computer, or
-  files from the folders the node offers (HttpApi §12.2), as the movie
-  application adds a movie. The page makes a directory bundle of them with
-  `POST /data/bundles` (HttpApi §12.3), in requests of at most 4 MiB, each
-  over the bundle the one before made. A file larger than one request can
-  carry, about 3 MiB, is imported from the node's folders instead (HttpApi
-  §12.2). Then it places a proposal of the last bundle at the level chosen:
-  signed by the person, with `POST /data/signed`, if they are signed in,
-  and otherwise unsigned, with `POST /data/drop`. Each matches at least 24
-  bits, searched for up to 5 seconds. Then the page reads the report again.
-- **The level** is the directory the address names, by default, or any
-  level above it, chosen in the dialog, with the drop it places at shown.
-- **Downloading**: the file the path serves, as it is, and any bundle
-  listed, as a `.zip` the page builds from reads into the bundle (HttpApi
-  §12.1), its entries stored without compression.
-- **A client elsewhere** may download, but not propose: making bundles
-  serves only local clients.
-- **The App Developer Guide** §6.21 gains placing a proposal from another
-  application.
+- **Upload, not propose.** A person uploads a bundle to a path. Whether
+  anyone is served it depends on what others uploaded and on each viewer's
+  trust, which is why the endpoint is called Chaos. This step's page says
+  upload. The specification, the code, and the report keep "proposal"
+  until they are renamed, everywhere, as a change of its own (§6).
+- **Chaos is only for someone signed in.** Without a person's trust to
+  choose by, it makes no sense.
+- **The main port's `/chaos` is only the Chaos page**, for every path
+  beneath it, whether or not its address ends in `?`: what could have been
+  chosen for the path and what was, with Trust and Distrust to change the
+  outcome. A Chaos site's own files are served only on the Chaos port. The
+  Chaos page's **View content** is a plain link to the same path on the
+  Chaos port.
+- **A `.zip` both ways**, and nothing else to start with: no files,
+  folders, or the node's folders.
+- **The node handles the zip both ways**: it makes a directory bundle of a
+  zip uploaded to it, and serves any bundle as a zip.
+- **`created` is the browser's clock.** Chaining requests by `base` was
+  ruled fine too, but nothing is chained now: the zip is one request.
+
+What is built, as three change sets, each green on its own. The first
+changes what Steps 157 and 158 built, so that it can be reviewed alone.
+
+**Set 1: Chaos only for someone signed in.** In
+`webserver/chaos_handler.py`, `webserver/chaos_resolver.py`, and the page.
+On a node whose main port is 8080 and whose Chaos port is 8130:
+
+- **The main port.** A `GET` or `HEAD` of any path beneath `/chaos` is
+  answered `200 OK` with the Chaos page, whatever its query, and whether or
+  not the request carries a session, and nothing is resolved for it.
+  `http://localhost:8080/chaos/a/b/c.html` is the Chaos page for
+  `/chaos/a/b/c.html`. Gone: the `302` to the Chaos port for a request
+  carrying a session, and serving a Chaos site in a sandbox to one that
+  carries none.
+- **The Chaos port, signed in**, serves as it does now.
+  `http://localhost:8130/chaos/a/b/c.html?` is `302 Found` to
+  `http://localhost:8080/chaos/a/b/c.html`, and so is a page being opened
+  (`Sec-Fetch-Dest: document`) for which nothing is chosen. An image, or
+  anything else not found, is a plain `404`.
+- **The Chaos port, not signed in.** A page being opened is `302 Found` to
+  the Chaos page, as above, which says to sign in. Anything else is
+  `401 Unauthorized`, `session-required`.
+- **The node's own scores choose for no one.** The report, asked without a
+  session, is `401`, `session-required`. Its `scores` member goes, since it
+  is always the person's, and `served_at` is always on the Chaos port.
+- **The page** heads each level with its base URL, `/chaos/a/`, and its
+  drop, `chaos:/a`, beneath it. **View content** is a plain link to the
+  same path on the Chaos port, `http://localhost:8130/chaos/a/b/c.html`,
+  whatever was chosen. **Reload** reads the report again, since the main
+  port shows only this page for the path. Without a session, it
+  says to sign in, with a link to the home page, `/`; on a client
+  elsewhere, which cannot sign in, it says Chaos is used on the node's own
+  machine.
+- **The specification**: HttpApi §13.6, §13.6.3 to §13.6.7, and §2.5's
+  mention of a sandbox on the main port; the App Developer Guide §6.21;
+  the Operator Guide; and the README.
+
+Set 1 was built with 121 added lines of non-test Python, and 158 taken
+away. `ChaosPage` answers every path beneath `/chaos` on the main port
+itself, and `ChaosHandler` serves the Chaos port alone. `ChaosScores`
+reads only the person's scores, and `ChoosingScores` is gone. Calls made in
+building it, not yet reviewed:
+
+- **A path naming nothing is the Chaos page too** on the main port, which
+  says so from the report's `404`, rather than a `404` of its own.
+- **The Chaos port checks for a session before the path**, so a request
+  without one for a path naming nothing is `401`, or sent to the Chaos
+  page.
+- **A person whose scores are not being built** has every proposer of no
+  trust specified, rather than being answered as one without a session:
+  it happens only when their last session has just ended.
+- **The Chaos port's `401` carries no `WWW-Authenticate`**, as the other
+  `session-required` answers do not.
+- **View content is shown once the report is read**, whatever was chosen,
+  since its address comes from the report's `served_at`.
+
+**Set 2: the node's zip, both ways.**
+
+- **Upload**: `POST /data/bundles` with `Content-Type: application/zip`,
+  and the zip as the body, neither JSON nor base64. Served as the JSON
+  form is: to a local client, from a page of a trusted application. It
+  needs a `Content-Length` (`411` without one), and takes at most
+  `network.max_bundles_zip_bytes` (`413`). The node writes the body to a
+  temporary file beside its store, since a zip's index is at its end, and
+  makes a directory bundle of it: each file cut into parts as an import
+  cuts one, read a part at a time, never held whole; each directory kept,
+  empty or not; each symbolic link kept as one. It answers `201 Created`
+  with `{"bundle": "sha256/…"}`, as the JSON form does. An entry whose
+  name is not an entry path (an empty segment, `.`, `..`, or a leading
+  `/`), one encrypted, or one compressed in a way the node cannot read, is
+  `400 Bad Request`, naming the entry.
+- **Download**: `GET /data/zip/{hash-algorithm}/{hash}/{path}`, and the
+  encrypted form, as reading into a bundle has (HttpApi §12.1). It answers
+  with the directory at `{path}`, the bundle's root when empty, and every
+  entry beneath it, as a zip, with `Content-Type: application/zip` and
+  `Content-Disposition: attachment`: files stored uncompressed, and
+  directories and symbolic links as entries of their own. It is sent as it
+  is made. Any client may ask, as any may read into a bundle. `zip` joins
+  the names beneath `/data` that are not content (`DATA_ENDPOINT_NAMES`).
+- **The specification**: HttpApi §12.3 (the zip form), a new §12.5 (a
+  bundle as a zip), and §21 (the limit); the Operator Guide (the
+  settings); and the App Developer Guide.
+
+Set 2 came to 749 added lines of non-test Python, more than twice the
+estimate and over the 500 past which CLAUDE.md asks for a split, so it was
+committed in two parts, each green on its own. Making a bundle of a zip,
+405 lines: `ZipBundleMaker` and `BundlesHandler` in
+`webserver/bundle_zips.py`, `RequestBody.copy_to`, `Request.media_type`,
+and an `or_else` on `LocalOnly` and `OwnSiteOnly` for a body of another type
+than JSON. Sending a bundle as a zip, 344 lines: `BundleZipHandler` in
+`webserver/bundle_zip_reads.py`, and `named_bundle`, made public from
+`webserver/bundle_reads.py` so that both read a bundle's address alike.
+Calls made in building it, not yet reviewed:
+
+- **A zip body is let through the check that a body is JSON**, for making
+  bundles alone. No form sends `application/zip`, so a page on another
+  site cannot send one without the node agreeing first, as for JSON.
+- **The temporary file is unnamed**, in the node's data directory, so
+  that nothing is left of it should the node stop while it is read.
+- **A directory with something in it gets no entry of its own**, so that
+  a zip downloaded and uploaded again is the same bundle.
+- **A file bundle is no directory to zip**, and is `400`; so is a path in
+  a bundle naming a file or a link.
+- **A downloaded zip's file is dated by its bundle's `modified`**, or 1980,
+  the earliest a zip can say, and its mode is `0644`, or `0755` if its
+  bundle says it is executable. A time not readable is not logged.
+- **A file whose size its bundle does not record is given ZIP64's
+  sizes**, as one of 4 GiB or more is.
+- **The download is named for the last element of its path**, or
+  `bundle.zip` for the root, though the Chaos page names its own.
+- **A download is `no-store`**, though what an id names never changes:
+  sent until the connection closes, a download cut short could not be told
+  from a whole one by a cache.
+
+**Set 3: the page, uploading and downloading.**
+
+- **Upload a zip**, signed in on the node's own machine. The person
+  chooses one `.zip`, and the base URL to upload it at: the directory of
+  the address by default, `/chaos/a/b/` for `/chaos/a/b/c.html`, or any
+  above it, from the report's levels. The page sends the zip, showing its
+  progress. It then checks that the bundle made holds the rest of the path
+  at that base URL, with a `HEAD` reading into it, and if not asks before
+  going on: "This zip has no `c.html` at its top. Upload it anyway?" Then
+  it places the upload at the base URL's drop, signed, with
+  `POST /data/signed`, as
+  `{"bundle": "sha256/…", "created": "2026-11-11T15:04:05Z"}`, matching at
+  least 24 bits, searched for 5 seconds, and reads the report again.
+- **Download**, beside each bundle listed: a link to
+  `/data/zip/{bundle}/`, saved as the last element of its base URL,
+  `b.zip`, or `chaos.zip` at the root.
+
+Set 3 was built as the page alone, about 230 lines, and the page's words
+now say upload rather than propose. Checked live on a throwaway node: a zip
+holding a 5 MiB file was made a bundle over a real connection, sent back
+as a zip holding the same bytes, and made the same bundle again; an upload
+placed signed was chosen, and served on the Chaos port, its page and the
+large file; and the Chaos port answered `401` without a session, and sent
+a page opened without one, and a bare `?`, to the main port. In headless
+Chrome, the page offered `/chaos/` and `/chaos/tarts/` for
+`/chaos/tarts/plum.html`, the latter first, uploaded a zip there, showed
+it chosen, and offered it as `tarts.zip`. Not checked: Safari, a zip
+lacking the rest, which asks first, and the download saved by a browser.
+Calls made in building it, not yet reviewed:
+
+- **Only a person signed in on the node's own machine sees the upload
+  form**, as only they can make bundles and sign. Download is offered to
+  whoever sees the page.
+- **A file's own level is offered neither for upload nor download**: a
+  directory bundle cannot serve it, and a file bundle is no directory to
+  zip.
+- **The zip is sent with `XMLHttpRequest`**, not `fetch`, to show how much
+  of it is sent.
+- **The check that the bundle holds the rest waits out one `503`**, and
+  goes on without asking if it still cannot tell.
+- **After an upload, the zip chosen is cleared and the base URL kept**, so
+  that another can go to the same place.
+- **The node's answers in Python still say "proposed"**, as in a `404`'s
+  detail, until the rename (§6).
 
 My calls, not yet reviewed:
 
-- **A `.zip` both ways**, so that a bundle downloaded, changed, and
-  uploaded again is proposed as it was changed. The browser's
-  `DecompressionStream` reads a compressed entry.
-- **The page proposes directory bundles**, at a directory's level. A file
-  bundle at a file's level is chosen as any other (Step 156), but this page
-  makes none.
-- **`created` is the browser's clock**, which `chaos.future_seconds`
-  forgives for being a little ahead.
-- **Requests chained by `base`**, rather than a bundle for each request
-  combined at the end, since each is then a version of the last.
+- **One endpoint, two forms.** A zip is made a bundle by
+  `POST /data/bundles` with its content type, rather than at a path of its
+  own. The JSON form keeps its 4 MiB limit.
+- **`network.max_bundles_zip_bytes`, 16 GiB by default**, since the zip is
+  written to disk before it is read.
+- **The bundle is made while the request waits**, rather than answered
+  `202` and followed, as an import is. The page shows the upload's
+  progress, and then that the bundle is being made.
+- **A zip holding one folder and nothing else is made a bundle of that
+  folder's contents**, since compressing a folder in macOS's Finder or
+  Windows' File Explorer puts the folder's name before every entry.
+- **`__MACOSX` and `.DS_Store` are left out**, as the default of a setting
+  of names, with patterns.
+- **The bundle made is not encrypted**, since what is uploaded to Chaos is
+  for anyone to read.
+- **Symbolic links are kept both ways.** A zip entry is a link if its Unix
+  mode says so.
+- **A download is sent as it is made**, its length unknown, so a part that
+  does not arrive in time ends it short, and the browser says the download
+  failed.
+- **A download's files are stored uncompressed**, since a site's large
+  files, its images and videos, are compressed already.
+- **A request whose session's scores are not being built** is answered as
+  one without a session.
+- **Uploads are always signed**, since only someone signed in uses Chaos.
+  An unsigned one placed by other means is still chosen as Step 156 says.
+- **The page asks, rather than refuses, when the bundle does not hold the
+  rest**, since a bundle uploaded at `/chaos/` may be meant for other paths
+  beneath it.
 
-**Testable in isolation:** by hand: proposing signed and unsigned, from
-files, a folder, a `.zip`, and the node's folders, at each level, and
-seeing the proposal chosen or passed over as the report says; and
-downloading a bundle and proposing it again.
+**Testable in isolation:** tests of each port's answers, signed in or not,
+and of the report without a session; of making a bundle from zips holding
+files, empty directories, links, one folder, names left out, names that are
+not entry paths, encrypted entries, a body too large, and one without a
+length; and of serving a bundle as a zip, read back by `zipfile`, and
+uploaded again, holding the same files. The page is checked by hand, in
+Safari and Chrome.
 
-**Size:** the page alone, about 600 lines.
+**Size:** set 1, about 80 new lines of Python, most of its change taking
+code away; set 2, about 300; set 3, the page alone, about 250 lines.
 
 ---
 
@@ -818,7 +1005,7 @@ where it went. The issue of each step was made from the text in §7.
 | #656 | Resolving a Chaos path (§7.2) | 156 |
 | #657 | Serving `/chaos` (§7.3) | 157 |
 | #658 | The Chaos page (§7.4) | 158 |
-| #659 | Proposing and downloading a bundle (§7.5) | 159 |
+| #659 | Uploading and downloading a zip (§7.5) | 159 |
 
 ## 5. Suggested Build Order
 
@@ -828,7 +1015,7 @@ where it went. The issue of each step was made from the text in §7.
 | 2 | 156 | Every other step serves or shows what it resolves. |
 | 3 | 157 | The endpoint itself; it is usable once this is built, by proposals placed from a script. |
 | 4 | 158 | Shows what Step 157 chose, and why, and lets the viewer change it through whom they trust. |
-| 5 | 159 | Lets anyone propose from a browser, and is needed least. |
+| 5 | 159 | Lets a person upload from a browser, and is needed least. |
 
 ## 6. Open Items Not Yet Decided
 
@@ -839,6 +1026,26 @@ Ruled on 2026-11-07, once this plan was written:
   page, its images and scripts, and each link followed from it (Steps 156
   and 157).
 
+Ruled on 2026-11-11, while planning Step 159 again:
+
+- **Only for someone signed in.** Chaos makes no sense without a person's
+  trust to choose by. The node's own scores choose for no one, and the
+  Chaos port serves nothing to a request without a session (Step 159).
+- **The main port's `/chaos` is only the Chaos page**, for every path
+  beneath it, with or without a `?`: what could have been chosen and what
+  was, with Trust and Distrust. A Chaos site's own files are served only
+  on the Chaos port, and the page's View content is a plain link to the
+  same path there (Step 159).
+- **Upload, not propose.** A person uploads a bundle to a path, and whether
+  anyone sees it depends on what others uploaded and on each viewer's
+  trust: that is the chaos. "Propose", "proposal", and "proposer" are to
+  be renamed everywhere, in the specifications, the guides, this plan, the
+  code, the tests, the report's members, and the page, as a change of its
+  own, after Step 159.
+- **Download and upload** (Step 159): a `.zip` both ways, and nothing else
+  to start with. The node makes a directory bundle of a zip, and serves a
+  bundle as one.
+
 Still to be ruled on, each this plan's call. Step 155 writes each into the
 specification as it stands, to be changed there if ruled otherwise:
 
@@ -848,8 +1055,6 @@ specification as it stands, to be changed there if ruled otherwise:
   trusted one.
 - **No trust specified** (Step 156): unsigned, or signed by someone
   scoring 0 or not reached.
-- **Whose scores** a viewer not signed in goes by (Step 156): the node's
-  own, or none.
 - **Newest** (Step 156): by the proposal's `created`, those dated more than
   5 minutes ahead passed over, and each signer's newest alone counting.
 - **What a drop holds** (Step 156): a proposal naming a bundle, rather
@@ -860,8 +1065,6 @@ specification as it stands, to be changed there if ruled otherwise:
   those scripts can read of what the person's trust chose. Without it, a
   page's images, or the links followed from it, would come without the
   person's session.
-- **Download and upload** (Step 159): a `.zip` both ways, as well as files
-  and folders, and the node's folders for large files.
 
 Not asked by the milestone, and not planned:
 
@@ -869,8 +1072,9 @@ Not asked by the milestone, and not planned:
   unsigned proposal cannot, so the only way to keep one off a node is to
   shun its drop (HttpApi §5.5). The Chaos page could offer that.
 - **Whether a browser sends a bare `?`.** Chrome does (Step 158). Safari
-  is still to be checked. If it drops it, a named query, such as `?about`,
-  would show the page instead.
+  is still to be checked. Since Step 159, only the Chaos port looks for it.
+  If Safari drops it, a named query, such as `?about`, would send the
+  address to the Chaos page instead.
 - **Phase 8's reuse** of Step 156's resolution, for paths with owners.
 
 ## 7. Issues to Make
@@ -1010,21 +1214,45 @@ and Safari both send the bare `?`.
 
 ### 7.5 Step 159
 
-**Title:** Propose and download a bundle on the Chaos page
+**Title:** Upload and download a zip on the Chaos page, and Chaos only for
+someone signed in
 
 ```markdown
 Plan: docs/implementation/Phase 7.md, Step 159.
 
-From the Chaos page, on a local client:
+Ruled 2026-11-11: Chaos is only for someone signed in; the main port's
+`/chaos` is only the Chaos page; a person uploads, rather than proposes;
+and a `.zip` both ways, handled by the node.
 
-- Propose files, a folder, or a `.zip` from the computer, or files from
-  the node's folders: made a bundle with `POST /data/bundles` in requests
-  of at most 4 MiB, then proposed at the level chosen, signed with
-  `POST /data/signed` if signed in, or else unsigned with
-  `POST /data/drop`.
-- Download the file a path serves, or any bundle listed as a `.zip`, from
-  any client.
+Set 1, Chaos only for someone signed in:
 
-Done when a bundle downloaded as a `.zip` and proposed again is chosen as
-the report says, signed and unsigned, in Safari and one other browser.
+- Main port: every path beneath `/chaos` is the Chaos page, `200`, with
+  or without `?`: what could have been chosen and what was, with Trust
+  and Distrust. A Chaos site's own files are served only on the Chaos
+  port.
+- Chaos port: a `?`, or a page being opened for which nothing is chosen,
+  is `302` to the path on the main port. Without a session, a page being
+  opened is `302` there too, and anything else is `401`.
+- The node's own scores choose for no one; the report needs a session.
+- The page heads each level with its base URL (`/chaos/a/`), has View
+  content, a plain link to the same path on the Chaos port, and says to
+  sign in.
+
+Set 2, the node's zip, both ways:
+
+- `POST /data/bundles` with `Content-Type: application/zip` makes a
+  directory bundle of the zip in the body, any size up to
+  `network.max_bundles_zip_bytes`.
+- `GET /data/zip/{hash-algorithm}/{hash}/{path}` serves a bundle's
+  directory as a zip.
+
+Set 3, the page: upload a zip at a base URL, signed, with
+`POST /data/signed`; download any bundle listed as a zip.
+
+Done when, in Safari and Chrome, signed in on the node's machine, a zip
+uploaded at a base URL is chosen as the report says and served on the
+Chaos port; that bundle downloaded as a zip and uploaded again holds the
+same files; the main port's `/chaos` shows only the Chaos page; and the
+Chaos port, signed out, sends a page to the Chaos page and refuses an
+image.
 ```

@@ -929,14 +929,14 @@ def test_the_chaos_port_serves_chaos_alone_where_the_main_port_listens(tmp_path:
         assert chaos_host == host
         assert _chaos_status(host, port, "/chaos?tag=bread&new") == (302, "/chaos/?tag=bread&new")
         assert _chaos_status(host, chaos_port, "/Chaos") == (302, "/Chaos/")
-        # Nothing is proposed anywhere. The main port answers with the Chaos
-        # page, which is not resolved from its bundle yet.
+        # The main port answers with the Chaos page, which is not resolved
+        # from its bundle yet. The Chaos port is only for someone signed in.
         assert _chaos_status(host, port, "/chaos/recipes/") == (503, None)
-        assert _chaos_status(host, chaos_port, "/chaos/recipes/") == (404, None)
+        assert _chaos_status(host, chaos_port, "/chaos/recipes/") == (401, None)
         # A bare ? is kept as the target is read, and goes to the main port.
         assert _chaos_status(host, chaos_port, "/chaos/recipes/?") == (
             302,
-            f"http://{host}:{port}/chaos/recipes/?",
+            f"http://{host}:{port}/chaos/recipes/",
         )
         assert _status(host, chaos_port, "/data/nodes") == (404, None)
         assert _status(host, chaos_port, "/") == (404, None)
@@ -967,11 +967,8 @@ def test_the_main_port_alone_reports_what_a_chaos_path_resolves_to_its_pages(
         # The Chaos page's, as a browser sends it, without its bare ?.
         page = {"Referer": f"http://{host}:{port}/chaos/recipes/"}
 
-        status, report = _report(host, port, page)
-        assert status == 200
-        assert (report["path"], report["scores"], report["chosen"]) == ("recipes/", "node", None)
-        assert report["served_at"] == f"http://{host}:{port}/chaos/recipes/"
-        assert [level["target"] for level in report["levels"]] == ["chaos:/", "chaos:/recipes"]
+        # Only for someone signed in, which no one is here.
+        assert _report(host, port, page)[0] == 401
         # Served to the node's own pages alone, and on the main port alone.
         assert _report(host, port, {})[0] == 403
         assert _report(host, chaos_address[1], page)[0] == 404

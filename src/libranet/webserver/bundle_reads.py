@@ -121,7 +121,7 @@ class BundleReadHandler:
 
     def _response(self, request: Request) -> Response:  # pylint: disable=too-many-return-statements
         """The response to ``request``, before the headers every one carries."""
-        named = _named(request)
+        named = named_bundle(request)
 
         if isinstance(named, Response):
             return named
@@ -218,10 +218,12 @@ class BundleReadHandler:
         return json_response({"entries": entries})
 
 
-def _named(request: Request) -> tuple[PartPath, str] | Response:
+def named_bundle(request: Request) -> tuple[PartPath, str] | Response:
     """The bundle ``request`` names, and the rest of its path, decoded; or the refusal.
 
-    The bundle is named with its key if the path carries one.
+    The bundle is named with its key if the path carries one. The route's
+    pattern names the bundle's ``algorithm`` and ``hash``, and the ``path``
+    after them, as :data:`BUNDLE_PATTERN` does.
     """
     content_id = content_id_or_refusal(request, _LOGGER)
 
