@@ -3166,6 +3166,50 @@ stays, and is evicted as anything it holds is.
 Every request to these endpoints is from a local client, on a page of a
 trusted application, or refused (§2.4, §2.5).
 
+### 12.5 A Bundle as a Zip
+
+Any client may have the directory at a path in a bundle as a zip, as it may
+read into the bundle (§12.1):
+
+```http
+GET /data/zip/{hash-algorithm}/{hash}/{path}
+GET /data/zip/{hash-algorithm}/{hash}/{encryption algorithm}/{key}/{path}
+```
+
+The bundle is named as a read into it names one, and `{path}` names a
+directory in it, the bundle's root when empty, with or without a trailing
+`/`. The node answers `200 OK` with a zip of every entry beneath it, as a
+download:
+
+```http
+Content-Type: application/zip
+Content-Disposition: attachment; filename*=UTF-8''recipes.zip
+Cache-Control: no-store
+X-Content-Type-Options: nosniff
+```
+
+- **Each file** is stored in the zip uncompressed, with the time its
+  bundle says it was last changed, if it says, and a Unix mode saying
+  whether it is executable.
+- **Each directory** with a metadata-only entry of its own is an entry of
+  the zip, and each symbolic link an entry made on Unix whose mode says it
+  is one, holding its target.
+
+The zip is sent as it is made, a part at a time, so its length is not
+known, and each file's size and CRC follow its data. A part not held is
+asked for, and waited for, as a read into a bundle waits (§13.2). One that
+does not come in time ends the response short, without the index a zip
+ends with, so that it cannot be opened. A zip downloaded so, and made a
+bundle again (§12.3), is the same bundle, if the first held no times or
+permissions.
+
+The bundle, or an extension of it, not held is asked for and waited for,
+and is `503 Service Unavailable` if it does not come in time. A path that
+names a file or a symbolic link is `400 Bad Request`, one that names
+nothing `404 Not Found`, content that is not a directory bundle `400`, a
+password-protected bundle `403 Forbidden`, and a bundle this node has
+shunned `404 Not Found` (§5.5).
+
 ## 13. Web Application Routing
 
 Directory-bundle applications are exposed outside the programmatic `/data`
@@ -4445,6 +4489,7 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/store/{application}/...`      | Various      | An application's store on this node (§13.3)                | Defined |
 | `/data/applications`                 | `GET`        | The applications this node serves (§13.4)                  | Defined |
 | `/data/chaos/{path}`                 | `GET`        | What a Chaos path resolves to, and why (§13.6.7)           | Defined |
+| `/data/zip/{algorithm}/{hash}/...`   | `GET`/`HEAD` | A directory in a bundle, as a zip (§12.5)                  | Defined |
 | `/data/...`                          | Various      | Additional programmatic APIs                               | TBD     |
 | `/`                                  | `GET`/`HEAD` | Root web application                                       | Defined |
 | `/{application}/...`                 | `GET`/`HEAD` | Directory-bundle application                               | Defined |

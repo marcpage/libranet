@@ -3210,7 +3210,7 @@ def test_the_config_port_reads_the_nodes_karma_and_keeps_the_share_it_stakes(
     assert loads((storage.karma_dir / "staking.json").read_bytes()) == {"stake_percent": 5}
 
 
-def test_a_local_client_makes_a_bundle_of_a_zip(
+def test_a_local_client_makes_a_bundle_of_a_zip_and_any_client_has_one_as_a_zip(
     local_connection: HTTPConnection,
     storage: StorageConfig,
 ) -> None:
@@ -3229,9 +3229,14 @@ def test_a_local_client_makes_a_bundle_of_a_zip(
     answered = loads(response.read())
     assert response.status == 201, answered
     made = ContentId.parse(answered["bundle"])
+    missing = ContentId.for_data(b"a bundle held elsewhere", "sha256")
+    # Not taken for /data/{algorithm}/{hash}, whose pattern it also fits.
+    zip_of, _ = _get(local_connection, f"/data/zip/{missing}/")
 
     assert response.status == 201
     assert CasStore.for_node(storage, SERVER_IDENTITY.node_id).exists(made)
+    assert zip_of.status == 503
+    assert zip_of.getheader("Cache-Control") == "no-store"
 
 
 def test_bundles_are_made_only_by_a_node_that_knows_its_id(

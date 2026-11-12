@@ -115,6 +115,7 @@ from libranet.webserver.bundle_edits import (
 )
 from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
+from libranet.webserver.bundle_zip_reads import ZIP_PATTERN, BundleZipHandler
 from libranet.webserver.bundle_zips import ZIP_MEDIA_TYPE, BundlesHandler, ZipBundleMaker
 from libranet.webserver.chaos_handler import (
     CHAOS_METHODS,
@@ -560,9 +561,11 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     )
     router.add("GET", DROP_SEARCH_PATTERN, search.at_drop)
     reads = BundleReadHandler(paths)
+    zipped = BundleZipHandler(paths, storage.max_decompressed_bundle_bytes)
 
     for method in BUNDLE_METHODS:
         router.add(method, BUNDLE_PATTERN, reads)
+        router.add(method, ZIP_PATTERN, zipped)
 
     router.add(
         "GET",

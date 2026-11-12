@@ -872,6 +872,37 @@ building it, not yet reviewed:
   bundle as a zip), and §21 (the limit); the Operator Guide (the
   settings); and the App Developer Guide.
 
+Set 2 came to 749 added lines of non-test Python, more than twice the
+estimate and over the 500 past which CLAUDE.md asks for a split, so it was
+committed in two parts, each green on its own. Making a bundle of a zip,
+405 lines: `ZipBundleMaker` and `BundlesHandler` in
+`webserver/bundle_zips.py`, `RequestBody.copy_to`, `Request.media_type`,
+and an `or_else` on `LocalOnly` and `OwnSiteOnly` for a body of another type
+than JSON. Sending a bundle as a zip, 344 lines: `BundleZipHandler` in
+`webserver/bundle_zip_reads.py`, and `named_bundle`, made public from
+`webserver/bundle_reads.py` so that both read a bundle's address alike.
+Calls made in building it, not yet reviewed:
+
+- **A zip body is let through the check that a body is JSON**, for making
+  bundles alone. No form sends `application/zip`, so a page on another
+  site cannot send one without the node agreeing first, as for JSON.
+- **The temporary file is unnamed**, in the node's data directory, so
+  that nothing is left of it should the node stop while it is read.
+- **A directory with something in it gets no entry of its own**, so that
+  a zip downloaded and uploaded again is the same bundle.
+- **A file bundle is no directory to zip**, and is `400`; so is a path in
+  a bundle naming a file or a link.
+- **A downloaded zip's file is dated by its bundle's `modified`**, or 1980,
+  the earliest a zip can say, and its mode is `0644`, or `0755` if its
+  bundle says it is executable. A time not readable is not logged.
+- **A file whose size its bundle does not record is given ZIP64's
+  sizes**, as one of 4 GiB or more is.
+- **The download is named for the last element of its path**, or
+  `bundle.zip` for the root, though the Chaos page names its own.
+- **A download is `no-store`**, though what an id names never changes:
+  sent until the connection closes, a download cut short could not be told
+  from a whole one by a cache.
+
 **Set 3: the page, uploading and downloading.**
 
 - **Upload a zip**, signed in on the node's own machine. The person

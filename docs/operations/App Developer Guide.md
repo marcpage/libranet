@@ -533,7 +533,7 @@ it as one object, and answers `201 Created` with the id it is stored at. Use
 that id, since the node writes the JSON its own way first. A bundle that is
 not well-formed, or does not fit in an object, is `400`.
 
-**A zip.** A page sends a zip the person chose, as it is, to
+**A zip, both ways.** A page sends a zip the person chose, as it is, to
 have the node make a new directory bundle of it, files of any size and all:
 
 ```js
@@ -552,7 +552,12 @@ folder, gives that folder's contents, and what macOS's Finder adds of its
 own, `__MACOSX` and `.DS_Store`, is left out. A zip is limited to 16 GiB,
 unless the node's operator sets another limit. One the node cannot make a
 bundle of, as one with an entry named `../escape.html`, is `400`, saying
-which entry.
+which entry. Any client has a directory in a bundle as a zip with
+`GET /data/zip/{id}/{path}`, the root with the empty path, and a link to it
+with `download` saves it: each file is stored uncompressed, and the zip is
+sent as it is made, so a part that does not come in time leaves the
+download unfinished. A zip downloaded so, and sent back unchanged, gives
+the same bundle, if the first held no times or permissions.
 
 ### 6.6 The Application's Store
 

@@ -100,7 +100,13 @@ from libranet.webserver.bundle_paths import (
     BundlePaths,
     content_type_for,
 )
-from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
+from libranet.webserver.bundle_reads import (
+    BUNDLE_METHODS,
+    BUNDLE_PATTERN,
+    BundleReadHandler,
+    named_bundle,
+)
+from libranet.webserver.bundle_zip_reads import ZIP_PATTERN, BundleZipHandler
 from libranet.webserver.bundle_zips import (
     UNIX_SYSTEM,
     ZIP_MEDIA_TYPE,
@@ -478,6 +484,7 @@ __all__ = [
     "UNTRUSTED_APP_HEADERS",
     "USERS_PATH",
     "ZIP_MEDIA_TYPE",
+    "ZIP_PATTERN",
     "AppHandler",
     "Application",
     "ApplicationListHandler",
@@ -501,6 +508,7 @@ __all__ = [
     "BundleLimits",
     "BundlePaths",
     "BundleReadHandler",
+    "BundleZipHandler",
     "BundlesHandler",
     "ByteRange",
     "ChaosCandidate",
@@ -647,6 +655,7 @@ __all__ = [
     "json_response",
     "local_config_guard",
     "local_refusal",
+    "named_bundle",
     "names_config",
     "names_config_api",
     "origin_on_port",
