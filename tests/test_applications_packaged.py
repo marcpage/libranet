@@ -808,12 +808,15 @@ def test_the_photos_application_is_built_from_its_directory(photos_page: str) ->
 def test_the_photos_page_is_one_self_contained_document(photos_page: str) -> None:
     assert photos_page.startswith("<!doctype html>")
     # Nothing is loaded from a file of its own, or from anywhere else: an
-    # album, and every photo in it, comes from the node.
+    # album, and every photo in it, comes from the node. Nothing is reached
+    # beyond the node but Google Maps, which a photo's details link to.
     assert "<link" not in photos_page
     assert findall(r"<script[^>]*\bsrc", photos_page) == []
     assert "url(" not in photos_page.split("<style>", 1)[1].split("</style>", 1)[0]
     assert "http:" not in photos_page
-    assert "https:" not in photos_page
+    assert set(findall(r"https:[^\"`\s]*", photos_page)) == {
+        "https://www.google.com/maps/search/?api=1&query=",
+    }
 
 
 def test_the_photos_page_calls_only_endpoints_the_node_serves(photos_page: str) -> None:
@@ -833,7 +836,7 @@ def test_the_photos_page_calls_only_endpoints_the_node_serves(photos_page: str) 
         f"{ENCRYPTED_PATH}/",
     }
     # The folders, and a photo's original, imported encrypted, read whole to
-    # draw its thumbnail.
+    # draw its thumbnail, and by ranges for its details.
     assert fullmatch(DIRECTORY_PATTERN, "/data/directory/Pictures/2024/May")
     photo = f"/data/sha256/{hex_digits}/AES256-CBC/{hex_digits}"
     assert fullmatch(BUNDLE_PATTERN, f"{photo}/")
@@ -913,11 +916,25 @@ def test_the_photos_page_imports_into_albums_as_the_plan_names_them(photos_page:
     assert "const THUMB_SIZE = 400;" in photos_page
     assert 'const THUMB_FILE = "thumb.jpg";' in photos_page
     assert 'const INFO_FILE = "info.json";' in photos_page
-    assert (
-        'const INFO_KEYS = ["name", "kind", "taken", "taken_from", "width", "height", "size",'
-        ' "original", "thumb"];'
-    ) in photos_page
+    [keys] = findall(r"^const INFO_KEYS = \[(.*?)\];$", photos_page, DOTALL | MULTILINE)
+    assert findall(r'"(\w+)"', keys) == [
+        "name",
+        "kind",
+        "taken",
+        "taken_from",
+        "offset",
+        "width",
+        "height",
+        "orientation",
+        "size",
+        "camera",
+        "exposure",
+        "location",
+        "original",
+        "thumb",
+    ]
     assert 'const PHOTO_KIND = "photo";' in photos_page
+    assert 'const TAKEN_FROM_EXIF = "exif";' in photos_page
     assert 'const TAKEN_FROM_NAME = "name";' in photos_page
     assert 'const TAKEN_FROM_MODIFIED = "modified";' in photos_page
 
@@ -953,14 +970,80 @@ def test_the_photos_page_reads_when_a_photo_was_taken_from_its_name(photos_page:
     assert [name for name in undated if taken(name)] == []
 
 
+def test_the_photos_page_reads_a_photos_details_as_the_plan_names_them(photos_page: str) -> None:
+    # By ranges of its original, as the music page reads a song's tags.
+    assert "const DETAILS_HEAD = 64 * 1024;" in photos_page
+    assert "const DETAILS_MOST = 16 * 1024 * 1024;" in photos_page
+    [image] = findall(r"^const EXIF_TAGS = \{\n(.*?)\n\};$", photos_page, DOTALL | MULTILINE)
+    [gps] = findall(r"^const GPS_TAGS = \{\n(.*?)\n\};$", photos_page, DOTALL | MULTILINE)
+
+    def numbered(tags: str) -> dict[str, int]:
+        return {
+            name: int(number, 16)
+            for name, number in findall(r"^\s+(\w+): 0x([0-9a-f]{4}),$", tags, MULTILINE)
+        }
+
+    # Each tag the plan names, by its number in Exif 2.32 and 3.0, with the
+    # directories they are in, and the offsets and fractions of a second
+    # that go with each date.
+    assert numbered(image) == {
+        "Make": 0x010F,
+        "Model": 0x0110,
+        "Orientation": 0x0112,
+        "DateTime": 0x0132,
+        "ExifIFDPointer": 0x8769,
+        "GPSInfoIFDPointer": 0x8825,
+        "ExposureTime": 0x829A,
+        "FNumber": 0x829D,
+        "ISOSpeedRatings": 0x8827,
+        "DateTimeOriginal": 0x9003,
+        "DateTimeDigitized": 0x9004,
+        "OffsetTime": 0x9010,
+        "OffsetTimeOriginal": 0x9011,
+        "OffsetTimeDigitized": 0x9012,
+        "FocalLength": 0x920A,
+        "SubSecTime": 0x9290,
+        "SubSecTimeOriginal": 0x9291,
+        "SubSecTimeDigitized": 0x9292,
+        "PixelXDimension": 0xA002,
+        "PixelYDimension": 0xA003,
+        "LensModel": 0xA434,
+    }
+    assert numbered(gps) == {
+        "GPSLatitudeRef": 0x0001,
+        "GPSLatitude": 0x0002,
+        "GPSLongitudeRef": 0x0003,
+        "GPSLongitude": 0x0004,
+        "GPSAltitudeRef": 0x0005,
+        "GPSAltitude": 0x0006,
+    }
+    # When it was taken, from the first of these it gives.
+    [dates] = findall(r"^const EXIF_DATES = \[\n(.*?)\n\];$", photos_page, DOTALL | MULTILINE)
+    assert [findall(r'"(\w+)"', line) for line in dates.splitlines()] == [
+        ["DateTimeOriginal", "OffsetTimeOriginal", "SubSecTimeOriginal"],
+        ["DateTimeDigitized", "OffsetTimeDigitized", "SubSecTimeDigitized"],
+        ["DateTime", "OffsetTime", "SubSecTime"],
+    ]
+    # Where it was taken, linked to Google Maps in a new tab, which is told
+    # nothing of the page.
+    assert 'const MAPS_SEARCH = "https://www.google.com/maps/search/?api=1&query=";' in photos_page
+    assert (
+        "link.href = `${MAPS_SEARCH}${coordinate(latitude)},${coordinate(longitude)}`;"
+        in photos_page
+    )
+    assert 'link.target = "_blank";' in photos_page
+    assert 'link.rel = "noopener noreferrer";' in photos_page
+
+
 def test_the_photos_page_shows_a_photo_with_the_keys_the_plan_names(photos_page: str) -> None:
     [keys] = findall(r"^    const keys = \{\n(.*?)\n    \};$", photos_page, DOTALL | MULTILINE)
 
-    # The photo before and after, Zoom, Full screen, Download, and Close,
-    # with the keys, as the keys dialog shows them.
+    # The photo before and after, Details, Zoom, Full screen, Download, and
+    # Close, with the keys, as the keys dialog shows them.
     assert set(findall(r'^\s+"?([a-z?/]+)"?: ', keys, MULTILINE)) == {
         "arrowleft",
         "arrowright",
+        "i",
         "z",
         "f",
         "d",
