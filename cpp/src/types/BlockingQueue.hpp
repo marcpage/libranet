@@ -43,11 +43,11 @@ private:
     template<typename U>
     bool core_push_ms_timeout(U&& item, Milliseconds timeout);
 
-    std::queue<T>               m_queue;
-    mutable std::mutex          m_mutex;
-    std::condition_variable     m_notEmpty;
-    std::condition_variable     m_notFull;
-    const size_t                m_capacity;
+    std::queue<T> m_queue;
+    mutable std::mutex m_mutex;
+    std::condition_variable m_notEmpty;
+    std::condition_variable m_notFull;
+    const size_t m_capacity;
 };
 
 template<typename T>
@@ -84,8 +84,8 @@ bool BlockingQueue<T>::core_push_ms_timeout(U&& item, Milliseconds timeout) {
     std::unique_lock lock(m_mutex);
 
     if (!m_notFull.wait_for(lock, timeout, [this] {
-            return m_capacity == 0 || m_queue.size() < m_capacity;
-        })) {
+        return m_capacity == 0 || m_queue.size() < m_capacity;
+    })) {
         return false;
     }
 

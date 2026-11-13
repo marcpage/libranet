@@ -11,18 +11,16 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # compile_commands.json, for clangd and clang-tidy.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_executable(libranet src/main.cpp)
-
-# Warnings fail the build. A newer compiler with a new warning can still
-# build with `cmake --compile-no-warning-as-error`.
-set_target_properties(libranet PROPERTIES COMPILE_WARNING_AS_ERROR ON)
+# Warnings fail the build of every target. A newer compiler with a new
+# warning can still build with `cmake --compile-no-warning-as-error`.
+set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
 
 # The GCC-only warnings are guarded: Clang treats a warning option it does
 # not know as an error.
 if(MSVC)
-    target_compile_options(libranet PRIVATE /W4 /permissive-)
+    add_compile_options(/W4 /permissive-)
 else()
-    target_compile_options(libranet PRIVATE
+    add_compile_options(
         -Wall -Wextra -Wpedantic -Wshadow -Wcast-align -Wcast-qual
         -Wnull-dereference -Wdouble-promotion -Wformat=2 -Wnon-virtual-dtor
         -Wold-style-cast -Woverloaded-virtual -Wconversion -Wsign-conversion
@@ -30,3 +28,26 @@ else()
         -Wzero-as-null-pointer-constant
         "$<$<CXX_COMPILER_ID:GNU>:-Wduplicated-cond;-Wduplicated-branches;-Wlogical-op>")
 endif()
+
+find_package(Threads REQUIRED)
+
+# Each library's tests use GoogleTest, which Conan provides. Configure
+# with -DBUILD_TESTING=OFF to leave them out.
+option(BUILD_TESTING "Build the tests" ON)
+if(BUILD_TESTING)
+    # A failing test's output is shown when the test target runs CTest, as
+    # `conan build` does.
+    list(APPEND CMAKE_CTEST_ARGUMENTS --output-on-failure)
+    enable_testing()
+    find_package(GTest REQUIRED)
+    include(GoogleTest)
+endif()
+
+# One library per directory under src/, each with its tests beside it.
+# Headers are included from src/, as in "types/BlockingQueue.hpp".
+add_subdirectory(src/types)
+add_subdirectory(src/http)
+add_subdirectory(src/msg)
+add_subdirectory(src/net)
+
+add_executable(libranet src/main.cpp)

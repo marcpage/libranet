@@ -1,5 +1,4 @@
-#include <iostream>
-#include <cassert>
+#include <gtest/gtest.h>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -19,7 +18,7 @@ using namespace std::chrono_literals;
 // Helpers
 // ---------------------------------------------------------------------------
 
-template <typename Predicate>
+template<typename Predicate>
 static bool wait_until(Predicate predicate, std::chrono::milliseconds timeout = 500ms) {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline) {
@@ -35,9 +34,7 @@ static bool wait_until(Predicate predicate, std::chrono::milliseconds timeout = 
 // Test cases
 // ---------------------------------------------------------------------------
 
-void test_construction_and_callback() {
-    std::cout << "-> Testing construction and asynchronous callback... " << std::flush;
-
+TEST(AsyncChannelTest, ConstructionAndCallback) {
     std::mutex mutex;
     std::condition_variable condition;
     std::vector<std::string> received;
@@ -51,7 +48,7 @@ void test_construction_and_callback() {
             condition.notify_one();
         });
 
-        assert(ch.empty());
+        EXPECT_TRUE(ch.empty());
 
         Channel::post("test.async.basic", 42);
 
@@ -59,16 +56,12 @@ void test_construction_and_callback() {
         const bool delivered = condition.wait_for(lock, 500ms, [&] {
             return received.size() == 1;
         });
-        assert(delivered);
-        assert(received[0] == "42");
+        ASSERT_TRUE(delivered);
+        EXPECT_EQ(received[0], "42");
     }
-
-    std::cout << "PASSED\n";
 }
 
-void test_multiple_messages_fifo_order() {
-    std::cout << "-> Testing asynchronous FIFO delivery... " << std::flush;
-
+TEST(AsyncChannelTest, MultipleMessagesFifoOrder) {
     std::mutex mutex;
     std::condition_variable condition;
     std::vector<std::string> received;
@@ -90,18 +83,14 @@ void test_multiple_messages_fifo_order() {
         const bool delivered = condition.wait_for(lock, 500ms, [&] {
             return received.size() == 3;
         });
-        assert(delivered);
-        assert(received[0] == "10");
-        assert(received[1] == "20");
-        assert(received[2] == "30");
+        ASSERT_TRUE(delivered);
+        EXPECT_EQ(received[0], "10");
+        EXPECT_EQ(received[1], "20");
+        EXPECT_EQ(received[2], "30");
     }
-
-    std::cout << "PASSED\n";
 }
 
-void test_broadcast_to_multiple_async_channels() {
-    std::cout << "-> Testing broadcast to multiple async channels... " << std::flush;
-
+TEST(AsyncChannelTest, BroadcastToMultipleAsyncChannels) {
     std::mutex mutex;
     std::condition_variable condition;
     std::vector<int> received_a;
@@ -130,17 +119,13 @@ void test_broadcast_to_multiple_async_channels() {
         const bool delivered = condition.wait_for(lock, 500ms, [&] {
             return received_a.size() == 1 && received_b.size() == 1;
         });
-        assert(delivered);
-        assert(received_a[0] == 7);
-        assert(received_b[0] == 7);
+        ASSERT_TRUE(delivered);
+        EXPECT_EQ(received_a[0], 7);
+        EXPECT_EQ(received_b[0], 7);
     }
-
-    std::cout << "PASSED\n";
 }
 
-void test_callback_exception_does_not_stop_processing() {
-    std::cout << "-> Testing callback exception handling... " << std::flush;
-
+TEST(AsyncChannelTest, CallbackExceptionDoesNotStopProcessing) {
     std::mutex mutex;
     std::condition_variable condition;
     std::vector<std::string> received;
@@ -172,18 +157,14 @@ void test_callback_exception_does_not_stop_processing() {
         const bool processed = condition.wait_for(lock, 500ms, [&] {
             return !received.empty() && !logged.empty();
         });
-        assert(processed);
-        assert(received.size() == 1);
-        assert(received[0] == "2");
-        assert(logged.size() == 1);
+        ASSERT_TRUE(processed);
+        EXPECT_EQ(received.size(), 1U);
+        EXPECT_EQ(received[0], "2");
+        EXPECT_EQ(logged.size(), 1U);
     }
-
-    std::cout << "PASSED\n";
 }
 
-void test_stop_and_idempotence() {
-    std::cout << "-> Testing stop and repeated stop... " << std::flush;
-
+TEST(AsyncChannelTest, StopAndIdempotence) {
     std::atomic<int> callback_count{0};
 
     AsyncChannel ch("test.async.stop", [&](IMessage::Ptr) {
@@ -194,21 +175,17 @@ void test_stop_and_idempotence() {
     const bool delivered = wait_until([&] {
         return callback_count.load() == 1;
     });
-    assert(delivered);
+    EXPECT_TRUE(delivered);
 
     ch.stop();
     ch.stop();
 
     Channel::post("test.async.stop", 2);
     std::this_thread::sleep_for(20ms);
-    assert(callback_count.load() == 1);
-
-    std::cout << "PASSED\n";
+    EXPECT_EQ(callback_count.load(), 1);
 }
 
-void test_destructor_stops_worker() {
-    std::cout << "-> Testing destructor stops worker thread... " << std::flush;
-
+TEST(AsyncChannelTest, DestructorStopsWorker) {
     std::atomic<bool> callback_called{false};
 
     {
@@ -216,44 +193,12 @@ void test_destructor_stops_worker() {
             callback_called = true;
         });
         Channel::post("test.async.destructor", 1);
-        assert(wait_until([&] {
+        EXPECT_TRUE(wait_until([&] {
             return callback_called.load();
         }));
     }
-
-    std::cout << "PASSED\n";
 }
 
-void test_null_callback_rejected() {
-    std::cout << "-> Testing null callback is rejected... " << std::flush;
-
-    bool threw = false;
-    try {
-        AsyncChannel ch("test.async.null", nullptr);
-    } catch (const std::invalid_argument&) {
-        threw = true;
-    }
-    assert(threw);
-
-    std::cout << "PASSED\n";
-}
-
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
-
-int main() {
-    std::cout << "    Running AsyncChannel Test Suite\n";
-
-    test_construction_and_callback();
-    test_multiple_messages_fifo_order();
-    test_broadcast_to_multiple_async_channels();
-    test_callback_exception_does_not_stop_processing();
-    test_stop_and_idempotence();
-    test_destructor_stops_worker();
-    test_null_callback_rejected();
-
-    std::cout << " All AsyncChannel Tests Completed\n";
-
-    return 0;
+TEST(AsyncChannelTest, NullCallbackRejected) {
+    EXPECT_THROW(AsyncChannel("test.async.null", nullptr), std::invalid_argument);
 }

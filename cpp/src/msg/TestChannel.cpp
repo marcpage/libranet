@@ -1,5 +1,4 @@
-#include <iostream>
-#include <cassert>
+#include <gtest/gtest.h>
 #include <string>
 #include <thread>
 #include <chrono>
@@ -24,113 +23,97 @@ static void sleep_ms(int ms) {
 // Test cases
 // ---------------------------------------------------------------------------
 
-void test_construction_and_basic_operations() {
-    std::cout << "-> Testing construction, empty/size, post/next... " << std::flush;
-
+TEST(ChannelTest, ConstructionAndBasicOperations) {
     Channel ch("test.basic");
 
-    assert(ch.empty());
-    assert(ch.size() == 0);
+    EXPECT_TRUE(ch.empty());
+    EXPECT_EQ(ch.size(), 0U);
 
     Channel::post("test.basic", 42);
-    assert(!ch.empty());
-    assert(ch.size() == 1);
+    EXPECT_FALSE(ch.empty());
+    EXPECT_EQ(ch.size(), 1U);
 
     auto msg = ch.next_message();
-    assert(msg.has_value());
-    assert(ch.empty());
-    assert(ch.size() == 0);
+    EXPECT_TRUE(msg.has_value());
+    EXPECT_TRUE(ch.empty());
+    EXPECT_EQ(ch.size(), 0U);
 
     // Typed path
     Channel::post("test.basic", std::string("hello"));
     auto value = ch.next<std::string>();
-    assert(value.has_value());
-    assert(*value == "hello");
-    assert(ch.empty());
-
-    std::cout << "PASSED\n";
+    ASSERT_TRUE(value.has_value());
+    EXPECT_EQ(*value, "hello");
+    EXPECT_TRUE(ch.empty());
 }
 
-void test_timeout_behaviour() {
-    std::cout << "-> Testing timeout behaviour (nullopt)... " << std::flush;
-
+TEST(ChannelTest, TimeoutBehaviour) {
     Channel ch("test.timeout");
 
     // Immediate timeout
     auto timed_out = ch.next_message(0ms);
-    assert(!timed_out.has_value());
+    EXPECT_FALSE(timed_out.has_value());
 
     auto timed_out_typed = ch.next<int>(0ms);
-    assert(!timed_out_typed.has_value());
+    EXPECT_FALSE(timed_out_typed.has_value());
 
     // Short timeout with no message
     auto still_timeout = ch.next_message(20ms);
-    assert(!still_timeout.has_value());
+    EXPECT_FALSE(still_timeout.has_value());
 
     // Post then consume with timeout
     Channel::post("test.timeout", 99);
     auto got = ch.next_message(50ms);
-    assert(got.has_value());
+    EXPECT_TRUE(got.has_value());
 
-    auto typed = ch.next<int>(50ms);   // queue is empty again
-    assert(!typed.has_value());
-
-    std::cout << "PASSED\n";
+    auto typed = ch.next<int>(50ms); // queue is empty again
+    EXPECT_FALSE(typed.has_value());
 }
 
-void test_type_mismatch() {
-    std::cout << "-> Testing type mismatch returns nullopt... " << std::flush;
-
+TEST(ChannelTest, TypeMismatch) {
     Channel ch("test.types");
 
     Channel::post("test.types", 12345);
 
     // Correct type
     auto ok = ch.next<int>(10ms);
-    assert(ok.has_value());
-    assert(*ok == 12345);
+    ASSERT_TRUE(ok.has_value());
+    EXPECT_EQ(*ok, 12345);
 
     // Wrong type after another post
     Channel::post("test.types", std::string("not an int"));
     auto mismatch = ch.next<int>(10ms);
-    assert(!mismatch.has_value());
+    EXPECT_FALSE(mismatch.has_value());
 
     // The message is still consumed by next_message / next
     // (we chose to treat type mismatch as "no usable value")
-    assert(ch.empty());
-
-    std::cout << "PASSED\n";
+    EXPECT_TRUE(ch.empty());
 }
 
-void test_broadcast_to_multiple_subscribers() {
-    std::cout << "-> Testing broadcast to multiple channels... " << std::flush;
-
+TEST(ChannelTest, BroadcastToMultipleSubscribers) {
     Channel a("test.broadcast");
     Channel b("test.broadcast");
-    Channel c("test.other");          // different name – should not receive
+    Channel c("test.other"); // different name – should not receive
 
     Channel::post("test.broadcast", 7);
 
-    assert(a.size() == 1);
-    assert(b.size() == 1);
-    assert(c.empty());
+    EXPECT_EQ(a.size(), 1U);
+    EXPECT_EQ(b.size(), 1U);
+    EXPECT_TRUE(c.empty());
 
     auto va = a.next<int>();
     auto vb = b.next<int>();
-    assert(va.has_value() && *va == 7);
-    assert(vb.has_value() && *vb == 7);
-    assert(c.empty());
-
-    std::cout << "PASSED\n";
+    ASSERT_TRUE(va.has_value());
+    EXPECT_EQ(*va, 7);
+    ASSERT_TRUE(vb.has_value());
+    EXPECT_EQ(*vb, 7);
+    EXPECT_TRUE(c.empty());
 }
 
-void test_destructor_removes_subscriber() {
-    std::cout << "-> Testing destructor unregisters the channel... " << std::flush;
-
+TEST(ChannelTest, DestructorRemovesSubscriber) {
     {
         Channel temporary("test.lifetime");
         Channel::post("test.lifetime", 1);
-        assert(temporary.size() == 1);
+        EXPECT_EQ(temporary.size(), 1U);
     } // temporary destroyed here
 
     // Posting after destruction must not crash and must not deliver anywhere
@@ -138,89 +121,56 @@ void test_destructor_removes_subscriber() {
 
     // A new channel with the same name starts empty
     Channel fresh("test.lifetime");
-    assert(fresh.empty());
-
-    std::cout << "PASSED\n";
+    EXPECT_TRUE(fresh.empty());
 }
 
-void test_wait_forever_and_concurrent_producer() {
-    std::cout << "-> Testing WaitForever with a concurrent producer... " << std::flush;
-
+TEST(ChannelTest, WaitForeverAndConcurrentProducer) {
     Channel ch("test.concurrent");
     std::atomic<bool> producer_done{false};
 
     std::thread producer([&] {
-        sleep_ms(30);                       // give the consumer a moment to block
+        sleep_ms(30); // give the consumer a moment to block
         Channel::post("test.concurrent", 55);
         producer_done = true;
     });
 
     // This blocks until the producer posts
     auto value = ch.next<int>(Channel::WaitForever);
-    assert(value.has_value());
-    assert(*value == 55);
-    assert(producer_done);
+    EXPECT_TRUE(value.has_value());
+    EXPECT_EQ(value, 55);
 
+    // The producer sets producer_done after posting, so it is only certain to
+    // be set once the producer has finished.
     producer.join();
-
-    std::cout << "PASSED\n";
+    EXPECT_TRUE(producer_done.load());
 }
 
-void test_multiple_messages_fifo_order() {
-    std::cout << "-> Testing FIFO ordering of multiple messages... " << std::flush;
-
+TEST(ChannelTest, MultipleMessagesFifoOrder) {
     Channel ch("test.fifo");
 
     Channel::post("test.fifo", 10);
     Channel::post("test.fifo", 20);
     Channel::post("test.fifo", 30);
 
-    assert(ch.size() == 3);
+    EXPECT_EQ(ch.size(), 3U);
 
-    assert(*ch.next<int>() == 10);
-    assert(*ch.next<int>() == 20);
-    assert(*ch.next<int>() == 30);
-    assert(ch.empty());
-
-    std::cout << "PASSED\n";
+    EXPECT_EQ(ch.next<int>(), 10);
+    EXPECT_EQ(ch.next<int>(), 20);
+    EXPECT_EQ(ch.next<int>(), 30);
+    EXPECT_TRUE(ch.empty());
 }
 
-void test_mixed_types_and_to_string() {
-    std::cout << "-> Testing mixed message types and to_string()... " << std::flush;
-
+TEST(ChannelTest, MixedTypesAndToString) {
     Channel ch("test.mixed");
 
     Channel::post("test.mixed", 42);
     Channel::post("test.mixed", std::string("forty-two"));
 
     auto raw1 = ch.next_message();
-    assert(raw1.has_value());
-    assert(raw1.value()->to_string() == "42");
+    ASSERT_TRUE(raw1.has_value());
+    EXPECT_EQ(raw1.value()->to_string(), "42");
 
     auto raw2 = ch.next_message();
-    assert(raw2.has_value());
-    assert(raw2.value()->to_string() == "forty-two");
-
-    std::cout << "PASSED\n";
-}
-
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
-
-int main() {
-    std::cout << "       Running Channel Test Suite   \n";
-
-    test_construction_and_basic_operations();
-    test_timeout_behaviour();
-    test_type_mismatch();
-    test_broadcast_to_multiple_subscribers();
-    test_destructor_removes_subscriber();
-    test_wait_forever_and_concurrent_producer();
-    test_multiple_messages_fifo_order();
-    test_mixed_types_and_to_string();
-
-    std::cout << "   All Tests Passed Successfully!   \n";
-
-    return 0;
+    ASSERT_TRUE(raw2.has_value());
+    EXPECT_EQ(raw2.value()->to_string(), "forty-two");
 }

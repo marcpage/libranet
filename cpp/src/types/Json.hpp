@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <initializer_list>
 #include <iostream>
@@ -103,8 +104,7 @@ private:
         double,
         std::string,
         Array,
-        Object
-    >;
+        Object>;
 
     VariantType m_data;
 
@@ -136,7 +136,7 @@ private:
     static void serialize_array(const Array& arr, std::ostringstream& out_stream, int indent, int current_indent);
     static void serialize_object(const Object& obj, std::ostringstream& out_stream, int indent, int current_indent);
     static void serialize(const Json& json_value, std::ostringstream& out_stream,
-                                                    int indent, int current_indent);
+                          int indent, int current_indent);
     static void escape_string(const std::string& str, std::ostringstream& out_stream);
 };
 
@@ -183,8 +183,8 @@ inline Json::Json(std::initializer_list<Json> arguments) {
 
     for (const auto& elem : arguments) {
         if (!elem.is_array()
-                || elem.array().size() != 2
-                || !elem.array()[0].is_string()) {
+            || elem.array().size() != 2
+            || !elem.array()[0].is_string()) {
             m_data = Array(arguments.begin(), arguments.end());
             return;
         }
@@ -450,13 +450,13 @@ inline void Json::escape_string(const std::string& str, std::ostringstream& out_
 
     for (const auto character : str) {
         switch (character) {
-            case '"':  out_stream << "\\\""; break;
+            case '"': out_stream << "\\\""; break;
             case '\\': out_stream << "\\\\"; break;
-            case '\b': out_stream << "\\b";  break;
-            case '\f': out_stream << "\\f";  break;
-            case '\n': out_stream << "\\n";  break;
-            case '\r': out_stream << "\\r";  break;
-            case '\t': out_stream << "\\t";  break;
+            case '\b': out_stream << "\\b"; break;
+            case '\f': out_stream << "\\f"; break;
+            case '\n': out_stream << "\\n"; break;
+            case '\r': out_stream << "\\r"; break;
+            case '\t': out_stream << "\\t"; break;
             default:
                 if (static_cast<unsigned char>(character) < 0x20) {
                     out_stream << "\\u00";
@@ -475,7 +475,7 @@ inline void Json::escape_string(const std::string& str, std::ostringstream& out_
 }
 
 inline void Json::serialize(const Json& json_value, std::ostringstream& out_stream,
-                                        int indent, int current_indent) {
+                            int indent, int current_indent) {
     std::visit([&](auto&& value) {
         using T = std::decay_t<decltype(value)>;
 
@@ -484,10 +484,10 @@ inline void Json::serialize(const Json& json_value, std::ostringstream& out_stre
         } else if constexpr (std::is_same_v<T, bool>) {
             out_stream << (value ? "true" : "false");
         } else if constexpr (std::is_same_v<T, std::int64_t>
-                                || std::is_same_v<T, double>) {
+                             || std::is_same_v<T, double>) {
             if (!std::isfinite(value)) {
                 throw std::domain_error("Json: non-finite double values (NaN or Infinity)"
-                                            " cannot be serialized to JSON");
+                                        " cannot be serialized to JSON");
             }
             out_stream << value;
         } else if constexpr (std::is_same_v<T, std::string>) {
@@ -505,7 +505,7 @@ inline bool Json::is_digit(const char character) {
 }
 
 inline void Json::serialize_array(const Array& the_array, std::ostringstream& out_stream,
-                                                int indent, int current_indent) {
+                                  int indent, int current_indent) {
     if (the_array.empty()) {
         out_stream << "[]";
         return;
@@ -637,7 +637,7 @@ inline Json Json::Parser::parse_value() {
 
     const auto character = peek();
 
-    switch(character) {
+    switch (character) {
         case 'n': return parse_null();
         case 't': return parse_boolean();
         case 'f': return parse_boolean();
@@ -645,13 +645,14 @@ inline Json Json::Parser::parse_value() {
         case '[': return parse_array();
         case '{': return parse_object();
         case '-': return parse_number();
-        default: if(is_digit(character)) {
-            return parse_number();
-        } else {
-            throw std::invalid_argument(std::string("Json::parse: unexpected character '")
-                                        + character
-                                        + "'");
-        }
+        default:
+            if (is_digit(character)) {
+                return parse_number();
+            } else {
+                throw std::invalid_argument(std::string("Json::parse: unexpected character '")
+                                            + character
+                                            + "'");
+            }
     }
 }
 
@@ -739,14 +740,14 @@ inline std::string Json::Parser::parse_raw_string() {
             char esc = get();
 
             switch (esc) {
-                case '"':  result += '"';  break;
+                case '"': result += '"'; break;
                 case '\\': result += '\\'; break;
-                case '/':  result += '/';  break;
-                case 'b':  result += '\b'; break;
-                case 'f':  result += '\f'; break;
-                case 'n':  result += '\n'; break;
-                case 'r':  result += '\r'; break;
-                case 't':  result += '\t'; break;
+                case '/': result += '/'; break;
+                case 'b': result += '\b'; break;
+                case 'f': result += '\f'; break;
+                case 'n': result += '\n'; break;
+                case 'r': result += '\r'; break;
+                case 't': result += '\t'; break;
                 default:
                     result += esc;
                     break;
@@ -845,7 +846,7 @@ inline std::ostream& operator<<(std::ostream& out_stream, const Json& value) {
 
 inline std::istream& operator>>(std::istream& in_stream, Json& value) {
     const std::string text((std::istreambuf_iterator<char>(in_stream)),
-                      std::istreambuf_iterator<char>());
+                           std::istreambuf_iterator<char>());
 
     try {
         value = Json::parse(text);

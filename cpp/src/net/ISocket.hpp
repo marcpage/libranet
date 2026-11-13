@@ -49,4 +49,3 @@ inline void ISocket::set_timeout(Milliseconds timeout) {
 }
 
 } // namespace net
-

@@ -14,7 +14,7 @@ public:
     using TypeCallback = std::function<void(Type)>;
 
     AsyncChannelOf(const std::string &name, TypeCallback callback,
-                        AsyncChannel::Logger logger);
+                   AsyncChannel::Logger logger);
     ~AsyncChannelOf();
 private:
     TypeCallback m_type_callback;
@@ -24,9 +24,9 @@ private:
 
 template<typename Type>
 AsyncChannelOf<Type>::AsyncChannelOf(const std::string &name, TypeCallback callback,
-                                    AsyncChannel::Logger logger)
-    : AsyncChannel(name, [this](IMessage::Ptr message){_handle(message);}, logger)
-    , m_type_callback(callback)  {}
+                                     AsyncChannel::Logger logger)
+    : AsyncChannel(name, [this](IMessage::Ptr message) { _handle(message); }, logger)
+    , m_type_callback(callback) {}
 
 template<typename Type>
 AsyncChannelOf<Type>::~AsyncChannelOf() {
@@ -40,7 +40,7 @@ inline void AsyncChannelOf<Type>::_handle(IMessage::Ptr message) {
         return;
     }
 
-    if (auto * typed = dynamic_cast<Message<Type>*>(message.get())) {
+    if (auto *typed = dynamic_cast<Message<Type> *>(message.get())) {
         m_type_callback(typed->value());
         return;
     }

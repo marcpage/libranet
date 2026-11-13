@@ -14,7 +14,7 @@
 namespace {
 
 [[nodiscard]] addrinfo* fetch_address_info(const std::string& host,
-                                                            net::Address::Port port) {
+                                           net::Address::Port port) {
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC; // Allow IPv4 or IPv6
     hints.ai_socktype = SOCK_STREAM;
@@ -26,7 +26,7 @@ namespace {
 
     if (status != 0) {
         throw std::runtime_error(std::string("Failed to resolve host: ")
-                                    + gai_strerror(status));
+                                 + gai_strerror(status));
     }
 
     return res;
@@ -45,7 +45,7 @@ namespace {
 }
 
 [[nodiscard]] std::string get_reverse_dns_name(const addrinfo* p,
-                                                        const std::string& numeric_ip) {
+                                               const std::string& numeric_ip) {
     char host_buf[NI_MAXHOST];
     const int error = getnameinfo(p->ai_addr, p->ai_addrlen,
                                   host_buf, sizeof(host_buf),
@@ -62,8 +62,7 @@ namespace {
 }
 
 void add_unique(std::string_view value, std::vector<std::string>& results) {
-    if (!value.empty() && std::find(results.begin(), results.end(), value)
-            == results.end()) {
+    if (!value.empty() && std::find(results.begin(), results.end(), value) == results.end()) {
         results.emplace_back(value);
     }
 }
@@ -97,7 +96,7 @@ void add_unique(std::string_view value, std::vector<std::string>& results) {
     const socklen_t len = get_sockaddr_len(family);
 
     const int error = getnameinfo(ifa->ifa_addr, len, host, sizeof(host),
-                                                          nullptr, 0, NI_NUMERICHOST);
+                                  nullptr, 0, NI_NUMERICHOST);
     if (error != 0) {
         return {};
     }

@@ -107,9 +107,9 @@ inline bool Response::parse_status_line(std::string_view line) {
 
     try {
         code = std::stoi(std::string(fields[1]));
-    } catch (const std::invalid_argument &) {
+    } catch (const std::invalid_argument&) {
         return false;
-    } catch (const std::out_of_range &) {
+    } catch (const std::out_of_range&) {
         return false;
     }
 
@@ -127,9 +127,9 @@ inline std::string Response::to_string() const {
 
     std::string result;
     result.reserve(m_version.size()
-                    + m_status.reason_phrase().size()
-                    + m_body.size()
-                    + ResponseFormattingOverheadBytes);
+                   + m_status.reason_phrase().size()
+                   + m_body.size()
+                   + ResponseFormattingOverheadBytes);
 
     result += m_version;
     result += " ";
@@ -152,7 +152,7 @@ inline std::istream& operator>>(std::istream& in_stream, Response& response) {
     std::string raw_line;
 
     if (!std::getline(in_stream, raw_line)
-            || !response.parse_status_line(raw_line)) {
+        || !response.parse_status_line(raw_line)) {
         in_stream.setstate(std::ios_base::failbit);
         return in_stream;
     }
@@ -172,10 +172,10 @@ inline std::istream& operator>>(std::istream& in_stream, Response& response) {
 
     try {
         body_length = std::stoull(std::string(content_length_opt.value()));
-    } catch (const std::invalid_argument &) {
+    } catch (const std::invalid_argument&) {
         in_stream.setstate(std::ios_base::failbit);
         return in_stream;
-    } catch (const std::out_of_range &) {
+    } catch (const std::out_of_range&) {
         in_stream.setstate(std::ios_base::failbit);
         return in_stream;
     }

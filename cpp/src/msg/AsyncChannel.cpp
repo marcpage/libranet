@@ -1,7 +1,7 @@
 #include "AsyncChannel.hpp"
 
 namespace {
-    void noop(std::string) {}
+void noop(std::string) {}
 }
 
 namespace msg {
@@ -26,7 +26,7 @@ AsyncChannel::AsyncChannel(const std::string& name, Callback callback, Logger lo
 
             try {
                 m_callback(message.value());
-            } catch(const std::exception &error) {
+            } catch (const std::exception& error) {
                 m_logger(std::string("AsyncChannel call error: ") + error.what());
             }
         }
@@ -42,7 +42,7 @@ void AsyncChannel::stop() {
         return;
     }
 
-    auto * message = new Message<std::string>("");
+    auto* message = new Message<std::string>("");
 
     // signal thread to stop and then send a message to wake it up
     m_running = false;

@@ -82,7 +82,7 @@ inline std::optional<std::string_view> Query::get_first(std::string_view key) co
 inline void Query::set(std::string_view key, std::string_view value) {
     bool found = false;
 
-    for (auto it = m_parameters.begin(); it != m_parameters.end(); ) {
+    for (auto it = m_parameters.begin(); it != m_parameters.end();) {
         if (it->first == key) {
             if (!found) {
                 it->second = std::string(value);
@@ -106,7 +106,7 @@ inline void Query::add(std::string_view key, std::string_view value) {
 }
 
 inline void Query::remove(std::string_view key) {
-    for (auto it = m_parameters.begin(); it != m_parameters.end(); ) {
+    for (auto it = m_parameters.begin(); it != m_parameters.end();) {
         if (it->first == key) {
             it = m_parameters.erase(it);
         } else {
@@ -136,8 +136,8 @@ inline Query Query::parse(std::string_view query_string) {
     while (!query.empty()) {
         const auto amp_pos = query.find('&');
         const auto pair = (amp_pos == std::string_view::npos)
-                            ? query
-                            : query.substr(0, amp_pos);
+                              ? query
+                              : query.substr(0, amp_pos);
 
         if (!pair.empty()) {
             const auto eq_pos = pair.find('=');
@@ -147,8 +147,7 @@ inline Query Query::parse(std::string_view query_string) {
             } else {
                 result.m_parameters.emplace_back(
                     std::string(pair.substr(0, eq_pos)),
-                    std::string(pair.substr(eq_pos + 1))
-                );
+                    std::string(pair.substr(eq_pos + 1)));
             }
         }
 
@@ -166,7 +165,7 @@ inline std::string Query::to_string() const {
     std::string result;
 
     for (std::size_t parameter_index = 0; parameter_index < m_parameters.size();
-                                                                    ++parameter_index) {
+         ++parameter_index) {
         if (parameter_index > 0) {
             result += "&";
         }

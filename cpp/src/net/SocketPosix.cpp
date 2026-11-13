@@ -20,12 +20,12 @@
 namespace {
 
 #if defined(__APPLE__)
-    constexpr int SEND_FLAGS = 0;
+constexpr int SEND_FLAGS = 0;
 #elif defined(__linux__)
-    constexpr int SEND_FLAGS = MSG_NOSIGNAL;
+constexpr int SEND_FLAGS = MSG_NOSIGNAL;
 #endif
 
-void assert_socket(bool condition, const char* operation, int error=errno) {
+void assert_socket(bool condition, const char* operation, int error = errno) {
     if (!condition) {
         throw std::system_error(error, std::generic_category(), operation);
     }
@@ -46,7 +46,7 @@ struct AddrInfoDeleter {
     }
 };
 
-using AddrInfoPtr=std::unique_ptr<addrinfo, AddrInfoDeleter>;
+using AddrInfoPtr = std::unique_ptr<addrinfo, AddrInfoDeleter>;
 
 AddrInfoPtr resolve_address(const net::Address& address, int flags, int socket_type) {
     addrinfo hints{};
@@ -63,7 +63,7 @@ AddrInfoPtr resolve_address(const net::Address& address, int flags, int socket_t
     const auto error = ::getaddrinfo(host, service.c_str(), &hints, &result);
 
     assert_condition<std::runtime_error>(
-                    error == 0, std::string("getaddrinfo: ") + ::gai_strerror(error));
+        error == 0, std::string("getaddrinfo: ") + ::gai_strerror(error));
 
     return AddrInfoPtr(result);
 }
@@ -101,44 +101,45 @@ net::Address address_from_sockaddr(const sockaddr* address, socklen_t length) {
     char service[NI_MAXSERV]{};
 
     const auto error = ::getnameinfo(address, length,
-                                    host, sizeof(host),
-                                    service, sizeof(service),
-                                    NI_NUMERICHOST | NI_NUMERICSERV);
+                                     host, sizeof(host),
+                                     service, sizeof(service),
+                                     NI_NUMERICHOST | NI_NUMERICSERV);
 
     assert_condition<std::runtime_error>(
-                    error == 0, std::string("getnameinfo: ") + ::gai_strerror(error));
+        error == 0, std::string("getnameinfo: ") + ::gai_strerror(error));
 
     const auto port = std::stoul(service);
 
     assert_condition<std::runtime_error>(
-                    port <= std::numeric_limits<net::Address::Port>::max(),
-                    "Socket returned an invalid port");
+        port <= std::numeric_limits<net::Address::Port>::max(),
+        "Socket returned an invalid port");
 
     return net::Address(host, static_cast<net::Address::Port>(port));
 }
 
-enum Direction {DirectionSend, DirectionReceive};
+enum Direction { DirectionSend,
+                 DirectionReceive };
 
 int set_timeout(int socket_fd, Direction direction, net::ISocket::Milliseconds timeout) {
     const auto direction_flag = DirectionSend == direction ? SO_SNDTIMEO : SO_RCVTIMEO;
     timeval tv{};
 
     if (timeout.count() > 0) {
-        tv.tv_sec  = static_cast<time_t>(timeout.count() / 1000);
+        tv.tv_sec = static_cast<time_t>(timeout.count() / 1000);
         tv.tv_usec = static_cast<suseconds_t>((timeout.count() % 1000) * 1000);
     }
 
     return ::setsockopt(socket_fd, SOL_SOCKET, direction_flag, &tv, sizeof(tv));
 }
 
-template <typename Func>
+template<typename Func>
 net::Address query_socket_address(int socket_fd, Func&& socket_call,
-                                                            const char* operation_name) {
+                                  const char* operation_name) {
     sockaddr_storage storage{};
     socklen_t length = sizeof(storage);
 
     const auto result = socket_call(socket_fd,
-                                        reinterpret_cast<sockaddr*>(&storage), &length);
+                                    reinterpret_cast<sockaddr*>(&storage), &length);
 
     assert_socket(result == 0, operation_name);
     return address_from_sockaddr(reinterpret_cast<const sockaddr*>(&storage), length);
@@ -153,8 +154,8 @@ ISocket::Ptr SocketPosix::bind(const Address& address) {
     int last_error = EADDRNOTAVAIL;
 
     for (const auto* current = addresses.get();
-            current != nullptr;
-            current = current->ai_next) {
+         current != nullptr;
+         current = current->ai_next) {
         const auto fd = create_socket(*current);
 
         if (fd < 0) {
@@ -260,8 +261,8 @@ bool SocketPosix::receive(std::vector<std::byte>& buffer) {
 
     constexpr auto max_count = std::numeric_limits<ssize_t>::max();
     const auto count = buffer.size() > static_cast<std::size_t>(max_count)
-                                  ? static_cast<std::size_t>(max_count)
-                                  : buffer.size();
+                           ? static_cast<std::size_t>(max_count)
+                           : buffer.size();
 
     ssize_t byte_count;
 
@@ -280,13 +281,13 @@ bool SocketPosix::receive(std::vector<std::byte>& buffer) {
 
 Address SocketPosix::local_address() const {
     assert_condition<std::logic_error>(is_open(),
-                                        "Cannot query the address of a closed socket");
+                                       "Cannot query the address of a closed socket");
     return query_socket_address(m_socket_fd, ::getsockname, "getsockname");
 }
 
 Address SocketPosix::remote_address() const {
     assert_condition<std::logic_error>(is_open(),
-                                        "Cannot query the address of a closed socket");
+                                       "Cannot query the address of a closed socket");
     return query_socket_address(m_socket_fd, ::getpeername, "getpeername");
 }
 
@@ -296,18 +297,18 @@ bool SocketPosix::is_open() const noexcept {
 
 void SocketPosix::set_receive_timeout(ISocket::Milliseconds timeout) {
     assert_condition<std::logic_error>(is_open(),
-                                                "Cannot set timeout on a closed socket");
+                                       "Cannot set timeout on a closed socket");
     assert_condition<std::invalid_argument>(timeout.count() >= 0,
-                                                            "timeout cannot be negative");
+                                            "timeout cannot be negative");
     assert_socket(::set_timeout(m_socket_fd, DirectionReceive, timeout) == 0,
                   "setsockopt(SO_RCVTIMEO)");
 }
 
 void SocketPosix::set_send_timeout(ISocket::Milliseconds timeout) {
     assert_condition<std::logic_error>(is_open(),
-                                                "Cannot set timeout on a closed socket");
+                                       "Cannot set timeout on a closed socket");
     assert_condition<std::invalid_argument>(timeout.count() >= 0,
-                                                            "timeout cannot be negative");
+                                            "timeout cannot be negative");
     assert_socket(::set_timeout(m_socket_fd, DirectionSend, timeout) == 0,
                   "setsockopt(SO_SNDTIMEO)");
 }

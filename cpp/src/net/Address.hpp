@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -48,8 +49,7 @@ inline Address Address::parse(std::string_view endpoint) {
 }
 
 inline Address::Address(std::string_view host, Port port)
-    : m_host(host),
-      m_port(port) {}
+    : m_host(host), m_port(port) {}
 
 inline const std::string& Address::host() const noexcept {
     return m_host;

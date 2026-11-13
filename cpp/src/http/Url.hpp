@@ -21,16 +21,16 @@ public:
 
     enum class EncodeContext {
         UriComponent, // RFC 3986: unreserved chars, spaces -> %20
-        FormUrl,       // Query/Form: unreserved chars, spaces -> +
+        FormUrl,      // Query/Form: unreserved chars, spaces -> +
     };
 
     static std::string encode(std::string_view value,
-                                            EncodeContext context=EncodeContext::FormUrl);
+                              EncodeContext context = EncodeContext::FormUrl);
     static std::string encode(std::string_view value, std::string_view allowed_chars,
-                                                                    bool space_to_plus);
+                              bool space_to_plus);
 
     static std::string decode(std::string_view value,
-                                            EncodeContext context=EncodeContext::FormUrl);
+                              EncodeContext context = EncodeContext::FormUrl);
     static std::string decode(std::string_view value, bool decode_plus_as_space);
 
     Url() = default;
@@ -92,13 +92,13 @@ private:
     static void extract_query(std::string_view& url_string, Query& query);
     static void extract_scheme(std::string_view& url_string, std::string& scheme);
     static void parse_authority(std::string_view authority, std::string& username,
-                std::string& password, std::string& host, std::optional<uint16_t>& port);
+                                std::string& password, std::string& host, std::optional<uint16_t>& port);
     static std::string to_lower_copy(std::string_view str);
     static std::optional<uint16_t> parse_port(std::string_view str);
 };
 
 inline std::string Url::encode(std::string_view value, std::string_view allowed_chars,
-                                                                    bool space_to_plus) {
+                               bool space_to_plus) {
     std::ostringstream escaped;
 
     escaped.fill('0');
@@ -112,7 +112,7 @@ inline std::string Url::encode(std::string_view value, std::string_view allowed_
                 escaped << "%20";
             }
         } else if (std::isalnum(character)
-                    || allowed_chars.find(character) != std::string_view::npos) {
+                   || allowed_chars.find(character) != std::string_view::npos) {
             // Keep character as-is if it's alphanumeric or explicitly allowed
             escaped << character;
         } else {
@@ -137,13 +137,13 @@ inline std::string Url::decode(std::string_view value, bool decode_plus_as_space
     decoded.reserve(value.size());
 
     for (std::size_t character_index = 0; character_index < value.size();
-                                                                    ++character_index) {
+         ++character_index) {
         if (decode_plus_as_space && value[character_index] == '+') {
             decoded += ' ';
         } else if (value[character_index] == '%' && character_index + 2 < value.size()) {
             int hex_value = 0;
             std::istringstream hex_stream(std::string(
-                                                value.substr(character_index + 1, 2)));
+                value.substr(character_index + 1, 2)));
 
             if (hex_stream >> std::hex >> hex_value) {
                 decoded += static_cast<char>(hex_value);
@@ -241,7 +241,7 @@ inline void Url::set_query(std::string_view key, std::string_view value) {
 }
 
 inline void Url::set_query_parameters(
-        std::initializer_list<std::pair<std::string_view, std::string_view>> parameters) {
+    std::initializer_list<std::pair<std::string_view, std::string_view>> parameters) {
     for (const auto& [key, value] : parameters) {
         set_query(key, value);
     }
@@ -434,7 +434,7 @@ inline void Url::extract_scheme(std::string_view& url_string, std::string& schem
 }
 
 inline void Url::parse_authority(std::string_view authority, std::string& username,
-        std::string& password, std::string& host, std::optional<uint16_t>& port) {
+                                 std::string& password, std::string& host, std::optional<uint16_t>& port) {
     if (authority.empty()) {
         return;
     }
@@ -545,14 +545,14 @@ inline std::string Url::to_lower_copy(std::string_view str) {
 }
 
 inline bool operator==(const Url& lhs, const Url& rhs) {
-    return Url::to_lower_copy(lhs.m_scheme) == Url::to_lower_copy(rhs.m_scheme) &&
-           lhs.m_username == rhs.m_username &&
-           lhs.m_password == rhs.m_password &&
-           Url::to_lower_copy(lhs.m_host) == Url::to_lower_copy(rhs.m_host) &&
-           lhs.m_port == rhs.m_port &&
-           lhs.m_path == rhs.m_path &&
-           lhs.m_query.to_string() == rhs.m_query.to_string() &&
-           lhs.m_fragment == rhs.m_fragment;
+    return Url::to_lower_copy(lhs.m_scheme) == Url::to_lower_copy(rhs.m_scheme)
+           && lhs.m_username == rhs.m_username
+           && lhs.m_password == rhs.m_password
+           && Url::to_lower_copy(lhs.m_host) == Url::to_lower_copy(rhs.m_host)
+           && lhs.m_port == rhs.m_port
+           && lhs.m_path == rhs.m_path
+           && lhs.m_query.to_string() == rhs.m_query.to_string()
+           && lhs.m_fragment == rhs.m_fragment;
 }
 
 inline bool operator!=(const Url& lhs, const Url& rhs) {
@@ -613,9 +613,9 @@ inline std::optional<uint16_t> Url::parse_port(std::string_view str) {
         if (p <= MaxPortNumber) {
             return static_cast<uint16_t>(p);
         }
-    } catch (const std::invalid_argument &) {
+    } catch (const std::invalid_argument&) {
         // Fallthrough on conversion error
-    } catch (const std::out_of_range &) {
+    } catch (const std::out_of_range&) {
         // Fallthrough on conversion error
     }
 

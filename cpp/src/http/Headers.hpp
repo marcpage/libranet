@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace http {
 
@@ -30,7 +31,7 @@ public:
     void set(std::string key, std::string value);
     std::optional<std::string_view> get(std::string_view key) const noexcept;
     std::string_view get(std::string_view key,
-                                        std::string_view default_value) const noexcept;
+                         std::string_view default_value) const noexcept;
     bool has(std::string_view key) const noexcept;
     void remove(std::string key);
     void clear() noexcept;
@@ -50,25 +51,24 @@ public:
     static std::string_view trim_whitespace(std::string_view text) noexcept;
     static bool is_continuation_line(std::string_view line) noexcept;
     static bool parse_header_line(std::string_view line, std::string& out_key,
-                                                                std::string& out_value);
+                                  std::string& out_value);
     static std::string process_header_line(std::string_view line,
-                                    const std::string& last_key, Headers& headers);
+                                           const std::string& last_key, Headers& headers);
     static std::vector<std::string_view> split_spaces(
-                                        std::string_view text, std::size_t max_fields);
+        std::string_view text, std::size_t max_fields);
 
 private:
     std::map<std::string, std::string, CaseInsensitiveLess> m_headers;
 };
 
 inline bool Headers::CaseInsensitiveLess::operator()(std::string_view lhs,
-                                                std::string_view rhs) const noexcept {
+                                                     std::string_view rhs) const noexcept {
     return std::lexicographical_compare(
         lhs.begin(), lhs.end(),
         rhs.begin(), rhs.end(),
         [](unsigned char c1, unsigned char c2) {
-            return std::tolower(c1) < std::tolower(c2);
-        }
-    );
+        return std::tolower(c1) < std::tolower(c2);
+    });
 }
 
 // Inline implementations for Headers member functions
@@ -193,8 +193,7 @@ inline std::istream& operator>>(std::istream& in_stream, Headers& headers) {
 inline std::string Headers::process_header_line(
     std::string_view line,
     const std::string& last_key,
-    Headers& headers
-) {
+    Headers& headers) {
     if (line.empty()) {
         return {};
     }
@@ -202,7 +201,7 @@ inline std::string Headers::process_header_line(
     if (is_continuation_line(line)) {
         if (last_key.empty()) {
             throw std::runtime_error("Header starts with continuation line: "
-                                                                    + std::string(line));
+                                     + std::string(line));
         }
 
         const auto existing_val = headers.get(last_key);

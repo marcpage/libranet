@@ -1,10 +1,12 @@
 #include "ISocket.hpp"
 
+#include <stdexcept>
+
 #if defined(__linux__) || defined(__APPLE__)
-    #include "SocketPosix.hpp"
-    using Socket = net::SocketPosix;
+#include "SocketPosix.hpp"
+using Socket = net::SocketPosix;
 #else
-    #error "Unsupported Platform"
+#error "Unsupported Platform"
 #endif
 
 namespace net {

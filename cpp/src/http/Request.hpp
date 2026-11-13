@@ -114,10 +114,10 @@ inline std::string Request::to_string() const {
     constexpr auto RequestFormattingOverheadBytes = 64;
     std::string result;
     result.reserve(m_method.size()
-                    + m_uri.size()
-                    + m_version.size()
-                    + m_body.size()
-                    + RequestFormattingOverheadBytes);
+                   + m_uri.size()
+                   + m_version.size()
+                   + m_body.size()
+                   + RequestFormattingOverheadBytes);
 
     result += m_method;
     result += " ";
@@ -136,7 +136,7 @@ inline std::istream& operator>>(std::istream& in_stream, Request& request) {
     std::string raw_line;
 
     if (!std::getline(in_stream, raw_line)
-            || !request.parse_request_line(raw_line)) {
+        || !request.parse_request_line(raw_line)) {
         in_stream.setstate(std::ios_base::failbit);
         return in_stream;
     }
@@ -152,10 +152,10 @@ inline std::istream& operator>>(std::istream& in_stream, Request& request) {
 
         try {
             body_length = std::stoull(std::string(content_length_opt.value()));
-        } catch (const std::invalid_argument &) {
+        } catch (const std::invalid_argument&) {
             in_stream.setstate(std::ios_base::failbit);
             return in_stream;
-        } catch (const std::out_of_range &) {
+        } catch (const std::out_of_range&) {
             in_stream.setstate(std::ios_base::failbit);
             return in_stream;
         }

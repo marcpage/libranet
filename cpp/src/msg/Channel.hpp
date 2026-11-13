@@ -21,20 +21,20 @@ public:
     using Milliseconds = std::chrono::milliseconds;
     static constexpr Milliseconds WaitForever{-1};
 
-    explicit Channel(const std::string &name);
+    explicit Channel(const std::string& name);
     ~Channel();
     [[nodiscard]] bool empty() const;
     [[nodiscard]] size_t size() const;
 
-    [[nodiscard]] std::optional<IMessage::Ptr> next_message(Milliseconds timeout=WaitForever);
+    [[nodiscard]] std::optional<IMessage::Ptr> next_message(Milliseconds timeout = WaitForever);
 
     template<typename Type>
-    [[nodiscard]] std::optional<Type> next(Milliseconds timeout=WaitForever);
+    [[nodiscard]] std::optional<Type> next(Milliseconds timeout = WaitForever);
 
-    static void post_message(const std::string &name, IMessage::Ptr message);
+    static void post_message(const std::string& name, IMessage::Ptr message);
 
     template<typename Type>
-    static void post(const std::string &name, Type value);
+    static void post(const std::string& name, Type value);
 
 protected:
     types::BlockingQueue<IMessage::Ptr> m_message_queue;
@@ -67,7 +67,7 @@ std::optional<Type> Channel::next(Milliseconds timeout) {
 }
 
 template<typename Type>
-void Channel::post(const std::string &name, Type value) {
+void Channel::post(const std::string& name, Type value) {
     post_message(name, std::make_shared<Message<Type>>(std::move(value)));
 }
 

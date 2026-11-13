@@ -1,5 +1,4 @@
-#include <iostream>
-#include <cassert>
+#include <gtest/gtest.h>
 #include <sstream>
 #include <string>
 #include <stdexcept>
@@ -8,16 +7,14 @@
 
 using namespace http;
 
-void test_constructors_and_accessors() {
-    std::cout << "-> Testing constructors, setters, and basic accessors... " << std::flush;
-
+TEST(ResponseTest, ConstructorsAndAccessors) {
     // Default constructor state (HTTP/1.1 200 OK)
     Response res;
-    assert(res.version() == "HTTP/1.1");
-    assert(res.status_code() == 200);
-    assert(res.reason_phrase() == "OK");
-    assert(res.body().empty());
-    assert(res.headers().empty());
+    EXPECT_EQ(res.version(), "HTTP/1.1");
+    EXPECT_EQ(res.status_code(), 200);
+    EXPECT_EQ(res.reason_phrase(), "OK");
+    EXPECT_TRUE(res.body().empty());
+    EXPECT_TRUE(res.headers().empty());
 
     // Setters and getters
     res.set_version("HTTP/1.0");
@@ -25,84 +22,71 @@ void test_constructors_and_accessors() {
     res.set_reason_phrase("Not Found");
     res.set_body("Resource missing");
 
-    assert(res.version() == "HTTP/1.0");
-    assert(res.status_code() == 404);
-    assert(res.reason_phrase() == "Not Found");
-    assert(res.body() == "Resource missing");
+    EXPECT_EQ(res.version(), "HTTP/1.0");
+    EXPECT_EQ(res.status_code(), 404);
+    EXPECT_EQ(res.reason_phrase(), "Not Found");
+    EXPECT_EQ(res.body(), "Resource missing");
 
     // Modifying headers through composition
     res.headers().set("Content-Type", "text/plain");
-    assert(res.headers().get("content-type") == "text/plain");
-
-    std::cout << "PASSED\n";
+    EXPECT_EQ(res.headers().get("content-type"), "text/plain");
 }
 
-void test_parse_status_line() {
-    std::cout << "-> Testing status-line parsing logic... " << std::flush;
-
+TEST(ResponseTest, ParseStatusLine) {
     Response res;
 
     // Valid status line with reason phrase
     bool success = res.parse_status_line("HTTP/1.1 200 OK\r\n");
-    assert(success);
-    assert(res.version() == "HTTP/1.1");
-    assert(res.status_code() == 200);
-    assert(res.reason_phrase() == "OK");
+    EXPECT_TRUE(success);
+    EXPECT_EQ(res.version(), "HTTP/1.1");
+    EXPECT_EQ(res.status_code(), 200);
+    EXPECT_EQ(res.reason_phrase(), "OK");
 
     // Valid status line without reason phrase
     bool success_no_reason = res.parse_status_line("HTTP/1.1 500");
-    assert(success_no_reason);
-    assert(res.version() == "HTTP/1.1");
-    assert(res.status_code() == 500);
-    assert(res.reason_phrase().empty());
+    EXPECT_TRUE(success_no_reason);
+    EXPECT_EQ(res.version(), "HTTP/1.1");
+    EXPECT_EQ(res.status_code(), 500);
+    EXPECT_TRUE(res.reason_phrase().empty());
 
     // Valid status line with extra spacing
     bool success_spaced = res.parse_status_line("   HTTP/1.1   403   Forbidden   ");
-    assert(success_spaced);
-    assert(res.version() == "HTTP/1.1");
-    assert(res.status_code() == 403);
-    assert(res.reason_phrase() == "Forbidden");
+    EXPECT_TRUE(success_spaced);
+    EXPECT_EQ(res.version(), "HTTP/1.1");
+    EXPECT_EQ(res.status_code(), 403);
+    EXPECT_EQ(res.reason_phrase(), "Forbidden");
 
     // Malformed: non-numeric status code
-    assert(!res.parse_status_line("HTTP/1.1 ABC OK"));
+    EXPECT_FALSE(res.parse_status_line("HTTP/1.1 ABC OK"));
 
     // Malformed: missing status code
-    assert(!res.parse_status_line("HTTP/1.1"));
+    EXPECT_FALSE(res.parse_status_line("HTTP/1.1"));
 
     // Malformed: empty line
-    assert(!res.parse_status_line(""));
-
-    std::cout << "PASSED\n";
+    EXPECT_FALSE(res.parse_status_line(""));
 }
 
-void test_stream_parsing_and_body() {
-    std::cout << "-> Testing full response stream operator parsing (with body)... " << std::flush;
-
+TEST(ResponseTest, StreamParsingAndBody) {
     std::istringstream iss(
         "HTTP/1.1 200 OK\r\n"
         "Content-Type: text/plain\r\n"
         "Content-Length: 12\r\n"
         "\r\n"
-        "Hello World!"
-    );
+        "Hello World!");
 
     Response res;
     iss >> res;
 
-    assert(!iss.fail());
-    assert(res.version() == "HTTP/1.1");
-    assert(res.status_code() == 200);
-    assert(res.reason_phrase() == "OK");
-    assert(res.headers().get("content-type") == "text/plain");
-    assert(res.headers().get("content-length") == "12");
-    assert(res.body() == "Hello World!");
-
-    std::cout << "PASSED\n";
+    EXPECT_FALSE(iss.fail());
+    EXPECT_EQ(res.version(), "HTTP/1.1");
+    EXPECT_EQ(res.status_code(), 200);
+    EXPECT_EQ(res.reason_phrase(), "OK");
+    EXPECT_EQ(res.headers().get("content-type"), "text/plain");
+    EXPECT_EQ(res.headers().get("content-length"), "12");
+    EXPECT_EQ(res.body(), "Hello World!");
 }
 
-void test_serialization() {
-    std::cout << "-> Testing response serialization (to_string)... " << std::flush;
-
+TEST(ResponseTest, Serialization) {
     Response res;
     res.set_version("HTTP/1.1");
     res.set_status_code(201);
@@ -117,20 +101,5 @@ void test_serialization() {
         "Connection: close\r\n"
         "\r\n";
 
-    assert(serialized == expected);
-
-    std::cout << "PASSED\n";
-}
-
-int main() {
-    std::cout << "    Running Response Test Suite     \n";
-
-    test_constructors_and_accessors();
-    test_parse_status_line();
-    test_stream_parsing_and_body();
-    test_serialization();
-
-    std::cout << "   All Tests Passed Successfully!   \n";
-
-    return 0;
+    EXPECT_EQ(serialized, expected);
 }
