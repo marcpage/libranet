@@ -808,12 +808,15 @@ def test_the_photos_application_is_built_from_its_directory(photos_page: str) ->
 def test_the_photos_page_is_one_self_contained_document(photos_page: str) -> None:
     assert photos_page.startswith("<!doctype html>")
     # Nothing is loaded from a file of its own, or from anywhere else: an
-    # album, and every photo in it, comes from the node.
+    # album, and every photo in it, comes from the node. Nothing is reached
+    # beyond the node but Google Maps, which a photo's details link to.
     assert "<link" not in photos_page
     assert findall(r"<script[^>]*\bsrc", photos_page) == []
     assert "url(" not in photos_page.split("<style>", 1)[1].split("</style>", 1)[0]
     assert "http:" not in photos_page
-    assert "https:" not in photos_page
+    assert set(findall(r"https:[^\"`\s]*", photos_page)) == {
+        "https://www.google.com/maps/search/?api=1&query=",
+    }
 
 
 def test_the_photos_page_calls_only_endpoints_the_node_serves(photos_page: str) -> None:
@@ -833,7 +836,7 @@ def test_the_photos_page_calls_only_endpoints_the_node_serves(photos_page: str) 
         f"{ENCRYPTED_PATH}/",
     }
     # The folders, and a photo's original, imported encrypted, read whole to
-    # draw its thumbnail.
+    # draw its thumbnail, and by ranges for its details.
     assert fullmatch(DIRECTORY_PATTERN, "/data/directory/Pictures/2024/May")
     photo = f"/data/sha256/{hex_digits}/AES256-CBC/{hex_digits}"
     assert fullmatch(BUNDLE_PATTERN, f"{photo}/")
@@ -848,9 +851,15 @@ def test_the_photos_page_calls_only_endpoints_the_node_serves(photos_page: str) 
     assert fullmatch(BUNDLE_PATTERN, f"{album}/index/2024-05.json")
     assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/thumb.jpg")
     # A photo shown: what is known of it, and its original, shown and
-    # downloaded.
+    # downloaded, or its view, shown in its place.
     assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/info.json")
     assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/original%20thumb.jpg")
+    assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/view.jpg")
+    assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/IMG_0001.HEIC")
+    # A video, played from its original, and a frame of it drawn as it is
+    # imported, from a bundle placing it with its content type.
+    assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/IMG_0001.MOV")
+    assert fullmatch(BUNDLE_PATTERN, f"{album}/IMG_0001.MOV")
 
 
 def test_the_photos_page_keeps_albums_where_the_plan_names_them(photos_page: str) -> None:
@@ -898,6 +907,145 @@ def test_the_photos_page_takes_as_photos_the_files_the_plan_names(photos_page: s
     }
     # Those beside them that only describe them are counted, not listed.
     assert 'const DESCRIBING = new Set(["xmp", "aae", "thm", "json"]);' in photos_page
+    # Those no browser shows as they are, each given a view, by extension, or
+    # as any other image/… the node gives.
+    [others] = findall(
+        r"^const OTHER_PHOTOS = new Set\(\[(.*?)\]\);$", photos_page, DOTALL | MULTILINE
+    )
+    assert set(findall(r'"(\w+)"', others)) == {
+        "heic",
+        "heif",
+        "hif",
+        "tif",
+        "tiff",
+        "dng",
+        "cr2",
+        "cr3",
+        "crw",
+        "nef",
+        "nrw",
+        "arw",
+        "srf",
+        "sr2",
+        "raf",
+        "orf",
+        "rw2",
+        "pef",
+        "srw",
+        "x3f",
+        "3fr",
+        "iiq",
+        "erf",
+        "kdc",
+        "mrw",
+        "rwl",
+    }
+    taken = 'OTHER_PHOTOS.has(extension) || type.startsWith("image/")) {\n    return PHOTO_KIND;'
+    assert taken in photos_page
+    [kinds] = findall(r"^const NOT_LISTED = \[\n(.*?)\n\];$", photos_page, DOTALL | MULTILINE)
+    assert findall(r'^  \["(\w+)"', kinds, MULTILINE) == ["describing", "other"]
+
+
+def test_the_photos_page_takes_as_videos_the_files_the_plan_names(photos_page: str) -> None:
+    [types] = findall(r"const VIDEO_TYPES = \{([^}]*)\};", photos_page)
+    placed = dict(findall(r'^\s+"?(\w+)"?: "(video/[a-z0-9.-]+)",$', types, MULTILINE))
+
+    # By extension, each placed with its type, or as any video/… the node
+    # gives.
+    assert placed == {
+        "mov": "video/quicktime",
+        "mp4": "video/mp4",
+        "m4v": "video/x-m4v",
+        "3gp": "video/3gpp",
+        "3g2": "video/3gpp2",
+        "avi": "video/x-msvideo",
+        "mkv": "video/x-matroska",
+        "webm": "video/webm",
+        "mts": "video/mp2t",
+        "m2ts": "video/mp2t",
+        "wmv": "video/x-ms-wmv",
+    }
+    taken = (
+        'Object.hasOwn(VIDEO_TYPES, extension) || type.startsWith("video/")) {\n'
+        "    return VIDEO_KIND;"
+    )
+    assert taken in photos_page
+
+
+def test_the_photos_page_reads_and_plays_videos_as_the_plan_names_them(photos_page: str) -> None:
+    # Its thumbnail a frame one second in, or halfway through a shorter one.
+    assert "const FRAME_SECONDS = 1;" in photos_page
+    assert "video.currentTime = Math.min(FRAME_SECONDS, length / 2);" in photos_page
+    # When and where it was taken, by these keys of a QuickTime file, or by
+    # mvhd's creation time, counted from 1904, and ©xyz.
+    assert 'const CREATION_KEY = "com.apple.quicktime.creationdate";' in photos_page
+    assert 'const LOCATION_KEY = "com.apple.quicktime.location.ISO6709";' in photos_page
+    assert 'const XYZ_KEY = "\\xa9xyz";' in photos_page
+    assert "const MOVIE_EPOCH_SECONDS = 2082844800;" in photos_page
+    # A video the browser says it cannot play, "", is not played.
+    assert 'video.canPlayType(type) !== ""' in photos_page
+    # A Live Photo's motion is five seconds long at most.
+    assert "const MOTION_SECONDS = 5;" in photos_page
+
+
+def test_the_photos_page_views_photos_no_browser_shows_as_the_plan_names_them(
+    photos_page: str,
+) -> None:
+    # A JPEG, at most 3,840 pixels on its longer side, its quality lowered
+    # from 0.9 until it fits in one request to make a bundle.
+    assert 'const VIEW_FILE = "view.jpg";' in photos_page
+    assert "const VIEW_SIZE = 3840;" in photos_page
+    [qualities] = findall(r"^const VIEW_QUALITIES = \[(.*)\];$", photos_page, MULTILINE)
+    steps = [float(quality) for quality in qualities.split(",")]
+    assert steps[0] == 0.9
+    assert steps == sorted(steps, reverse=True)
+    assert "Picture.encoded(canvas, VIEW_QUALITIES, EDIT_BYTES)" in photos_page
+    # The thumbnail is made from it.
+    assert (
+        "new Picture(canvas, canvas.width, canvas.height).jpeg(THUMB_SIZE, [THUMB_QUALITY])"
+        in photos_page
+    )
+    # Download still saves the original.
+    assert "download.download = photo.name;" in photos_page
+
+
+def test_the_photos_page_finds_a_jpeg_within_a_raw_file_as_the_plan_names_it(
+    photos_page: str,
+) -> None:
+    [tags] = findall(r"^const PREVIEW_TAGS = \{\n(.*?)\n\};$", photos_page, DOTALL | MULTILINE)
+
+    # In a raw file built on TIFF, the JPEG an image file directory names,
+    # by the tags of TIFF 6.0, TIFF/EP, DNG, and Panasonic's JpgFromRaw.
+    assert {
+        name: int(number, 16)
+        for name, number in findall(r"^\s+(\w+): 0x([0-9a-f]{4}),$", tags, MULTILINE)
+    } == {
+        "JpgFromRaw": 0x002E,
+        "Compression": 0x0103,
+        "PhotometricInterpretation": 0x0106,
+        "StripOffsets": 0x0111,
+        "StripByteCounts": 0x0117,
+        "SubIFDs": 0x014A,
+        "JPEGTables": 0x015B,
+        "JPEGInterchangeFormat": 0x0201,
+        "JPEGInterchangeFormatLength": 0x0202,
+    }
+    # TIFF's own, and Panasonic's, Leica's, and Olympus's, built on it.
+    assert "const TIFF_MAGIC = new Set([42, 0x0055, 0x4f52, 0x5352]);" in photos_page
+    # Old and new JPEG compression, not of a raw image's own CFA or
+    # LinearRaw data, and only frames every browser draws.
+    assert "const JPEG_COMPRESSIONS = new Set([6, 7]);" in photos_page
+    assert "const RAW_PHOTOMETRICS = new Set([32803, 34892]);" in photos_page
+    assert "const DRAWN_FRAMES = new Set([0xc0, 0xc1, 0xc2]);" in photos_page
+    # In a CR3, its PRVW box, and its details from its CMT boxes; and in a
+    # RAF, the JPEG its header names.
+    assert 'const CR3_BRAND = "crx ";' in photos_page
+    assert 'const CR3_METADATA = "85c0b687820f11e08111f4ce462b6a48";' in photos_page
+    assert 'const CR3_PREVIEW = "eaf42b5e1c984b88b9fbb7dc406e4d16";' in photos_page
+    assert 'const RAF_SIGNATURE = "FUJIFILMCCD-RAW ";' in photos_page
+    assert "const RAF_JPEG = 84;" in photos_page
+    # An HEIC's and an AVIF's rotation, by irot's quarter turns anticlockwise.
+    assert "const IROT_ORIENTATIONS = [1, 8, 3, 6];" in photos_page
 
 
 def test_the_photos_page_imports_each_photo_encrypted(photos_page: str) -> None:
@@ -913,11 +1061,30 @@ def test_the_photos_page_imports_into_albums_as_the_plan_names_them(photos_page:
     assert "const THUMB_SIZE = 400;" in photos_page
     assert 'const THUMB_FILE = "thumb.jpg";' in photos_page
     assert 'const INFO_FILE = "info.json";' in photos_page
-    assert (
-        'const INFO_KEYS = ["name", "kind", "taken", "taken_from", "width", "height", "size",'
-        ' "original", "thumb"];'
-    ) in photos_page
+    [keys] = findall(r"^const INFO_KEYS = \[(.*?)\];$", photos_page, DOTALL | MULTILINE)
+    assert findall(r'"(\w+)"', keys) == [
+        "name",
+        "kind",
+        "taken",
+        "taken_from",
+        "offset",
+        "width",
+        "height",
+        "orientation",
+        "size",
+        "duration_seconds",
+        "camera",
+        "exposure",
+        "location",
+        "original",
+        "view",
+        "motion",
+        "thumb",
+    ]
     assert 'const PHOTO_KIND = "photo";' in photos_page
+    assert 'const VIDEO_KIND = "video";' in photos_page
+    assert 'const TAKEN_FROM_EXIF = "exif";' in photos_page
+    assert 'const TAKEN_FROM_METADATA = "metadata";' in photos_page
     assert 'const TAKEN_FROM_NAME = "name";' in photos_page
     assert 'const TAKEN_FROM_MODIFIED = "modified";' in photos_page
 
@@ -953,14 +1120,80 @@ def test_the_photos_page_reads_when_a_photo_was_taken_from_its_name(photos_page:
     assert [name for name in undated if taken(name)] == []
 
 
+def test_the_photos_page_reads_a_photos_details_as_the_plan_names_them(photos_page: str) -> None:
+    # By ranges of its original, as the music page reads a song's tags.
+    assert "const DETAILS_HEAD = 64 * 1024;" in photos_page
+    assert "const DETAILS_MOST = 16 * 1024 * 1024;" in photos_page
+    [image] = findall(r"^const EXIF_TAGS = \{\n(.*?)\n\};$", photos_page, DOTALL | MULTILINE)
+    [gps] = findall(r"^const GPS_TAGS = \{\n(.*?)\n\};$", photos_page, DOTALL | MULTILINE)
+
+    def numbered(tags: str) -> dict[str, int]:
+        return {
+            name: int(number, 16)
+            for name, number in findall(r"^\s+(\w+): 0x([0-9a-f]{4}),$", tags, MULTILINE)
+        }
+
+    # Each tag the plan names, by its number in Exif 2.32 and 3.0, with the
+    # directories they are in, and the offsets and fractions of a second
+    # that go with each date.
+    assert numbered(image) == {
+        "Make": 0x010F,
+        "Model": 0x0110,
+        "Orientation": 0x0112,
+        "DateTime": 0x0132,
+        "ExifIFDPointer": 0x8769,
+        "GPSInfoIFDPointer": 0x8825,
+        "ExposureTime": 0x829A,
+        "FNumber": 0x829D,
+        "ISOSpeedRatings": 0x8827,
+        "DateTimeOriginal": 0x9003,
+        "DateTimeDigitized": 0x9004,
+        "OffsetTime": 0x9010,
+        "OffsetTimeOriginal": 0x9011,
+        "OffsetTimeDigitized": 0x9012,
+        "FocalLength": 0x920A,
+        "SubSecTime": 0x9290,
+        "SubSecTimeOriginal": 0x9291,
+        "SubSecTimeDigitized": 0x9292,
+        "PixelXDimension": 0xA002,
+        "PixelYDimension": 0xA003,
+        "LensModel": 0xA434,
+    }
+    assert numbered(gps) == {
+        "GPSLatitudeRef": 0x0001,
+        "GPSLatitude": 0x0002,
+        "GPSLongitudeRef": 0x0003,
+        "GPSLongitude": 0x0004,
+        "GPSAltitudeRef": 0x0005,
+        "GPSAltitude": 0x0006,
+    }
+    # When it was taken, from the first of these it gives.
+    [dates] = findall(r"^const EXIF_DATES = \[\n(.*?)\n\];$", photos_page, DOTALL | MULTILINE)
+    assert [findall(r'"(\w+)"', line) for line in dates.splitlines()] == [
+        ["DateTimeOriginal", "OffsetTimeOriginal", "SubSecTimeOriginal"],
+        ["DateTimeDigitized", "OffsetTimeDigitized", "SubSecTimeDigitized"],
+        ["DateTime", "OffsetTime", "SubSecTime"],
+    ]
+    # Where it was taken, linked to Google Maps in a new tab, which is told
+    # nothing of the page.
+    assert 'const MAPS_SEARCH = "https://www.google.com/maps/search/?api=1&query=";' in photos_page
+    assert (
+        "link.href = `${MAPS_SEARCH}${coordinate(latitude)},${coordinate(longitude)}`;"
+        in photos_page
+    )
+    assert 'link.target = "_blank";' in photos_page
+    assert 'link.rel = "noopener noreferrer";' in photos_page
+
+
 def test_the_photos_page_shows_a_photo_with_the_keys_the_plan_names(photos_page: str) -> None:
     [keys] = findall(r"^    const keys = \{\n(.*?)\n    \};$", photos_page, DOTALL | MULTILINE)
 
-    # The photo before and after, Zoom, Full screen, Download, and Close,
-    # with the keys, as the keys dialog shows them.
+    # The photo before and after, Details, Zoom, Full screen, Download, and
+    # Close, with the keys, as the keys dialog shows them.
     assert set(findall(r'^\s+"?([a-z?/]+)"?: ', keys, MULTILINE)) == {
         "arrowleft",
         "arrowright",
+        "i",
         "z",
         "f",
         "d",

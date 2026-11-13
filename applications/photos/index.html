@@ -193,6 +193,12 @@
   span.cover { display: flex; align-items: center; justify-content: center; color: var(--muted); }
   span.cover svg { width: 30%; height: 30%; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 
+  /* A photo no view or thumbnail of which is kept, as this browser cannot
+     show it: a picture struck through, with its file's extension. */
+  .unviewable svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  span.cover.unviewable { flex-direction: column; gap: 0.35rem; }
+  .unviewable .extension { font-size: 0.8rem; font-weight: 600; letter-spacing: 0.05em; }
+
   .caption { display: block; padding: 0.4rem 0.15rem 0; }
   .caption strong, .caption .note { display: block; overflow-wrap: anywhere; }
 
@@ -241,9 +247,26 @@
   }
 
   /* Each photo a square tile, its thumbnail cropped to fill it. */
-  .tile { display: block; width: 100%; aspect-ratio: 1; }
+  .tile { position: relative; display: block; width: 100%; aspect-ratio: 1; }
   button.tile { padding: 0; border: 0; border-radius: 2px; background: var(--surface); }
   .tile .cover { border-radius: 2px; }
+
+  /* A video's tile, with its duration in its lower right corner. */
+  .tile .duration {
+    position: absolute;
+    right: 0.35rem;
+    bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-shadow: 0 0 3px #000, 0 0 1px #000;
+    pointer-events: none;
+  }
+
+  .tile .duration svg { width: 0.65rem; height: 0.65rem; fill: currentColor; filter: drop-shadow(0 0 2px #000); }
 
   /* A photo shown alone, on black, over the album, with its name and when it
      was taken above it, and the photos before and after it at its sides. */
@@ -261,7 +284,31 @@
   .viewer-bar { display: flex; align-items: center; gap: 1rem; padding: 0.5rem 0.5rem 0.5rem 1rem; }
   .viewer-caption { flex: 1 1 auto; min-width: 0; }
   .viewer-caption > * { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .viewer-body { position: relative; flex: 1 1 auto; min-height: 0; }
+  .viewer-main { display: flex; flex: 1 1 auto; min-height: 0; }
+  .viewer-body { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; }
+
+  /* Details, beside the photo, or below it at a phone's width, scrolled
+     within itself and nothing under it. */
+  .viewer-details {
+    flex: 0 0 20rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    padding: 0.75rem 1rem 1rem;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  @media (max-width: 40rem) {
+    .viewer-main { flex-direction: column; }
+    .viewer-details { flex: 0 0 auto; max-height: 45%; border-left: 0; border-top: 1px solid var(--border); }
+  }
+
+  .details { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.5rem 1rem; margin: 0; }
+  .details dt { color: var(--muted); }
+  .details dd { margin: 0; overflow-wrap: anywhere; }
+  .details dd > * { display: block; }
+  .details a { color: var(--accent); }
   .viewer-body > .state { position: absolute; top: 50%; left: 1rem; right: 1rem; margin: 0; text-align: center; transform: translateY(-50%); }
 
   a.icon { display: inline-block; padding: 0.3rem; line-height: 0; border: 1px solid transparent; border-radius: 6px; color: var(--text); }
@@ -284,6 +331,46 @@
     user-select: none;
     -webkit-user-select: none;
     -webkit-user-drag: none;
+  }
+
+  /* A video shown, played with the browser's own controls, which it hears
+     rather than the stage. */
+  .stage video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    max-width: none;
+    transform-origin: 0 0;
+    background: #000;
+    cursor: default;
+  }
+
+  /* The placeholder of a photo shown that cannot be viewed, large, with
+     Download below it. */
+  .stage > .unviewable {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    color: var(--muted);
+    text-align: center;
+    cursor: default;
+  }
+
+  .stage > .unviewable svg { width: min(40vmin, 16rem); height: min(40vmin, 16rem); }
+  .stage > .unviewable .extension { font-size: 1.25rem; }
+  .stage > .unviewable p { margin: 0; }
+
+  .stage > .unviewable a {
+    border-radius: 6px;
+    padding: 0.4rem 0.9rem;
+    background: var(--accent);
+    color: var(--accent-text);
+    text-decoration: none;
   }
 
   .viewer button.side { position: absolute; top: 50%; transform: translateY(-50%); padding: 0.5rem; border-radius: 50%; background: rgb(0 0 0 / 0.45); }
@@ -381,6 +468,9 @@
       <span class="note" id="viewer-taken"></span>
     </div>
     <div class="icons">
+      <button type="button" class="icon" id="viewer-info" title="Details" aria-label="Details" aria-pressed="false" aria-controls="viewer-details">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 11v6 M12 7.5v.01"/></svg>
+      </button>
       <button type="button" class="icon" id="viewer-zoom" title="Zoom" aria-label="Zoom" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M16 16l5 5 M8 11h6 M11 8v6"/></svg>
       </button>
@@ -395,15 +485,21 @@
       </button>
     </div>
   </div>
-  <div class="viewer-body">
-    <p class="state" id="viewer-state" role="status" hidden></p>
-    <div class="stage" id="viewer-stage"></div>
-    <button type="button" class="icon side previous" id="viewer-previous" title="Previous" aria-label="Previous">
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
-    </button>
-    <button type="button" class="icon side next" id="viewer-next" title="Next" aria-label="Next">
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7"/></svg>
-    </button>
+  <div class="viewer-main">
+    <div class="viewer-body">
+      <p class="state" id="viewer-state" role="status" hidden></p>
+      <div class="stage" id="viewer-stage"></div>
+      <button type="button" class="icon side previous" id="viewer-previous" title="Previous" aria-label="Previous">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <button type="button" class="icon side next" id="viewer-next" title="Next" aria-label="Next">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+    <aside class="viewer-details" id="viewer-details" aria-labelledby="details-heading" hidden>
+      <h3 id="details-heading">Details</h3>
+      <dl class="details" id="details-list"></dl>
+    </aside>
   </div>
 </div>
 
@@ -413,8 +509,11 @@
     <p class="hint">The folders this node offers. Choose photos in any of them with their boxes,
     and import those chosen, or import every photo in the folder shown, and in the folders within
     it. Each import makes a new album, named for when it is made, and imports each photo
-    encrypted, so that only whoever is given the album can see it. Photos of kinds not every
-    browser shows, as HEIC and raw files, and videos, are not imported yet.</p>
+    encrypted, so that only whoever is given the album can see it. A photo of a kind not every
+    browser shows, as HEIC and raw files, is viewed as a JPEG this browser makes of it, or finds
+    within it, or else kept to be downloaded. A video is imported as a photo is, and played as a
+    browser plays it. A photo beside a video of its name, five seconds long at most, is a Live
+    Photo, which keeps the video as its motion.</p>
     <nav class="crumbs" id="folder-path" aria-label="Where in the folders"></nav>
     <ul class="entries" id="folder-entries"></ul>
     <p class="result" id="folder-state" role="status" hidden></p>
@@ -504,6 +603,8 @@
   <dl class="keys">
     <dt><kbd>←</kbd> <kbd>→</kbd></dt>
     <dd>The photo before, or after, in the album's order.</dd>
+    <dt><kbd>I</kbd></dt>
+    <dd>Its details: when it was taken, the camera, and where, or hide them.</dd>
     <dt><kbd>Z</kbd></dt>
     <dd>Zoom to the photo's own pixels, or fit it to the window again.</dd>
     <dt><kbd>F</kbd></dt>
@@ -574,13 +675,180 @@ const THUMB_FILE = "thumb.jpg";
 
 // What else a photo's folder holds, beside its original under the name of
 // the file it was imported from: what is known of it, its members in this
-// order. `kind` is PHOTO_KIND, `taken` a local date and time, and
-// `taken_from` where that came from: TAKEN_FROM_NAME or TAKEN_FROM_MODIFIED.
+// order. `kind` is PHOTO_KIND, or VIDEO_KIND, `taken` a local date and time,
+// and `taken_from` where that came from: TAKEN_FROM_EXIF, TAKEN_FROM_METADATA,
+// of a video, TAKEN_FROM_NAME, or TAKEN_FROM_MODIFIED. What its
+// Exif, or a video's metadata, gives: `offset`, from UTC, as "+09:00", of
+// when it was taken; `orientation`; `camera`, {"make", "model", "lens"};
+// `exposure`, {"iso", "aperture", "shutter", "focal_length"}, the shutter in
+// seconds and the focal length in millimetres; and `location`, {"latitude",
+// "longitude", "altitude"}, in degrees and metres. A video's
+// `duration_seconds` is how long it plays. `original`, `view`, `motion`, a
+// Live Photo's video, and `thumb` name their files.
 const INFO_FILE = "info.json";
-const INFO_KEYS = ["name", "kind", "taken", "taken_from", "width", "height", "size", "original", "thumb"];
+const INFO_KEYS = [
+  "name", "kind", "taken", "taken_from", "offset", "width", "height", "orientation", "size", "duration_seconds",
+  "camera", "exposure", "location", "original", "view", "motion", "thumb",
+];
 const PHOTO_KIND = "photo";
+const VIDEO_KIND = "video";
+const TAKEN_FROM_EXIF = "exif";
+const TAKEN_FROM_METADATA = "metadata";
 const TAKEN_FROM_NAME = "name";
 const TAKEN_FROM_MODIFIED = "modified";
+
+// Where each `taken_from` says when a photo was taken came from, as its
+// details say it.
+const TAKEN_FROM_TEXT = {
+  [TAKEN_FROM_EXIF]: "As the photo itself says",
+  [TAKEN_FROM_METADATA]: "As the video itself says",
+  [TAKEN_FROM_NAME]: "From its file's name",
+  [TAKEN_FROM_MODIFIED]: "From when its file was last changed",
+};
+
+// How much of a photo's original is read for its details (HttpApi 12.1,
+// 19), as the music page reads a song's tags: this much at its start, and
+// at most this much more, as much as its metadata says it holds.
+const DETAILS_HEAD = 64 * 1024;
+const DETAILS_MOST = 16 * 1024 * 1024;
+
+// How many segments, or chunks, of a photo's file are walked through for its
+// Exif, at most, so that a file that is not what it seems is not read on
+// forever.
+const MOST_CHUNKS = 256;
+
+// What starts a PNG, and what starts the Exif of a JPEG's APP1 segment,
+// before its TIFF header.
+const PNG_SIGNATURE = "\x89PNG\r\n\x1a\n";
+const EXIF_HEADER = "Exif\0\0";
+
+// The Exif tags read (Exif 2.32 4.6.4, 4.6.5), by number: of the image, in
+// its first image file directory, and of the photo, in the Exif directory
+// that names; and of where it was taken, in the GPS directory it names
+// (Exif 2.32 4.6.6). The tags of the two first never share a number.
+const EXIF_TAGS = {
+  Make: 0x010f,
+  Model: 0x0110,
+  Orientation: 0x0112,
+  DateTime: 0x0132,
+  ExifIFDPointer: 0x8769,
+  GPSInfoIFDPointer: 0x8825,
+  ExposureTime: 0x829a,
+  FNumber: 0x829d,
+  ISOSpeedRatings: 0x8827,
+  DateTimeOriginal: 0x9003,
+  DateTimeDigitized: 0x9004,
+  OffsetTime: 0x9010,
+  OffsetTimeOriginal: 0x9011,
+  OffsetTimeDigitized: 0x9012,
+  FocalLength: 0x920a,
+  SubSecTime: 0x9290,
+  SubSecTimeOriginal: 0x9291,
+  SubSecTimeDigitized: 0x9292,
+  PixelXDimension: 0xa002,
+  PixelYDimension: 0xa003,
+  LensModel: 0xa434,
+};
+const GPS_TAGS = {
+  GPSLatitudeRef: 0x0001,
+  GPSLatitude: 0x0002,
+  GPSLongitudeRef: 0x0003,
+  GPSLongitude: 0x0004,
+  GPSAltitudeRef: 0x0005,
+  GPSAltitude: 0x0006,
+};
+const IMAGE_NUMBERS = new Set(Object.values(EXIF_TAGS));
+const GPS_NUMBERS = new Set(Object.values(GPS_TAGS));
+
+// When a photo was taken, as its Exif gives it: the first of these dates
+// and times it holds, each with the offset from UTC and the fraction of a
+// second that go with it.
+const EXIF_DATES = [
+  ["DateTimeOriginal", "OffsetTimeOriginal", "SubSecTimeOriginal"],
+  ["DateTimeDigitized", "OffsetTimeDigitized", "SubSecTimeDigitized"],
+  ["DateTime", "OffsetTime", "SubSecTime"],
+];
+
+// A date and time as Exif gives one, "2024:05:14 09:30:12", or with dashes
+// and a T, as some programs write it; and an offset from UTC, "+09:00".
+const EXIF_DATE = /^(\d{4})[:-](\d\d)[:-](\d\d)[ T](\d\d):(\d\d):(\d\d)/;
+const OFFSET = /^[+-]\d\d:\d\d$/;
+
+// How many bytes each value of each type of a TIFF entry read takes (TIFF
+// 6.0 2; Exif 2.32 4.6.2, and Exif 3.0's UTF-8), by the type's number: BYTE,
+// ASCII, SHORT, LONG, RATIONAL, UNDEFINED, which some programs write a BYTE
+// as, IFD, and UTF-8. Entries of any other type are not read.
+const TIFF_TYPES = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 13: 4, 129: 1 };
+const TIFF_TEXTS = new Set([2, 129]);
+const TIFF_RATIONAL = 5;
+const TIFF_UNDEFINED = 7;
+
+// The numbers after the byte order that start a TIFF structure: TIFF's own
+// (TIFF 6.0 2), and those of the raw files of Panasonic and Leica, and of
+// Olympus, built on it.
+const TIFF_MAGIC = new Set([42, 0x0055, 0x4f52, 0x5352]);
+
+// How many bytes the values of an entry of an image file directory take at
+// most for them to be read, as each this page reads is small; larger ones,
+// as a JPEG one names, are only located.
+const TIFF_VALUE_MOST = 4096;
+
+// The tags of an image file directory that say where a JPEG its file holds
+// is (TIFF 6.0 8, 22; TIFF/EP; DNG 1.7): the JPEG a Panasonic raw file names;
+// the directory's compression and photometric interpretation; its strips;
+// the directories below it; the tables the JPEG of its strips shares; and a
+// JPEG it names, as Exif names a thumbnail.
+const PREVIEW_TAGS = {
+  JpgFromRaw: 0x002e,
+  Compression: 0x0103,
+  PhotometricInterpretation: 0x0106,
+  StripOffsets: 0x0111,
+  StripByteCounts: 0x0117,
+  SubIFDs: 0x014a,
+  JPEGTables: 0x015b,
+  JPEGInterchangeFormat: 0x0201,
+  JPEGInterchangeFormatLength: 0x0202,
+};
+const PREVIEW_NUMBERS = new Set(Object.values(PREVIEW_TAGS));
+
+// The compressions of a strip that is a JPEG, old and new (TIFF 6.0 22;
+// TIFF Technical Note 2), and the photometric interpretations of a raw
+// image's own data, never a JPEG to view by, CFA and LinearRaw (TIFF/EP;
+// DNG 1.7).
+const JPEG_COMPRESSIONS = new Set([6, 7]);
+const RAW_PHOTOMETRICS = new Set([32803, 34892]);
+
+// The frames of a JPEG every browser draws, at 8 bits a sample: baseline,
+// extended, and progressive, coded by Huffman (ITU-T T.81 B.1.1.3). The
+// other start of frame markers are of frames no browser draws, as lossless,
+// which a raw image's own data may be.
+const DRAWN_FRAMES = new Set([0xc0, 0xc1, 0xc2]);
+
+// How many image file directories of a raw file are walked through for the
+// JPEGs they name, and how many of those are looked at, at most.
+const MOST_DIRECTORIES = 32;
+const MOST_PREVIEWS = 8;
+
+// The brand of a Canon CR3, an ISO base media file (ISO/IEC 14496-12 4.3),
+// and the UUIDs of the boxes it keeps its image file directories, CMT1, CMT2,
+// and CMT4, in, within its moov box, and its preview, PRVW, in.
+const CR3_BRAND = "crx ";
+const CR3_METADATA = "85c0b687820f11e08111f4ce462b6a48";
+const CR3_PREVIEW = "eaf42b5e1c984b88b9fbb7dc406e4d16";
+
+// What starts a Fujifilm raw file, and where in it the place and the size of
+// the JPEG it holds are, each 4 bytes, big-endian.
+const RAF_SIGNATURE = "FUJIFILMCCD-RAW ";
+const RAF_JPEG = 84;
+
+// The Exif orientation of an HEIF or AVIF image turned for display by each
+// number of quarter turns anticlockwise its irot property gives, none to
+// three (ISO/IEC 23008-12 6.5.10).
+const IROT_ORIENTATIONS = [1, 8, 3, 6];
+
+// Where Details links a photo's place to, on Google Maps, before its
+// latitude and longitude. Nothing is sent there until the link is followed.
+const MAPS_SEARCH = "https://www.google.com/maps/search/?api=1&query=";
 
 // How many hex digits of the hash of a photo's original's file bundle name
 // its folder.
@@ -601,22 +869,83 @@ const PHOTO_TYPES = {
   bmp: "image/bmp",
 };
 
-// The other files found beside photos, counted and not listed: photos no
-// browser shows as they are (Step 165) and videos (Step 166), each by its
-// extension or as the node gives its type; files that only describe the
-// photos beside them; and the rest. Each with how it is counted.
+// The photos no browser shows as they are, each with a view (Step 165), by
+// the extension of their file's name, any case: HEIC and HEIF, TIFF, and
+// raw files. A file the node gives as any other image/… type is one too.
+// Those of a type every browser that shows them knows them by are placed
+// with it, and the others with the type the node gives.
 const OTHER_PHOTOS = new Set([
   "heic", "heif", "hif", "tif", "tiff", "dng", "cr2", "cr3", "crw", "nef", "nrw", "arw", "srf",
   "sr2", "raf", "orf", "rw2", "pef", "srw", "x3f", "3fr", "iiq", "erf", "kdc", "mrw", "rwl",
 ]);
-const VIDEOS = new Set(["mov", "mp4", "m4v", "3gp", "3g2", "avi", "mkv", "webm", "mts", "m2ts", "wmv"]);
+const OTHER_PHOTO_TYPES = {
+  heic: "image/heic",
+  heif: "image/heif",
+  hif: "image/heif",
+  tif: "image/tiff",
+  tiff: "image/tiff",
+};
+
+// The videos, by the extension of their file's name, any case, each with
+// the content type it is placed with. A file the node gives as any video/…
+// type is one too, placed with that type.
+const VIDEO_TYPES = {
+  mov: "video/quicktime",
+  mp4: "video/mp4",
+  m4v: "video/x-m4v",
+  "3gp": "video/3gpp",
+  "3g2": "video/3gpp2",
+  avi: "video/x-msvideo",
+  mkv: "video/x-matroska",
+  webm: "video/webm",
+  mts: "video/mp2t",
+  m2ts: "video/mp2t",
+  wmv: "video/x-ms-wmv",
+};
+
+// A QuickTime file, which is built as an MP4 is, and so is asked of as one
+// too, as Chrome plays one of H.264, though it says it cannot play
+// video/quicktime.
+const QUICKTIME_TYPE = "video/quicktime";
+const MP4_TYPE = "video/mp4";
+
+// The other files found beside photos and videos, counted and not listed:
+// files that only describe the photos beside them, and the rest. Each with
+// how it is counted.
 const DESCRIBING = new Set(["xmp", "aae", "thm", "json"]);
 const NOT_LISTED = [
-  ["unshown", "photo of a kind not imported yet", "photos of kinds not imported yet"],
-  ["video", "video, not imported yet", "videos, not imported yet"],
   ["describing", "file describing a photo", "files describing photos"],
   ["other", "other file", "other files"],
 ];
+
+// A video's thumbnail is a frame this many seconds in, or halfway through a
+// shorter video; and a video is waited for this long, at most, to draw it.
+const FRAME_SECONDS = 1;
+const VIDEO_WAIT_SECONDS = 30;
+
+// How long a video beside a photo of its name is, at most, to be the
+// photo's motion, as a Live Photo's is, which is about three seconds.
+const MOTION_SECONDS = 5;
+
+// The boxes a QuickTime or an MP4 file starts with, of an ISO base media
+// file (ISO/IEC 14496-12 4.2), as the old QuickTime files with no ftyp box
+// start with any of the others.
+const MOVIE_STARTS = new Set(["ftyp", "moov", "mdat", "wide", "free", "skip", "pnot"]);
+
+// What a QuickTime or an MP4 file's metadata says of when and where it was
+// taken, by its keys, as an iPhone writes them, in an mdta meta box; and
+// where, by ©xyz, as Android writes it, in its user data, or in an iTunes
+// meta box. The date as ISO 8601 gives it, as "2024-05-14T09:30:12+0900",
+// and the place as ISO 6709, as "+35.6586+139.7454+040.000/".
+const CREATION_KEY = "com.apple.quicktime.creationdate";
+const LOCATION_KEY = "com.apple.quicktime.location.ISO6709";
+const XYZ_KEY = "\xa9xyz";
+const QUICKTIME_DATE = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:[.,](\d+))?(Z|[+-]\d\d:?\d\d)?/;
+const ISO6709 = /([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)?/;
+
+// How many seconds after the start of 1904, from which mvhd counts its
+// times, in UTC, 1970 starts.
+const MOVIE_EPOCH_SECONDS = 2082844800;
 
 // A date and time in a photo's file's name, as IMG_20240514_093012.jpg,
 // PXL_20240514_093012345.jpg, or 2024-05-14 09.30.12.png give it: the
@@ -652,6 +981,15 @@ const FOLDER_DEPTH = 8;
 // of this quality.
 const THUMB_SIZE = 400;
 const THUMB_QUALITY = 0.85;
+
+// A photo's view, in its folder, of a photo not every browser shows as it
+// is: a JPEG made of it, as many pixels on its longer side at most, as wide
+// as a 4K screen, of the first of these qualities whose base64 fits in one
+// request to make a bundle, as editInParts makes them. Its thumbnail is made
+// from it.
+const VIEW_FILE = "view.jpg";
+const VIEW_SIZE = 3840;
+const VIEW_QUALITIES = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3];
 
 // How files are listed: ignoring case, and numbers in order.
 const COLLATOR = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
@@ -734,6 +1072,10 @@ function isText(value) {
   return typeof value === "string" && value !== "";
 }
 
+function isPositive(value) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
 function plural(count, one, many) {
   return count === 1 ? `1 ${one}` : `${count.toLocaleString()} ${many}`;
 }
@@ -777,6 +1119,16 @@ function localTime(date) {
     + `T${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`;
 }
 
+// The local date and time `digits` give, [year, month, day, hours, minutes,
+// seconds], each as written, as a photo's `taken` gives it; or null if it is
+// no real date and time.
+function takenOf(digits) {
+  const [year, month, day, hours, minutes, seconds] = digits.map(Number);
+  const date = new Date(year, month - 1, day);
+  const real = date.getMonth() === month - 1 && date.getDate() === day && hours < 24 && minutes < 60 && seconds < 60;
+  return real ? `${digits[0]}-${digits[1]}-${digits[2]}T${digits[3]}:${digits[4]}:${digits[5]}` : null;
+}
+
 function formatSize(bytes) {
   if (typeof bytes !== "number") {
     return "";
@@ -791,10 +1143,38 @@ function formatSize(bytes) {
   return `${bytes} B`;
 }
 
+// How long a video of `seconds` plays, as a player shows it, as "0:03" or
+// "1:02:03", at least a second; or "" if it is not known.
+function durationText(seconds) {
+  if (!isPositive(seconds)) {
+    return "";
+  }
+
+  const whole = Math.max(1, Math.round(seconds));
+  const two = (number) => String(number).padStart(2, "0");
+  const [hours, minutes] = [Math.floor(whole / 3600), Math.floor((whole % 3600) / 60)];
+  return hours ? `${hours}:${two(minutes)}:${two(whole % 60)}` : `${minutes}:${two(whole % 60)}`;
+}
+
+// How many of `files`, each a PhotoFile, are photos, and how many videos, as
+// said, as "12 photos and 3 videos".
+function countedText(files) {
+  const videos = files.filter((file) => file.kind() === VIDEO_KIND).length;
+  const photos = files.length - videos;
+  const said = [photos || !videos ? plural(photos, "photo", "photos") : "", videos ? plural(videos, "video", "videos") : ""];
+  return said.filter(Boolean).join(" and ");
+}
+
 // The extension of the file named `name`, in lower case, or "" if it has none.
 function extensionOf(name) {
   const at = name.lastIndexOf(".");
   return at > 0 ? name.slice(at + 1).toLowerCase() : "";
+}
+
+// Whether the photo in the file named `name`, which the node gives as the
+// content type `type`, if it does, is one every browser shows as it is.
+function everyBrowserShows(name, type = "") {
+  return Object.hasOwn(PHOTO_TYPES, extensionOf(name)) || Object.values(PHOTO_TYPES).includes(type.toLowerCase());
 }
 
 function base64Of(blob) {
@@ -912,6 +1292,13 @@ function jsonText(keys, value) {
 // `value` without its members that are undefined.
 function defined(value) {
   return Object.fromEntries(Object.entries(value).filter(([, each]) => each !== undefined));
+}
+
+// `value` without its members that are undefined, or undefined, if it has
+// no others.
+function filled(value) {
+  const kept = defined(value);
+  return Object.keys(kept).length ? kept : undefined;
 }
 
 // Makes a bundle (HttpApi 12.3) and returns its id.
@@ -1607,6 +1994,22 @@ function noCover() {
   return placeholder;
 }
 
+// The placeholder of the photo in the file named `name`, of which no view or
+// thumbnail is kept, as it cannot be viewed: a picture struck through, with
+// the file's extension. Drawn by the page, and not kept, so that a view made
+// later takes its place. As a tile's, or, if `large`, as the viewer shows it.
+function unviewable(name, large = false) {
+  const placeholder = make(large ? "div" : "span", null, large ? "unviewable" : "cover unviewable");
+  const extension = extensionOf(name).toUpperCase();
+  placeholder.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9 M2 2l20 20"/></svg>';
+
+  if (extension) {
+    placeholder.append(make("span", extension, "extension"));
+  }
+
+  return placeholder;
+}
+
 // The cover at `url`, loaded as it is scrolled to, and asked for again a few
 // times if the node is still fetching it; a placeholder if `url` is null.
 function coverImage(url) {
@@ -1854,19 +2257,35 @@ class Grid {
   }
 
   // The tile of the photo in `folder`, as `entry`, its entry in the index,
-  // describes it, at `position`, [the day, and where in the day].
+  // describes it, at `position`, [the day, and where in the day]: its
+  // thumbnail, or, if it has none, the placeholder of a photo that cannot be
+  // viewed, and a video's duration. A tile made with no thumbnail is made
+  // again once the photo has one, as when its view is made later.
   tile(folder, entry, position) {
+    const thumb = isText(entry.thumb) && !entry.thumb.includes("/") ? entry.thumb : null;
     let tile = this.tiles.get(folder);
 
-    if (!tile) {
-      const thumb = isText(entry.thumb) && !entry.thumb.includes("/") ? entry.thumb : null;
+    if (!tile || (thumb && !tile.dataset.thumb)) {
       const name = isText(entry.name) ? entry.name : folder;
       const taken = isText(entry.taken) ? takenText(entry.taken) : "Undated";
+      const length = entry.kind === VIDEO_KIND ? durationText(entry.duration_seconds) : "";
+      const video = entry.kind === VIDEO_KIND ? `, a video${length ? ` of ${length}` : ""}` : "";
       tile = make("button", null, "tile");
       tile.type = "button";
       tile.title = `${name}\n${taken}`;
-      tile.setAttribute("aria-label", `${name}, ${taken}`);
-      tile.append(coverImage(thumb ? entryUrl(this.bundle, `${PHOTOS}/${folder}/${thumb}`) : null));
+      tile.dataset.folder = folder;
+      tile.dataset.thumb = thumb || "";
+      tile.setAttribute("aria-label", `${name}${video}, ${taken}`);
+      tile.append(thumb ? coverImage(entryUrl(this.bundle, `${PHOTOS}/${folder}/${thumb}`)) : unviewable(name));
+
+      if (length) {
+        const duration = make("span", null, "duration");
+        duration.setAttribute("aria-hidden", "true");
+        duration.innerHTML = '<svg viewBox="0 0 24 24" focusable="false"><path d="M7 4v16l13-8z"/></svg>';
+        duration.append(length);
+        tile.append(duration);
+      }
+
       tile.addEventListener("click", () => {
         if (shownGrid && shownGrid.positions.has(tile)) {
           shownGrid.focus(shownGrid.positions.get(tile));
@@ -2037,8 +2456,10 @@ async function showGrid(album) {
   if (focused && shown.positions.has(focused)) {
     shown.focus(shown.positions.get(focused), true);
   } else if (shown.current && !shown.positions.has(shown.current)) {
+    // Its photo's tile made again, as with a thumbnail, or else the first.
+    const place = shown.place(shown.current.dataset.folder);
     shown.current = null;
-    shown.makeCurrent(shown.tileAt([0, 0]));
+    shown.makeCurrent(shown.tileAt(place || [0, 0]));
   }
 
   show(status, index.unread.size ? "Part of this album could not be read, so not every photo of it is shown." : "");
@@ -2056,14 +2477,129 @@ function stopGrid() {
   byId("photo-years").replaceChildren();
 }
 
+// Details, beside the photo shown, or below it at a phone's width: its name,
+// when it was taken, and where that came from, its width and height, a
+// video's length, its size, the camera and lens, the exposure, and where it
+// was taken, with a link to the place on Google Maps. What is not known of it
+// is left out. It stays open as the person moves from photo to photo, until
+// it is closed.
+class DetailsPanel {
+  constructor() {
+    this.element = byId("viewer-details");
+    this.list = byId("details-list");
+    this.control = byId("viewer-info");
+  }
+
+  isOpen() {
+    return !this.element.hidden;
+  }
+
+  // Opens it, or closes it.
+  toggle() {
+    this.element.hidden = this.isOpen();
+    this.control.setAttribute("aria-pressed", String(this.isOpen()));
+  }
+
+  // Shows what is known of the photo named `name`: as `info`, its
+  // info.json, gives it, or else as `entry`, its entry in the index, does.
+  show(name, info, entry) {
+    const known = { ...entry, ...info };
+    const camera = isObject(known.camera) ? known.camera : {};
+    const rows = [
+      ["Name", [name]],
+      ["Taken", DetailsPanel.taken(known)],
+      ["Pixels", DetailsPanel.pixels(known)],
+      ["Length", [durationText(known.duration_seconds)]],
+      ["Size", [formatSize(known.size)]],
+      ["Camera", DetailsPanel.camera(camera)],
+      ["Lens", [camera.lens]],
+      ["Exposure", DetailsPanel.exposure(known.exposure)],
+      ["Where", DetailsPanel.place(known.location)],
+    ];
+
+    this.list.replaceChildren(...rows.flatMap(([term, lines]) => {
+      const shown = lines.filter((line) => line instanceof Node || isText(line));
+      const description = make("dd");
+      description.append(...shown.map((line) => (line instanceof Node ? line : make("span", line))));
+      return shown.length ? [make("dt", term), description] : [];
+    }));
+  }
+
+  // When it was taken, as the camera wrote it, with its offset from UTC, if
+  // known, and where that came from.
+  static taken(known) {
+    if (!isText(known.taken)) {
+      return ["Undated"];
+    }
+
+    const offset = isText(known.offset) && OFFSET.test(known.offset) ? `, UTC${known.offset}` : "";
+    const from = Object.hasOwn(TAKEN_FROM_TEXT, known.taken_from) ? make("span", TAKEN_FROM_TEXT[known.taken_from], "note") : null;
+    return [`${takenText(known.taken)}${offset}`, from];
+  }
+
+  // Its width and height, as seen.
+  static pixels({ width, height }) {
+    const sized = [width, height].every((side) => Number.isInteger(side) && side > 0);
+    return sized ? [`${width.toLocaleString()} × ${height.toLocaleString()}`] : [];
+  }
+
+  // The camera, by its make and model, the make left out where the model
+  // names it already, as many do.
+  static camera({ make: maker, model }) {
+    const [made, named] = [maker, model].map((text) => (isText(text) ? text : ""));
+    return [named.toLowerCase().startsWith(made.toLowerCase()) ? named : `${made} ${named}`.trim()];
+  }
+
+  // The aperture, the shutter's time, the ISO, and the focal length, as a
+  // camera shows each, each kept on one line: the shutter's time as a
+  // fraction of a second, if it is a quarter of one or less.
+  static exposure(exposure) {
+    const { iso, aperture, shutter, focal_length: focal } = isObject(exposure) ? exposure : {};
+    const one = (number) => number.toLocaleString(undefined, { maximumFractionDigits: 1 });
+    const said = [
+      isPositive(aperture) ? `ƒ/${one(aperture)}` : null,
+      isPositive(shutter) ? (shutter <= 0.25 ? `1/${Math.round(1 / shutter)} s` : `${one(shutter)} s`) : null,
+      Number.isInteger(iso) && iso > 0 ? `ISO ${iso}` : null,
+      isPositive(focal) ? `${one(focal)} mm` : null,
+    ].filter(Boolean);
+    return said.length ? [said.join(" · ")] : [];
+  }
+
+  // Where it was taken, in degrees, north or south, and east or west, with
+  // its altitude, if known; and Show on Google Maps, a link to the place,
+  // opened in a new tab, which tells Google nothing of the page it was
+  // followed from.
+  static place(location) {
+    const { latitude, longitude, altitude } = isObject(location) ? location : {};
+    const placed = [latitude, longitude].every((value) => typeof value === "number" && Number.isFinite(value))
+      && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180;
+
+    if (!placed) {
+      return [];
+    }
+
+    const degrees = (value, ahead, behind) => `${Math.abs(value).toFixed(5)}° ${value < 0 ? behind : ahead}`;
+    const coordinate = (value) => value.toFixed(7).replace(/\.?0+$/, "");
+    const high = typeof altitude === "number" && Number.isFinite(altitude)
+      ? make("span", `${Math.abs(Math.round(altitude)).toLocaleString()} m ${altitude < 0 ? "below" : "above"} sea level`, "note")
+      : null;
+    const link = make("a", "Show on Google Maps");
+    link.href = `${MAPS_SEARCH}${coordinate(latitude)},${coordinate(longitude)}`;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    return [`${degrees(latitude, "N", "S")}, ${degrees(longitude, "E", "W")}`, high, link];
+  }
+}
+
 // A photo of the album open, shown alone, on black, over its grid, as large
 // as fits the window without being cropped, with its name and when it was
 // taken: its view, if it has one (Step 165), or else its original. Previous
 // and Next move through the album in the grid's order, and Close goes back
 // to the grid, at the photo shown. Zoom moves between fitting the window and
 // the photo's own pixels, each one of the screen's, dragged to see the rest.
-// Download saves its original under its file's name. The photos before and
-// after it are loaded ahead, so that moving to either is quick.
+// A video is played with the browser's own controls. Download saves its
+// original under its file's name. The photos before and after it are loaded
+// ahead, so that moving to either is quick.
 class Viewer {
   constructor() {
     this.element = byId("viewer");
@@ -2092,11 +2628,21 @@ class Viewer {
     this.dragged = false;
     // The images of the photos before and after it, loaded ahead.
     this.ahead = [];
+    // A photo with no view, drawn by this browser, a Picture, while it is
+    // shown; the extensions of the photos this browser could not draw, which
+    // are not read whole to be drawn again while the page is open; and the
+    // photos whose views made later are being kept, by "{album id} {folder}".
+    this.picture = null;
+    this.undrawn = new Set();
+    this.keeping = new Set();
+    // Its details, shown beside it, or not.
+    this.panel = new DetailsPanel();
     byId("viewer-fullscreen").hidden = !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
     this.listen();
   }
 
   listen() {
+    byId("viewer-info").addEventListener("click", () => this.toggleDetails());
     byId("viewer-close").addEventListener("click", () => this.close());
     byId("viewer-previous").addEventListener("click", () => this.move(false));
     byId("viewer-next").addEventListener("click", () => this.move(true));
@@ -2108,8 +2654,13 @@ class Viewer {
     this.stage.addEventListener("pointercancel", (event) => this.pointerUp(event));
     this.stage.addEventListener("click", (event) => this.click(event));
     // A touch moved on it scrolls nothing, nor flings, so that a tap just
-    // after a swipe is not taken to stop a fling, and lost.
-    this.stage.addEventListener("touchmove", (event) => event.preventDefault(), { passive: false });
+    // after a swipe is not taken to stop a fling, and lost; but on a video,
+    // whose controls hear it.
+    this.stage.addEventListener("touchmove", (event) => {
+      if (!event.target.closest("video")) {
+        event.preventDefault();
+      }
+    }, { passive: false });
     this.element.addEventListener("wheel", (event) => this.wheel(event), { passive: false });
     window.addEventListener("resize", () => this.layout());
 
@@ -2144,6 +2695,7 @@ class Viewer {
     const position = grid === shownGrid ? grid.place(this.folder) : undefined;
     this.element.hidden = true;
     this.holdBack(false);
+    this.release();
     this.stage.replaceChildren();
     this.image = null;
     this.ahead = [];
@@ -2185,12 +2737,13 @@ class Viewer {
   }
 
   // Shows the photo in `folder` of `grid`, fitting the window, its name and
-  // when it was taken as its entry in the index gives them, while what is
-  // shown of it is read.
+  // when it was taken, and its details, as its entry in the index gives
+  // them, while what is shown of it, and what is known of it, is read.
   async present(grid, folder) {
     const position = grid.place(folder);
     const [, entry] = grid.photoAt(position);
     const sized = [entry.width, entry.height].every((side) => Number.isInteger(side) && side > 0);
+    const name = isText(entry.name) ? entry.name : folder;
     const shown = this.shown + 1;
     this.shown = shown;
     this.grid = grid;
@@ -2198,15 +2751,18 @@ class Viewer {
     this.zoomed = false;
     this.size = sized ? [entry.width, entry.height] : null;
     this.image = null;
+    this.release();
     this.ahead = [];
     this.stage.replaceChildren();
     this.stage.classList.remove("zoomed");
     this.download.removeAttribute("href");
     byId("viewer-zoom").setAttribute("aria-pressed", "false");
-    byId("viewer-name").textContent = isText(entry.name) ? entry.name : folder;
+    byId("viewer-zoom").hidden = entry.kind === VIDEO_KIND;
+    byId("viewer-name").textContent = name;
     byId("viewer-taken").textContent = isText(entry.taken) ? takenText(entry.taken) : "Undated";
     byId("viewer-previous").hidden = !grid.moved(position, "ArrowLeft");
     byId("viewer-next").hidden = !grid.moved(position, "ArrowRight");
+    this.panel.show(name, {}, entry);
     show(this.status, "Loading…");
 
     // Focus kept within it, as when Next has it, and is hidden at the last.
@@ -2222,6 +2778,7 @@ class Viewer {
 
     this.download.href = photo.original;
     this.download.download = photo.name;
+    this.panel.show(photo.name, photo.info, entry);
     this.load(photo);
   }
 
@@ -2239,9 +2796,12 @@ class Viewer {
 
   // What is shown of the photo in `folder` of the album `bundle`, whose
   // entry in its index is `entry`: the name of the file it was imported
-  // from; where its original is read; and where what is shown of it is read,
-  // its view, if it has one, or else its original. Each as its info.json
-  // names it, or, if that cannot be read, as its entry does.
+  // from; where its original is read; where what is shown of it is read,
+  // its view, if it has one, or else its original, each as its info.json
+  // names it, or, if that cannot be read, as its entry does; its info.json,
+  // or {}; whether it is a `video`, and where its thumbnail is read, or null;
+  // and whether it is `viewless`, a photo with no view, though of a kind not
+  // every browser shows as it is.
   static async described(bundle, folder, entry) {
     const info = await readEntry(bundle, `${PHOTOS}/${folder}/${INFO_FILE}`).catch((error) => {
       console.warn(`What is known of a photo could not be read: ${error.message}`);
@@ -2252,22 +2812,42 @@ class Viewer {
     const url = (name) => entryUrl(bundle, `${PHOTOS}/${folder}/${name}`);
     const name = file(known.name) || file(entry.name) || folder;
     const original = file(known.original) || originalName(name);
-    return { name, original: url(original), shown: url(file(known.view) || original) };
+    const view = file(known.view);
+    const thumb = file(known.thumb) || file(entry.thumb);
+    const video = (isText(known.kind) ? known.kind : entry.kind) === VIDEO_KIND;
+    return {
+      name,
+      original: url(original),
+      shown: url(view || original),
+      info: known,
+      video,
+      poster: thumb ? url(thumb) : null,
+      viewless: !video && !view && !everyBrowserShows(name),
+    };
   }
 
   // Shows `photo`, as described gives it, asked for again a few times if the
-  // node is still fetching it, then loads the photos before and after it.
+  // node is still fetching it, then loads the photos before and after it. A
+  // photo that is viewless is drawn by this browser, if it can, and a video
+  // played.
   load(photo) {
+    if (photo.video) {
+      this.play(photo);
+      return;
+    }
+
+    if (photo.viewless) {
+      this.drawLater(photo);
+      return;
+    }
+
     const image = make("img");
     let tries = 1;
     image.alt = byId("viewer-name").textContent;
     image.draggable = false;
     image.addEventListener("load", () => {
       if (this.image === image) {
-        this.size = [image.naturalWidth, image.naturalHeight];
-        show(this.status, "");
-        this.layout();
-        this.loadAhead();
+        this.loaded(image);
       }
     });
     image.addEventListener("error", () => {
@@ -2296,8 +2876,207 @@ class Viewer {
     this.layout();
   }
 
+  // Lays out `image`, the photo shown, or a video, once it is loaded, at its
+  // own width and height, then loads the photos before and after it.
+  loaded(image) {
+    const video = image instanceof HTMLVideoElement;
+    this.size = video ? [image.videoWidth, image.videoHeight] : [image.naturalWidth, image.naturalHeight];
+    show(this.status, "");
+    this.layout();
+    this.loadAhead();
+  }
+
+  // Shows `photo`, a video, as described gives it, to be played with the
+  // browser's own controls, once the node gives its start, waiting out the
+  // 503s it answers while it fetches what it lacks, which a browser takes as
+  // a video it cannot play. One this browser says it cannot play, or that
+  // fails as it loads, or that shows no picture, has its placeholder, large,
+  // with Download.
+  async play(photo) {
+    const shown = this.shown;
+
+    if (!Clip.canPlay(Clip.typeOf(photo.name))) {
+      this.placeholder(photo);
+      return;
+    }
+
+    try {
+      await new StoredFile(photo.shown).at(0, 1);
+    } catch (error) {
+      if (this.shown === shown && this.isOpen()) {
+        show(this.status, "This video could not be shown. Download it, to open it as it is.", true);
+        this.loadAhead();
+      }
+
+      return;
+    }
+
+    if (this.shown !== shown || !this.isOpen()) {
+      return;
+    }
+
+    const video = make("video");
+    video.controls = true;
+    video.playsInline = true;
+    video.preload = "metadata";
+    video.setAttribute("aria-label", byId("viewer-name").textContent);
+
+    if (photo.poster) {
+      video.poster = photo.poster;
+    }
+
+    video.addEventListener("loadedmetadata", () => {
+      if (this.image === video && video.videoWidth && video.videoHeight) {
+        this.loaded(video);
+      } else if (this.image === video) {
+        this.placeholder(photo);
+      }
+    });
+    video.addEventListener("error", () => {
+      if (this.image === video) {
+        this.placeholder(photo);
+      }
+    });
+    this.image = video;
+    this.stage.replaceChildren(video);
+    video.src = photo.shown;
+    this.layout();
+  }
+
+  // Shows `photo`, which is viewless, as described gives it: drawn by this
+  // browser, if it can draw its original, read whole, as Safari draws an
+  // HEIC, which is then given its view and its thumbnail, so that every
+  // browser shows it from then on; or else its placeholder, large, with
+  // Download. An extension this browser could not draw once is not read
+  // whole again while the page is open.
+  async drawLater(photo) {
+    const shown = this.shown;
+    const [id, folder] = [this.grid.id, this.folder];
+    const extension = extensionOf(photo.name);
+    let picture = null;
+
+    if (!this.undrawn.has(extension)) {
+      try {
+        picture = await Picture.decoded(await new StoredFile(photo.original).blob());
+
+        if (!picture) {
+          this.undrawn.add(extension);
+        }
+      } catch (error) {
+        console.warn(`A photo could not be read whole to be drawn: ${error.message}`);
+      }
+    }
+
+    if (this.shown !== shown || !this.isOpen()) {
+      picture?.close();
+      return;
+    }
+
+    if (!picture) {
+      this.placeholder(photo);
+      return;
+    }
+
+    // Its view is drawn now, before the picture can be closed, and kept once
+    // it is made, unless the albums are not changed.
+    const keeping = canChange() ? picture.viewed() : null;
+    const [width, height] = picture.seen();
+    const image = picture.image;
+    this.picture = picture;
+    this.image = image;
+    image.alt = byId("viewer-name").textContent;
+    image.draggable = false;
+    this.stage.replaceChildren(image);
+    this.loaded(image);
+
+    if (keeping && !this.keeping.has(`${id} ${folder}`)) {
+      this.keeping.add(`${id} ${folder}`);
+      keeping.then((made) => (made ? Viewer.keep(id, folder, made, { width, height }) : undefined))
+        .catch((error) => console.warn(`The view made of a photo was not kept: ${error.message}`))
+        .finally(() => this.keeping.delete(`${id} ${folder}`));
+    }
+  }
+
+  // Shows the placeholder of `photo`, as described gives it, which this
+  // browser cannot show, or play, large, with Download, then loads the
+  // photos before and after it.
+  placeholder(photo) {
+    const placeholder = unviewable(photo.name, true);
+    const download = make("a", "Download");
+    const said = photo.video ? "This browser cannot play this video." : "This browser cannot show this photo.";
+    this.release();
+    this.image = null;
+    this.size = null;
+    download.href = photo.original;
+    download.download = photo.name;
+    placeholder.append(make("p", `${said} Download it, to open it as it is.`), download);
+    this.stage.replaceChildren(placeholder);
+    show(this.status, "");
+    this.loadAhead();
+  }
+
+  // Stops the video shown, if it is one, so that it is read no further, and
+  // closes the picture drawn of the photo shown, if it was.
+  release() {
+    for (const video of this.stage.querySelectorAll("video")) {
+      video.removeAttribute("src");
+      video.load();
+    }
+
+    if (this.picture) {
+      this.picture.close();
+      this.picture = null;
+    }
+  }
+
+  // Keeps the view and the thumbnail made later of the photo in `folder` of
+  // the album whose id is `id`, `made`, as Picture.viewed gives them, with
+  // its width and height as drawn, `size`: its folder given VIEW_FILE and
+  // THUMB_FILE, its info.json naming them, and its entry in the index its
+  // thumbnail, as a new bundle of the album, made its cover, if it has none.
+  // Nothing is changed of an album no longer holding the photo, or holding it
+  // with a view, as one made elsewhere since.
+  static async keep(id, folder, made, size) {
+    await changeAlbums(async (albums) => {
+      const album = albums.find((each) => each.id === id);
+      const info = album ? await readEntry(album.bundle, `${PHOTOS}/${folder}/${INFO_FILE}`).catch(() => null) : null;
+
+      if (!isObject(info) || isText(info.view)) {
+        return albums;
+      }
+
+      // Its entry is in the month it was taken, as an import lists it.
+      const day = dayTaken(info);
+      const month = day ? day.slice(0, 7) : UNDATED;
+      const names = (await AlbumIndex.names(album.bundle)).filter((name) => INDEX_FILE.exec(name)[1] === month);
+      const index = await AlbumIndex.read(album.bundle, names);
+      const entry = index.months.has(month) ? index.months.get(month).get(folder) : undefined;
+
+      if (!entry) {
+        return albums;
+      }
+
+      const thumb = made.thumb ? THUMB_FILE : undefined;
+      index.set(month, folder, defined({ ...entry, ...size, thumb }));
+      const files = index.files([month]);
+      const add = {
+        [`${PHOTOS}/${folder}/${VIEW_FILE}`]: { base64: made.view },
+        [`${PHOTOS}/${folder}/${INFO_FILE}`]: { text: jsonText(INFO_KEYS, { ...info, ...size, view: VIEW_FILE, thumb }) },
+      };
+
+      if (thumb) {
+        add[`${PHOTOS}/${folder}/${THUMB_FILE}`] = { base64: made.thumb };
+      }
+
+      const bundle = await editInParts(album.bundle, { ...add, ...files.add }, files.remove);
+      const cover = (each) => each.cover || (thumb ? folder : undefined);
+      return albums.map((each) => (each.id === id ? each.with({ bundle, cover: cover(each) }) : each));
+    });
+  }
+
   // Loads the photos before and after the one shown, so that moving to
-  // either is quick.
+  // either is quick, but those that are viewless, which only some browsers
+  // draw, and videos, which are read as they are played.
   loadAhead() {
     const grid = this.current();
     const position = grid.place(this.folder);
@@ -2308,7 +3087,7 @@ class Viewer {
 
       if (near) {
         this.describe(grid, grid.photoAt(near)[0]).then((photo) => {
-          if (this.shown === shown && this.isOpen()) {
+          if (this.shown === shown && this.isOpen() && !photo.viewless && !photo.video) {
             const image = new Image();
             image.src = photo.shown;
             image.decode().catch(() => undefined);
@@ -2357,9 +3136,9 @@ class Viewer {
 
   // Moves between fitting the window and the photo's own pixels, keeping
   // the point of it at `x` and `y` in the stage, or else its middle, where
-  // it is.
+  // it is. A video is not zoomed.
   zoom(x = this.stage.clientWidth / 2, y = this.stage.clientHeight / 2) {
-    if (!this.image || !this.size) {
+    if (!this.image || !this.size || this.image instanceof HTMLVideoElement) {
       return;
     }
 
@@ -2376,7 +3155,9 @@ class Viewer {
   pointerDown(event) {
     this.dragged = false;
 
-    if (!event.isPrimary || event.button !== 0) {
+    // Download, below a placeholder, is followed, not dragged, and a video's
+    // controls hear what is pressed on it.
+    if (!event.isPrimary || event.button !== 0 || event.target.closest("a, video")) {
       return;
     }
 
@@ -2438,8 +3219,13 @@ class Viewer {
     this.zoom(event.clientX - stage.left, event.clientY - stage.top);
   }
 
-  // A wheel turned over it moves the photo, zoomed, and nothing under it.
+  // A wheel turned over it moves the photo, zoomed, and nothing under it,
+  // but over Details, which it scrolls.
   wheel(event) {
+    if (this.panel.element.contains(event.target)) {
+      return;
+    }
+
     event.preventDefault();
 
     if (!this.zoomed || !this.image) {
@@ -2448,6 +3234,13 @@ class Viewer {
 
     const pixels = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? WHEEL_LINE_PIXELS : 1;
     this.offset = [this.offset[0] - event.deltaX * pixels, this.offset[1] - event.deltaY * pixels];
+    this.layout();
+  }
+
+  // Shows Details beside the photo, or hides it, and lays the photo out
+  // again in the room left.
+  toggleDetails() {
+    this.panel.toggle();
     this.layout();
   }
 
@@ -2484,15 +3277,16 @@ class Viewer {
   }
 
   // Hears every key while it is open, but while a dialog is open over it:
-  // the left and right arrow keys move to the photo before or after, `Z`
-  // zooms, `F` shows it full screen, `D` downloads its original, Escape
-  // closes it, and `?` or `/` shows the keys.
+  // the left and right arrow keys move to the photo before or after, `I`
+  // shows its details, `Z` zooms, `F` shows it full screen, `D` downloads
+  // its original, Escape closes it, and `?` or `/` shows the keys.
   key(event) {
     const key = String(event.key).toLowerCase();
     const keys = {
       escape: () => this.close(),
       arrowleft: () => this.move(false),
       arrowright: () => this.move(true),
+      i: () => this.toggleDetails(),
       z: () => this.zoom(),
       f: () => this.toggleFullscreen(),
       d: () => this.download.click(),
@@ -2614,22 +3408,20 @@ async function removeAlbum() {
 // Importing photos from the folders the node offers.
 
 // Which of the files `kind` NOT_LISTED counts the file named `name` is, as
-// the node says of it, `entry`; or PHOTO_KIND if it is a photo every browser
-// shows as it is.
+// the node says of it, `entry`; or PHOTO_KIND if it is a photo: one every
+// browser shows as it is, or one of OTHER_PHOTOS, or any other the node
+// gives as image/…; or VIDEO_KIND if it is a video: one of VIDEO_TYPES, or
+// any other the node gives as video/….
 function fileKind(name, entry) {
   const type = isText(entry.content_type) ? entry.content_type.toLowerCase() : "";
   const extension = extensionOf(name);
 
-  if (Object.hasOwn(PHOTO_TYPES, extension) || Object.values(PHOTO_TYPES).includes(type)) {
+  if (everyBrowserShows(name, type) || OTHER_PHOTOS.has(extension) || type.startsWith("image/")) {
     return PHOTO_KIND;
   }
 
-  if (OTHER_PHOTOS.has(extension) || type.startsWith("image/")) {
-    return "unshown";
-  }
-
-  if (VIDEOS.has(extension) || type.startsWith("video/")) {
-    return "video";
+  if (Object.hasOwn(VIDEO_TYPES, extension) || type.startsWith("video/")) {
+    return VIDEO_KIND;
   }
 
   return DESCRIBING.has(extension) ? "describing" : "other";
@@ -2642,40 +3434,87 @@ function notListedText(counts) {
   return said.length ? `Not listed: ${said.join(", ")}.` : "";
 }
 
-// A photo in a folder the node offers: the segments of its path, a folder
-// offered and those below it, then its name, and what the node's listing
-// says of it, kept as it is found, since an import keeps none of a file's
-// times (HttpApi 12.2).
+// A photo, or a video, in a folder the node offers: the segments of its
+// path, a folder offered and those below it, then its name, and what the
+// node's listing says of it, kept as it is found, since an import keeps none
+// of a file's times (HttpApi 12.2). A photo may have a video of its name
+// beside it, a PhotoFile, its motion if it is a Live Photo.
 class PhotoFile {
   constructor(segments, entry) {
     this.segments = segments;
     this.entry = entry;
     this.path = segments.join("/");
     this.name = segments[segments.length - 1];
+    this.motion = null;
+  }
+
+  // The photos and videos `files`, each [name, what the node says of it],
+  // of the folder at `segments`, each a PhotoFile, in their order: but each
+  // video of the name of a photo, but for their extensions, ignoring case,
+  // which is given to the first such photo as its motion, rather than
+  // listed, as a Live Photo's is. Whether it is short enough to be one is
+  // known once it is imported.
+  static listed(segments, files) {
+    const listed = files.map(([name, entry]) => new PhotoFile([...segments, name], entry));
+    const named = (file) => {
+      const extension = extensionOf(file.name);
+      return (extension ? file.name.slice(0, -extension.length - 1) : file.name).toLowerCase();
+    };
+    const photos = new Map();
+
+    for (const file of listed.filter((each) => each.kind() === PHOTO_KIND)) {
+      if (!photos.has(named(file))) {
+        photos.set(named(file), file);
+      }
+    }
+
+    return listed.filter((file) => {
+      const photo = file.kind() === VIDEO_KIND ? photos.get(named(file)) : undefined;
+
+      if (!photo || photo.motion) {
+        return true;
+      }
+
+      photo.motion = file;
+      return false;
+    });
+  }
+
+  // Whether it is a photo, PHOTO_KIND, or a video, VIDEO_KIND.
+  kind() {
+    return fileKind(this.name, this.entry);
   }
 
   // The content type it is placed in an album with: by its extension, or
   // else as the node gives it.
   contentType() {
-    const type = isText(this.entry.content_type) ? this.entry.content_type.toLowerCase() : "";
-    return PHOTO_TYPES[extensionOf(this.name)] || type;
+    const extension = extensionOf(this.name);
+    return PHOTO_TYPES[extension] || OTHER_PHOTO_TYPES[extension] || VIDEO_TYPES[extension] || this.givenType();
+  }
+
+  // The content type the node gives it, in lower case, or "".
+  givenType() {
+    return isText(this.entry.content_type) ? this.entry.content_type.toLowerCase() : "";
+  }
+
+  // Whether every browser shows it as it is, or else it is given a view.
+  everyBrowserShows() {
+    return everyBrowserShows(this.name, this.givenType());
   }
 
   size() {
     return Number.isInteger(this.entry.size) && this.entry.size >= 0 ? this.entry.size : undefined;
   }
 
-  // When it was taken, until Step 164 reads it from the photo, {taken, from}:
+  // When it was taken, where the photo itself does not say, {taken, from}:
   // a local date and time from a date and time in its name, or else from the
   // time the folder's listing gives it as modified; or null, if neither does.
   taken() {
     for (const found of this.name.matchAll(NAME_TAKEN)) {
-      const [year, month, day, hours, minutes, seconds] = [1, 3, 4, 5, 7, 8].map((at) => Number(found[at]));
-      const date = new Date(year, month - 1, day);
-      const real = date.getMonth() === month - 1 && date.getDate() === day && hours < 24 && minutes < 60 && seconds < 60;
+      const taken = takenOf([1, 3, 4, 5, 7, 8].map((at) => found[at]));
 
-      if (real) {
-        return { taken: `${found[1]}-${found[3]}-${found[4]}T${found[5]}:${found[7]}:${found[8]}`, from: TAKEN_FROM_NAME };
+      if (taken) {
+        return { taken, from: TAKEN_FROM_NAME };
       }
     }
 
@@ -2701,9 +3540,10 @@ function folderRow(text, action) {
   return item;
 }
 
-// What a folder the node offers holds: the folders and the photos in it,
-// each as [name, what the node says of it], in order of name, and how many
-// other files of each kind NOT_LISTED names.
+// What a folder the node offers holds: the folders in it, each as [name,
+// what the node says of it], and the photos and videos in it, each a
+// PhotoFile, as PhotoFile.listed lists them, each in order of name; and how
+// many other files of each kind NOT_LISTED names.
 class Folder {
   constructor(segments, folders, photos, others) {
     this.segments = segments;
@@ -2731,22 +3571,22 @@ class Folder {
     for (const [name, entry] of entries.filter(([, each]) => each.type === "file")) {
       const kind = fileKind(name, entry);
 
-      if (kind === PHOTO_KIND) {
+      if (kind === PHOTO_KIND || kind === VIDEO_KIND) {
         photos.push([name, entry]);
       } else {
         others[kind] = (others[kind] || 0) + 1;
       }
     }
 
-    return new Folder(segments, folders, photos, others);
+    return new Folder(segments, folders, PhotoFile.listed(segments, photos), others);
   }
 
-  // Adds to `found` the photos in it, and in the folders within it, each a
-  // PhotoFile, and counts the other files, and the folders not looked in:
-  // those FOLDER_DEPTH below it, and those that could not be read. `told`
-  // is called as each folder is read.
+  // Adds to `found` the photos and videos in it, and in the folders within
+  // it, each a PhotoFile, and counts the other files, and the folders not
+  // looked in: those FOLDER_DEPTH below it, and those that could not be
+  // read. `told` is called as each folder is read.
   async gather(found, told, depth = 0) {
-    found.photos.push(...this.photos.map(([name, entry]) => new PhotoFile([...this.segments, name], entry)));
+    found.photos.push(...this.photos);
 
     for (const [kind, count] of Object.entries(this.others)) {
       found.others[kind] = (found.others[kind] || 0) + count;
@@ -2810,7 +3650,7 @@ async function browse(segments) {
 
   list.replaceChildren(
     ...folders.map(([name]) => folderRow(`${name}/`, () => browse([...segments, name]))),
-    ...photos.map(([name, entry]) => photoRow(new PhotoFile([...segments, name], entry))),
+    ...photos.map((photo) => photoRow(photo)),
   );
   list.hidden = folders.length + photos.length === 0;
 
@@ -2824,8 +3664,14 @@ async function browse(segments) {
   if (segments.length === 0 && list.hidden && Object.keys(others).length === 0) {
     show(status, "This node offers no folders. Its operator chooses them, in local.folders.");
   } else {
-    show(status, [folders.length + photos.length ? "" : "This folder holds no photos.", notListedText(others)].filter(Boolean).join(" "));
+    show(status, [folders.length + photos.length ? "" : "This folder holds no photos or videos.", notListedText(others)].filter(Boolean).join(" "));
   }
+}
+
+// What a photo, a PhotoFile, is listed as: its name, or `path`, and its
+// motion's name, if it has one.
+function listedName(photo, path = photo.name) {
+  return photo.motion ? `${path}, with ${photo.motion.name}` : path;
 }
 
 // The row of `photo`, a PhotoFile, in the folder shown: a box to choose it,
@@ -2845,7 +3691,7 @@ function photoRow(photo) {
 
     showChosen();
   });
-  check.append(box, make("span", photo.name), make("span", formatSize(photo.entry.size), "note"));
+  check.append(box, make("span", listedName(photo)), make("span", formatSize(photo.entry.size), "note"));
   item.append(check);
   return item;
 }
@@ -2886,7 +3732,7 @@ class FoundPhoto {
     this.box.type = "checkbox";
     this.box.checked = true;
     this.item = make("li");
-    check.append(this.box, make("span", photo.segments.slice(from).join("/")));
+    check.append(this.box, make("span", listedName(photo, photo.segments.slice(from).join("/"))));
     this.item.append(check);
   }
 }
@@ -2898,7 +3744,7 @@ function listFound(photos, from, heading, notes) {
   const sorted = [...photos].sort((one, other) => COLLATOR.compare(one.path, other.path));
   foundPhotos = sorted.map((photo) => new FoundPhoto(photo, from));
   byId("found-list").replaceChildren(...foundPhotos.map((each) => each.item));
-  show(byId("found-note"), [`${plural(foundPhotos.length, "photo", "photos")} found.`, ...notes].join(" "));
+  show(byId("found-note"), [`${countedText(sorted)} found.`, ...notes].join(" "));
   show(byId("found-result"), "");
   showFoundCount();
   byId("import-heading").textContent = heading;
@@ -2909,8 +3755,7 @@ function listFound(photos, from, heading, notes) {
 
 // Says how many of the photos listed are to be imported, on Import.
 function showFoundCount() {
-  const count = foundPhotos.filter((each) => each.box.checked).length;
-  byId("found-import").textContent = `Import ${plural(count, "photo", "photos")}`;
+  byId("found-import").textContent = `Import ${countedText(foundPhotos.filter((each) => each.box.checked).map((each) => each.photo))}`;
 }
 
 // Looks for every photo in the folder shown, and in the folders within it,
@@ -2919,7 +3764,7 @@ async function findEvery() {
   const folder = browsing;
   const status = byId("folder-state");
   const gathered = { photos: [], others: {}, passed: 0 };
-  await folder.gather(gathered, (so) => show(status, `Looking for photos… ${so.photos.length.toLocaleString()} found so far.`));
+  await folder.gather(gathered, (so) => show(status, `Looking for photos and videos… ${so.photos.length.toLocaleString()} found so far.`));
   const notes = [notListedText(gathered.others)].filter(Boolean);
 
   if (gathered.passed) {
@@ -2927,7 +3772,7 @@ async function findEvery() {
   }
 
   if (gathered.photos.length === 0) {
-    return [["No photos are here, nor in the folders within it.", ...notes].join(" "), false];
+    return [["No photos or videos are here, nor in the folders within it.", ...notes].join(" "), false];
   }
 
   listFound(gathered.photos, folder.segments.length, `Import every photo in “${folder.segments[folder.segments.length - 1]}”`, notes);
@@ -3055,69 +3900,1628 @@ async function askAfterImports() {
   }
 }
 
-// The whole file `file` at the node, waiting out the 503s it answers while
-// it fetches what it lacks.
-async function fileBlob(file) {
-  for (let waits = 0; ; waits += 1) {
-    let response;
+// Bytes read of a file, and the numbers and text they hold, big-endian
+// unless `little`, as the music page reads them.
+class Bytes {
+  constructor(array) {
+    this.array = array;
+    this.view = new DataView(array.buffer, array.byteOffset, array.byteLength);
+    this.length = array.length;
+  }
 
-    try {
-      response = await fetch(`${DATA}${file}/`, { cache: "no-store" });
-    } catch (error) {
-      throw new Unreachable(`The node could not be reached: ${error.message}`);
+  static empty() {
+    return new Bytes(new Uint8Array(0));
+  }
+
+  // `parts`, each Bytes, one after another.
+  static joined(parts) {
+    const array = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
+    let at = 0;
+
+    for (const part of parts) {
+      array.set(part.array, at);
+      at += part.length;
     }
 
-    if (response.ok) {
-      return response.blob();
-    }
+    return new Bytes(array);
+  }
 
-    if (response.status !== 503 || waits >= MAX_WAITS) {
-      const value = await response.json().catch(() => null);
-      throw new Refusal({ status: response.status, value });
-    }
+  // Whether the `count` bytes from `at` are held.
+  holds(at, count) {
+    return at >= 0 && count >= 0 && at + count <= this.length;
+  }
 
-    await response.body?.cancel();
-    await sleep(retryAfter(response.headers));
+  u8(at) {
+    return this.view.getUint8(at);
+  }
+
+  u16(at, little = false) {
+    return this.view.getUint16(at, little);
+  }
+
+  u32(at, little = false) {
+    return this.view.getUint32(at, little);
+  }
+
+  i32(at, little = false) {
+    return this.view.getInt32(at, little);
+  }
+
+  // The `count` bytes from `at`, each as a character, as the name of a
+  // chunk is given; or "" if they are not all held.
+  ascii(at, count) {
+    return this.holds(at, count) ? String.fromCharCode(...this.array.subarray(at, at + count)) : "";
+  }
+
+  // The bytes from `start` to `end` as UTF-8, of which ASCII is a part.
+  text(start = 0, end = this.length) {
+    return new TextDecoder().decode(this.array.subarray(start, end));
+  }
+
+  slice(start, end = this.length) {
+    return new Bytes(this.array.subarray(start, end));
+  }
+
+  // The bytes as hex digits, as a UUID is compared.
+  hex() {
+    return [...this.array].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  // The `count` bytes from `start`, or as many as it holds from there, as a
+  // StoredFile reads them, so that what is held already, as a box read
+  // whole, is read as a file is.
+  async at(start, count) {
+    return this.slice(Math.min(start, this.length), Math.min(start + count, this.length));
   }
 }
 
-// A thumbnail of the photo `file`, of the content type `type`: drawn on a
-// canvas, upright, as browsers draw a photo by its orientation, scaled to at
-// most THUMB_SIZE pixels on its longer side, as the TV page scales a still,
-// and kept as a JPEG, as base64; with the photo's width and height, as it is
-// drawn. Null if this browser cannot draw it, or the node cannot give it.
-async function thumbnail(file, type) {
-  let url = null;
+// A file the node holds, at `url`, as a file bundle or at a path in a
+// bundle, read whole, or a range at a time (HttpApi 12.1, 19), as the music
+// page reads a song's, and no more of it in all than its metadata, at most
+// DETAILS_MOST, and DETAILS_HEAD at its start. What was read last is kept,
+// so that what is read next within it, or on from it, is not asked for
+// again; and at least DETAILS_HEAD is read at once, so that the segments or
+// chunks of a format are not asked for one at a time.
+class StoredFile {
+  constructor(url) {
+    this.url = url;
+    // Its size, once a range of it says it.
+    this.size = null;
+    this.kept = { start: 0, bytes: Bytes.empty() };
+    this.left = DETAILS_MOST + DETAILS_HEAD;
+  }
 
-  try {
-    const blob = await fileBlob(file);
-    const image = new Image();
-    url = URL.createObjectURL(type ? new Blob([blob], { type }) : blob);
-    image.src = url;
-    await image.decode();
-    const [width, height] = [image.naturalWidth, image.naturalHeight];
+  // The file bundle `file`.
+  static file(file) {
+    return new StoredFile(`${DATA}${file}/`);
+  }
 
-    if (!width || !height) {
+  // The node's answer to a GET of the file with `headers`, waiting out the
+  // 503s it answers while it fetches what it lacks.
+  async fetched(headers = {}) {
+    for (let waits = 0; ; waits += 1) {
+      let response;
+
+      try {
+        response = await fetch(this.url, { headers, cache: "no-store" });
+      } catch (error) {
+        throw new Unreachable(`The node could not be reached: ${error.message}`);
+      }
+
+      if (response.status !== 503 || waits >= MAX_WAITS) {
+        return response;
+      }
+
+      await response.body?.cancel();
+      await sleep(retryAfter(response.headers));
+    }
+  }
+
+  // Why `response` is not the range of the file asked for.
+  static async refusal(response) {
+    let value = null;
+
+    if (response.ok) {
+      await response.body?.cancel();
+      return new Error("The node sent the whole file, not the part of it asked for.");
+    }
+
+    try {
+      value = await response.json();
+    } catch (error) {
+      value = null;
+    }
+
+    return new Refusal({ status: response.status, value });
+  }
+
+  // The whole file.
+  async blob() {
+    const response = await this.fetched();
+
+    if (!response.ok) {
+      throw await StoredFile.refusal(response);
+    }
+
+    return response.blob();
+  }
+
+  // The `count` bytes from `start`, or as many as the file holds from there.
+  async at(start, count) {
+    const { start: from, bytes } = this.kept;
+    const end = from + bytes.length;
+    const size = this.size === null ? Infinity : this.size;
+
+    if (start >= from && Math.min(start + count, size) <= end) {
+      return bytes.slice(start - from, Math.min(start + count, size) - from);
+    }
+
+    if (start >= size) {
+      return Bytes.empty();
+    }
+
+    const resumed = start >= from && start <= end;
+    const first = resumed ? end : start;
+    const more = await this.read(first, Math.max(start + count - first, DETAILS_HEAD));
+    const held = resumed ? Bytes.joined([bytes.slice(start - from), more]) : more;
+    this.kept = { start, bytes: held };
+    return held.slice(0, count);
+  }
+
+  // The `count` bytes from `first`, or as many as the file holds from there.
+  async read(first, count) {
+    if (count > this.left) {
+      throw new Error(`Its metadata holds more than the ${formatSize(DETAILS_MOST)} read of it.`);
+    }
+
+    const response = await this.fetched({ Range: `bytes=${first}-${first + count - 1}` });
+    const sized = /\/(\d+)$/.exec(response.headers.get("Content-Range") || "");
+
+    if (sized) {
+      this.size = Number(sized[1]);
+    }
+
+    if (response.status === 416) {
+      await response.body?.cancel();
+      return Bytes.empty();
+    }
+
+    if (response.status !== 206) {
+      throw await StoredFile.refusal(response);
+    }
+
+    const bytes = new Bytes(new Uint8Array(await response.arrayBuffer()));
+    this.left -= bytes.length;
+    return bytes;
+  }
+}
+
+// The value of an entry of an image file directory: its type, how many
+// values it holds, where they are, and, if they are few enough to be read,
+// their bytes, in the byte order of the TIFF structure holding it.
+class TiffEntry {
+  constructor(type, count, at, bytes, little) {
+    this.type = type;
+    this.count = count;
+    this.at = at;
+    this.bytes = bytes;
+    this.little = little;
+  }
+
+  // The text it holds, to its first null, trimmed; or undefined, if it
+  // holds none, or it is empty.
+  text() {
+    if (!this.bytes || !TIFF_TEXTS.has(this.type)) {
+      return undefined;
+    }
+
+    return this.bytes.text().split("\0")[0].trim() || undefined;
+  }
+
+  // The `index`th value it holds, as a number, a RATIONAL's numerator over
+  // its denominator; or undefined, if it holds no such number, or a
+  // RATIONAL's denominator is 0.
+  number(index = 0) {
+    if (!this.bytes || TIFF_TEXTS.has(this.type) || index >= this.count) {
+      return undefined;
+    }
+
+    const { bytes, little } = this;
+    const size = TIFF_TYPES[this.type];
+    const at = index * size;
+
+    if (this.type === TIFF_RATIONAL) {
+      const denominator = bytes.u32(at + 4, little);
+      return denominator ? bytes.u32(at, little) / denominator : undefined;
+    }
+
+    if (size === 1) {
+      return bytes.u8(at);
+    }
+
+    return size === 2 ? bytes.u16(at, little) : bytes.u32(at, little);
+  }
+
+  // Every value it holds, as number gives each, if they were read.
+  numbers() {
+    return this.bytes ? Array.from({ length: this.count }, (_, index) => this.number(index)) : [];
+  }
+}
+
+// The TIFF structure a photo's Exif is kept in, which TIFF files, and raw
+// files built on TIFF, are too (TIFF 6.0 2; Exif 2.32 4.6.2): a header
+// giving its byte order, and where its first image file directory is; each
+// directory a count of its entries, the entries, and where the next
+// directory is; and each entry its tag, its type, how many values it holds,
+// and those values, or, if they take more than four bytes, where they are,
+// counted from the header. It is read from `source`, its header at 0, as
+// Bytes or a StoredFile is read, a range at a time.
+class Tiff {
+  constructor(source, little, first) {
+    this.source = source;
+    this.little = little;
+    this.first = first;
+  }
+
+  // The TIFF structure at the start of `source`.
+  static async read(source) {
+    const header = await source.at(0, 8);
+    const order = header.ascii(0, 2);
+    const little = order === "II";
+
+    if ((order !== "II" && order !== "MM") || header.length < 8 || !TIFF_MAGIC.has(header.u16(2, little))) {
+      throw new Error("It is not of the structure Exif is kept in.");
+    }
+
+    return new Tiff(source, little, header.u32(4, little));
+  }
+
+  // The directory at `at`, {entries, next}: its entries whose tags `tags`
+  // holds, each a TiffEntry, by tag, those of a type not read left out, and
+  // where the next directory is, or 0; none, if `at` is no directory held. A
+  // directory is never within the header.
+  async directory(at, tags) {
+    const { source, little } = this;
+    const entries = new Map();
+    const counted = Number.isInteger(at) && at >= 8 ? await source.at(at, 2) : Bytes.empty();
+
+    if (counted.length < 2) {
+      return { entries, next: 0 };
+    }
+
+    const count = counted.u16(0, little);
+    const table = await source.at(at + 2, count * 12 + 4);
+
+    for (let index = 0; index < count && table.holds(index * 12, 12); index += 1) {
+      const entry = index * 12;
+      const tag = table.u16(entry, little);
+      const type = table.u16(entry + 2, little);
+      const values = table.u32(entry + 4, little);
+      const size = (TIFF_TYPES[type] || 0) * values;
+
+      if (!tags.has(tag) || !Object.hasOwn(TIFF_TYPES, type)) {
+        continue;
+      }
+
+      const inline = size <= 4;
+      const where = inline ? at + 2 + entry + 8 : table.u32(entry + 8, little);
+      let bytes = null;
+
+      if (inline) {
+        bytes = table.slice(entry + 8, entry + 8 + size);
+      } else if (size <= TIFF_VALUE_MOST) {
+        bytes = await source.at(where, size);
+      }
+
+      if (!bytes || bytes.length === size) {
+        entries.set(tag, new TiffEntry(type, values, where, bytes, little));
+      }
+    }
+
+    return { entries, next: table.holds(count * 12, 4) ? table.u32(count * 12, little) : 0 };
+  }
+}
+
+// The Exif of a photo: the tags of its first image file directory, `image`,
+// and its Exif directory, `photo`, and of its GPS directory, `gps`, of each
+// only those EXIF_TAGS and GPS_TAGS name read, each a TiffEntry by tag.
+class Exif {
+  constructor(image, photo = new Map(), gps = new Map()) {
+    this.tags = new Map([...image, ...photo]);
+    this.gps = gps;
+  }
+
+  // The Exif of `source`, from the TIFF header at its start, as Tiff reads it.
+  static async read(source) {
+    const tiff = await Tiff.read(source);
+    const { entries: image } = await tiff.directory(tiff.first, IMAGE_NUMBERS);
+    const pointer = (name) => (image.has(EXIF_TAGS[name]) ? image.get(EXIF_TAGS[name]).number() : undefined);
+    const { entries: photo } = await tiff.directory(pointer("ExifIFDPointer"), IMAGE_NUMBERS);
+    const { entries: gps } = await tiff.directory(pointer("GPSInfoIFDPointer"), GPS_NUMBERS);
+    return new Exif(image, photo, gps);
+  }
+
+  // The Exif `bytes` hold, from its TIFF header on, or from an EXIF_HEADER
+  // before it, as some programs write the Exif of a PNG or a WebP.
+  static of(bytes) {
+    return Exif.read(bytes.ascii(0, 6) === EXIF_HEADER ? bytes.slice(6) : bytes);
+  }
+
+  // The Exif a Canon CR3 keeps apart: the first image file directory of each
+  // TIFF structure, Bytes, or null, of its image, `image`, its photo,
+  // `photo`, and where it was taken, `gps`.
+  static async parts(image, photo, gps) {
+    const first = async (bytes, tags) => {
+      if (!bytes) {
+        return new Map();
+      }
+
+      const tiff = await Tiff.read(bytes);
+      return (await tiff.directory(tiff.first, tags)).entries;
+    };
+
+    return new Exif(await first(image, IMAGE_NUMBERS), await first(photo, IMAGE_NUMBERS), await first(gps, GPS_NUMBERS));
+  }
+
+  // The entry of the tag named `name`, in EXIF_TAGS or GPS_TAGS, or undefined.
+  entry(name) {
+    return Object.hasOwn(GPS_TAGS, name) ? this.gps.get(GPS_TAGS[name]) : this.tags.get(EXIF_TAGS[name]);
+  }
+
+  text(name) {
+    const entry = this.entry(name);
+    return entry ? entry.text() : undefined;
+  }
+
+  number(name, index = 0) {
+    const entry = this.entry(name);
+    return entry ? entry.number(index) : undefined;
+  }
+
+  // `number`, if it is a whole number above 0, or else undefined.
+  static whole(number) {
+    return Number.isInteger(number) && number > 0 ? number : undefined;
+  }
+
+  // `number`, if it is above 0, to six significant digits, so that a
+  // fraction is kept as nearly as it is shown; or else undefined.
+  static measured(number) {
+    return isPositive(number) ? Number(number.toPrecision(6)) : undefined;
+  }
+
+  // What it gives of the photo, as its info.json keeps it: when it was
+  // taken, and its offset; its width and height as seen, turned a quarter
+  // as its orientation says, which browsers draw it by; its orientation;
+  // the camera; its exposure; and where it was taken. What it does not give
+  // is left out.
+  details() {
+    const orientation = this.number("Orientation");
+    const turned = orientation >= 5 && orientation <= 8;
+    const [width, height] = ["PixelXDimension", "PixelYDimension"].map((name) => Exif.whole(this.number(name)));
+    const sized = width && height;
+    return defined({
+      ...this.taken(),
+      width: sized ? (turned ? height : width) : undefined,
+      height: sized ? (turned ? width : height) : undefined,
+      orientation: orientation >= 1 && orientation <= 8 ? orientation : undefined,
+      camera: filled({ make: this.text("Make"), model: this.text("Model"), lens: this.text("LensModel") }),
+      exposure: filled({
+        iso: Exif.whole(this.number("ISOSpeedRatings")),
+        aperture: Exif.measured(this.number("FNumber")),
+        shutter: Exif.measured(this.number("ExposureTime")),
+        focal_length: Exif.measured(this.number("FocalLength")),
+      }),
+      location: this.location(),
+    });
+  }
+
+  // When the photo was taken, {taken, offset}, as the first of EXIF_DATES
+  // it gives says: a local date and time, as written, with the fraction of a
+  // second given with it, and the offset from UTC given with it; or {}.
+  taken() {
+    for (const [date, offset, fraction] of EXIF_DATES) {
+      const found = EXIF_DATE.exec(this.text(date) || "");
+      const taken = found && takenOf(found.slice(1));
+
+      if (taken) {
+        const [subsecond, zone] = [this.text(fraction) || "", this.text(offset) || ""];
+        return {
+          taken: /^\d+$/.test(subsecond) ? `${taken}.${subsecond}` : taken,
+          offset: OFFSET.test(zone) ? zone : undefined,
+        };
+      }
+    }
+
+    return {};
+  }
+
+  // Where the photo was taken, {latitude, longitude, altitude}: in degrees,
+  // those south and west below 0, each from its degrees, minutes, and
+  // seconds, and in metres, those below sea level below 0. Undefined unless
+  // its latitude and longitude are both given, each with its reference, and
+  // are not both 0, which a camera with no place to give may write.
+  location() {
+    const degrees = (name) => {
+      const [whole, minutes = 0, seconds = 0] = [0, 1, 2].map((index) => this.number(name, index));
+      return whole === undefined ? undefined : whole + minutes / 60 + seconds / 3600;
+    };
+    const [north, east] = ["GPSLatitudeRef", "GPSLongitudeRef"].map((name) => (this.text(name) || "").toUpperCase());
+    const [latitude, longitude] = [degrees("GPSLatitude"), degrees("GPSLongitude")];
+    const placed = ["N", "S"].includes(north) && ["E", "W"].includes(east) && latitude <= 90 && longitude <= 180
+      && (latitude > 0 || longitude > 0);
+
+    if (!placed) {
+      return undefined;
+    }
+
+    const altitude = this.number("GPSAltitude");
+    // Below the sea, or, as Exif 3.0 adds, below the ellipsoid, is odd.
+    const below = this.number("GPSAltitudeRef") % 2 === 1;
+    return defined({
+      latitude: Number((north === "S" ? -latitude : latitude).toFixed(7)),
+      longitude: Number((east === "W" ? -longitude : longitude).toFixed(7)),
+      altitude: altitude === undefined ? undefined : Number((below ? -altitude : altitude).toFixed(1)),
+    });
+  }
+}
+
+// What a photo's file gives of itself, read as it is imported, before it is
+// added, as the music page reads a song's tags, by ranges of `source`, its
+// format known by its first bytes: its details, from its Exif, and the
+// largest JPEG preview it holds, to view it by. Its Exif is read from a
+// JPEG's APP1 segment, a PNG's eXIf chunk, a WebP's EXIF chunk, the Exif item
+// of the meta box of an HEIF, as an HEIC is, or of an AVIF, the image file
+// directories of a TIFF, or of a raw file built on TIFF, the CMT boxes of a
+// Canon CR3, and the JPEG a Fujifilm RAF holds. Of a format it does not read,
+// nothing is.
+class PhotoDetails {
+  constructor(source, name = "") {
+    this.source = source;
+    this.name = name;
+  }
+
+  // What the photo whose original is the file bundle `file`, named `name`,
+  // gives of itself, as found gives it.
+  static read(file, name) {
+    return new PhotoDetails(StoredFile.file(file), name).found();
+  }
+
+  // What it gives of itself, {details, preview}, as much as could be read:
+  // its details, as Exif.details gives them, or {}; and its largest JPEG
+  // preview, a Preview, or null.
+  async found() {
+    const format = await this.quietly("format", () => this.format(), null);
+    const preview = await this.quietly("preview", () => this.preview(format), null);
+    const details = await this.quietly("details", () => this.details(format, preview), {});
+    return { details, preview };
+  }
+
+  // What `action` resolves to, or else `otherwise`, warning that its `what`
+  // was not read.
+  async quietly(what, action, otherwise) {
+    try {
+      return await action();
+    } catch (error) {
+      console.warn(`The ${what} of “${this.name}” could not be read: ${error.message}`);
+      return otherwise;
+    }
+  }
+
+  // Its format, by its first bytes: jpeg, png, webp, raf, tiff, cr3, or heif,
+  // as an HEIC or an AVIF is; or null.
+  async format() {
+    const head = await this.source.at(0, 16);
+    const order = head.ascii(0, 2);
+    const formats = [
+      ["jpeg", head.ascii(0, 3) === "\xff\xd8\xff"],
+      ["png", head.ascii(0, 8) === PNG_SIGNATURE],
+      ["webp", head.ascii(0, 4) === "RIFF" && head.ascii(8, 4) === "WEBP"],
+      ["raf", head.ascii(0, 16) === RAF_SIGNATURE],
+      ["tiff", (order === "II" || order === "MM") && head.holds(2, 2) && TIFF_MAGIC.has(head.u16(2, order === "II"))],
+      ["cr3", head.ascii(4, 4) === "ftyp" && head.ascii(8, 4) === CR3_BRAND],
+      ["heif", head.ascii(4, 4) === "ftyp"],
+    ];
+    const found = formats.find(([, matched]) => matched);
+    return found ? found[0] : null;
+  }
+
+  // Its details, as Exif.details gives them, of a file of `format`, whose
+  // preview is `preview`; or {}.
+  async details(format, preview) {
+    const exif = (bytes) => (bytes ? Exif.of(bytes) : null);
+    const readers = {
+      jpeg: async () => exif(await this.jpegExif(0)),
+      png: async () => exif(await this.pngExif()),
+      webp: async () => exif(await this.webpExif()),
+      tiff: () => Exif.read(this.source),
+      cr3: () => this.cr3Exif(),
+      // A Fujifilm raw file's Exif is that of the JPEG it holds.
+      raf: () => (preview ? preview.exif : null),
+    };
+
+    if (format === "heif") {
+      return this.heifDetails();
+    }
+
+    const read = Object.hasOwn(readers, format) ? await readers[format]() : null;
+    return read ? read.details() : {};
+  }
+
+  // Its largest JPEG preview, as largest gives it, of a file of `format`, or
+  // null: of a TIFF, or a raw file built on it, of the JPEGs its image file
+  // directories name; of a CR3, its PRVW box's; and of a RAF, the JPEG its
+  // header names. An HEIC holds none, as its images are HEVC.
+  async preview(format) {
+    const finders = {
+      tiff: () => this.tiffJpegs(),
+      cr3: () => this.cr3Jpegs(),
+      raf: () => this.rafJpegs(),
+    };
+    return Object.hasOwn(finders, format) ? this.largest(await finders[format]()) : null;
+  }
+
+  // Of the JPEGs `candidates` name, each {at, length}, the largest this
+  // browser draws, by its pixels, then its bytes, a Preview; or null. At most
+  // MOST_PREVIEWS are looked at.
+  async largest(candidates) {
+    const looked = new Set();
+    let largest = null;
+
+    for (const { at, length } of candidates) {
+      if (looked.size >= MOST_PREVIEWS) {
+        break;
+      }
+
+      if (looked.has(at)) {
+        continue;
+      }
+
+      looked.add(at);
+      const preview = await this.jpegPreview(at, length).catch((error) => {
+        console.warn(`A JPEG within “${this.name}” could not be read: ${error.message}`);
+        return null;
+      });
+
+      if (preview && (!largest || preview.larger(largest))) {
+        largest = preview;
+      }
+    }
+
+    return largest;
+  }
+
+  // The JPEG at `at` in it, of `length` bytes, as a Preview, if it is one
+  // this browser draws, of one of DRAWN_FRAMES, at 8 bits a sample; or null.
+  // Its Exif is read with it, if it holds one before its frame.
+  async jpegPreview(at, length) {
+    const start = await this.source.at(at, 3);
+    let exif = null;
+
+    if (start.ascii(0, 3) !== "\xff\xd8\xff") {
       return null;
     }
 
-    const scale = Math.min(1, THUMB_SIZE / Math.max(width, height));
+    for await (const { marker, at: from, size } of this.segments(at)) {
+      // The start of a frame, but for DHT, JPG, and DAC, which share them.
+      const frame = marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker);
+
+      if (marker === 0xe1 && !exif) {
+        const segment = await this.source.at(from, size);
+        exif = segment.ascii(0, 6) === EXIF_HEADER ? await Exif.of(segment.slice(6)).catch(() => null) : null;
+      } else if (frame) {
+        const header = await this.source.at(from, 5);
+        const drawn = DRAWN_FRAMES.has(marker) && header.length === 5 && header.u8(0) === 8;
+        const [height, width] = drawn ? [header.u16(1), header.u16(3)] : [0, 0];
+        return width && height ? new Preview(at, length, width, height, exif) : null;
+      }
+    }
+
+    return null;
+  }
+
+  // The segments of the JPEG at `start` in it, from after its SOI marker to
+  // its image data, each {marker, at, size}, where its data is, after its
+  // size, and how many bytes it takes: each segment a marker, 0xFF then its
+  // kind, and but for the markers that stand alone, its size, counting
+  // itself (ITU-T T.81 B.1.1). A marker may be padded with more 0xFF.
+  async *segments(start) {
+    for (let at = start + 2, count = 0; count < MOST_CHUNKS; count += 1) {
+      const header = await this.source.at(at, 4);
+
+      if (header.length < 4 || header.u8(0) !== 0xff) {
+        return;
+      }
+
+      const marker = header.u8(1);
+      const alone = marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7);
+
+      // The start of its image data, SOS, or its end, EOI.
+      if (marker === 0xda || marker === 0xd9) {
+        return;
+      }
+
+      if (marker === 0xff || alone) {
+        at += marker === 0xff ? 1 : 2;
+        continue;
+      }
+
+      const size = header.u16(2);
+
+      if (size < 2) {
+        return;
+      }
+
+      yield { marker, at: at + 4, size: size - 2 };
+      at += 2 + size;
+    }
+  }
+
+  // The Exif of the JPEG at `start` in it, in an APP1 segment before its
+  // image data, which holds XMP too (Exif 2.32 4.5.4); or null.
+  async jpegExif(start) {
+    for await (const { marker, at, size } of this.segments(start)) {
+      if (marker === 0xe1) {
+        const segment = await this.source.at(at, size);
+
+        if (segment.ascii(0, 6) === EXIF_HEADER) {
+          return segment.slice(6);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // The Exif of a PNG, in its eXIf chunk, which comes before its image data,
+  // IDAT: its chunks walked from after its signature, each its size,
+  // big-endian, its type, its data, and a check of it (PNG Third Edition
+  // 5.3, and its eXIf chunk).
+  async pngExif() {
+    for (let at = PNG_SIGNATURE.length, count = 0; count < MOST_CHUNKS; count += 1) {
+      const header = await this.source.at(at, 8);
+      const type = header.ascii(4, 4);
+
+      if (header.length < 8 || type === "IDAT" || type === "IEND") {
+        return null;
+      }
+
+      const size = header.u32(0);
+
+      if (type === "eXIf") {
+        return size <= DETAILS_MOST ? this.source.at(at + 8, size) : null;
+      }
+
+      at += 12 + size;
+    }
+
+    return null;
+  }
+
+  // The Exif of a WebP, in its EXIF chunk, after its image data: its chunks
+  // walked from after its RIFF header, each its type, its size,
+  // little-endian, and its data, padded to an even size. Only a WebP of the
+  // extended format, which starts with VP8X, holds Exif, and says so in
+  // VP8X's flags (RFC 9649, the extended format).
+  async webpExif() {
+    const first = await this.source.at(12, 9);
+
+    if (first.ascii(0, 4) !== "VP8X" || !first.holds(8, 1) || !(first.u8(8) & 0x08)) {
+      return null;
+    }
+
+    for (let at = 12, count = 0; count < MOST_CHUNKS; count += 1) {
+      const header = await this.source.at(at, 8);
+
+      if (header.length < 8) {
+        return null;
+      }
+
+      const size = header.u32(4, true);
+
+      if (header.ascii(0, 4) === "EXIF") {
+        return size <= DETAILS_MOST ? this.source.at(at + 8, size) : null;
+      }
+
+      at += 8 + size + (size % 2);
+    }
+
+    return null;
+  }
+
+  // Where the JPEGs the image file directories of a TIFF, or of a raw file
+  // built on it, name are, as namedJpegs gives them: of each directory of the
+  // chain from its first, and of each below one, MOST_DIRECTORIES at most.
+  async tiffJpegs() {
+    const tiff = await Tiff.read(this.source);
+    const found = [];
+    const waiting = [tiff.first];
+    const walked = new Set();
+
+    while (waiting.length > 0 && walked.size < MOST_DIRECTORIES) {
+      const at = waiting.shift();
+
+      if (walked.has(at)) {
+        continue;
+      }
+
+      walked.add(at);
+      const { entries, next } = await tiff.directory(at, PREVIEW_NUMBERS);
+      const below = entries.get(PREVIEW_TAGS.SubIFDs);
+      waiting.push(...[...(below ? below.numbers() : []), next].filter((each) => Number.isInteger(each) && each >= 8));
+      found.push(...PhotoDetails.namedJpegs(entries));
+    }
+
+    return found;
+  }
+
+  // Where the JPEGs the entries of an image file directory, `entries`, name
+  // are, each {at, length}: by JPEGInterchangeFormat, as Exif names a
+  // thumbnail; by JpgFromRaw, as a Panasonic raw file names its JPEG; and as
+  // its one strip, compressed as a JPEG holding its own tables, of an image
+  // that is not a raw image's own data.
+  static namedJpegs(entries) {
+    const number = (name) => (entries.has(PREVIEW_TAGS[name]) ? entries.get(PREVIEW_TAGS[name]).number() : undefined);
+    const [raw, strips, sizes] = ["JpgFromRaw", "StripOffsets", "StripByteCounts"].map((name) => entries.get(PREVIEW_TAGS[name]));
+    const found = [{ at: number("JPEGInterchangeFormat"), length: number("JPEGInterchangeFormatLength") }];
+
+    if (raw && raw.type === TIFF_UNDEFINED) {
+      found.push({ at: raw.at, length: raw.count });
+    }
+
+    const striped = JPEG_COMPRESSIONS.has(number("Compression")) && !RAW_PHOTOMETRICS.has(number("PhotometricInterpretation"))
+      && !entries.has(PREVIEW_TAGS.JPEGTables) && strips && sizes && strips.count === 1 && sizes.count === 1;
+
+    if (striped) {
+      found.push({ at: strips.number(), length: sizes.number() });
+    }
+
+    return found.filter(({ at, length }) => [at, length].every((each) => Number.isInteger(each) && each > 0));
+  }
+
+  // The boxes of an ISO base media file, as an HEIF and a CR3 are (ISO/IEC
+  // 14496-12 4.2), from `start` to `end` in it, each {type, at, size}, where
+  // its contents are, and how many bytes they take: each box its size,
+  // counting itself, then its type, its size given after it in 8 bytes if it
+  // is 1, and running to the end if it is 0. MOST_CHUNKS at most are walked.
+  async *boxes(start, end = Infinity) {
+    for (let at = start, count = 0; at + 8 <= end && count < MOST_CHUNKS; count += 1) {
+      const header = await this.source.at(at, 16);
+
+      if (header.length < 8) {
+        return;
+      }
+
+      const given = header.u32(0);
+      const head = given === 1 ? 16 : 8;
+      let size = given === 0 ? end - at : given;
+
+      if (given === 1) {
+        size = header.holds(8, 8) ? header.u32(8) * 2 ** 32 + header.u32(12) : 0;
+      }
+
+      if (size < head) {
+        return;
+      }
+
+      yield { type: header.ascii(4, 4), at: at + head, size: size - head };
+      at += size;
+    }
+  }
+
+  // The first box of `type` from `start` to `end` in it, as boxes gives it,
+  // or null; of the type uuid, the first whose UUID is `uuid`, in hex digits,
+  // with its contents after its UUID.
+  async box(type, start = 0, end = Infinity, uuid = null) {
+    for await (const box of this.boxes(start, end)) {
+      if (box.type === type && !uuid) {
+        return box;
+      }
+
+      if (box.type === type && box.size >= 16 && (await this.source.at(box.at, 16)).hex() === uuid) {
+        return { type, at: box.at + 16, size: box.size - 16 };
+      }
+    }
+
+    return null;
+  }
+
+  // The details of an HEIF, as an HEIC is, or of an AVIF (ISO/IEC 23008-12):
+  // as the Exif item of its meta box gives them, with its width and height
+  // from the ispe property of its primary item, turned as its irot property
+  // says, which gives its orientation too, as browsers draw it by irot, and
+  // not by its Exif; or {}.
+  async heifDetails() {
+    const meta = await this.box("meta");
+
+    if (!meta || meta.size > DETAILS_MOST) {
+      return {};
+    }
+
+    const items = await HeifItems.read(await this.source.at(meta.at, meta.size));
+    const exif = await this.quietly("Exif", () => this.heifExif(items), null);
+    const details = exif ? exif.details() : {};
+    const primary = items.primary();
+    const properties = primary === null ? [] : await items.properties(primary);
+    const [ispe, irot] = ["ispe", "irot"].map((type) => properties.find((property) => property.type === type));
+    const orientation = IROT_ORIENTATIONS[irot && irot.bytes.holds(0, 1) ? irot.bytes.u8(0) & 3 : 0];
+    const [width, height] = ispe && ispe.bytes.holds(4, 8) ? [4, 8].map((at) => Exif.whole(ispe.bytes.u32(at))) : [];
+    const sized = width && height;
+    const turned = orientation >= 5;
+    return defined({
+      ...details,
+      width: sized ? (turned ? height : width) : details.width,
+      height: sized ? (turned ? width : height) : details.height,
+      orientation,
+    });
+  }
+
+  // The Exif of an HEIF, as `items` locate its Exif item: 4 bytes saying how
+  // far after them its TIFF header is, then its Exif (ISO/IEC 23008-12
+  // A.2.1); or null.
+  async heifExif(items) {
+    const id = await items.itemOf("Exif");
+    const located = id === null ? null : items.located(id);
+    const parts = [];
+    let size = 0;
+
+    if (!located) {
+      return null;
+    }
+
+    for (const { at, length } of located.extents) {
+      // An extent of no length runs to the end of the file, which is not read.
+      if (!(length > 0) || size + length > DETAILS_MOST) {
+        return null;
+      }
+
+      parts.push(await (located.data || this.source).at(at, length));
+      size += length;
+    }
+
+    const bytes = Bytes.joined(parts);
+    return bytes.holds(0, 4) ? Exif.of(bytes.slice(4 + bytes.u32(0))) : null;
+  }
+
+  // The Exif of a Canon CR3, from the TIFF structures of its CMT1, CMT2, and
+  // CMT4 boxes, its image's, its photo's, and its GPS directory, within a
+  // box of its moov box, as Exif.parts reads them; or null.
+  async cr3Exif() {
+    const moov = await this.box("moov");
+    const held = moov && await this.box("uuid", moov.at, moov.at + moov.size, CR3_METADATA);
+    const parts = {};
+
+    if (!held) {
+      return null;
+    }
+
+    for await (const { type, at, size } of this.boxes(held.at, held.at + held.size)) {
+      if (["CMT1", "CMT2", "CMT4"].includes(type) && size <= DETAILS_HEAD) {
+        parts[type] = await this.source.at(at, size);
+      }
+    }
+
+    return Exif.parts(parts.CMT1, parts.CMT2, parts.CMT4);
+  }
+
+  // Where the JPEG of a Canon CR3's PRVW box is, in a uuid box of its own:
+  // the size of the JPEG 20 bytes into the PRVW box, and the JPEG at 24.
+  async cr3Jpegs() {
+    const held = await this.box("uuid", 0, Infinity, CR3_PREVIEW);
+    const head = held ? await this.source.at(held.at, 64) : Bytes.empty();
+    const at = head.ascii(0, head.length).indexOf("PRVW") - 4;
+    return at >= 0 && head.holds(at + 20, 4) ? [{ at: held.at + at + 24, length: head.u32(at + 20) }] : [];
+  }
+
+  // Where the JPEG a Fujifilm RAF's header names is.
+  async rafJpegs() {
+    const named = await this.source.at(RAF_JPEG, 8);
+    return named.length === 8 ? [{ at: named.u32(0), length: named.u32(4) }] : [];
+  }
+}
+
+// What the meta box of an HEIF, `boxes`, the boxes it holds, by type, each
+// read whole, says of the items it holds (ISO/IEC 23008-12 9; ISO/IEC
+// 14496-12 8.11): its primary item, by its pitm box; the type of each, by
+// the infe boxes of its iinf box; where the data of each is, by its iloc
+// box, in the file or in its idat box; and the properties of each, by the
+// ipco and ipma boxes of its iprp box. A full box's contents start with its
+// version, then its flags, in 3 bytes.
+class HeifItems {
+  constructor(boxes) {
+    this.boxes = boxes;
+  }
+
+  // The items the meta box whose contents are `bytes` says of.
+  static async read(bytes) {
+    const boxes = new Map();
+    await HeifItems.collect(bytes, 4, boxes);
+
+    if (boxes.has("iprp")) {
+      await HeifItems.collect(boxes.get("iprp"), 0, boxes);
+    }
+
+    return new HeifItems(boxes);
+  }
+
+  // Adds to `boxes` the contents of each box `bytes` holds, from `start`, by
+  // its type, the first of each type.
+  static async collect(bytes, start, boxes) {
+    for await (const { type, at, size } of new PhotoDetails(bytes).boxes(start, bytes.length)) {
+      if (!boxes.has(type)) {
+        boxes.set(type, bytes.slice(at, at + size));
+      }
+    }
+  }
+
+  // The number `bytes` holds at `at`, of `size` bytes, big-endian; or NaN
+  // if they are not held.
+  static number(bytes, at, size) {
+    if (!bytes.holds(at, size)) {
+      return Number.NaN;
+    }
+
+    const read = {
+      0: () => 0,
+      1: () => bytes.u8(at),
+      2: () => bytes.u16(at),
+      4: () => bytes.u32(at),
+      8: () => bytes.u32(at) * 2 ** 32 + bytes.u32(at + 4),
+    };
+    return Object.hasOwn(read, size) ? read[size]() : Number.NaN;
+  }
+
+  // The id of its primary item, or null.
+  primary() {
+    const box = this.boxes.get("pitm");
+    const id = box && box.holds(0, 1) ? HeifItems.number(box, 4, box.u8(0) === 0 ? 2 : 4) : Number.NaN;
+    return Number.isNaN(id) ? null : id;
+  }
+
+  // The id of its first item of the type `type`, as the infe boxes of its
+  // iinf box, of version 2 or 3, give it, or null.
+  async itemOf(type) {
+    const box = this.boxes.get("iinf");
+
+    if (!box || !box.holds(0, 1)) {
+      return null;
+    }
+
+    for await (const { type: kind, at, size } of new PhotoDetails(box).boxes(box.u8(0) === 0 ? 6 : 8, box.length)) {
+      const entry = box.slice(at, at + size);
+      const version = kind === "infe" && entry.holds(0, 1) ? entry.u8(0) : 0;
+
+      if (version === 2 && entry.ascii(8, 4) === type) {
+        return entry.u16(4);
+      }
+
+      if (version === 3 && entry.ascii(10, 4) === type) {
+        return entry.u32(4);
+      }
+    }
+
+    return null;
+  }
+
+  // Where the data of the item `id` is, {extents, data}, as its iloc box
+  // says: each extent {at, length}, in the file, or, by the second way of
+  // constructing it, in `data`, its idat box; or null if it is not located,
+  // or is located in a way not read.
+  located(id) {
+    const box = this.boxes.get("iloc");
+
+    if (!box || !box.holds(0, 8)) {
+      return null;
+    }
+
+    const version = box.u8(0);
+    const indexed = version === 1 || version === 2;
+    const [offsetSize, lengthSize, baseSize] = [box.u8(4) >> 4, box.u8(4) & 15, box.u8(5) >> 4];
+    const indexSize = indexed ? box.u8(5) & 15 : 0;
+    const count = HeifItems.number(box, 6, version < 2 ? 2 : 4);
+    let at = version < 2 ? 8 : 10;
+    const next = (size) => {
+      at += size;
+      return HeifItems.number(box, at - size, size);
+    };
+
+    for (let item = 0; item < count && at < box.length; item += 1) {
+      const itemId = next(version < 2 ? 2 : 4);
+      const method = indexed ? next(2) & 15 : 0;
+      next(2);
+      const base = next(baseSize);
+      const extents = Array.from({ length: Math.min(next(2) || 0, MOST_CHUNKS) }, () => {
+        next(indexSize);
+        const offset = next(offsetSize);
+        return { at: base + offset, length: next(lengthSize) };
+      });
+
+      if (itemId === id) {
+        return method <= 1 ? { extents, data: method === 1 ? this.boxes.get("idat") || Bytes.empty() : null } : null;
+      }
+    }
+
+    return null;
+  }
+
+  // The properties of the item `id`, each {type, bytes}, the contents of a
+  // box of its ipco box, as its entry in its ipma box associates them, each
+  // by its place in the ipco box, counted from 1.
+  async properties(id) {
+    const [ipco, ipma] = [this.boxes.get("ipco"), this.boxes.get("ipma")];
+    const listed = [];
+
+    if (!ipco || !ipma || !ipma.holds(0, 8)) {
+      return [];
+    }
+
+    for await (const { type, at, size } of new PhotoDetails(ipco).boxes(0, ipco.length)) {
+      listed.push({ type, bytes: ipco.slice(at, at + size) });
+    }
+
+    const [idSize, indexSize] = [ipma.u8(0) < 1 ? 2 : 4, ipma.u8(3) & 1 ? 2 : 1];
+    let at = 8;
+
+    for (let entry = 0, count = ipma.u32(4); entry < count && ipma.holds(at, idSize + 1); entry += 1) {
+      const itemId = HeifItems.number(ipma, at, idSize);
+      const associations = ipma.u8(at + idSize);
+      const indexes = [];
+      at += idSize + 1;
+
+      for (let each = 0; each < associations && ipma.holds(at, indexSize); each += 1, at += indexSize) {
+        // Less the bit saying whether the property is essential.
+        indexes.push(HeifItems.number(ipma, at, indexSize) & (indexSize === 2 ? 0x7fff : 0x7f));
+      }
+
+      if (itemId === id) {
+        return indexes.map((index) => listed[index - 1]).filter(Boolean);
+      }
+    }
+
+    return [];
+  }
+}
+
+// A JPEG a photo's file holds, to view it by: where it is in the file, how
+// many bytes it takes, its width and height, as its frame gives them, and
+// its Exif, an Exif, if it holds one, or null.
+class Preview {
+  constructor(at, length, width, height, exif) {
+    this.at = at;
+    this.length = length;
+    this.width = width;
+    this.height = height;
+    this.exif = exif;
+  }
+
+  // Whether it is larger than `other`, by its pixels, then its bytes.
+  larger(other) {
+    const [pixels, others] = [this.width * this.height, other.width * other.height];
+    return pixels === others ? this.length > other.length : pixels > others;
+  }
+
+  // The orientation its own Exif gives it, which the browser turns it by as
+  // it draws it, or undefined.
+  orientation() {
+    const orientation = this.exif ? this.exif.number("Orientation") : undefined;
+    return orientation >= 1 && orientation <= 8 ? orientation : undefined;
+  }
+
+  // It drawn, a Picture, cut from `blob`, the photo's original read whole,
+  // turned as `orientation`, the photo's, says, unless it gives its own; or
+  // null if `blob` does not hold it, or this browser cannot draw it.
+  async picture(blob, orientation) {
+    if (this.at + this.length > blob.size) {
+      return null;
+    }
+
+    return Picture.decoded(blob.slice(this.at, this.at + this.length), "image/jpeg", this.orientation() ? 1 : orientation);
+  }
+}
+
+// A photo, or a JPEG within it, as this browser draws it: `image`, an image
+// or a canvas, its width and height before it is turned, and the Exif
+// orientation it is turned by as it is drawn, beyond any the browser turns
+// it by itself, as by a JPEG's own Exif. The object URL it was read from, if
+// any, is kept until it is closed, as a browser may decode it again as it
+// shows it.
+class Picture {
+  constructor(image, width, height, orientation = 1, url = null) {
+    this.image = image;
+    this.width = width;
+    this.height = height;
+    this.orientation = orientation;
+    this.url = url;
+  }
+
+  // The picture `blob` holds, as the content type `type`, if one is given,
+  // turned as `orientation` says as it is drawn; or null if this browser
+  // cannot draw it.
+  static async decoded(blob, type = null, orientation = 1) {
+    const url = URL.createObjectURL(type ? new Blob([blob], { type }) : blob);
+    const image = new Image();
+    image.src = url;
+
+    try {
+      await image.decode();
+    } catch (error) {
+      URL.revokeObjectURL(url);
+      return null;
+    }
+
+    if (!image.naturalWidth || !image.naturalHeight) {
+      URL.revokeObjectURL(url);
+      return null;
+    }
+
+    return new Picture(image, image.naturalWidth, image.naturalHeight, orientation, url);
+  }
+
+  close() {
+    if (this.url) {
+      URL.revokeObjectURL(this.url);
+      this.url = null;
+    }
+  }
+
+  // Its width and height, as seen, upright.
+  seen() {
+    return this.orientation >= 5 ? [this.height, this.width] : [this.width, this.height];
+  }
+
+  // It drawn on a canvas, upright, on black, so that what is transparent in
+  // it is black, scaled to at most `longest` pixels on its longer side.
+  canvas(longest) {
+    const [width, height] = this.seen();
+    const scale = Math.min(1, longest / Math.max(width, height));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(width * scale));
     canvas.height = Math.max(1, Math.round(height * scale));
     const context = canvas.getContext("2d");
+    // Its own width and height on the canvas, before it is turned.
+    const [across, down] = this.orientation >= 5 ? [canvas.height, canvas.width] : [canvas.width, canvas.height];
     context.fillStyle = "#000";
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.imageSmoothingQuality = "high";
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const jpeg = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", THUMB_QUALITY));
-    return { width, height, base64: jpeg ? await base64Of(jpeg) : null };
-  } catch (error) {
-    console.warn(`A photo could not be drawn: ${error.message}`);
+    context.transform(...Picture.turning(this.orientation, across, down));
+    context.drawImage(this.image, 0, 0, across, down);
+    return canvas;
+  }
+
+  // How a canvas is transformed, as its context's transform takes it, to
+  // draw an image `width` by `height` upright, as the Exif orientation
+  // `orientation` says it is turned (Exif 2.32 4.6.5, Orientation): not at
+  // all for 1, or one not known.
+  static turning(orientation, width, height) {
+    const turns = {
+      2: [-1, 0, 0, 1, width, 0],
+      3: [-1, 0, 0, -1, width, height],
+      4: [1, 0, 0, -1, 0, height],
+      5: [0, 1, 1, 0, 0, 0],
+      6: [0, 1, -1, 0, height, 0],
+      7: [0, -1, -1, 0, height, width],
+      8: [0, -1, 1, 0, 0, width],
+    };
+    return turns[orientation] || [1, 0, 0, 1, 0, 0];
+  }
+
+  // `canvas` as a JPEG, as base64, of the first of `qualities` whose base64
+  // takes at most `most` bytes; or null if none does, or this browser
+  // cannot make one.
+  static async encoded(canvas, qualities, most = Infinity) {
+    for (const quality of qualities) {
+      const jpeg = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+
+      if (!jpeg) {
+        return null;
+      }
+
+      const base64 = await base64Of(jpeg);
+
+      if (base64.length <= most) {
+        return base64;
+      }
+    }
+
     return null;
-  } finally {
-    if (url) {
-      URL.revokeObjectURL(url);
+  }
+
+  // Lets the browser have back what `canvas` held, which Safari limits.
+  static release(canvas) {
+    canvas.width = 0;
+    canvas.height = 0;
+  }
+
+  // It as a JPEG, as encoded gives it, drawn at most `longest` pixels on its
+  // longer side.
+  async jpeg(longest, qualities, most = Infinity) {
+    const canvas = this.canvas(longest);
+
+    try {
+      return await Picture.encoded(canvas, qualities, most);
+    } finally {
+      Picture.release(canvas);
+    }
+  }
+
+  // Its view and its thumbnail, {view, thumb}, each as base64, or null if
+  // no view of it fits in one request to make a bundle: the view drawn at
+  // most VIEW_SIZE pixels on its longer side, of the first of VIEW_QUALITIES
+  // that fits, and the thumbnail made from the view, or null if it could not
+  // be. It is drawn before anything is waited for, so that it can be closed
+  // as soon as this is called.
+  async viewed() {
+    const canvas = this.canvas(VIEW_SIZE);
+
+    try {
+      const view = await Picture.encoded(canvas, VIEW_QUALITIES, EDIT_BYTES);
+      return view ? { view, thumb: await new Picture(canvas, canvas.width, canvas.height).jpeg(THUMB_SIZE, [THUMB_QUALITY]) } : null;
+    } finally {
+      Picture.release(canvas);
+    }
+  }
+}
+
+// What is drawn of a photo as it is imported: its width and height as
+// drawn, as seen; whether it was drawn from a preview its file holds; and,
+// as base64, its thumbnail and its view, each null if it has none.
+class Drawn {
+  constructor(width, height, preview, thumb, view) {
+    this.width = width;
+    this.height = height;
+    this.preview = preview;
+    this.thumb = thumb;
+    this.view = view;
+  }
+
+  // What is drawn of the photo whose original is the file bundle `file`, of
+  // the content type `type`, read whole: the original, as this browser
+  // draws it, or else, of a photo given a view, whose details `reading`
+  // reads, as PhotoDetails.read does, the largest JPEG preview its file
+  // holds. A photo given a view has its thumbnail made from it; and one
+  // every browser shows, with no `reading`, from the original. Null if
+  // nothing could be drawn, or the node could not give the original.
+  static async of(file, type, reading = null) {
+    let blob;
+
+    try {
+      blob = await StoredFile.file(file).blob();
+    } catch (error) {
+      console.warn(`A photo could not be read whole to be drawn: ${error.message}`);
+      return null;
+    }
+
+    const original = await Picture.decoded(blob, type);
+    let picture = original;
+
+    if (!picture && reading) {
+      const { details, preview } = await reading;
+      picture = preview ? await preview.picture(blob, details.orientation) : null;
+    }
+
+    if (!picture) {
+      return null;
+    }
+
+    try {
+      const [width, height] = picture.seen();
+      const made = reading ? await picture.viewed() : { thumb: await picture.jpeg(THUMB_SIZE, [THUMB_QUALITY]), view: null };
+      return new Drawn(width, height, picture !== original, made ? made.thumb : null, made ? made.view : null);
+    } finally {
+      picture.close();
+    }
+  }
+}
+
+// What a video's file gives of itself, read as it is imported, as a photo's
+// details are, by ranges of `source`: of a QuickTime or an MP4 file, as of
+// any ISO base media file (ISO/IEC 14496-12 8.2.2, 8.3.2, 8.4.3; QuickTime
+// File Format, Metadata), from its moov box. When it was taken, by its
+// metadata's CREATION_KEY, with its offset, or else by its mvhd box's
+// creation time; where, by its LOCATION_KEY, or ©xyz; its duration, by mvhd;
+// and its width and height, by the tkhd box of its first video track, turned
+// as its matrix says, as browsers show it. Of a file of another format,
+// nothing is.
+class VideoDetails extends PhotoDetails {
+  // What the video whose original is the file bundle `file`, named `name`,
+  // gives of itself, {taken, offset, width, height, duration, location}, as
+  // much as could be read; or {}.
+  static read(file, name) {
+    const reader = new VideoDetails(StoredFile.file(file), name);
+    return reader.quietly("details", () => reader.movie(), {});
+  }
+
+  // Its details, as read gives them, from its moov box.
+  async movie() {
+    const head = await this.source.at(0, 8);
+    const moov = MOVIE_STARTS.has(head.ascii(4, 4)) ? await this.box("moov") : null;
+    const tags = new Map();
+    let movie = null;
+    let track = null;
+
+    if (!moov) {
+      return {};
+    }
+
+    for await (const { type, at, size } of this.boxes(moov.at, moov.at + moov.size)) {
+      if (type === "mvhd") {
+        movie = await this.source.at(at, Math.min(size, 120));
+      } else if (type === "trak" && !track) {
+        track = await this.track(at, size);
+      } else if (type === "meta") {
+        await this.tags(at, size, tags);
+      } else if (type === "udta") {
+        await this.userData(at, size, tags);
+      }
+    }
+
+    return defined({
+      ...(VideoDetails.dated(tags.get(CREATION_KEY)) || VideoDetails.created(movie)),
+      ...track,
+      duration: VideoDetails.duration(movie),
+      location: VideoDetails.place(tags.get(LOCATION_KEY) || tags.get(XYZ_KEY)),
+    });
+  }
+
+  // The width and height of the track whose trak box's contents are `size`
+  // bytes from `at`, {width, height}, if it is a video, as the handler of
+  // its mdia box says, as its tkhd box gives them, each a number of 16.16
+  // bits after its matrix, turned a quarter if its matrix turns it so; or
+  // null.
+  async track(at, size) {
+    let header = null;
+    let handler = "";
+
+    for await (const { type, at: from, size: length } of this.boxes(at, at + size)) {
+      if (type === "tkhd") {
+        header = await this.source.at(from, Math.min(length, 96));
+      } else if (type === "mdia") {
+        const named = await this.box("hdlr", from, from + length);
+        handler = named ? (await this.source.at(named.at, 12)).ascii(8, 4) : "";
+      }
+    }
+
+    // Its matrix, of nine numbers, after its version's times and durations.
+    const matrix = header && header.holds(0, 1) && header.u8(0) === 1 ? 52 : 40;
+
+    if (handler !== "vide" || !header || !header.holds(matrix, 44)) {
+      return null;
+    }
+
+    const [width, height] = [36, 40].map((after) => Math.round(header.u32(matrix + after) / 65536));
+    const turned = Math.abs(header.i32(matrix)) < Math.abs(header.i32(matrix + 4));
+    return width && height ? { width: turned ? height : width, height: turned ? width : height } : null;
+  }
+
+  // Adds to `tags` the values the meta box whose contents are `size` bytes
+  // from `at` gives, each by its key, but those held already: of an mdta
+  // meta box, as an iPhone writes, each item of its ilst box, numbered from
+  // 1, named by its keys box, and of any other, as an iTunes one, named by
+  // its own type. A QuickTime meta box starts with its boxes, and an ISO one
+  // with its version and flags. Each item's value is its data box's, after
+  // its type and its locale.
+  async tags(at, size, tags) {
+    if (size > DETAILS_HEAD) {
+      return;
+    }
+
+    const bytes = await this.source.at(at, size);
+    const held = new Map();
+    await HeifItems.collect(bytes, bytes.ascii(4, 4) === "hdlr" ? 0 : 4, held);
+    const keys = held.has("keys") ? VideoDetails.keys(held.get("keys")) : null;
+    const list = held.get("ilst");
+
+    if (!list) {
+      return;
+    }
+
+    for await (const { type, at: from, size: length } of new PhotoDetails(list).boxes(0, list.length)) {
+      const number = [...type].reduce((total, character) => total * 256 + character.charCodeAt(0), 0);
+      const key = keys ? keys[number - 1] : type;
+      const item = list.slice(from, from + length);
+      const data = await new PhotoDetails(item).box("data", 0, item.length);
+
+      if (isText(key) && data && !tags.has(key)) {
+        tags.set(key, item.text(data.at + 8, data.at + data.size));
+      }
+    }
+  }
+
+  // Adds to `tags` what the user data box whose contents are `size` bytes
+  // from `at` gives: its meta box's, as tags reads one, and its ©xyz,
+  // QuickTime's text of a place, with its length and its language before it.
+  async userData(at, size, tags) {
+    for await (const { type, at: from, size: length } of this.boxes(at, at + size)) {
+      if (type === "meta") {
+        await this.tags(from, length, tags);
+      } else if (type === XYZ_KEY && length <= DETAILS_HEAD && !tags.has(XYZ_KEY)) {
+        const text = await this.source.at(from, length);
+        const counted = text.holds(0, 4) && 4 + text.u16(0) <= text.length;
+        tags.set(XYZ_KEY, counted ? text.text(4, 4 + text.u16(0)) : text.text());
+      }
+    }
+  }
+
+  // The keys an mdta meta box's keys box, `bytes`, names, in order: after
+  // its version, flags, and count, each its size, counting itself, its
+  // namespace, and the key.
+  static keys(bytes) {
+    const keys = [];
+    const count = bytes.holds(4, 4) ? bytes.u32(4) : 0;
+
+    for (let at = 8; keys.length < count && bytes.holds(at, 8); ) {
+      const size = bytes.u32(at);
+
+      if (size < 8) {
+        break;
+      }
+
+      keys.push(bytes.text(at + 8, Math.min(at + size, bytes.length)));
+      at += size;
+    }
+
+    return keys;
+  }
+
+  // When a video was taken, {taken, offset}, as a QuickTime date, `text`,
+  // gives it: as written, with any fraction of a second, and its offset from
+  // UTC, as "+09:00"; or null, if it gives no real date.
+  static dated(text) {
+    const found = QUICKTIME_DATE.exec(isText(text) ? text.trim() : "");
+    const taken = found && takenOf(found.slice(1, 7));
+
+    if (!taken) {
+      return null;
+    }
+
+    const zone = found[8] === "Z" ? "+00:00" : (found[8] || "").replace(/^([+-]\d\d):?(\d\d)$/, "$1:$2");
+    return { taken: found[7] ? `${taken}.${found[7]}` : taken, offset: OFFSET.test(zone) ? zone : undefined };
+  }
+
+  // When a video was taken, {taken}, as its mvhd box, `movie`, gives its
+  // creation time, in seconds from 1904, in UTC: a local date and time in
+  // this browser's own time zone. A time before 1970 is taken as none, as one
+  // of 0, or one counted from 1970, as some write it, gives.
+  static created(movie) {
+    if (!movie || !movie.holds(0, 12)) {
+      return {};
+    }
+
+    const seconds = movie.u8(0) === 1 ? movie.u32(4) * 2 ** 32 + movie.u32(8) : movie.u32(4);
+    const date = new Date((seconds - MOVIE_EPOCH_SECONDS) * 1000);
+    return seconds > MOVIE_EPOCH_SECONDS && !Number.isNaN(date.getTime()) ? { taken: localTime(date) } : {};
+  }
+
+  // How long a video plays, in seconds, to a thousandth, as its mvhd box,
+  // `movie`, gives it, by its time scale; or undefined, if it does not.
+  static duration(movie) {
+    const long = Boolean(movie) && movie.holds(0, 1) && movie.u8(0) === 1;
+
+    if (!movie || !movie.holds(0, long ? 32 : 20)) {
+      return undefined;
+    }
+
+    const scale = movie.u32(long ? 20 : 12);
+    const [high, low] = long ? [movie.u32(24), movie.u32(28)] : [0, movie.u32(16)];
+    const unknown = low === 0xffffffff && (!long || high === 0xffffffff);
+    return scale && (high || low) && !unknown ? Number(((high * 2 ** 32 + low) / scale).toFixed(3)) : undefined;
+  }
+
+  // Where a video was taken, {latitude, longitude, altitude}, as an ISO 6709
+  // place, `text`, gives it, in degrees and metres; or undefined, as of a
+  // place at 0, 0, which a phone with no place to give may write.
+  static place(text) {
+    const found = ISO6709.exec(isText(text) ? text : "");
+    const [latitude, longitude] = found ? [VideoDetails.degrees(found[1], 2), VideoDetails.degrees(found[2], 3)] : [];
+    const altitude = found && found[3] !== undefined ? Number(found[3]) : undefined;
+    const placed = Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 && (latitude !== 0 || longitude !== 0);
+
+    if (!placed) {
+      return undefined;
+    }
+
+    return defined({
+      latitude: Number(latitude.toFixed(7)),
+      longitude: Number(longitude.toFixed(7)),
+      altitude: Number.isFinite(altitude) ? Number(altitude.toFixed(1)) : undefined,
+    });
+  }
+
+  // The degrees `text` gives, signed, as ISO 6709 writes a latitude, with
+  // `wide` digits of whole degrees, 2, or a longitude, 3: in decimal
+  // degrees, or with 2 more of minutes, or 4 more of minutes and seconds; or
+  // NaN.
+  static degrees(text, wide) {
+    const [, sign, whole, fraction = ""] = /^([+-])(\d+)(\.\d+)?$/.exec(text);
+    const more = Math.max(0, whole.length - wide);
+    const parts = [whole.slice(0, wide), whole.slice(wide, wide + 2), whole.slice(wide + 2)].slice(0, more / 2 + 1);
+    parts[parts.length - 1] += fraction;
+    const degrees = parts.reduce((total, part, at) => total + Number(part) / 60 ** at, 0);
+    return [0, 2, 4].includes(more) ? (sign === "-" ? -degrees : degrees) : Number.NaN;
+  }
+}
+
+// A video, as this browser plays it.
+class Clip {
+  // The content type the video in the file named `name` is placed with, by
+  // its extension, or else `given`, the type the node gives it, if any.
+  static typeOf(name, given = "") {
+    return VIDEO_TYPES[extensionOf(name)] || given;
+  }
+
+  // Whether this browser may play a video of the content type `type`: unless
+  // it says it cannot, "", and of a QuickTime file, of an MP4 too. A video
+  // of a type not known is tried.
+  static canPlay(type) {
+    const video = document.createElement("video");
+    return !type || video.canPlayType(type) !== "" || (type === QUICKTIME_TYPE && video.canPlayType(MP4_TYPE) !== "");
+  }
+
+  // Resolves once `video` fires `event`, once `start` is called; or rejects,
+  // if it fires error, or neither within VIDEO_WAIT_SECONDS.
+  static when(video, event, start) {
+    return new Promise((resolve, reject) => {
+      const listened = {};
+      const settle = (error) => {
+        clearTimeout(listened.timer);
+        video.removeEventListener(event, listened.done);
+        video.removeEventListener("error", listened.failed);
+
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      };
+      listened.done = () => settle(null);
+      listened.failed = () => settle(new Error(video.error && video.error.message ? video.error.message : "This browser cannot play it."));
+      listened.timer = setTimeout(() => settle(new Error("It took too long to load.")), VIDEO_WAIT_SECONDS * 1000);
+      video.addEventListener(event, listened.done);
+      video.addEventListener("error", listened.failed);
+      start();
+    });
+  }
+
+  // What this browser draws of the video imported as the file whose
+  // original is kept as `name`, placed as `placed`, as makeBundle takes it,
+  // of the content type `type`: {thumb, width, height, duration}, its
+  // thumbnail as base64, a frame FRAME_SECONDS in, or halfway through a
+  // shorter video, drawn on a canvas as a photo's is, and its width and
+  // height and duration as this browser plays it; or null if this browser
+  // cannot play it. It is played from a bundle of its own, placed with its
+  // content type, as Safari plays a video only of a type it knows, and the
+  // node gives an import none; once the node gives its start, waiting out
+  // the 503s it answers while it fetches what it lacks, which a browser
+  // takes as a video it cannot play.
+  static async drawn(name, placed, type) {
+    if (!Clip.canPlay(type)) {
+      return null;
+    }
+
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+
+    try {
+      const url = entryUrl(await makeBundle({ encrypted: true, add: { [name]: placed } }), name);
+      await new StoredFile(url).at(0, 1);
+      await Clip.when(video, "loadedmetadata", () => { video.src = url; });
+      const { videoWidth: width, videoHeight: height, duration } = video;
+
+      if (!width || !height) {
+        return null;
+      }
+
+      const length = Number.isFinite(duration) && duration > 0 ? duration : 0;
+      await Clip.when(video, "seeked", () => { video.currentTime = Math.min(FRAME_SECONDS, length / 2); });
+      const thumb = await new Picture(video, width, height).jpeg(THUMB_SIZE, [THUMB_QUALITY]);
+      return { thumb, width, height, duration: length ? Number(length.toFixed(3)) : undefined };
+    } catch (error) {
+      console.warn(`A frame of “${name}” could not be drawn: ${error.message}`);
+      return null;
+    } finally {
+      video.removeAttribute("src");
+      video.load();
     }
   }
 }
@@ -3135,10 +5539,11 @@ function folderOf(file) {
 }
 
 // The name a photo's original is kept under in its folder, of the file named
-// `name` it was imported from: that name, unless it is that of the thumbnail
-// or of what is known of the photo, so that neither takes its place.
+// `name` it was imported from: that name, unless it is that of the
+// thumbnail, the view, or what is known of the photo, so that none takes its
+// place.
 function originalName(name) {
-  return [THUMB_FILE, INFO_FILE].includes(name) ? `original ${name}` : name;
+  return [THUMB_FILE, VIEW_FILE, INFO_FILE].includes(name) ? `original ${name}` : name;
 }
 
 // The name an import gives the first album it makes, made at `date`:
@@ -3182,10 +5587,14 @@ function endItem(item, label, text, isError) {
   item.append(dismiss);
 }
 
-// A photo being imported, as the activity list shows it while it is: its
-// file imported, encrypted, from the moment it is made.
+// A photo, or a video, being imported, as the activity list shows it while
+// it is: its file imported, encrypted, from the moment it is made, unless
+// `file` is the file bundle it was imported as already; and a Live Photo's
+// motion with it. Once it is described, `apart` is the file bundle of its
+// motion, if that is too long to be one, to be added as a video of its own,
+// and `motionError` why its motion was not imported, if it was not.
 class ImportingPhoto {
-  constructor(photo) {
+  constructor(photo, file = null) {
     this.photo = photo;
     this.item = make("li");
     this.label = make("span", `Importing “${photo.name}”`);
@@ -3194,9 +5603,13 @@ class ImportingPhoto {
     this.bar.setAttribute("aria-label", `How much of “${photo.name}” is imported`);
     this.item.append(this.label, this.bar, this.note);
     byId("activity").append(this.item);
-    this.file = importFile(photo.path, (record) => this.progress(record));
+    this.file = file ? Promise.resolve(file) : importFile(photo.path, (record) => this.progress(record));
+    this.motion = photo.motion && !file ? importFile(photo.motion.path, () => undefined) : null;
+    this.apart = null;
+    this.motionError = null;
     // Followed whether or not it is waited for, as an import stopped is not.
     this.file.catch(() => undefined);
+    this.motion?.catch(() => undefined);
   }
 
   progress(record) {
@@ -3221,38 +5634,154 @@ class ImportingPhoto {
       return null;
     }
 
+    if (photo.kind() === VIDEO_KIND) {
+      return this.videoDescribed(file, folder);
+    }
+
+    // A photo not every browser shows as it is is given a view, made of it,
+    // or of the largest JPEG preview it holds, from which its thumbnail is
+    // made; with neither, it is added with neither.
+    const viewed = !photo.everyBrowserShows();
     this.bar.removeAttribute("value");
-    this.note.textContent = "Making its thumbnail…";
+    this.note.textContent = `Reading its details, and making its ${viewed ? "view" : "thumbnail"}…`;
     const type = photo.contentType();
-    const drawn = await thumbnail(file, type);
-    const taken = photo.taken();
-    const thumb = drawn && drawn.base64 ? THUMB_FILE : undefined;
+    const reading = PhotoDetails.read(file, photo.name);
+    const [drawn, { details }, motion] = await Promise.all([
+      Drawn.of(file, type, viewed ? reading : null), reading, this.motionOf(folder),
+    ]);
+    // When it was taken, and its width and height as seen, are the photo's
+    // own: what its Exif says, and what the browser draws, or, as a preview
+    // may be smaller than the photo, what its details say of one drawn from
+    // its preview.
+    const taken = details.taken ? { taken: details.taken, from: TAKEN_FROM_EXIF } : photo.taken();
+    const sized = drawn && !(drawn.preview && details.width && details.height) ? drawn : details;
+    const thumb = drawn && drawn.thumb ? THUMB_FILE : undefined;
+    const view = drawn && drawn.view ? VIEW_FILE : undefined;
     const original = originalName(photo.name);
     const info = {
       name: photo.name,
       kind: PHOTO_KIND,
       taken: taken ? taken.taken : undefined,
       taken_from: taken ? taken.from : undefined,
-      width: drawn ? drawn.width : undefined,
-      height: drawn ? drawn.height : undefined,
+      offset: details.offset,
+      width: sized.width,
+      height: sized.height,
+      orientation: details.orientation,
       size: photo.size(),
+      camera: details.camera,
+      exposure: details.exposure,
+      location: details.location,
       original,
+      view,
+      motion: motion.kept,
       thumb,
     };
     const add = {
       [`${PHOTOS}/${folder}/${original}`]: type ? { file, content_type: type } : { file },
       [`${PHOTOS}/${folder}/${INFO_FILE}`]: { text: jsonText(INFO_KEYS, info) },
+      ...motion.add,
     };
 
+    if (view) {
+      add[`${PHOTOS}/${folder}/${VIEW_FILE}`] = { base64: drawn.view };
+    }
+
     if (thumb) {
-      add[`${PHOTOS}/${folder}/${THUMB_FILE}`] = { base64: drawn.base64 };
+      add[`${PHOTOS}/${folder}/${THUMB_FILE}`] = { base64: drawn.thumb };
     }
 
     return {
       folder,
       add,
       month: taken ? taken.taken.slice(0, 7) : UNDATED,
-      entry: defined({ taken: info.taken, kind: PHOTO_KIND, width: info.width, height: info.height, thumb, name: photo.name, source: photo.path }),
+      entry: defined({
+        taken: info.taken, kind: PHOTO_KIND, width: info.width, height: info.height, thumb, motion: info.motion, name: photo.name,
+        source: photo.path,
+      }),
+    };
+  }
+
+  // What the motion of a Live Photo, imported with it, adds to the photo's
+  // `folder`, {kept, add}: if it is MOTION_SECONDS long at most, the name its
+  // original is kept under, and what adds it, placed with its content type.
+  // One longer, or whose length is not known, is kept as `apart`, to be
+  // added as a video of its own, and one not imported as `motionError`.
+  async motionOf(folder) {
+    const motion = this.photo.motion;
+    let file;
+
+    if (!this.motion) {
+      return {};
+    }
+
+    try {
+      file = await this.motion;
+    } catch (error) {
+      this.motionError = error;
+      return {};
+    }
+
+    const { duration } = await VideoDetails.read(file, motion.name);
+
+    if (!(duration <= MOTION_SECONDS)) {
+      this.apart = file;
+      return {};
+    }
+
+    const name = originalName(motion.name);
+    const type = motion.contentType();
+    return { kept: name, add: { [`${PHOTOS}/${folder}/${name}`]: type ? { file, content_type: type } : { file } } };
+  }
+
+  // What the video imported as the file bundle `file` adds to an album, in
+  // `folder`, as described gives it: its original, its info.json, and its
+  // thumbnail, a frame of it, if this browser plays it. When and where it was
+  // taken, its duration, and its width and height are as it says, or else,
+  // but where, as this browser plays it, or as for a photo, by its name or
+  // the time it was modified.
+  async videoDescribed(file, folder) {
+    const photo = this.photo;
+    const type = photo.contentType();
+    const original = originalName(photo.name);
+    const placed = type ? { file, content_type: type } : { file };
+    this.bar.removeAttribute("value");
+    this.note.textContent = "Reading its details, and making its thumbnail…";
+    const [details, drawn] = await Promise.all([VideoDetails.read(file, photo.name), Clip.drawn(original, placed, type)]);
+    const played = drawn || {};
+    const taken = details.taken ? { taken: details.taken, from: TAKEN_FROM_METADATA } : photo.taken();
+    const sized = details.width && details.height ? details : played;
+    const thumb = played.thumb ? THUMB_FILE : undefined;
+    const info = {
+      name: photo.name,
+      kind: VIDEO_KIND,
+      taken: taken ? taken.taken : undefined,
+      taken_from: taken ? taken.from : undefined,
+      offset: details.offset,
+      width: sized.width,
+      height: sized.height,
+      size: photo.size(),
+      duration_seconds: details.duration || played.duration,
+      location: details.location,
+      original,
+      thumb,
+    };
+    const add = {
+      [`${PHOTOS}/${folder}/${original}`]: placed,
+      [`${PHOTOS}/${folder}/${INFO_FILE}`]: { text: jsonText(INFO_KEYS, info) },
+    };
+
+    if (thumb) {
+      add[`${PHOTOS}/${folder}/${THUMB_FILE}`] = { base64: played.thumb };
+    }
+
+    return {
+      folder,
+      add,
+      month: taken ? taken.taken.slice(0, 7) : UNDATED,
+      entry: defined({
+        taken: info.taken, kind: VIDEO_KIND, width: info.width, height: info.height, duration_seconds: info.duration_seconds,
+        thumb, name: photo.name, source: photo.path,
+      }),
     };
   }
 
@@ -3308,7 +5837,7 @@ class Importing {
 
   told() {
     const into = this.names.length ? ` into ${this.albumsText()}` : "";
-    this.label.textContent = `Importing ${plural(this.photos.length, "photo", "photos")}${into}`;
+    this.label.textContent = `Importing ${countedText(this.photos)}${into}`;
     this.bar.value = this.imported;
     this.note.textContent = `${this.imported.toLocaleString()} imported, ${this.added.toLocaleString()} added`;
   }
@@ -3367,8 +5896,11 @@ class Importing {
 
   // Waits for `importing`, an ImportingPhoto, to be imported, and puts it in
   // the batch to add, unless the album holds it already. An album holding as
-  // many photos as it may has the batch added, and a new album is made.
+  // many photos as it may has the batch added, and a new album is made. A
+  // video beside a photo of its name, too long to be its motion, is then
+  // prepared as a video of its own.
   async prepare(importing) {
+    const photo = importing.photo;
     let described;
 
     try {
@@ -3380,24 +5912,32 @@ class Importing {
       }
 
       this.failed += 1;
-      importing.ended(`“${importing.photo.name}” was not imported: ${error.message}`, true);
+      importing.ended(`“${photo.name}” was not imported: ${error.message}`, true);
       return;
     }
 
-    importing.done();
+    if (importing.motionError) {
+      this.failed += 1;
+      importing.ended(`“${photo.motion.name}”, beside “${photo.name}”, was not imported: ${importing.motionError.message}`, true);
+    } else {
+      importing.done();
+    }
 
     if (!described) {
       this.twice += 1;
-      return;
+    } else {
+      if (this.index.size + this.batch.length >= MOST_PHOTOS) {
+        await this.addBatch();
+        await this.newAlbum();
+      }
+
+      this.batch.push(described);
+      this.batched.add(described.folder);
     }
 
-    if (this.index.size + this.batch.length >= MOST_PHOTOS) {
-      await this.addBatch();
-      await this.newAlbum();
+    if (importing.apart) {
+      await this.prepare(new ImportingPhoto(photo.motion, importing.apart));
     }
-
-    this.batch.push(described);
-    this.batched.add(described.folder);
   }
 
   // Makes the album the photos are added to next, and lists it at once: the

@@ -34,7 +34,7 @@ and can be built alongside any phase.
 
 ## 2. What It Adds
 
-Twelve steps, the first four built:
+Twelve steps, the first seven built:
 
 - **Importing a file encrypted.** The node's one change. Step 160.
 - **The photos application, and its albums.** Step 161.
@@ -643,10 +643,9 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 164 — Reading a Photo's Details
+## Step 164 — Reading a Photo's Details ✅
 
-**Issue:** to be made (§4), from #477. **Depends on:** Step 162; Music App
-Step 150.
+**Issue:** #672, from #477. **Depends on:** Step 162; Music App Step 150.
 
 Settled with the user:
 
@@ -705,11 +704,93 @@ a PNG and a WebP with Exif; a location south and west; a date with an
 offset and with none; a photo with no Exif, dated from its name; and Show
 on Google Maps opening the place.
 
+Built, in one change set, the page alone, on Step 163's. The page's own
+reading of Exif was checked in Node, against a stand-in for the node that
+serves ranges, with photos made by Pillow, as `exiftool` was not at hand,
+and kept out of the repository: JPEGs with every field read, their Exif
+big-endian and little-endian; a PNG and a WebP with Exif, south and west,
+below sea level, and with no offset; a JPEG whose Exif comes after an ICC
+profile of 100 kB, read on from its first 64 KiB in a second range; a JPEG
+whose date is all zeros; a WebP of each simple format, holding none, and
+read no further than its first range; a PNG whose eXIf comes after its
+image data, not read; a file that is no photo; a JPEG cut short, of which
+what was read was kept; and a node that sends a whole file rather than the
+range asked for, warned of, and nothing read. Then, on a node of its own,
+in headless Chromium: a folder of nine of them imported, each `info.json`
+keeping what its Exif gives as this step names it, `taken_from` `exif`, and
+the index the same `taken`; a JPEG turned by its orientation, 6, kept with
+it as 800 by 1,200, as seen; the grid showing each on the day its Exif
+gives, the one whose date is all zeros dated from its name, and one with no
+Exif from its time modified; Details, by its icon and by `I`, showing each
+photo's, following the photo moved to, and hidden again, with the photo
+laid out again in the room left; the wheel over Details scrolling it, and
+nothing under it; Show on Google Maps opening the place in a new tab, with
+no opener and no referrer, its request answered in the browser so that
+nothing reached Google; `?` listing `I`; and a phone's width, with Details
+below the photo. Safari is yet to be checked.
+
+Calls made while building it, not yet reviewed:
+
+- **Details is a panel beside the photo**, not a dialog, so that it stays
+  open as the person moves from photo to photo; below it at a phone's
+  width, at most 45% of the height. The photo is laid out again in the room
+  left. A row the photo gives nothing for is left out.
+- **Each date with its own offset and fraction of a second.**
+  `DateTimeDigitized` is read with `OffsetTimeDigitized` and
+  `SubSecTimeDigitized`, and `DateTime` with `OffsetTime` and `SubSecTime`,
+  as Exif pairs them, where the step names only those of
+  `DateTimeOriginal`. A date that is no real date, as one of zeros, is
+  passed over for the next.
+- **The fraction of a second is kept in `taken`**, as written, as
+  `2024-05-14T09:30:12.345`, which sorts and groups as `taken` did.
+- **The width and height** are as the browser draws the photo, as in Step
+  162, since an edited photo's Exif may give the size it had before. Its
+  `PixelXDimension` and `PixelYDimension`, turned by its orientation, are
+  kept only for a photo the browser cannot draw (Step 165).
+- **Numbers kept:** the aperture, shutter, and focal length to six
+  significant digits, the shutter in seconds and the focal length in
+  millimetres; the latitude and longitude to seven decimal places, about a
+  centimetre; and the altitude to a tenth of a metre.
+- **A location** needs its latitude and its longitude, each with its
+  reference, and one at 0, 0 is taken as none, as a camera with no place to
+  give may write it. An altitude's reference that is odd is below, as Exif
+  3.0 adds 2 and 3 to the 0 and 1 of before.
+- **Read leniently:** an `UNDEFINED` value as a `BYTE`, as Pillow writes
+  `GPSAltitudeRef`; a directory named by the `IFD` type as by `LONG`; Exif
+  3.0's UTF-8 type; `ASCII` as UTF-8, which many cameras write; and
+  `Exif\0\0` before the TIFF header of a PNG's or a WebP's Exif, as some
+  programs write it.
+- **A PNG's eXIf is looked for before its image data**, `IDAT`, where the
+  PNG specification places it and browsers read it. A WebP is read on only
+  if `VP8X` says it holds Exif, so that one with none costs one range.
+- **Read as the thumbnail is drawn**, the original read whole for the
+  thumbnail and by ranges for its details at once. The music page's
+  `StoredFile` replaces the page's own reading of a file whole.
+- **As a camera shows it:** the shutter as a fraction of a second, if it is
+  a quarter of one or less, as `1/125 s`, and the aperture as `ƒ/1.8`. The
+  make is left out where the model names it already, as `Canon EOS R5`.
+- **The time shown is as the camera wrote it**, with its offset after it,
+  as `UTC+09:00`, and where it came from below. A place is shown to five
+  decimal places of a degree, about a metre, and its altitude to the metre,
+  above or below sea level.
+
+**Open questions:**
+
+- **Photos imported before this step** keep the details they have, so that
+  Details shows no camera, exposure, or place for them. Whether a photo
+  shown with none read should have its Exif read then, as Step 165 makes a
+  view of a photo later.
+- **The original is read twice** as it is imported: whole for its
+  thumbnail, and by ranges for its details. Whether the details of a JPEG,
+  a PNG, or a WebP should be read from the whole file read for the
+  thumbnail instead, which would save the ranges, though Step 165's raw
+  files, which no browser draws, are still read by ranges.
+
 ---
 
-## Step 165 — Photos No Browser Shows as They Are
+## Step 165 — Photos No Browser Shows as They Are ✅
 
-**Issue:** to be made (§4), from #477. **Depends on:** Steps 162, 164.
+**Issue:** #673, from #477. **Depends on:** Steps 162, 164.
 
 Settled with the user:
 
@@ -768,12 +849,120 @@ NEF, an ARW, a CR3, and a RAF, each viewed from its preview; a raw file
 with no preview, downloaded; a TIFF; and the details of an HEIC and of a
 raw file.
 
+Built, in one change set, the page alone, on Step 164's. No raw file of a
+camera was at hand, so files of each format were made for the purpose, and
+kept out of the repository: a real HEIC and AVIF, by `pillow-heif` and
+Pillow, with Exif; an HEIC's meta box laid out as an iPhone's is, its
+primary item a grid, with `ispe` 4,032 by 3,024, `irot` of three quarter
+turns, and an Exif item in `mdat`; a TIFF with Exif, and one compressed as
+JPEG with shared tables; and, built on TIFF, a DNG with a thumbnail, a raw
+image of a lossless JPEG of CFA, and a preview in its `SubIFDs`, one of
+them with 3 MB before its directories; a CR2 with a preview as its first
+directory's strip, a thumbnail, and a lossless raw image; a big-endian NEF
+with a preview by `JPEGInterchangeFormat` in a `SubIFD`; an RW2, of
+Panasonic's header, with a `JpgFromRaw` holding Exif of its own; and an ORF,
+of Olympus's; a CR3 with `CMT1`, `CMT2`, and `CMT4` in its moov box's
+Canon box, and a `PRVW` box; and a RAF whose header names a JPEG with
+Exif. The page's own reading was checked in Node, by ranges of each from a
+stand-in for the node: the details of each, and its largest preview,
+passing over thumbnails, lossless raw images, and a TIFF's JPEG of shared
+tables, and whether the preview turns itself. Then, on a node of its own,
+in headless Chromium: a folder of thirteen imported, with each photo
+listed, and none counted as not imported; each raw file given a view of
+its largest preview, and a thumbnail from it, upright, turned by the raw
+file's orientation, 6 and 8, or by the preview's own, 3 and 6, and not
+twice; a preview of 5,000 by 3,750 of noise given a view of 3,840 by 2,880,
+its quality lowered until it fit, 1.97 MB; each HEIC, the TIFF, and a file
+that only looks like a raw file kept with no view or thumbnail, its tile a
+picture struck through with its extension, and the HEICs' widths and
+heights from `ispe` and `irot`; a raw file shown in the viewer from its
+view, and Download linking to its original, under its name; an HEIC
+shown as its placeholder, large, with Download, saving its original by a
+tap on it and by `D`, the second HEIC not read whole once the first could
+not be drawn; and an HEIC given its view later,
+in a page that answered its original with a JPEG, standing in for a
+browser that draws it, its tile made again with its thumbnail and focus
+kept on it, and then shown from its view in Chromium; and a phone's width.
+Safari is yet to be checked, and with it a real iPhone's HEIC, and real raw
+files of each make.
+
+Calls made while building it, not yet reviewed:
+
+- **Every photo is listed**, of whatever kind, and counted as not imported
+  no longer.
+- **The content type of an HEIC, an HEIF, and a TIFF** is the one each is
+  registered as; a raw file is placed with the type the node gives, as no
+  type for each is shared by every system.
+- **The browser draws an original read whole**, as the thumbnail of Step
+  162 is drawn, and the preview is cut from it, rather than read again by
+  a range. Where the preview is, and the details, are read by ranges.
+- **The JPEGs an image file directory names**: by `JPEGInterchangeFormat`;
+  by Panasonic's `JpgFromRaw`; or as its one strip, compressed as a JPEG,
+  old or new, holding its own tables, and of no raw image's own data, CFA or
+  LinearRaw. The directories walked are each of the chain from the first,
+  and those its `SubIFDs` name, 32 at most, and 8 JPEGs at most are looked
+  at. A JPEG is taken only if its frame is one every browser draws,
+  baseline, extended, or progressive, at 8 bits a sample, so that a
+  lossless raw image is not; of those, the largest by its pixels, then its
+  bytes.
+- **Turned as the raw file says**, by its orientation, unless the preview's
+  own Exif gives one, which the browser turns it by, as a RAF's and an
+  RW2's do.
+- **The headers of Panasonic's, Leica's, and Olympus's raw files** are read
+  as TIFF, as each is built on it with a number of its own.
+- **A CR3's details** are read from its `CMT1`, `CMT2`, and `CMT4` boxes,
+  each a TIFF structure, as its image's, its photo's, and its GPS
+  directory; and a RAF's from the Exif of the JPEG it holds.
+- **An HEIF's orientation** is its `irot`'s, kept as the Exif orientation
+  of as many quarter turns, and its Exif's orientation is not used, as
+  browsers turn it by `irot`. `imir` is not read.
+- **Its width and height** are as the browser draws the original, as in
+  Step 164; of a photo drawn from a preview, as its details give them, and
+  else as the preview is drawn, as a preview may be smaller than the photo.
+- **The quality is lowered by a tenth**, from 0.9 to 0.3, and its base64 is
+  to fit in 3 MiB, as `editInParts` makes its requests. A view that does not
+  fit at 0.3 is not kept, and the photo has no view.
+- **The view is added with its batch**, as a thumbnail is, so that a batch
+  of 50 photos may hold as many as 150 MB of views in the page until it is
+  added.
+- **A photo with no view** is one whose original's name is not of a kind
+  every browser shows. The viewer reads it whole, and the browser draws it
+  if it can; once a browser cannot draw a photo of one extension, it does
+  not read another whole while the page is open, and the photos before and
+  after one with no view are not loaded ahead.
+- **A view made later** is kept, with its thumbnail, as a change of the
+  album, its `info.json` naming both, with the width and height as drawn,
+  and its entry in the index its thumbnail, written again by its month. The
+  photo is made the album's cover if it has none. Nothing is changed if the
+  photo has a view already, or the album holds it no longer, or the albums
+  are not changed, as signed in with a fallback password.
+- **A tile with no thumbnail is made again** once the index gives one, and
+  a tile with one is kept as before.
+- **`view.jpg` is kept from an original's name**, as `thumb.jpg` and
+  `info.json` are, an original of that name kept as `original view.jpg`.
+
+**Open questions:**
+
+- **Raw files whose previews are in their maker notes**, as an ORF's and a
+  PEF's large ones are, are viewed from the thumbnail their directories
+  name, which may be 160 by 120, or are not viewed at all. Whether maker
+  notes should be read too, and whether a preview so small should be taken.
+- **CRW, MRW, X3F, and IIQ** are not built on TIFF, and are viewed only if
+  the browser draws them.
+- **An import of raw files in Chrome** reads each whole for the browser to
+  try to draw it, which it cannot. Whether a browser that cannot draw one of
+  an extension should be asked once for each import.
+- **The memory a batch of views holds**, as above. Whether views should be
+  made bundles of their own as they are made, and copied into the album,
+  or batches made smaller when they hold views.
+- **The view of the Step 169 slideshow**, which is not built yet.
+
 ---
 
-## Step 166 — Videos
+## Step 166 — Videos ✅
 
-**Issue:** to be made (§4), from #477. **Depends on:** Steps 162, 164; TV
-App Step 144.
+**Issue:** #674, from #477. **Depends on:** Steps 162, 164; TV App Step
+144.
 
 Settled with the user:
 
@@ -819,6 +1008,129 @@ and from a phone, kept out of the repository: a MOV of H.264, a MOV of
 HEVC, which Safari plays and Chrome may not, an MP4, and an AVI; dates and
 locations read; one that fails as it loads; and a Live Photo, imported as
 one photo, beside a video of the same name that is too long to be one.
+
+Built, in one change set, the page alone, on Step 165's. No phone was at
+hand, so videos were made by `ffmpeg` for the purpose, and kept out of the
+repository: a MOV of H.264 whose metadata was laid out as an iPhone's is, a
+QuickTime meta box in its moov box, with no version or flags, an mdta
+handler, and the keys of its make, its creation date, `-0700`, and its
+place, with an altitude; one as `ffmpeg` writes the same keys, in a meta
+box of its user data, with an offset of `+0900`; an MP4 with `mvhd`'s
+creation time and a `©xyz` added to its user data as Android writes it, in
+degrees and minutes; one with no creation time; one with its moov box first;
+an MP4 whose track's matrix turns it a quarter; a MOV of HEVC; an AVI; and
+a WebM. The page's own reading was checked in Node, by ranges of each from a
+stand-in for the node: each date, offset, place, duration, width, and
+height, the turned one as 360 by 640, in one range or two, the moov box at
+the end of a file read with its `mdat` passed over; and nothing of the AVI
+or the WebM. So were a movie built of version 1 boxes, behind an `mdat` of a
+64-bit size, its sound track before its video track, and its video track
+turned three quarters; dates with and without an offset, `Z`, a fraction of
+a second, and none that is real; and places in decimal degrees, in degrees
+and minutes, and in degrees, minutes, and seconds, south and west, below sea
+level, at 0, 0, and out of range. Then, on a node of its own, in headless
+Chromium: a folder of a photo with a MOV of 2.5 seconds of its name, a photo
+with a MOV of 10 seconds of its name, a PNG, and six videos imported, the
+folder and the list before importing naming each photo with its video,
+`IMG_0001.JPG, with IMG_0001.MOV`, and saying `3 photos and 6 videos`; the
+short MOV kept in its photo's folder, placed as `video/quicktime`,
+`info.json` and the index naming it as `motion`, and not counted; the long
+one added as a video of its own; each video's `info.json` and entry in the
+index keeping `kind` `video`, `duration_seconds`, its width and height, and
+when and where it was taken, from its metadata, from its name, or from the
+time modified, each original placed with its type; a thumbnail drawn of a
+frame of each Chromium plays, the turned one upright, and none of the HEVC
+MOV or the AVI, which Chromium cannot play, their tiles a picture struck
+through, with its extension; each video's tile showing how long it plays;
+each played in the viewer with Chromium's own controls, fitting the window,
+with its thumbnail as its poster, a click on it heard by its controls and
+not zooming it, and Zoom hidden; the HEVC MOV and the AVI shown as their
+placeholders, with Download; Details giving a video's length, and when and
+where it was taken, `As the video itself says`; the viewer closed with no
+video left in it; a Live Photo whose video was gone by the time it was
+imported, added without it, and the activity list saying why; and at a
+phone's width, with a touch screen, a tap on a video not zooming it, a swipe
+on it not moving to the next, and a swipe beside it moving to the next.
+Safari is yet to be checked, and with it a real iPhone's videos and Live
+Photos, and a real Android phone's.
+
+Calls made while building it, not yet reviewed:
+
+- **A QuickTime file is asked of as an MP4 too.** Chrome says `""` for
+  `video/quicktime`, though it plays a MOV of H.264, so a MOV the browser
+  says it cannot play as `video/quicktime` is played if it says it may as
+  `video/mp4`. A MOV of HEVC that Chrome cannot play then fails as it loads,
+  and has the placeholder. A video of a type the page does not know is
+  tried.
+- **The content types of videos**: `video/quicktime`, `video/mp4`,
+  `video/x-m4v`, `video/3gpp`, `video/3gpp2`, `video/x-msvideo`,
+  `video/x-matroska`, `video/webm`, `video/mp2t` for `.mts` and `.m2ts`, and
+  `video/x-ms-wmv`, and the node's for any other.
+- **Its frame is drawn from a bundle of its own**, encrypted, placing its
+  original with its content type, as an import is served as
+  `application/octet-stream`, which Safari may not play. The bundle is left
+  to be evicted. A video the browser says it cannot play is not asked for.
+- **The node gives a video's start first.** Before a video is played, in
+  the viewer or to draw its frame, its first bytes are read, waiting out the
+  503s the node answers while it fetches it, as a browser takes a 503 for a
+  video it cannot play.
+- **Halfway through a shorter video**: a frame one second in, or halfway
+  through a video shorter than two seconds. A video is waited for 30
+  seconds, at most, as its frame is drawn.
+- **Its width and height** are its video track's `tkhd`'s, turned as its
+  matrix turns it, as a browser shows it, the track being the first whose
+  `mdia` handler is `vide`; and else as the browser plays it. Its duration
+  is `mvhd`'s, to a thousandth of a second, and else the browser's.
+- **The metadata read**: an mdta meta box in the moov box, as an iPhone
+  writes it, or in its user data, as `ffmpeg` writes it, and an iTunes one;
+  and a `©xyz` in its user data, as Android writes it, or in an iTunes meta
+  box. ISO 6709 is read in decimal degrees, or in degrees and minutes, or in
+  degrees, minutes, and seconds, by how many digits each is written with.
+  A place at 0, 0 is taken as none, as for a photo.
+- **`taken_from` `metadata`**, shown as `As the video itself says`. A
+  QuickTime date keeps its fraction of a second in `taken`, as a photo's
+  does, and its offset as `offset`, `Z` as `+00:00`. An `mvhd` time before
+  1970 is taken as none, as one of 0, or one counted from 1970, as some
+  write it, gives.
+- **Read only of a QuickTime or an MP4 file**, known by its first box,
+  which may be any an old QuickTime file starts with. Of an AVI, an MKV, a
+  WebM, an MPEG-TS, or a WMV, nothing is read but what the browser plays.
+- **A Live Photo is paired as its folder is listed**, a video given to the
+  first photo of its name, ignoring the case of either, and listed as one,
+  `IMG_0001.JPG, with IMG_0001.MOV`, in the folder and before importing. Its
+  video is imported with it, and its length read by ranges; one longer than
+  five seconds, or whose length is not known, is then added as a video of its
+  own, after the photo. A photo chosen with its box brings its video with
+  it.
+- **A motion not imported** is said beside its photo in the activity list,
+  and counted as not imported, and the photo is added without it.
+- **The index names a photo's `motion`** too, so that Step 171 can mark its
+  tile without reading every `info.json`; and a video's `duration_seconds`,
+  which its tile shows.
+- **A video's tile** shows a play mark and its duration in its lower right
+  corner, as `0:04`, or `1:02:03`, at least a second, and its name for a
+  screen reader says it is a video, and how long. A video with no thumbnail
+  has the placeholder of Step 165, with its duration.
+- **In the viewer**, a video is not played until the person plays it, and
+  is not loaded ahead, nor zoomed; Zoom is hidden for it. What is pressed on
+  it is its controls', and a swipe beside it moves to the next. It is stopped
+  as the viewer moves on, or closes.
+- **Counted as photos.** An album's count, and an import's, says photos, as
+  the plan does of photos and videos both, though the list before importing,
+  and the import as it runs, say how many of each.
+
+**Open questions:**
+
+- **A video imported in a browser that cannot play it** has no thumbnail,
+  as a MOV of HEVC imported in Chrome. Whether it should be given one later,
+  shown in a browser that can play it, as Step 165 gives a photo its view.
+- **The bundle made to draw a frame.** Whether the node should serve an
+  import with the content type of its name, as it serves a file in a bundle
+  with none, so that the bundle made for each video imported is not needed.
+- **A Live Photo's video** is known only by its name and length, not by the
+  identifier an iPhone gives both photo and video. Whether that should be
+  read too, so that a photo is not paired with a short video of its name
+  that is not its motion.
 
 ---
 
@@ -1035,9 +1347,9 @@ and this table then given their numbers.
 | #669 | Importing a file encrypted | 160 |
 | #670 | Step 162 — Importing Photos into a New Album | 162 |
 | #671 | Step 163 — Viewing a Photo | 163 |
-| *to be made* | Step 164 — Reading a Photo's Details | 164 |
-| *to be made* | Step 165 — Photos No Browser Shows as They Are | 165 |
-| *to be made* | Step 166 — Videos | 166 |
+| #672 | Step 164 — Reading a Photo's Details | 164 |
+| #673 | Step 165 — Photos No Browser Shows as They Are | 165 |
+| #674 | Step 166 — Videos | 166 |
 | *to be made* | Step 167 — Copying, Moving, and Removing Photos | 167 |
 | *to be made* | Step 168 — Editing a Photo's Details | 168 |
 | *to be made* | Step 169 — Slideshow | 169 |
