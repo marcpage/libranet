@@ -7,6 +7,11 @@ resolution-markers = [
     "python_full_version < '3.12'",
 ]
 
+[manifest]
+members = [
+    "libranet",
+]
+
 [[package]]
 name = "annotated-types"
 version = "0.8.0"
@@ -529,7 +534,7 @@ wheels = [
 [[package]]
 name = "libranet"
 version = "0.7.0"
-source = { editable = "." }
+source = { editable = "python" }
 dependencies = [
     { name = "cryptography" },
     { name = "http-message-signatures" },

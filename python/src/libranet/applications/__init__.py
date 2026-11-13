@@ -1,0 +1,31 @@
+"""The applications shipped with the node (Phase 1 Step 37).
+
+Each is a directory in the repository's top-level ``applications/``, which
+every implementation shares, built into a directory bundle: into the
+wheel's content archives when a wheel is built, or in memory as each
+process starts when the node is run from its source. The root application,
+served at ``/`` until an administrator changes it, is ``root/``, the
+administration page, served at ``/config`` until one changes that, is
+``config/``, the movie library, served at ``/movie``, is ``movie/``, TV,
+served at ``/tv``, is ``tv/``, music, served at ``/music``, is
+``music/``, photos, served at ``/photos``, is ``photos/``, the user
+directory, served at ``/directory``, is ``directory/``, mail, served at
+``/mail``, is ``mail/``, the nodes known, served at ``/nodes``, is
+``nodes/``, and Karma, served at ``/karma``, is ``karma/``.
+"""
+
+from libranet.applications.packaged import (
+    BUILT_ARCHIVE,
+    BUILT_BUNDLES,
+    PACKAGED_APPLICATIONS,
+    SHIPPED_APPLICATIONS,
+    PackagedApplications,
+)
+
+__all__ = [
+    "BUILT_ARCHIVE",
+    "BUILT_BUNDLES",
+    "PACKAGED_APPLICATIONS",
+    "SHIPPED_APPLICATIONS",
+    "PackagedApplications",
+]

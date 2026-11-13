@@ -2657,10 +2657,11 @@ connects to (§7.3, and Trust Network §4.5).
 
 A node says what it is called, where it is, and anything else its operator
 gives it, as a person says what they say of themselves
-([App Developer Guide §6.14](../operations/App%20Developer%20Guide.md#614-what-people-say-of-themselves)).
-It keeps this, its metadata, in versions, each signed with its own key
-(§11.5) and made a drop at `node:{id}`, its id after `node:`. It is public.
-Each version's `contents` is the JSON text of an object:
+([App Developer Guide
+§6.14](../../python/docs/App%20Developer%20Guide.md#614-what-people-say-of-themselves)).
+It keeps this, its metadata, in versions, each signed with its own key (§11.5)
+and made a drop at `node:{id}`, its id after `node:`. It is public. Each
+version's `contents` is the JSON text of an object:
 
 ```json
 {"fields": {"name": "Attic", "description": "The family's node", "city": "Springfield"},
@@ -2747,7 +2748,8 @@ is (§2.3).
 A page that shows a node shows it by its `name`, and by its id when its
 newest version gives none, with the rest of what it says on hover, and on a
 tap
-([App Developer Guide §6.18](../operations/App%20Developer%20Guide.md#618-what-nodes-say-of-themselves)).
+([App Developer Guide
+§6.18](../../python/docs/App%20Developer%20Guide.md#618-what-nodes-say-of-themselves)).
 
 ---
 

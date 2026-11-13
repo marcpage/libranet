@@ -127,20 +127,20 @@ UTC, ending `Z`. There are two precisions:
   [§3](BundleSpecification.md#3-raw-directory-bundle) show `created` and
   `modified` in this form.
 - Implementation:
-  [`json_format.py`](../../src/libranet/json_format.py) (`MOMENT_FORMAT`,
+  [`json_format.py`](../../python/src/libranet/json_format.py) (`MOMENT_FORMAT`,
   `%Y-%m-%dT%H:%M:%SZ`),
-  [`stats/records.py`](../../src/libranet/stats/records.py) (the peer list),
-  [`identity/people.py`](../../src/libranet/identity/people.py) (identity
-  blocks),
-  [`bundle/building.py`](../../src/libranet/bundle/building.py)
+  [`stats/records.py`](../../python/src/libranet/stats/records.py) (the peer
+  list), [`identity/people.py`](../../python/src/libranet/identity/people.py)
+  (identity blocks),
+  [`bundle/building.py`](../../python/src/libranet/bundle/building.py)
   (`modified_time`, file and directory times), and
-  [`backup/writing.py`](../../src/libranet/backup/writing.py) (reading a time
-  back on restore, and warning when one is not RFC 3339).
-- Plans: [Phase 2](../implementation/Phase%202.md) Step 43 (a bundle time that
-  is not RFC 3339 is logged as a warning);
-  [Phase 5](../implementation/Phase%205.md) Step 107.
-- Tests: [`test_backup_writing.py`](../../tests/test_backup_writing.py),
-  [`test_json_format.py`](../../tests/test_json_format.py).
+  [`backup/writing.py`](../../python/src/libranet/backup/writing.py) (reading a
+  time back on restore, and warning when one is not RFC 3339).
+- Plans: [Phase 2](../../python/docs/plans/Phase%202.md) Step 43 (a bundle time
+  that is not RFC 3339 is logged as a warning);
+  [Phase 5](../../python/docs/plans/Phase%205.md) Step 107.
+- Tests: [`test_backup_writing.py`](../../python/tests/test_backup_writing.py),
+  [`test_json_format.py`](../../python/tests/test_json_format.py).
 
 ### 2.3 RFC 3986: URI Generic Syntax
 
@@ -156,11 +156,11 @@ URLs throughout are otherwise split and joined with Python's `urllib.parse`.
 **Where.**
 
 - Implementation:
-  [`protocol/localhost_resolution.py`](../../src/libranet/protocol/localhost_resolution.py)
+  [`protocol/localhost_resolution.py`](../../python/src/libranet/protocol/localhost_resolution.py)
   (`_url_host`).
-- Plans: [Phase 9](../implementation/Phase%209.md) Step 57 (IPv6).
+- Plans: [Phase 9](../../python/docs/plans/Phase%209.md) Step 57 (IPv6).
 - Tests:
-  [`test_protocol_localhost_resolution.py`](../../tests/test_protocol_localhost_resolution.py).
+  [`test_protocol_localhost_resolution.py`](../../python/tests/test_protocol_localhost_resolution.py).
 
 ### 2.4 RFC 4648: Base64
 
@@ -186,15 +186,16 @@ A session token is base64url
   (extended attributes) and
   [§5](BundleSpecification.md#5-signed-bundle) (`signature`).
 - Implementation:
-  [`bundle/shapes.py`](../../src/libranet/bundle/shapes.py) (`_is_base64`),
-  [`bundle/xattrs.py`](../../src/libranet/bundle/xattrs.py),
-  [`bundle/signing.py`](../../src/libranet/bundle/signing.py),
-  [`identity/content_digest.py`](../../src/libranet/identity/content_digest.py),
-  [`webserver/config_auth.py`](../../src/libranet/webserver/config_auth.py),
-  and [`webserver/sessions.py`](../../src/libranet/webserver/sessions.py)
+  [`bundle/shapes.py`](../../python/src/libranet/bundle/shapes.py)
+  (`_is_base64`),
+  [`bundle/xattrs.py`](../../python/src/libranet/bundle/xattrs.py),
+  [`bundle/signing.py`](../../python/src/libranet/bundle/signing.py),
+  [`identity/content_digest.py`](../../python/src/libranet/identity/content_digest.py),
+  [`webserver/config_auth.py`](../../python/src/libranet/webserver/config_auth.py),
+  and [`webserver/sessions.py`](../../python/src/libranet/webserver/sessions.py)
   (session tokens).
-- Plans: [Phase 2](../implementation/Phase%202.md) Step 21 (base64 values are
-  never lower-cased).
+- Plans: [Phase 2](../../python/docs/plans/Phase%202.md) Step 21 (base64 values
+  are never lower-cased).
 
 ### 2.5 RFC 5652: PKCS #7 Padding
 
@@ -214,9 +215,10 @@ used.
   [Bundle Specification §6.1](BundleSpecification.md#61-encoding-write-path),
   which §7 (per-entry encryption) and §8 (encryption for a person) follow.
 - Implementation:
-  [`bundle/encryption.py`](../../src/libranet/bundle/encryption.py)
+  [`bundle/encryption.py`](../../python/src/libranet/bundle/encryption.py)
   (`Aes256Cbc`, with `cryptography`'s `PKCS7`).
-- Tests: [`test_bundle_encryption.py`](../../tests/test_bundle_encryption.py).
+- Tests:
+  [`test_bundle_encryption.py`](../../python/tests/test_bundle_encryption.py).
 
 ### 2.6 RFC 6265: Cookies
 
@@ -240,9 +242,10 @@ still an Internet-Draft (§4).
 - Specifications: [HTTP API §11.4](HttpApi.md#114-signing-in) (sessions) and
   [§18](HttpApi.md#18-http-headers) (`Cookie`, `Set-Cookie`).
 - Implementation:
-  [`webserver/sessions.py`](../../src/libranet/webserver/sessions.py) and
-  [`webserver/identity_handlers.py`](../../src/libranet/webserver/identity_handlers.py).
-- Tests: [`test_webserver_sessions.py`](../../tests/test_webserver_sessions.py).
+  [`webserver/sessions.py`](../../python/src/libranet/webserver/sessions.py) and
+  [`webserver/identity_handlers.py`](../../python/src/libranet/webserver/identity_handlers.py).
+- Tests:
+  [`test_webserver_sessions.py`](../../python/tests/test_webserver_sessions.py).
 
 ### 2.7 RFC 6762: Multicast DNS
 
@@ -262,7 +265,7 @@ hosts `/config` answers to, such as `macbook.local`.
   [High-Level Design §4.9.1](HighLevelDesign.md#491-optional-local-discovery-mdnsdns-sd)
   and [HTTP API §2.3.3](HttpApi.md#233-requests-from-other-sites) (`.local`
   host names).
-- Plans: [Phase 11](../implementation/Phase%2011.md) Step 16, with the
+- Plans: [Phase 11](../../python/docs/plans/Phase%2011.md) Step 16, with the
   `zeroconf` library. It is not built yet.
 
 ### 2.8 RFC 6763: DNS-Based Service Discovery
@@ -281,8 +284,8 @@ and any service with no usable `id`.
 
 - Specifications:
   [High-Level Design §4.9.1](HighLevelDesign.md#491-optional-local-discovery-mdnsdns-sd).
-- Plans: [Phase 11](../implementation/Phase%2011.md) Step 16. It is not built
-  yet.
+- Plans: [Phase 11](../../python/docs/plans/Phase%2011.md) Step 16. It is not
+  built yet.
 
 ### 2.9 RFC 7468: PEM Textual Encodings
 
@@ -308,14 +311,14 @@ and any service with no usable `id`.
   [Bundle Specification §5](BundleSpecification.md#5-signed-bundle) (the
   `signer` of a signed bundle).
 - Implementation:
-  [`identity/keys.py`](../../src/libranet/identity/keys.py),
-  [`identity/people.py`](../../src/libranet/identity/people.py),
-  [`bundle/signing.py`](../../src/libranet/bundle/signing.py)
+  [`identity/keys.py`](../../python/src/libranet/identity/keys.py),
+  [`identity/people.py`](../../python/src/libranet/identity/people.py),
+  [`bundle/signing.py`](../../python/src/libranet/bundle/signing.py)
   (`load_pem_public_key`), and
-  [`local_network.py`](../../src/libranet/local_network.py) (the keys it makes
-  for a test network).
-- Tests: [`test_identity_keys.py`](../../tests/test_identity_keys.py),
-  [`test_identity_people.py`](../../tests/test_identity_people.py).
+  [`local_network.py`](../../python/src/libranet/local_network.py) (the keys it
+  makes for a test network).
+- Tests: [`test_identity_keys.py`](../../python/tests/test_identity_keys.py),
+  [`test_identity_people.py`](../../python/tests/test_identity_people.py).
 
 ### 2.10 RFC 7518: JSON Web Algorithms
 
@@ -331,7 +334,7 @@ hyphens. Libranet uses no JOSE format; the scheme itself is RFC 8017's (§2.13).
 
 - Specifications:
   [Bundle Specification §8.2](BundleSpecification.md#82-carrying-the-key).
-- Plans: [Phase 4](../implementation/Phase%204.md) Step 78.
+- Plans: [Phase 4](../../python/docs/plans/Phase%204.md) Step 78.
 
 ### 2.11 RFC 7617: Basic HTTP Authentication
 
@@ -359,13 +362,13 @@ hyphens. Libranet uses no JOSE format; the scheme itself is RFC 8017's (§2.13).
   [§2.3.1](HttpApi.md#231-credential-capture), and
   [§13.1](HttpApi.md#131-password-protected-apps).
 - Implementation:
-  [`webserver/config_auth.py`](../../src/libranet/webserver/config_auth.py)
+  [`webserver/config_auth.py`](../../python/src/libranet/webserver/config_auth.py)
   and
-  [`webserver/config_credential.py`](../../src/libranet/webserver/config_credential.py).
-- Plans: [Phase 1](../implementation/Phase%201.md) Step 18.
+  [`webserver/config_credential.py`](../../python/src/libranet/webserver/config_credential.py).
+- Plans: [Phase 1](../../python/docs/plans/Phase%201.md) Step 18.
 - Tests:
-  [`test_webserver_config_auth.py`](../../tests/test_webserver_config_auth.py),
-  [`test_webserver_config_credential.py`](../../tests/test_webserver_config_credential.py).
+  [`test_webserver_config_auth.py`](../../python/tests/test_webserver_config_auth.py),
+  [`test_webserver_config_credential.py`](../../python/tests/test_webserver_config_credential.py).
 
 ### 2.12 RFC 7807: Problem Details (Obsolete)
 
@@ -409,16 +412,16 @@ two ways:
   [Bundle Specification §5](BundleSpecification.md#5-signed-bundle) (signing)
   and [§8.2](BundleSpecification.md#82-carrying-the-key) (encryption).
 - Implementation:
-  [`identity/people.py`](../../src/libranet/identity/people.py)
+  [`identity/people.py`](../../python/src/libranet/identity/people.py)
   (`_PUBLIC_EXPONENT`),
-  [`bundle/signing.py`](../../src/libranet/bundle/signing.py) (RSASSA-PSS),
-  and
-  [`bundle/person_encryption.py`](../../src/libranet/bundle/person_encryption.py)
+  [`bundle/signing.py`](../../python/src/libranet/bundle/signing.py)
+  (RSASSA-PSS), and
+  [`bundle/person_encryption.py`](../../python/src/libranet/bundle/person_encryption.py)
   (RSAES-OAEP).
-- Plans: [Phase 4](../implementation/Phase%204.md) Steps 78 to 80.
-- Tests: [`test_bundle_signing.py`](../../tests/test_bundle_signing.py),
-  [`test_bundle_person_encryption.py`](../../tests/test_bundle_person_encryption.py),
-  [`test_identity_people.py`](../../tests/test_identity_people.py).
+- Plans: [Phase 4](../../python/docs/plans/Phase%204.md) Steps 78 to 80.
+- Tests: [`test_bundle_signing.py`](../../python/tests/test_bundle_signing.py),
+  [`test_bundle_person_encryption.py`](../../python/tests/test_bundle_person_encryption.py),
+  [`test_identity_people.py`](../../python/tests/test_identity_people.py).
 
 ### 2.14 RFC 8032: Ed25519
 
@@ -443,14 +446,14 @@ since anyone can forge signatures that verify under one.
   [HTTP API §11.2](HttpApi.md#112-keys-and-signature-parameters);
   [Bundle Specification §5](BundleSpecification.md#5-signed-bundle).
 - Implementation:
-  [`identity/keys.py`](../../src/libranet/identity/keys.py),
-  [`identity/node_identity.py`](../../src/libranet/identity/node_identity.py),
-  [`identity/signatures.py`](../../src/libranet/identity/signatures.py), and
-  [`bundle/signing.py`](../../src/libranet/bundle/signing.py).
-- Plans: [Phase 5](../implementation/Phase%205.md) Step 103.
-- Tests: [`test_identity_keys.py`](../../tests/test_identity_keys.py),
-  [`test_identity_signatures.py`](../../tests/test_identity_signatures.py),
-  [`test_bundle_signing.py`](../../tests/test_bundle_signing.py).
+  [`identity/keys.py`](../../python/src/libranet/identity/keys.py),
+  [`identity/node_identity.py`](../../python/src/libranet/identity/node_identity.py),
+  [`identity/signatures.py`](../../python/src/libranet/identity/signatures.py),
+  and [`bundle/signing.py`](../../python/src/libranet/bundle/signing.py).
+- Plans: [Phase 5](../../python/docs/plans/Phase%205.md) Step 103.
+- Tests: [`test_identity_keys.py`](../../python/tests/test_identity_keys.py),
+  [`test_identity_signatures.py`](../../python/tests/test_identity_signatures.py),
+  [`test_bundle_signing.py`](../../python/tests/test_bundle_signing.py).
 
 ### 2.15 RFC 8174: Uppercase Key Words
 
@@ -480,9 +483,9 @@ profiles: a username is also trimmed and case-folded, by rules of its own.
   (usernames);
   [Bundle Specification §6.2.1](BundleSpecification.md#621-argon2id).
 - Implementation:
-  [`bundle/protection.py`](../../src/libranet/bundle/protection.py)
+  [`bundle/protection.py`](../../python/src/libranet/bundle/protection.py)
   (`NORMAL_FORM`).
-- Plans: [Phase 4](../implementation/Phase%204.md) Step 90.
+- Plans: [Phase 4](../../python/docs/plans/Phase%204.md) Step 90.
 
 ### 2.17 RFC 9106: Argon2
 
@@ -506,10 +509,11 @@ costlier setting would be a new token.
   [§2.3.2](HttpApi.md#232-credential-storage), which names Argon2 among the
   derivations a stored `/config` credential may use.
 - Implementation:
-  [`bundle/protection.py`](../../src/libranet/bundle/protection.py), with
+  [`bundle/protection.py`](../../python/src/libranet/bundle/protection.py), with
   `cryptography`'s `Argon2id`.
-- Plans: [Phase 4](../implementation/Phase%204.md) Step 90.
-- Tests: [`test_bundle_protection.py`](../../tests/test_bundle_protection.py).
+- Plans: [Phase 4](../../python/docs/plans/Phase%204.md) Step 90.
+- Tests:
+  [`test_bundle_protection.py`](../../python/tests/test_bundle_protection.py).
 
 ### 2.18 RFC 9110: HTTP Semantics
 
@@ -547,27 +551,27 @@ applications use HTTP's semantics throughout: the methods `GET`, `HEAD`, `PUT`,
   [§18](HttpApi.md#18-http-headers), and
   [§19](HttpApi.md#19-range-requests).
 - Implementation:
-  [`protocol/http_syntax.py`](../../src/libranet/protocol/http_syntax.py)
+  [`protocol/http_syntax.py`](../../python/src/libranet/protocol/http_syntax.py)
   (`DEFAULT_PORTS`, `TOKEN`, `BODILESS_STATUSES`),
-  [`connections/request_encoding.py`](../../src/libranet/connections/request_encoding.py),
-  [`connections/response_parser.py`](../../src/libranet/connections/response_parser.py)
+  [`connections/request_encoding.py`](../../python/src/libranet/connections/request_encoding.py),
+  [`connections/response_parser.py`](../../python/src/libranet/connections/response_parser.py)
   (`Retry-After`, repeated fields),
-  [`webserver/http_types.py`](../../src/libranet/webserver/http_types.py)
+  [`webserver/http_types.py`](../../python/src/libranet/webserver/http_types.py)
   (`READ_METHODS`),
-  [`webserver/byte_range.py`](../../src/libranet/webserver/byte_range.py),
-  [`webserver/bundle_paths.py`](../../src/libranet/webserver/bundle_paths.py)
+  [`webserver/byte_range.py`](../../python/src/libranet/webserver/byte_range.py),
+  [`webserver/bundle_paths.py`](../../python/src/libranet/webserver/bundle_paths.py)
   (`Range`, `If-Range`, `ETag`), and
-  [`webserver/app_store.py`](../../src/libranet/webserver/app_store.py)
+  [`webserver/app_store.py`](../../python/src/libranet/webserver/app_store.py)
   (`IfMatch`).
-- Plans: [Phase 2](../implementation/Phase%202.md) Step 44 (`TOKEN` keeps the
-  RFC's name for the rule); [Phase 3](../implementation/Phase%203.md) Steps 66
-  (range requests) and 70 (an application's store).
+- Plans: [Phase 2](../../python/docs/plans/Phase%202.md) Step 44 (`TOKEN` keeps
+  the RFC's name for the rule); [Phase 3](../../python/docs/plans/Phase%203.md)
+  Steps 66 (range requests) and 70 (an application's store).
 - Tests:
-  [`test_protocol_http_syntax.py`](../../tests/test_protocol_http_syntax.py),
-  [`test_webserver_byte_range.py`](../../tests/test_webserver_byte_range.py),
-  [`test_webserver_app_store.py`](../../tests/test_webserver_app_store.py),
-  [`test_connections_response_parser.py`](../../tests/test_connections_response_parser.py),
-  [`test_connections_request_encoding.py`](../../tests/test_connections_request_encoding.py).
+  [`test_protocol_http_syntax.py`](../../python/tests/test_protocol_http_syntax.py),
+  [`test_webserver_byte_range.py`](../../python/tests/test_webserver_byte_range.py),
+  [`test_webserver_app_store.py`](../../python/tests/test_webserver_app_store.py),
+  [`test_connections_response_parser.py`](../../python/tests/test_connections_response_parser.py),
+  [`test_connections_request_encoding.py`](../../python/tests/test_connections_request_encoding.py).
 
 ### 2.19 RFC 9111: HTTP Caching
 
@@ -588,11 +592,12 @@ store, which may change, carries `no-cache`
 
 - Specifications: [HTTP API §20](HttpApi.md#20-caching).
 - Implementation:
-  [`webserver/http_types.py`](../../src/libranet/webserver/http_types.py)
+  [`webserver/http_types.py`](../../python/src/libranet/webserver/http_types.py)
   (`NOT_STORED`, `CACHED_FOR_GOOD`) and
-  [`webserver/app_store.py`](../../src/libranet/webserver/app_store.py).
-- Tests: [`test_webserver_server.py`](../../tests/test_webserver_server.py)
-  and [`test_webserver_app_store.py`](../../tests/test_webserver_app_store.py).
+  [`webserver/app_store.py`](../../python/src/libranet/webserver/app_store.py).
+- Tests:
+  [`test_webserver_server.py`](../../python/tests/test_webserver_server.py) and
+  [`test_webserver_app_store.py`](../../python/tests/test_webserver_app_store.py).
 
 ### 2.20 RFC 9112: HTTP/1.1
 
@@ -620,18 +625,18 @@ first is refused with `411 Length Required`.
 - Specifications: [HTTP API §18](HttpApi.md#18-http-headers) (pipelining) and
   [§21](HttpApi.md#21-request-limits) (`411`).
 - Implementation:
-  [`protocol/http_syntax.py`](../../src/libranet/protocol/http_syntax.py)
+  [`protocol/http_syntax.py`](../../python/src/libranet/protocol/http_syntax.py)
   (`CRLF`),
-  [`connections/request_encoding.py`](../../src/libranet/connections/request_encoding.py),
-  [`connections/response_parser.py`](../../src/libranet/connections/response_parser.py),
-  [`connections/peer_connection.py`](../../src/libranet/connections/peer_connection.py),
-  and [`webserver/server.py`](../../src/libranet/webserver/server.py).
-- Plans: [Phase 1](../implementation/Phase%201.md) Step 10 (pipelined peer
+  [`connections/request_encoding.py`](../../python/src/libranet/connections/request_encoding.py),
+  [`connections/response_parser.py`](../../python/src/libranet/connections/response_parser.py),
+  [`connections/peer_connection.py`](../../python/src/libranet/connections/peer_connection.py),
+  and [`webserver/server.py`](../../python/src/libranet/webserver/server.py).
+- Plans: [Phase 1](../../python/docs/plans/Phase%201.md) Step 10 (pipelined peer
   connections).
 - Tests:
-  [`test_connections_response_parser.py`](../../tests/test_connections_response_parser.py),
-  [`test_connections_request_encoding.py`](../../tests/test_connections_request_encoding.py),
-  [`test_connections_peer_connection.py`](../../tests/test_connections_peer_connection.py).
+  [`test_connections_response_parser.py`](../../python/tests/test_connections_response_parser.py),
+  [`test_connections_request_encoding.py`](../../python/tests/test_connections_request_encoding.py),
+  [`test_connections_peer_connection.py`](../../python/tests/test_connections_peer_connection.py).
 
 ### 2.21 RFC 9421: HTTP Message Signatures
 
@@ -677,28 +682,28 @@ Signature: libranet=:<base64-signature>:
   (freshness) and its
   [Open Cross-References](HandshakeProtocol.md#open-cross-references).
 - Implementation:
-  [`identity/signatures.py`](../../src/libranet/identity/signatures.py)
+  [`identity/signatures.py`](../../python/src/libranet/identity/signatures.py)
   (signing and verifying, adapting the `http-message-signatures` library),
-  [`identity/node_identity.py`](../../src/libranet/identity/node_identity.py)
+  [`identity/node_identity.py`](../../python/src/libranet/identity/node_identity.py)
   (`key_id`),
-  [`identity/authentication.py`](../../src/libranet/identity/authentication.py),
-  [`config/models.py`](../../src/libranet/config/models.py)
+  [`identity/authentication.py`](../../python/src/libranet/identity/authentication.py),
+  [`config/models.py`](../../python/src/libranet/config/models.py)
   (`IdentityConfig`: `signature_max_age_seconds`,
   `signature_clock_skew_seconds`, `provisional_trust_attempts`),
-  [`connections/request_encoding.py`](../../src/libranet/connections/request_encoding.py)
+  [`connections/request_encoding.py`](../../python/src/libranet/connections/request_encoding.py)
   (every outgoing request is signed),
-  [`webserver/signature_guard.py`](../../src/libranet/webserver/signature_guard.py)
+  [`webserver/signature_guard.py`](../../python/src/libranet/webserver/signature_guard.py)
   (every incoming signed request is checked), and
-  [`webserver/server.py`](../../src/libranet/webserver/server.py) (responses
-  are signed).
-- Plans: [Phase 1](../implementation/Phase%201.md) Step 6 (Node Identity and
-  RFC 9421 Signing) and its open items;
-  [Phase 2](../implementation/Phase%202.md) Step 21;
-  [Phase 6](../implementation/Phase%206.md) Step 56.
+  [`webserver/server.py`](../../python/src/libranet/webserver/server.py)
+  (responses are signed).
+- Plans: [Phase 1](../../python/docs/plans/Phase%201.md) Step 6 (Node Identity
+  and RFC 9421 Signing) and its open items;
+  [Phase 2](../../python/docs/plans/Phase%202.md) Step 21;
+  [Phase 6](../../python/docs/plans/Phase%206.md) Step 56.
 - Guides: the [README](../../README.md).
 - Tests:
-  [`test_identity_signatures.py`](../../tests/test_identity_signatures.py),
-  [`test_webserver_signature_guard.py`](../../tests/test_webserver_signature_guard.py).
+  [`test_identity_signatures.py`](../../python/tests/test_identity_signatures.py),
+  [`test_webserver_signature_guard.py`](../../python/tests/test_webserver_signature_guard.py).
 
 ### 2.22 RFC 9457: Problem Details for HTTP APIs
 
@@ -724,14 +729,15 @@ read `type`, never `title` or `detail`.
 - Specifications: [HTTP API §17](HttpApi.md#17-error-responses), with the
   problem types in [§17.2](HttpApi.md#172-problem-types) and the RFC listed in
   [§17.6](HttpApi.md#176-reference).
-- Implementation: [`problems.py`](../../src/libranet/problems.py) (`Problem`
-  and every problem type) and
-  [`webserver/http_types.py`](../../src/libranet/webserver/http_types.py).
-- Plans: [Phase 1](../implementation/Phase%201.md) Step 5 (the shared Problem
-  Details helper).
+- Implementation: [`problems.py`](../../python/src/libranet/problems.py)
+  (`Problem` and every problem type) and
+  [`webserver/http_types.py`](../../python/src/libranet/webserver/http_types.py).
+- Plans: [Phase 1](../../python/docs/plans/Phase%201.md) Step 5 (the shared
+  Problem Details helper).
 - Guides:
-  [App Developer Guide §5.4](../operations/App%20Developer%20Guide.md#54-errors).
-- Tests: [`test_problems.py`](../../tests/test_problems.py).
+  [App Developer Guide
+  §5.4](../../python/docs/App%20Developer%20Guide.md#54-errors).
+- Tests: [`test_problems.py`](../../python/tests/test_problems.py).
 
 ### 2.23 RFC 9530: Digest Fields
 
@@ -755,10 +761,11 @@ bytes received.
   [HTTP API §11.1](HttpApi.md#111-node-http-headers) and
   [§11.2](HttpApi.md#112-keys-and-signature-parameters).
 - Implementation:
-  [`identity/content_digest.py`](../../src/libranet/identity/content_digest.py)
-  and [`identity/signatures.py`](../../src/libranet/identity/signatures.py).
+  [`identity/content_digest.py`](../../python/src/libranet/identity/content_digest.py)
+  and
+  [`identity/signatures.py`](../../python/src/libranet/identity/signatures.py).
 - Tests:
-  [`test_identity_content_digest.py`](../../tests/test_identity_content_digest.py),
+  [`test_identity_content_digest.py`](../../python/tests/test_identity_content_digest.py),
   which checks against the example of RFC 9530 Appendix B.1.
 
 ## 3. RFCs Used Without Being Cited
@@ -781,10 +788,10 @@ are never looked up.
 **Where.**
 
 - Implementation:
-  [`connections/reverse_dns.py`](../../src/libranet/connections/reverse_dns.py).
-- Plans: [Phase 2](../implementation/Phase%202.md) Step 23.
+  [`connections/reverse_dns.py`](../../python/src/libranet/connections/reverse_dns.py).
+- Plans: [Phase 2](../../python/docs/plans/Phase%202.md) Step 23.
 - Tests:
-  [`test_connections_reverse_dns.py`](../../tests/test_connections_reverse_dns.py).
+  [`test_connections_reverse_dns.py`](../../python/tests/test_connections_reverse_dns.py).
 
 ### 3.2 RFC 1122: Requirements for Internet Hosts
 
@@ -800,10 +807,10 @@ reach `/config`, and data statistics count it apart from a peer's.
 - Specifications: [HTTP API §2.3](HttpApi.md#23-local-configuration-interface)
   and [§2.4](HttpApi.md#24-local-clients).
 - Implementation:
-  [`protocol/client_origin.py`](../../src/libranet/protocol/client_origin.py),
+  [`protocol/client_origin.py`](../../python/src/libranet/protocol/client_origin.py),
   through Python's `ipaddress`.
 - Tests:
-  [`test_protocol_client_origin.py`](../../tests/test_protocol_client_origin.py).
+  [`test_protocol_client_origin.py`](../../python/tests/test_protocol_client_origin.py).
 
 ### 3.3 RFC 1950 and RFC 1951: zlib and DEFLATE
 
@@ -843,16 +850,17 @@ cap, so a small stream cannot expand without bound.
   [§8.1](BundleSpecification.md#81-encoding-write-path);
   [Karma Ledger §5.4](KarmaLedger.md#54-full).
 - Implementation:
-  [`cas/compression.py`](../../src/libranet/cas/compression.py),
-  [`cas/verification.py`](../../src/libranet/cas/verification.py),
-  [`protocol/lists.py`](../../src/libranet/protocol/lists.py),
-  [`bundle/encryption.py`](../../src/libranet/bundle/encryption.py)
+  [`cas/compression.py`](../../python/src/libranet/cas/compression.py),
+  [`cas/verification.py`](../../python/src/libranet/cas/verification.py),
+  [`protocol/lists.py`](../../python/src/libranet/protocol/lists.py),
+  [`bundle/encryption.py`](../../python/src/libranet/bundle/encryption.py)
   (`ENCRYPTION_COMPRESSION_LEVEL`),
-  [`bundle/person_encryption.py`](../../src/libranet/bundle/person_encryption.py),
+  [`bundle/person_encryption.py`](../../python/src/libranet/bundle/person_encryption.py),
   and the
-  [directory](../../src/libranet/applications/directory/index.html) and
-  [mail](../../src/libranet/applications/mail/index.html) applications.
-- Tests: [`test_cas_compression.py`](../../tests/test_cas_compression.py).
+  [directory](../../applications/directory/index.html) and
+  [mail](../../applications/mail/index.html) applications.
+- Tests:
+  [`test_cas_compression.py`](../../python/tests/test_cas_compression.py).
 
 ### 3.4 RFC 2046: Media Types
 
@@ -866,7 +874,7 @@ cap, so a small stream cannot expand without bound.
 
 - Specifications: [HTTP API §15](HttpApi.md#15-content-types).
 - Implementation:
-  [`protocol/http_syntax.py`](../../src/libranet/protocol/http_syntax.py)
+  [`protocol/http_syntax.py`](../../python/src/libranet/protocol/http_syntax.py)
   (`OCTET_STREAM`).
 
 ### 3.5 RFC 3629: UTF-8
@@ -889,10 +897,10 @@ cap, so a small stream cannot expand without bound.
   [Bundle Specification §2.4](BundleSpecification.md#24-extended-attributes),
   [§5](BundleSpecification.md#5-signed-bundle), and
   [§6.2.1](BundleSpecification.md#621-argon2id).
-- Implementation: [`json_format.py`](../../src/libranet/json_format.py),
-  [`webserver/config_auth.py`](../../src/libranet/webserver/config_auth.py),
-  [`bundle/protection.py`](../../src/libranet/bundle/protection.py), and
-  [`bundle/signing.py`](../../src/libranet/bundle/signing.py).
+- Implementation: [`json_format.py`](../../python/src/libranet/json_format.py),
+  [`webserver/config_auth.py`](../../python/src/libranet/webserver/config_auth.py),
+  [`bundle/protection.py`](../../python/src/libranet/bundle/protection.py), and
+  [`bundle/signing.py`](../../python/src/libranet/bundle/signing.py).
 
 ### 3.6 RFC 4291: IPv6 Addressing Architecture
 
@@ -911,13 +919,13 @@ use it.
 
 - Specifications: [HTTP API §2.3](HttpApi.md#23-local-configuration-interface).
 - Implementation:
-  [`protocol/client_origin.py`](../../src/libranet/protocol/client_origin.py)
+  [`protocol/client_origin.py`](../../python/src/libranet/protocol/client_origin.py)
   (`parsed_address`) and
-  [`protocol/localhost_resolution.py`](../../src/libranet/protocol/localhost_resolution.py).
-- Plans: [Phase 9](../implementation/Phase%209.md) Step 57.
+  [`protocol/localhost_resolution.py`](../../python/src/libranet/protocol/localhost_resolution.py).
+- Plans: [Phase 9](../../python/docs/plans/Phase%209.md) Step 57.
 - Tests:
-  [`test_protocol_client_origin.py`](../../tests/test_protocol_client_origin.py),
-  [`test_protocol_localhost_resolution.py`](../../tests/test_protocol_localhost_resolution.py).
+  [`test_protocol_client_origin.py`](../../python/tests/test_protocol_client_origin.py),
+  [`test_protocol_localhost_resolution.py`](../../python/tests/test_protocol_localhost_resolution.py).
 
 ### 3.7 RFC 5280: SubjectPublicKeyInfo
 
@@ -936,9 +944,9 @@ identifier, not by a chain.
   [§11.3](HttpApi.md#113-a-persons-identity);
   [Bundle Specification §5](BundleSpecification.md#5-signed-bundle).
 - Implementation:
-  [`identity/keys.py`](../../src/libranet/identity/keys.py)
+  [`identity/keys.py`](../../python/src/libranet/identity/keys.py)
   (`published_public_key`) and
-  [`identity/people.py`](../../src/libranet/identity/people.py).
+  [`identity/people.py`](../../python/src/libranet/identity/people.py).
 
 ### 3.8 RFC 5789: PATCH Method
 
@@ -952,13 +960,13 @@ does a `POST` or `PUT`.
 **Where.**
 
 - Guides:
-  [Operator Guide](../operations/Operator%20Guide.md) (the `/config/api`
+  [Operator Guide](../../python/docs/Operator%20Guide.md) (the `/config/api`
   endpoints).
 - Implementation:
-  [`webserver/config_handlers.py`](../../src/libranet/webserver/config_handlers.py),
-  [`webserver/server.py`](../../src/libranet/webserver/server.py)
+  [`webserver/config_handlers.py`](../../python/src/libranet/webserver/config_handlers.py),
+  [`webserver/server.py`](../../python/src/libranet/webserver/server.py)
   (`do_PATCH`), and
-  [`connections/request_encoding.py`](../../src/libranet/connections/request_encoding.py).
+  [`connections/request_encoding.py`](../../python/src/libranet/connections/request_encoding.py).
 
 ### 3.9 RFC 5958: PKCS #8 Private Keys
 
@@ -974,9 +982,9 @@ it, and a person's identity block holds their RSA key in it.
 
 - Specifications: [HTTP API §11.3](HttpApi.md#113-a-persons-identity).
 - Implementation:
-  [`identity/keys.py`](../../src/libranet/identity/keys.py),
-  [`identity/people.py`](../../src/libranet/identity/people.py), and
-  [`local_network.py`](../../src/libranet/local_network.py).
+  [`identity/keys.py`](../../python/src/libranet/identity/keys.py),
+  [`identity/people.py`](../../python/src/libranet/identity/people.py), and
+  [`local_network.py`](../../python/src/libranet/local_network.py).
 
 ### 3.10 RFC 6454: Web Origins
 
@@ -998,9 +1006,9 @@ checked the same way.
   [§2.3.3](HttpApi.md#233-requests-from-other-sites), and
   [§2.5](HttpApi.md#25-requests-from-the-nodes-own-pages).
 - Implementation:
-  [`webserver/site_checks.py`](../../src/libranet/webserver/site_checks.py)
+  [`webserver/site_checks.py`](../../python/src/libranet/webserver/site_checks.py)
   and
-  [`webserver/config_guard.py`](../../src/libranet/webserver/config_guard.py).
+  [`webserver/config_guard.py`](../../python/src/libranet/webserver/config_guard.py).
 
 ### 3.11 RFC 6585: Additional Status Codes
 
@@ -1024,10 +1032,10 @@ code says all of, as RFC 9457 has it (§2.22).
 
 **Where.**
 
-- Implementation: [`problems.py`](../../src/libranet/problems.py)
+- Implementation: [`problems.py`](../../python/src/libranet/problems.py)
   (`ABOUT_BLANK`) and
-  [`webserver/http_types.py`](../../src/libranet/webserver/http_types.py).
-- Tests: [`test_problems.py`](../../tests/test_problems.py).
+  [`webserver/http_types.py`](../../python/src/libranet/webserver/http_types.py).
+- Tests: [`test_problems.py`](../../python/tests/test_problems.py).
 
 ### 3.13 RFC 6761: Special-Use Domain Names
 
@@ -1053,9 +1061,10 @@ code says all of, as RFC 9457 has it (§2.22).
 - Specifications: [HTTP API §10.2](HttpApi.md#102-resolving-localhost) and
   [§2.3.3](HttpApi.md#233-requests-from-other-sites).
 - Implementation:
-  [`protocol/localhost_resolution.py`](../../src/libranet/protocol/localhost_resolution.py),
-  [`connections/reverse_dns.py`](../../src/libranet/connections/reverse_dns.py),
-  and [`identity/signatures.py`](../../src/libranet/identity/signatures.py)
+  [`protocol/localhost_resolution.py`](../../python/src/libranet/protocol/localhost_resolution.py),
+  [`connections/reverse_dns.py`](../../python/src/libranet/connections/reverse_dns.py),
+  and
+  [`identity/signatures.py`](../../python/src/libranet/identity/signatures.py)
   (`_PLACEHOLDER_ORIGIN`).
 
 ### 3.14 RFC 7239: Forwarded HTTP Extension
@@ -1086,11 +1095,11 @@ the reference node uses scrypt. Bundles use Argon2id instead (§2.17).
 
 - Specifications: [HTTP API §2.3.2](HttpApi.md#232-credential-storage).
 - Implementation:
-  [`webserver/config_credential.py`](../../src/libranet/webserver/config_credential.py).
-- Plans: [Phase 4](../implementation/Phase%204.md) Step 90 (why bundles do not
-  use scrypt).
+  [`webserver/config_credential.py`](../../python/src/libranet/webserver/config_credential.py).
+- Plans: [Phase 4](../../python/docs/plans/Phase%204.md) Step 90 (why bundles do
+  not use scrypt).
 - Tests:
-  [`test_webserver_config_credential.py`](../../tests/test_webserver_config_credential.py).
+  [`test_webserver_config_credential.py`](../../python/tests/test_webserver_config_credential.py).
 
 ### 3.16 RFC 8246: Immutable Responses
 
@@ -1105,7 +1114,7 @@ again even on reload (§2.19).
 
 - Specifications: [HTTP API §20](HttpApi.md#20-caching).
 - Implementation:
-  [`webserver/http_types.py`](../../src/libranet/webserver/http_types.py)
+  [`webserver/http_types.py`](../../python/src/libranet/webserver/http_types.py)
   (`IMMUTABLE_CACHE_CONTROL`).
 
 ### 3.17 RFC 8259: JSON
@@ -1128,13 +1137,13 @@ bundle's encoding is fixed apart from this, since its bytes decide its id.
 - Specifications: [HTTP API](HttpApi.md) throughout, and
   [§15](HttpApi.md#15-content-types); [Bundle Specification](BundleSpecification.md)
   throughout.
-- Implementation: [`json_format.py`](../../src/libranet/json_format.py)
+- Implementation: [`json_format.py`](../../python/src/libranet/json_format.py)
   (`compact_json`, `pretty_json`),
-  [`bundle/serialization.py`](../../src/libranet/bundle/serialization.py),
-  [`protocol/http_syntax.py`](../../src/libranet/protocol/http_syntax.py)
+  [`bundle/serialization.py`](../../python/src/libranet/bundle/serialization.py),
+  [`protocol/http_syntax.py`](../../python/src/libranet/protocol/http_syntax.py)
   (`JSON_CONTENT_TYPE`), and
-  [`webserver/http_types.py`](../../src/libranet/webserver/http_types.py).
-- Tests: [`test_json_format.py`](../../tests/test_json_format.py).
+  [`webserver/http_types.py`](../../python/src/libranet/webserver/http_types.py).
+- Tests: [`test_json_format.py`](../../python/tests/test_json_format.py).
 
 ### 3.18 RFC 8410: Ed25519 Key Encoding
 
@@ -1153,7 +1162,7 @@ defines ([§3](https://www.rfc-editor.org/rfc/rfc8410.html#section-3),
 - Specifications:
   [HTTP API §11.2](HttpApi.md#112-keys-and-signature-parameters).
 - Implementation:
-  [`identity/keys.py`](../../src/libranet/identity/keys.py).
+  [`identity/keys.py`](../../python/src/libranet/identity/keys.py).
 
 ### 3.19 RFC 8446: TLS
 
@@ -1187,8 +1196,9 @@ signature headers are built and read with it.
 **Where.**
 
 - Implementation:
-  [`identity/content_digest.py`](../../src/libranet/identity/content_digest.py)
-  and [`identity/signatures.py`](../../src/libranet/identity/signatures.py)
+  [`identity/content_digest.py`](../../python/src/libranet/identity/content_digest.py)
+  and
+  [`identity/signatures.py`](../../python/src/libranet/identity/signatures.py)
   (`http_message_signatures.http_sfv`).
 
 ## 4. Related Standards That Are Not RFCs
@@ -1197,11 +1207,11 @@ These are used beside the RFCs above, and are often mistaken for RFCs.
 
 | Standard | What Libranet uses it for | Where |
 | --- | --- | --- |
-| [FIPS 180-4](https://csrc.nist.gov/pubs/fips/180-4/upd1/final), Secure Hash Standard | SHA-256 for content identifiers, node and person ids, and `Content-Digest`; SHA-512 in `Content-Digest` and inside Ed25519 | [HighLevelDesign](HighLevelDesign.md), [`cas/algorithms.py`](../../src/libranet/cas/algorithms.py) |
-| [FIPS 197](https://csrc.nist.gov/pubs/fips/197/final), Advanced Encryption Standard, and [NIST SP 800-38A](https://csrc.nist.gov/pubs/sp/800/38/a/final), Block Cipher Modes | AES-256 in CBC mode for protected bundles, per-entry encryption, and blocks for a person | [Bundle Specification §6](BundleSpecification.md#6-password-protection), [`bundle/encryption.py`](../../src/libranet/bundle/encryption.py) |
-| [Unicode Standard Annex #15](https://www.unicode.org/reports/tr15/), Unicode Normalization Forms | Normalization Form C for usernames and passwords; usernames are also case-folded by Unicode default case folding | [HTTP API §11.3](HttpApi.md#113-a-persons-identity), [`bundle/protection.py`](../../src/libranet/bundle/protection.py) |
-| [HTTP Cookies Internet-Draft](https://datatracker.ietf.org/doc/draft-ietf-httpbis-rfc6265bis/), RFC 6265's successor | The `SameSite=Strict` cookie attribute | [`webserver/sessions.py`](../../src/libranet/webserver/sessions.py) |
-| [Fetch Metadata Request Headers](https://www.w3.org/TR/fetch-metadata/) (W3C) | `Sec-Fetch-Site`, `Sec-Fetch-Mode`, and `Sec-Fetch-Dest` checks on `/config` and on requests from the node's own pages | [HTTP API §2.3.3](HttpApi.md#233-requests-from-other-sites), [`webserver/site_checks.py`](../../src/libranet/webserver/site_checks.py) |
+| [FIPS 180-4](https://csrc.nist.gov/pubs/fips/180-4/upd1/final), Secure Hash Standard | SHA-256 for content identifiers, node and person ids, and `Content-Digest`; SHA-512 in `Content-Digest` and inside Ed25519 | [HighLevelDesign](HighLevelDesign.md), [`cas/algorithms.py`](../../python/src/libranet/cas/algorithms.py) |
+| [FIPS 197](https://csrc.nist.gov/pubs/fips/197/final), Advanced Encryption Standard, and [NIST SP 800-38A](https://csrc.nist.gov/pubs/sp/800/38/a/final), Block Cipher Modes | AES-256 in CBC mode for protected bundles, per-entry encryption, and blocks for a person | [Bundle Specification §6](BundleSpecification.md#6-password-protection), [`bundle/encryption.py`](../../python/src/libranet/bundle/encryption.py) |
+| [Unicode Standard Annex #15](https://www.unicode.org/reports/tr15/), Unicode Normalization Forms | Normalization Form C for usernames and passwords; usernames are also case-folded by Unicode default case folding | [HTTP API §11.3](HttpApi.md#113-a-persons-identity), [`bundle/protection.py`](../../python/src/libranet/bundle/protection.py) |
+| [HTTP Cookies Internet-Draft](https://datatracker.ietf.org/doc/draft-ietf-httpbis-rfc6265bis/), RFC 6265's successor | The `SameSite=Strict` cookie attribute | [`webserver/sessions.py`](../../python/src/libranet/webserver/sessions.py) |
+| [Fetch Metadata Request Headers](https://www.w3.org/TR/fetch-metadata/) (W3C) | `Sec-Fetch-Site`, `Sec-Fetch-Mode`, and `Sec-Fetch-Dest` checks on `/config` and on requests from the node's own pages | [HTTP API §2.3.3](HttpApi.md#233-requests-from-other-sites), [`webserver/site_checks.py`](../../python/src/libranet/webserver/site_checks.py) |
 | [Content Security Policy Level 3](https://www.w3.org/TR/CSP3/) (W3C) | The `Content-Security-Policy` of `/config`'s pages, with `frame-ancestors 'none'` | [HTTP API §2.3.3](HttpApi.md#233-requests-from-other-sites) |
-| [Fetch](https://fetch.spec.whatwg.org/) (WHATWG) | `X-Content-Type-Options: nosniff`; no CORS header is ever sent on `/config` | [HTTP API §2.3.3](HttpApi.md#233-requests-from-other-sites), [§12.1](HttpApi.md#121-reading-into-a-bundle), [§13.5](HttpApi.md#135-trusted-applications), [`webserver/http_types.py`](../../src/libranet/webserver/http_types.py) |
-| [Compression Streams](https://compression.spec.whatwg.org/) (WHATWG) | `DecompressionStream("deflate")` in the shipped applications | [directory](../../src/libranet/applications/directory/index.html) and [mail](../../src/libranet/applications/mail/index.html) applications |
+| [Fetch](https://fetch.spec.whatwg.org/) (WHATWG) | `X-Content-Type-Options: nosniff`; no CORS header is ever sent on `/config` | [HTTP API §2.3.3](HttpApi.md#233-requests-from-other-sites), [§12.1](HttpApi.md#121-reading-into-a-bundle), [§13.5](HttpApi.md#135-trusted-applications), [`webserver/http_types.py`](../../python/src/libranet/webserver/http_types.py) |
+| [Compression Streams](https://compression.spec.whatwg.org/) (WHATWG) | `DecompressionStream("deflate")` in the shipped applications | [directory](../../applications/directory/index.html) and [mail](../../applications/mail/index.html) applications |

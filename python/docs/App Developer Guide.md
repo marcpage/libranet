@@ -1,0 +1,1754 @@
+# Libranet App Developer Guide
+
+Version 0.2 • October 2026
+
+---
+
+## 1. Purpose
+
+This guide is for anyone writing an application for Libranet: a set of web
+pages that a node serves, and that uses what the network holds. It covers
+what an application is, how to build, register, change, and share one, what
+the node lets an application do, and the endpoints its pages can ask. The
+movie library every node ships is the worked example throughout.
+
+It describes the Python node in this repository. What every node must do is
+in the [HTTP API](../../docs/specs/HttpApi.md), chiefly §2.4, §2.5, §12, and
+§13, and the [Bundle Specification](../../docs/specs/BundleSpecification.md)
+describes bundles. Running a node, and its `/config` administration page, is in
+the [Operator Guide](Operator%20Guide.md).
+
+## 2. What an Application Is
+
+An application is a directory of files, the HTML, scripts, stylesheets, and
+images a website is made of, made into a directory bundle and registered on
+a node under a name. The node serves it at `/{name}/` on its main port, 8080
+unless the operator chose another, as an ordinary website. An application
+has no code on the server. Everything it does, its pages do in the browser,
+by asking the node's endpoints (§5).
+
+A bundle is content, so it never changes. A new version of an application
+is a new bundle, with a new id, which names the version before it. An
+operator registers one version under a name, and chooses when to register
+another.
+
+How a node serves an application's files:
+
+- **Paths.** `/{name}` is redirected to `/{name}/`, so that relative links
+  resolve within the application. Use relative links: an operator can
+  register the application under any name, or at the root, `/`, where it
+  also answers every path no other application claims.
+- **Default file.** A path ending in `/` serves that directory's
+  `index.html`. There is no other default, no generated listing of a
+  directory, and no `404` page of the application's own: a path the bundle
+  does not hold is a plain `404`.
+- **Content types** come from each file's name, by the node's own table, so
+  every node serves a file alike. Name scripts `.js` and stylesheets `.css`.
+  A name saying the file is compressed, such as `.tar.gz`, is served as
+  `application/octet-stream`.
+- **Symbolic links** in the bundle are answered `302`, to the path they lead
+  to.
+- **Large files** are served from their parts as they are read, with range
+  requests, so a `<video>` plays and seeks before the node holds the whole
+  of it.
+- **Files the node lacks** are fetched from peers as they are first asked
+  for. A request waits up to `network.app_wait_seconds`, 10 seconds unless
+  the operator set otherwise, and is then answered `503` with `Retry-After`.
+- **Trust.** An application is served in a sandbox until the operator trusts
+  it (§4).
+
+## 3. Making Your First Application
+
+### 3.1 Writing It
+
+Put the application in a directory of its own, with `index.html` at its
+top. A build reads every file in the directory, hidden ones too, so keep
+anything you do not mean to publish, such as a `.git` directory or editor
+backups, outside it. A build also writes its record, `{name}.bundle`, beside
+the directory, in its parent.
+
+A small application, `hello/index.html`:
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Hello</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="home" href="/" title="Home" aria-label="Home">&#x1F3E0;</a>
+  <h1>Hello from Libranet</h1>
+  <p id="status">Asking the node…</p>
+  <script src="hello.js"></script>
+</body>
+</html>
+```
+
+`hello/style.css`:
+
+```css
+body { font-family: sans-serif; margin: 2.5rem 2rem; }
+
+/* Home, the node's front page, in the upper right corner of every page. */
+.home {
+  position: absolute;
+  top: 0.75rem;
+  right: 1rem;
+  font-size: 1.5rem;
+  line-height: 1;
+  text-decoration: none;
+}
+```
+
+and `hello/hello.js`, which asks the node whether the browser is on the
+node's own machine (§6.2):
+
+```js
+"use strict";
+
+async function showClient() {
+  const status = document.getElementById("status");
+
+  if (self.origin === "null") {
+    status.textContent = "This application is not trusted, so it runs in a sandbox.";
+    return;
+  }
+
+  const response = await fetch("/data/client", { cache: "no-store" });
+  const client = await response.json();
+  status.textContent = client.local
+    ? "This browser is on the node's own machine."
+    : "This browser is on another machine.";
+}
+
+showClient();
+```
+
+**Give every page a way home.** Each page of an application links to the
+node's front page, the root application, with the house emoji, 🏠, in its
+upper right corner, as `hello/index.html` does. A person then goes from any
+page back to the applications the node serves without the browser's back
+button or editing the address.
+
+- **Link it as `/`**, the one link that is not relative: the front page is
+  at the root, whatever name the application is registered under.
+- **Place it in the page's corner**, not a column's: `0.75rem` from the top
+  and `1rem` from the right, positioned absolutely, so that it is in one
+  place on every page, whatever each one's layout.
+- **Keep the corner clear.** Nothing else lies under it: the shipped
+  applications start what they show `2.5rem` from the top.
+- **Label it `Home`**, for a screen reader and on hover, since an emoji
+  alone says little.
+
+An untrusted page follows the link as a trusted one does: its sandbox (§4)
+keeps it from reading what the node answers, not from going to another page.
+Every shipped application links home this way but the root application,
+which is home. `/config`, on a port of its own (§6.7), links to the front
+page on the main port, once the node has said which port that is.
+
+### 3.2 Building It
+
+Open the node's `/config` page (Operator Guide §4), and under **Builds**,
+give the directory's absolute path, such as `/home/alice/apps/hello`. Leave
+the password empty: a password-protected bundle cannot be served as an
+application yet. When the build is done, its row shows the bundle's id,
+which is also in `hello.bundle`, beside the directory.
+
+### 3.3 Registering It
+
+Click **Register…** on the build's row, or, under **Applications**, give a
+name and the bundle's id. The node serves it at once, at
+`http://127.0.0.1:8080/hello/`, and the node's front page links to it.
+
+The page says it runs in a sandbox. Tick the application's box under
+**Applications** to trust it, and reload: the page now asks the node, and
+says where the browser is.
+
+### 3.4 Changing It
+
+Edit the files, and build the same directory again. The build makes a new
+bundle, a new version that names the one before, and stores only what
+changed. A directory unchanged since keeps its bundle. Register the new
+bundle under the same name, and the node serves it from the next request
+on.
+
+A new bundle makes the application untrusted again, since the operator
+trusted what the old one held, not what the new one does. Tick its box again
+if it needs trust.
+
+### 3.5 Sharing It
+
+Give the bundle's id to whoever should have the application. They register
+it on their own node, under any name, and their node fetches the bundle and
+each file from its peers as they are first asked for. What a build stores
+is passed on toward the nodes it belongs closest to as it is stored, so a
+node connected to yours, or to the same network, finds it. Each operator
+chooses whether to trust it.
+
+To hand an application over without a network between, export its bundle
+as a content archive, a zip file, from the `/config` page's **Exports**. A
+node started with that archive in its `storage.archives` holds the bundle,
+and serves it once it is registered there (Operator Guide §6.4).
+
+## 4. Trusted and Untrusted Applications
+
+The operator decides which applications to trust. A trusted application can
+reach the folders the operator offers, so it gets the trust a program
+installed on the machine would. An untrusted one can only show what the
+network holds.
+
+| What a page can do | Untrusted | Trusted |
+| --- | --- | --- |
+| Load its own pages, scripts, stylesheets, and images | Yes | Yes |
+| Show what the network holds, in an `<img>`, a `<video>`, or a link (§6.1) | Yes | Yes |
+| Read the node's answers with `fetch`, its own files' among them | No | Yes |
+| Keep anything in the browser: `localStorage`, IndexedDB, cookies | No | Yes, shared with every trusted application |
+| Read and change its own store (§6.6) | No | Yes; changes from a local client |
+| List and import from the folders offered, and make bundles (§6.3–§6.5) | No | From a local client |
+| Make a drop, encrypted for a person or not (§6.9, §6.15) | No | Yes |
+| Make identities, sign people in and out, sign as them, and open what is encrypted for them or by a password (§6.10, §6.13, §6.15) | No | From a local client |
+| Read the trust scores of whoever is signed in, and change their trust list (§6.17) | No | From a local client |
+| Shun content the node will no longer hold (§6.11) | No | From a local client |
+| Read what the node knows of each peer, and whether it is connected (§6.8) | No | From a local client |
+| Keep content offline on the node, and stop keeping it (§6.19) | No | From a local client |
+| Pay and stake Karma as whoever is signed in (§6.20) | No | From a local client |
+
+An untrusted application is served with:
+
+```http
+Content-Security-Policy: sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads
+X-Content-Type-Options: nosniff
+```
+
+Its scripts run, and it can submit forms, open windows, show dialogs, and
+start downloads. But the browser gives its pages an origin of their own,
+which `self.origin` gives as `"null"`, and no endpoint of the node grants a
+request from another origin. So every `fetch` fails, even of the
+application's own files, and so does a module script, which is fetched the
+way `fetch` fetches. Load scripts with a plain `<script src>`. Using
+`localStorage` throws a `SecurityError`, and a window the page opens is
+sandboxed as it is. `nosniff` means a script must be served as JavaScript
+and a stylesheet as CSS, which their names decide.
+
+A trusted application is served without those headers, on the main port's
+origin, which every trusted application shares. Whatever one may do, all
+may: they share the browser's storage, can script each other's windows, and
+can send each other's `Referer` (§5.1). Name what you keep in
+`localStorage` with your application's name, as the movie library keeps
+`movie.playlist`, and keep no secrets there.
+
+Write an application that is useful untrusted if you can, and does more
+when trusted. `self.origin === "null"` tells a page it is sandboxed.
+
+## 5. Asking the Node
+
+### 5.1 What Every Request Needs
+
+- **The same origin.** Only a trusted application's pages can read what the
+  node answers (§4). No endpoint answers another origin, so a page can ask
+  only the node that served it, by paths such as `/data/client`. For content
+  another node holds, ask your own: it fetches what it lacks from its peers.
+- **A `Referer`.** Every endpoint meant for pages but reading into a bundle
+  serves only a request whose `Referer` names a page of the node. A browser
+  sends one with each request a page makes of its own origin, unless the
+  page turns it off, so do not set `Referrer-Policy: no-referrer`. The
+  application a `Referer` names is the first segment of its path, or the
+  root application, for a path no other application's name begins. An
+  application's store answers only its own application's pages.
+- **A local client**, for some endpoints: a browser on the node's own
+  machine, judged by where its connection comes from. A browser elsewhere,
+  even on the same home network, is refused with `403`. Ask `/data/client`
+  (§6.2) to decide what to offer.
+- **JSON bodies**, sent with `Content-Type: application/json`. A body of any
+  other type is `415`.
+- **Unsigned reads.** A browser does not sign its requests, as nodes do. An
+  operator who sets `identity.allow_unsigned_api_reads` to `false` has every
+  `GET` beneath `/data` from a browser answered `401`, which leaves an
+  application its own files and nothing more.
+
+### 5.2 The Endpoints
+
+| Endpoint | Method | Client | Page | What it does |
+| --- | --- | --- | --- | --- |
+| `/data/{id}/{path}` | `GET`, `HEAD` | Any | Any, or none | Read a file or directory in a bundle (§6.1) |
+| `/data/{id}` | `GET` | Any | Any, or none | Read one object (§6.1) |
+| `/data/search/{prefix}` | `GET` | Any | Any, or none | Find content ids by prefix (§6.1) |
+| `/data/client` | `GET` | Any | Any application's | Whether the client is local (§6.2) |
+| `/data/directory/...` | `GET` | Local | A trusted application's | List the folders offered (§6.3) |
+| `/data/imports` | `GET`, `POST` | Local | A trusted application's | Import a file, and follow imports (§6.4) |
+| `/data/bundles` | `POST` | Local | A trusted application's | Make, change, or store a bundle (§6.5) |
+| `/data/store/{application}/...` | `GET` | Any | Its own application's | Read the application's store (§6.6) |
+| `/data/store/{application}/{key}` | `PUT`, `DELETE` | Local | Its own application's | Change the application's store (§6.6) |
+| `/data/applications` | `GET` | Any | Any application's | The applications the node serves (§6.7) |
+| `/data/drop` | `POST` | Any | Any application's | Place content at a drop (§6.9) |
+| `/data/drop/{target}` | `GET` | Any | Any, or none | Search a drop by its target string (§6.9) |
+| `/data/users` | `POST` | Local | A trusted application's | Make a person's identity (§6.10) |
+| `/data/fallback` | `POST` | Local | A trusted application's | Have a fallback take over, with a fallback of its own (§6.10) |
+| `/data/session` | `GET`, `POST`, `DELETE` | Local | A trusted application's | Who is signed in; sign in and out (§6.10) |
+| `/data/signed` | `POST` | Local | A trusted application's | Place JSON at a drop, signed as whoever is signed in (§6.13) |
+| `/data/signed/{id}` | `GET` | Any | Any, or none | Check signed content, and read what it signs (§6.13) |
+| `/data/encrypted/{id}` | `GET`, `POST` | Local | A trusted application's | Open a drop encrypted for whoever is signed in, or by a password (§6.15) |
+| `/data/trust` | `GET` | Local | A trusted application's | The trust scores of whoever is signed in (§6.17) |
+| `/data/trust/{id}` | `GET`, `PUT`, `DELETE` | Local | A trusted application's | One identity's score; trust, distrust, or clear it on the trust list of whoever is signed in (§6.17) |
+| `/data/{id}` | `DELETE` | Local | A trusted application's | Delete and shun content the node will no longer hold (§6.11) |
+| `/data/nodes`, `/data/seek` | `GET` | Any | Any, or none | The peers the node knows, and what it seeks (§6.8) |
+| `/data/peers` | `GET` | Local | A trusted application's | What the node knows of each peer, and whether it is connected (§6.8) |
+| `/data/archives` | `GET`, `POST` | Local | A trusted application's | Keep content offline, and follow the archives kept (§6.19) |
+| `/data/archives/{archive_id}` | `DELETE` | Local | A trusted application's | Stop keeping an archive (§6.19) |
+| `/data/karma`, `/data/karma/balances/{id}`, `/data/karma/generations` | `GET` | Any | Any, or none | The Karma chain the node follows, and the Karma it states of the node, or of anyone (§6.20) |
+| `/data/karma/payments`, `/data/karma/stakes` | `POST` | Local | A trusted application's | Pay, and stake, as whoever is signed in (§6.20) |
+
+### 5.3 Waiting for Content
+
+A node asked for content it lacks asks its peers for it, and answers `503`
+with `Retry-After`, in seconds. A file of an application, a read into a
+bundle, and a bundle to change are waited for first, for up to
+`network.app_wait_seconds`. Ask again after the time `Retry-After` gives,
+and give up after a few tries. The movie library waits like this:
+
+```js
+// Asks for `path`, asking again while the node fetches what it lacks.
+async function patiently(path, init = {}, tries = 6) {
+  for (let attempt = 1; ; attempt += 1) {
+    const response = await fetch(path, init);
+
+    if (response.status !== 503 || attempt >= tries) {
+      return response;
+    }
+
+    const seconds = Number.parseInt(response.headers.get("Retry-After") || "", 10);
+    const wait = Number.isFinite(seconds) && seconds > 0 ? seconds : 5;
+    await new Promise((resolve) => setTimeout(resolve, wait * 1000));
+  }
+}
+```
+
+A browser loading a page, an image, or a video does not ask again, so a page
+whose files the node does not hold yet may need reloading.
+
+### 5.4 Errors
+
+An error is answered with its HTTP status, and, for most, a body of type
+`application/problem+json` (RFC 9457):
+
+```json
+{
+  "type": "https://libranet.org/problems/content-unavailable",
+  "title": "Content temporarily unavailable",
+  "status": 503,
+  "detail": "The requested content is not stored here yet; retrieval was requested.",
+  "instance": "/data/sha256/e3b0c442...",
+  "retry_after": 5
+}
+```
+
+Decide by the status, and by `type`, never by `title` or `detail`, which are
+for people and may change. `detail` is worth showing a person, as the movie
+library does. The types an application meets most:
+
+| Type | Status | What it means |
+| --- | --- | --- |
+| `content-unavailable` | `503` | Content the node does not hold yet, and has asked its peers for (§5.3) |
+| `invalid-content-address` | `400` | A path that names no valid content id |
+| `invalid-request` | `400` | A JSON body the endpoint cannot act on; `detail` says why |
+| `unusable-bundle` | `400` | Content that is not a bundle, or a bundle the node cannot read |
+| `content-too-large` | `413` | A body, or what it would store, larger than the node takes; `max_bytes` gives the limit |
+| `about:blank` | Any | An error its status describes fully, such as `403`, `404`, or `412` |
+
+HTTP API §17.2 lists them all.
+
+## 6. The Endpoints in Detail
+
+### 6.1 Reading Content
+
+Anything a bundle holds is read by the bundle's id and a path within it:
+
+```http
+GET /data/{hash-algorithm}/{hash}/{path}
+GET /data/{hash-algorithm}/{hash}/{encryption algorithm}/{key}/{path}
+```
+
+The second form reads a bundle stored encrypted, by an id that carries its
+key, such as `sha256/…/AES256-CBC/…`, as a bundle made with `"encrypted":
+true` has (§6.5). Whoever has that id can read the bundle, and no one else.
+Percent-encode each segment of `{path}`. An empty path names the bundle's
+root, or a file bundle's own file, and needs its trailing `/` in the first
+form: `/data/{hash-algorithm}/{hash}/`.
+
+- **A file** is answered as an application's file is (§2), with range
+  requests, so a `<video src>` that reads into a bundle plays and seeks.
+- **A directory** is answered with its entries, one level deep:
+
+  ```json
+  {"entries": {
+    "Film (2001)": {"type": "directory"},
+    "playlist.json": {"type": "file", "size": 412,
+                      "content_type": "application/json"},
+    "latest": {"type": "symlink", "target": "Film (2001)"}
+  }}
+  ```
+
+- **A path through a symbolic link** is `302`, to where it leads.
+- **A path the bundle does not hold** is `404`, **content that is not a
+  bundle** is `400`, and **a password-protected bundle** is `403`.
+
+Any client may read into a bundle, with no `Referer`, so an untrusted
+application can show what the network holds in an `<img>`, a `<video>`, or
+a link. Every answer carries `Content-Security-Policy: sandbox` and
+`X-Content-Type-Options: nosniff`, so a page opened from a bundle runs in a
+sandbox of its own, whatever it holds. An answer that is not an error never
+changes, and is sent to be cached for a year.
+
+`GET /data/{hash-algorithm}/{hash}` gives one object as nodes exchange it,
+which may be compressed (HTTP API §8). A page rarely wants one: reading into
+a bundle gives a file whole.
+
+`GET /data/search/{prefix}` gives the content ids the node holds or has
+heard of whose hashes match the most leading bits of a hex prefix, best
+first, as `{"results": ["sha256/…"]}`. It answers at once, and starts the
+node asking its peers for the same prefix, so a search made a few seconds later
+may list more.
+
+### 6.2 Whether the Client Is Local
+
+```http
+GET /data/client
+```
+
+is answered `{"local": true}` for a browser on the node's own machine, and
+`{"local": false}` for one elsewhere. Use it to decide what to offer: the
+movie library offers adding and editing movies to a local client, and only
+playing to others. It is a convenience, not a protection: every endpoint
+that serves only local clients checks for itself.
+
+### 6.3 The Folders Offered
+
+A node offers a local client the folders its operator chose (Operator Guide
+§6.3), by default the user's desktop, documents, downloads, music,
+pictures, and videos folders. A browser never tells a page where a file the
+person chose lies, so this is how an application finds one of the person's
+files to add to the network.
+
+```http
+GET /data/directory
+GET /data/directory/{name}/{path}
+```
+
+The first lists the folders, by name, and the second a folder within one:
+
+```json
+{"entries": {
+  "Film.mp4": {"type": "file", "size": 4294967296,
+               "modified": "2026-09-01T08:30:00Z",
+               "content_type": "video/mp4"},
+  "Holidays": {"type": "directory"}
+}}
+```
+
+Hidden names, beginning with `.`, are left out, as are any others the
+node's operator hides. A path naming anything but a directory is `404`, and
+a directory the node may not read is `403`.
+
+### 6.4 Importing a File
+
+```js
+const started = await fetch("/data/imports", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ path: "Movies/Film.mp4" }),
+});
+const { import_id } = await started.json();    // answered 202 at once
+```
+
+The path is a folder's name and a path beneath it, as §6.3 lists them.
+Reading a large file takes time, so ask `GET /data/imports`, about once a
+second, how each import is doing:
+
+```json
+{"imports": {"<import_id>": {"path": "Movies/Film.mp4", "status": "done",
+                             "bytes_read": 4294967296, "size": 4294967296,
+                             "file": "sha256/…"}}}
+```
+
+`status` is `waiting`, `running`, `done`, or `failed`, and a failed import
+carries `error`. A done one gives `file`, the id of the file bundle the node
+stored. Read the file at `/data/{file}/`, or add it to a bundle (§6.5). An
+imported file is not private: its parts are passed on to peers as they are
+stored. Importing the same path again reads the file again. Imports run one
+at a time, and wait behind the node's backups.
+
+### 6.5 Making and Changing Bundles
+
+`POST /data/bundles` makes a directory bundle, or a new version of one:
+
+```js
+const response = await fetch("/data/bundles", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    base: null,
+    encrypted: true,
+    add: {
+      "Film (2001)": { from: "sha256/…", path: "" },
+      "Film (2001)/info.json": { text: JSON.stringify({ title: "Film" }) },
+      "Film (2001)/poster.jpg": { base64: "/9j/4AAQ…" },
+      "Other.mp4": { file: "sha256/…" },
+      "Song.flac": { file: "sha256/…", content_type: "audio/flac" },
+    },
+    remove: ["Old Film (1999)"],
+  }),
+});
+const { bundle } = await response.json();
+```
+
+- **`base`** is the bundle this one is a new version of, or `null` for a new
+  one. The new bundle holds every entry the base holds, but those changed.
+- **`add`** maps each entry path to what goes there: `{"file": id}`, a file
+  an import gave, served with the `content_type` given beside it, if one
+  is, rather than a type found from its name; `{"from": id, "path": p}`,
+  whatever bundle `id` holds at `p`, a whole directory if it is one, and
+  `""` for its root, with any content type it was given; or `{"text": s}`
+  or `{"base64": b}`, a file of those bytes. A `content_type` that is not a
+  media type, such as `audio/flac`, is `400`.
+- **`remove`** lists entry paths to take out of the base, a directory with
+  everything beneath it.
+- **`encrypted`** stores the bundle, and each file whose bytes the request
+  gives, encrypted, so that its id carries its key (§6.1). It defaults to
+  whether `base` is encrypted. An entry copied from elsewhere is copied as
+  it was stored.
+
+A new bundle is answered `201 Created`, with `{"bundle": id}` and a
+`Location` reading into it. A request that changes nothing is answered
+`200 OK` with the base's id. The node makes the bundle from the bundles
+named, without needing the parts of any file it moves, so changing a
+collection of films takes no time. A body is limited to 4 MiB, unless the
+node's operator sets another limit.
+
+A page that has written a bundle's JSON itself, such as an extension of the
+user directory (§6.12), has the node store it as it is with
+`{"bundle": {…}}`, given alone. The node checks that it is a bundle, stores
+it as one object, and answers `201 Created` with the id it is stored at. Use
+that id, since the node writes the JSON its own way first. A bundle that is
+not well-formed, or does not fit in an object, is `400`.
+
+**A zip, both ways.** A page sends a zip the person chose, as it is, to
+have the node make a new directory bundle of it, files of any size and all:
+
+```js
+const response = await fetch("/data/bundles", {
+  method: "POST",
+  headers: { "Content-Type": "application/zip" },
+  body: file, // a File from an <input type="file" accept=".zip">
+});
+const { bundle } = await response.json();
+```
+
+Each file becomes a file entry, with no times or permissions, each folder
+holding nothing a directory, and each Unix symbolic link a link. A zip all
+of whose entries lie in one folder, as macOS and Windows make one of a
+folder, gives that folder's contents, and what macOS's Finder adds of its
+own, `__MACOSX` and `.DS_Store`, is left out. A zip is limited to 16 GiB,
+unless the node's operator sets another limit. One the node cannot make a
+bundle of, as one with an entry named `../escape.html`, is `400`, saying
+which entry. Any client has a directory in a bundle as a zip with
+`GET /data/zip/{id}/{path}`, the root with the empty path, and a link to it
+with `download` saves it: each file is stored uncompressed, and the zip is
+sent as it is made, so a part that does not come in time leaves the
+download unfinished. A zip downloaded so, and sent back unchanged, gives
+the same bundle, if the first held no times or permissions.
+
+### 6.6 The Application's Store
+
+Content never changes, so what an application needs to keep as it changes,
+such as which of its bundles is the newest, goes in its store on the node:
+
+```http
+GET    /data/store/{application}
+GET    /data/store/{application}/{key}
+PUT    /data/store/{application}/{key}
+DELETE /data/store/{application}/{key}
+```
+
+The store is named by the application's name, so it stays with the name
+when the operator registers a new version; the root application's is
+`/data/store/%2F`. A key is one path segment, and a value is any JSON value,
+sent as `PUT`'s body. `GET` of the application gives every value, as
+`{"values": {key: value}}`. A key not held is `404`. A `PUT` is answered
+`201` for a new key and `204` otherwise, and a `DELETE` `204`.
+
+A value read by its key carries an `ETag`. A `PUT` or `DELETE` carrying
+`If-Match` with that tag is refused with `412` if the value has changed
+since, so that two browsers changing one key do not lose each other's
+changes. A `PUT`'s answer carries no `ETag`: the node keeps the value in a
+form of its own, so read it again for the new tag. The movie library changes
+its list of collections like this:
+
+```js
+// Changes the value at `key` of this application's store with `change`,
+// starting again whenever another change came first.
+async function changeStored(store, key, change, tries = 5) {
+  for (let attempt = 1; ; attempt += 1) {
+    const read = await fetch(`${store}/${key}`, { cache: "no-store" });
+    const tag = read.ok ? read.headers.get("ETag") : null;
+    const value = change(read.ok ? await read.json() : null);
+    const headers = { "Content-Type": "application/json" };
+
+    if (tag) {
+      headers["If-Match"] = tag;
+    }
+
+    const written = await fetch(`${store}/${key}`, {
+      method: "PUT", headers, body: JSON.stringify(value),
+    });
+
+    if (written.status !== 412 || attempt >= tries) {
+      return written;
+    }
+  }
+}
+```
+
+A value is limited to 64 KiB, and a store to 1 MiB, as compact JSON, unless
+the node's operator sets other limits; past either, a change is `413`. The
+store is kept by this node alone, never passed on, and lost with the node's
+files, so what needs keeping longer belongs in a bundle, with the store
+holding its id. Anyone who can reach the node can read the store, since the
+`Referer` it asks for is one any client can send, so keep no secrets in it.
+
+### 6.7 Listing Applications
+
+```http
+GET /data/applications
+```
+
+gives each application the node serves, by name, with the bundle it is
+served from, and which are trusted:
+
+```json
+{"applications": {"/": "sha256/…", "config": "sha256/…",
+                  "movie": "sha256/…"},
+ "trusted": ["/", "movie"]}
+```
+
+The node's front page links to each this way. `config` is served on a port
+of its own, and only to a local client, so link to it only for one.
+
+### 6.8 The Network
+
+`GET /data/nodes` gives the peers the node knows, by address and node id,
+the node itself first, and `GET /data/seek` the content it is still looking
+for. Both answer `503` until the node has first worked them out. Every
+answer of the node is signed, in its `Signature` and `Signature-Input`
+headers (HTTP API §11).
+
+`GET /data/peers` gives a local client what the node knows of each peer: its
+node id, the ways a connection to it is open now (`outbound`, `inbound`, or
+none), what the node has counted of it, and each of its addresses (HTTP API
+§10.8):
+
+```json
+{"derived": "2026-10-14T12:00:00Z",
+ "peers": [{"node_id": "sha256/…", "connected": ["outbound"],
+            "stats": {"bytes_received": 1048576, "bytes_sent": 65536,
+                      "last_connected": "2026-10-14T11:58:12Z", …},
+            "addresses": [{"endpoint": "http://203.0.113.9:4300",
+                           "source": "dialed", …}]}]}
+```
+
+The node works it out every minute or so, and `derived` says when, so a
+connection may have opened or closed since. Those connected come first.
+Only a trusted application's page on the node's own machine may read it,
+since it says whom the node talks to and how much; elsewhere it is `403`,
+so ask `GET /data/client` (§6.2) before offering it. Like the others, it
+answers `503` until the node has first worked it out. The nodes application
+shows it (§6.18), and a client elsewhere the node list instead.
+
+### 6.9 Making a Drop
+
+A drop is content placed where others can find it by a name they know,
+such as `user:alice`, rather than by its id (HTTP API §9). `POST /data/drop`
+has the node make one of content the page gives:
+
+```js
+const response = await fetch("/data/drop", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    target: "user:alice",
+    text: "hello",
+    seconds: 5,
+    minimum_bits: 24,
+  }),
+});
+const { id, target, matching_bits } = await response.json();
+```
+
+- **`target`** is the name the drop is found by. The node hashes it with
+  SHA-256, as it is.
+- **`text`** or **`base64`**, one of them, gives the content.
+- **`seconds`** is how long the node searches for a nonce that puts the
+  drop's id near the target hash. It searches for all of it.
+- **`minimum_bits`**, 0 if left out, is how many leading bits the drop's id
+  must share with the target hash. The search goes on past `seconds` until
+  it does. Each bit more doubles the search, on average. A node's search
+  finds only what shares 24 bits or more, by default, so ask for at least
+  as many.
+- **`encrypt`**, if given, has the content encrypted first, for a person or
+  by a username and password (§6.15).
+
+The drop is answered `201 Created`, with its `id`, the `target` hash, and
+how many bits they share, and a `Location` naming it. Find it later by the
+target string, one path segment, with `encodeURIComponent`:
+
+```js
+const response = await fetch(`/data/drop/${encodeURIComponent("user:alice")}`);
+const { target, results } = await response.json();
+```
+
+The node hashes the string, and answers with the `target` hash and the
+`results` a search of it gives (§6.1), what lies nearest the target hash
+first: the more bits a drop matches, the nearer the top it is, however much
+else is placed there. What shares fewer bits than the node's search returns,
+24 by default, is left out, as placed for something else. A page need not
+hash anything. Unlike
+`/data/search`, it looks at what the node holds every time, so a drop just
+made is found at once. Like it, it starts the node asking its peers, so a
+drop made on another node may show up when you search again a few seconds
+later.
+
+The node searches for one drop at a time, and a request that comes during
+another's search waits for it. A node limits both `seconds` and
+`minimum_bits`, by default to 60 and 26, and answers a request asking for
+more with `400`. Content that does not fit in an object, 1 MiB, even
+compressed, is `413`. Any client may make a drop, not only a local one.
+
+### 6.10 Identities and Signing In
+
+A person has an identity of their own, apart from any node's: an RSA key
+pair, whose public key's id is the person's id (HTTP API §11.3). The private
+key is kept in the network too, encrypted by the person's username and
+password, at the drop `user:{username}`, so they can sign in on any node that
+holds it. Each identity is made with a **fallback**, a second identity that
+takes over should the first be compromised (§6.14), kept the same way but
+encrypted by a second password. Make one with:
+
+```js
+const response = await fetch("/data/users", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    username: "alice",
+    password,
+    fallback_password,
+    key_bits: 3072,
+    seconds: 10,
+    minimum_bits: 24,
+  }),
+});
+const { id, username, created, fallback, drop, target, matching_bits } =
+  await response.json();
+```
+
+- **`username`** is case-folded, with spaces around it dropped, so `Alice`
+  and `alice` are one. It is from 1 to 64 characters.
+- **`password`** is at least 8 characters.
+- **`fallback_password`** is at least 8 characters too, and not the
+  password. With the username, it signs in as the fallback. Ask for it
+  twice, since it can never be reset, and tell the person to keep it apart
+  from their password, written down, say: whoever learns both can take the
+  identity over for good.
+- **`key_bits`** is one of the sizes the node makes, its
+  `identity.person_key_bits`: 2048, 3072, and 4096 by default. A larger key
+  takes longer to make: offer them as quick, stronger, and strongest. A size
+  the node does not make is `400`, and none is under 2048.
+- **`seconds`** and **`minimum_bits`** are as for making a drop (§6.9), and
+  limited alike. Anyone can place blocks at `user:alice`, and the more bits
+  the identity's drop matches, the nearer the top of a search it is.
+
+It is answered `201 Created`, and the person is signed in. `created` is
+when the identity was made, as a UTC time to the second, such as
+`2026-10-10T14:03:22Z`, and `fallback` is the fallback's id. The node also
+places the first version of what the person says of themselves, naming the
+fallback (§6.14). It places three drops in all, the identity's, the
+fallback's, and that version, which share the `seconds` asked for. A
+username and either password that already open an identity on this node
+are `409`. An operator can also create one on the `/config` page, which
+signs no one in ([Operator Guide](Operator%20Guide.md) §6.5).
+
+Sign in, ask who is signed in, and sign out at `/data/session`:
+
+```js
+await fetch("/data/session", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ username: "alice", password }),
+});
+const { id, username, created, fallback, fallback_for } =
+  await (await fetch("/data/session")).json();
+await fetch("/data/session", { method: "DELETE" });
+```
+
+Signing in answers with the person's `id`, `username`, `created`, and
+`fallback`, with `fallback_for` `null`, and the `block`, the identity block
+the session was opened from. Asking who is signed in answers the same, or
+each `null` when no one is. Signed in with the fallback
+password, the person is signed in as the fallback: `id` is the fallback's,
+`fallback_for` is the identity it takes over from, and `fallback` is `null`
+until it has taken over, below. When
+nothing the node finds at the username's drop opens, it asks its peers, waits
+a few seconds, and looks again before it answers. If nothing opens then
+either, it answers `503`, a wrong password too, since the node cannot tell one
+from an identity that has not reached it yet. Say so, and let the person try
+again: by then the node knows what its peers answered, so a second try is
+likelier to find them. Don't retry on your own. Each sign-in costs the node a
+fifth of a second or so, by design, and it signs in one person at a time.
+
+A fallback **takes over** when its identity is compromised, and is given a
+fallback of its own as it does, opened by a new fallback password, so that
+the person always has a way back:
+
+```js
+const response = await fetch("/data/fallback", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    username: "alice",
+    password: fallback_password,
+    fallback_password: new_fallback_password,
+    seconds: 10,
+    minimum_bits: 24,
+  }),
+});
+const { id, fallback, fallback_for } = await response.json();
+```
+
+`password` is the fallback password the fallback opens with, and
+`fallback_password` the new one, at least 8 characters and not the other.
+The node signs the person in as the fallback, answering as making an
+identity does, with `fallback` its new fallback, and from then on the old
+fallback password signs in as the person, and the new one as their
+fallback. It places three drops, sharing `seconds`, as making an identity
+does, the fallback's first version among them (§6.14). A password that
+opens an identity with a fallback already, or a new fallback password that
+opens one, is `409`; a fallback not found yet is `503`, as signing in is.
+Until it has taken over, a fallback signs nothing (§6.13).
+
+The session is named by a cookie the browser keeps, which no page's script
+can read. The node holds the person's private key while they are signed in,
+and no page ever sees it. A session ends when it is signed out, when it goes
+unused for `network.session_idle_seconds`, a day by default, or when the
+node stops. Each of these is for a local client only, from a trusted
+application's page, since a password sent from elsewhere would cross the
+network as it was typed.
+
+### 6.11 Shunning Content
+
+When a page replaces content entirely, as a newer version of a list that
+holds everything the older one did, the older one need not be kept. Ask the
+node to delete it, and stop holding it, with:
+
+```js
+await fetch(`/data/${id}`, { method: "DELETE" });
+```
+
+The node answers `204`, whether or not it held the content or had shunned it
+before. It deletes its copy at once, and from then on answers a `GET` of it
+with `404`, leaves it out of searches, never asks a peer for it, and
+discards it when a peer pushes it (HTTP API §5.5). Only this node deletes
+it: other nodes keep their copies until they each delete it too. As each
+node that learns the content is replaced shuns it, the content leaves the
+network.
+
+A shunning is the node's, not the person's: once one page shuns content, no
+application on the node can have it again. There is no undoing it, and no
+list of what is shunned. So shun only content your application made, and
+only once something holds all it did. An id that is not valid is `400`.
+Shunning is for a local client only, from a trusted application's page.
+
+### 6.12 The User Directory
+
+The user directory lists the people who have opened it, by their ids. It
+is kept by applications, not by the node, which knows nothing of it: the
+shipped `directory` application, at `/directory/`, lists everyone, and
+adds whoever is signed in (§6.10), unless they signed in as a fallback,
+which readers find through the identity it takes over from. It shows what
+each person says of themselves, and whether they are compromised, searches
+all of it, and lets whoever is signed in change their own, or say they are
+compromised (§6.14). A local client can sign in and out there. It is a
+directory bundle made a drop at `user directory`. Each person is an entry
+whose path is their id, and whose only part is that id, their public key:
+
+```json
+{"contents": {"sha256/…": {"contents": ["sha256/…"]}}}
+```
+
+An application that reads or adds to the directory follows the same
+rules, so that copies made by different pages and nodes come together:
+
+- **Find every copy.** Search the drop (§6.9), and read each result with
+  `GET /data/{id}`. The node serves an object as it is stored, zlib
+  compressed or not (HTTP API §8): JSON begins with `{`, so anything else is
+  decompressed, with `DecompressionStream("deflate")`. A copy is a drop
+  whose content, up to its last null byte, is a directory bundle holding
+  nothing but people. Pass over anything else found there, since a search
+  lists whatever is nearest the target, directory or not. Read each copy's
+  `extensions` too, which are directories of people stored at their own
+  ids, not drops. Leave out a copy you could not read in full.
+- **The newest lists the most people**, and of two that list as many, the
+  one whose id comes first.
+- **Everyone in any copy is in the directory.** When the newest lacks
+  anyone, or the person signed in, make a new copy holding everyone with
+  `POST /data/drop` (§6.9), its text the bundle's JSON with keys in order
+  and no spaces, naming the newest's extensions and listing everyone they
+  do not.
+- **Extend only when it no longer fits.** A copy is rewritten whole each
+  time. When the node answers the drop `413`, store the newest's own list,
+  over the extensions it names, with `POST /data/bundles` (§6.5), and make
+  the copy again holding only the people that extension does not list, and
+  naming only it.
+- **Shun what is replaced** (§6.11). Once a new copy is stored, shun every
+  copy it was made from; when none is needed, every copy but the newest.
+  Never shun an extension: it is not at the drop, and later copies name it.
+
+To have someone added who is not signed in, link to
+`/directory/?add={id}`, as the `/config` page does for a user it creates.
+The directory application checks that the id names a public key the node
+holds, and adds them only when the person at the browser clicks **Add to
+the directory**, since a link from anywhere can name anyone.
+
+To link a person, link to `/directory/?id={id}`, as the directory does each
+person it lists. The directory application shows them alone: what they say
+of themselves, and whether they are compromised (§6.14); their trust, by the
+scores of whoever is signed in, with **Trust**, **Distrust**, and **Clear**
+(§6.17); a link to mail them (§6.16); and whom their own trust list trusts
+and distrusts, each with its trust. It reads the directory only to know which
+of those the list names are people, named and linked to their own pages,
+and writes nothing there. Link only an id you know is a person's, by where
+you found it (§6.18).
+
+The directory application shows each person's trust, by the scores of
+whoever is signed in (§6.17): 🟢 for a score above 0, 🟡 for 0, and 🔴
+below, each saying the trust in words, with its score and step, on hover
+or tap. Where there are no scores, with no one signed in or on a client
+elsewhere, it shows ⚪, saying why. While the scores are still being built,
+it says so, and reads them again every few seconds until they are complete.
+It sorts the list by trust, and hides those distrusted. Whoever is signed
+in, with a fallback of their own, trusts, distrusts, or clears each person
+there, one entry at a time, and is told that their list is public,
+distrust included. The person signed in is marked 🟢, saying it is them,
+since they are at step 0 of their own scores. Beside each person's trust,
+it shows their Karma (§6.20), linked to the Karma application.
+
+### 6.13 Signing as a Person
+
+A page never reads a person's private key, so it cannot sign as them. Nor
+can it check a signature: a page reached over the network has none of the
+browser's cryptography. The node does both, with signed bundles (Bundle
+Specification §5). Place the JSON text of an object at a drop, signed by
+whoever is signed in, with:
+
+```js
+const response = await fetch("/data/signed", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    target: `user:${id}`,
+    text: JSON.stringify({ version: 1 }),
+    seconds: 10,
+    minimum_bits: 24,
+  }),
+});
+const { id: drop, target, matching_bits, signer } = await response.json();
+```
+
+`target`, `seconds`, `minimum_bits`, and `encrypt` are as for making a drop
+(§6.9), and `text` is signed exactly as it is given. Given `encrypt`, what
+is signed is then encrypted, so that only whoever opens it learns who signed
+it (§6.15). It is answered `201 Created`,
+as a drop is, and `signer` is the person's id. With no one signed in it is
+`401`, with the problem type `session-required`; signed in as a fallback
+that has not taken over (§6.10), it is `403`; and `text` that is not an
+object's JSON is `400`. Only a local client, from a trusted application's
+page, signs.
+
+Any client checks signed content, and reads what it signs, with:
+
+```js
+const response = await fetch(`/data/signed/${drop}`);
+const { signer, contents } = await response.json();
+const value = JSON.parse(contents);
+```
+
+A drop's content is read up to its last null byte, as a drop is written.
+`200` means the signature checks under the public key of `signer`, and
+`contents` is the text signed. `signer` is a person's id, or a node's, since
+a node signs what it places itself; the answer does not say which, as the
+page knows whose drop it read. Content that is not signed is `400`
+`unusable-bundle`, and a signature that does not check is `400`
+`invalid-bundle-signature`. The node answers `503` while it fetches the
+content, or the signer's key, so wait as §5.3 shows. A check that passes
+never changes, and the browser may cache it.
+
+**Check the signer.** A signature says only who signed. Anyone signed in
+can sign any text and place it at any drop, so a page reading a drop named
+for a person, such as `user:{id}`, passes over whatever `signer` is not
+that person.
+
+### 6.14 What People Say of Themselves
+
+What a person says of themselves is kept in versions, each signed by them
+(§6.13) and placed at the drop `user:{id}`, their id after `user:`. It is
+public: anyone who opens the directory can read it, so a page offering to
+change it says so. The shipped directory application shows, searches, and
+changes it (§6.12), and any application may read it, or change the signed
+in person's. The node places the first version as it makes the identity
+(§6.10), saying nothing of them but naming their fallback. Each version's
+`contents` is:
+
+```json
+{"created": "2026-10-10T14:03:22Z",
+ "fallback": "sha256/…",
+ "fields": {"first name": "Alice", "handle": "alice", "favourite colour": "blue"},
+ "version": 2,
+ "versions": ["sha256/…"]}
+```
+
+- **`created`** is when the person's id was made, as the session gives it
+  (§6.10). Every version carries it.
+- **`fallback`** is the id of the person's fallback, as the session gives
+  it. Every version carries it, and it never changes.
+- **`compromised`**, `true`, is in a version the person's fallback signs
+  saying the identity is compromised, below, and left out of every other.
+- **`fields`** maps each detail's name to its value, both strings. These
+  are the standard ones, each optional: `handle`, `first name`,
+  `last name`, `country`, `state`, `province`, `county`, `city`,
+  `postal code`, `gender`, `latitude`, and `longitude`, the last two in
+  decimal degrees. A person may give any other they name.
+- **`version`** is 1 for the first version, and one more than the version
+  it replaces for each after.
+- **`versions`** names the drop of the version it replaces, and is left out
+  of the first, so that the history can be walked back to it.
+
+To read what someone says, and follow the same rules as other pages do:
+
+- **Search the drop** `user:{id}` (§6.9), and read each result through
+  `GET /data/signed/{id}`.
+- **Pass over what is not theirs.** Count only content that checks, whose
+  `signer` is the person, and whose `contents` is shaped as above, but for
+  a version their fallback signed saying they are compromised.
+  `compromised` in a version of their own says nothing.
+- **Read the history back.** Read each version each of theirs names in
+  `versions`, and the versions those name, back to the first, as far as the
+  node holds them. Read back only the person's own: anyone can place a
+  version of their own at the drop, naming whatever it likes.
+- **Their fallback is the one their first version names**, or, with no
+  first version read, the one every version read names. Versions that name
+  different fallbacks, or none, are compromised, and when the first
+  versions read disagree, or there is no first and the rest do, no
+  fallback can be trusted. A fallback is checked as far back as the history
+  is read: say so when it is not read back to the first.
+- **The identity is compromised** when its versions name another fallback,
+  or none, or when a version their fallback signed says `compromised`. Use
+  their fallback in its place: mail them there, say. Its own versions, at
+  `user:{id}` of its id, name its own fallback.
+- **The newest is numbered highest**, and of two numbered as high, the one
+  whose drop's id comes first. Only the person signs a version, and their
+  fallback one saying they are compromised, so no one else can make one
+  newer.
+- **Write a new version over the newest.** Place it with
+  `POST /data/signed`, at the person's drop, matching at least 24 bits,
+  numbered one more than the newest and naming it in `versions`, and naming
+  the fallback the session gives. Hold off while a version found there is
+  not held yet, since it may be newer than the newest read, and once the
+  identity is compromised. Never shun a version (§6.11): every reader
+  reads the history back to the first.
+- **Say an identity is compromised** from its fallback, once it has taken
+  over (§6.10): ask for the fallback password and a new one, twice, have the
+  fallback take over, and then, signed in as it, place a version over the
+  identity's newest that says `"compromised": true`, keeping its fields and
+  fallback. The session's `fallback_for` is the identity to say it of, and
+  its `id` the fallback that versions name. A person signed in as the
+  identity says so the same way, giving their fallback password: the
+  fallback takes over, and the browser is signed in as it. A fallback cannot
+  sign until it has taken over, so whenever one says its identity is
+  compromised, it has a fallback of its own. It cannot be undone.
+
+Saying so is the person's to do, and only once they know, with their
+fallback password. Whoever holds their key and keeps the fallback the same
+is read as the person until then. When the versions are what say an
+identity is compromised, its fallback has no fallback of its own until the
+person takes over.
+
+### 6.15 Encrypting a Block
+
+A drop can be kept from everyone but one person, or everyone who lacks a
+username and password. Add `encrypt` to what `POST /data/drop` (§6.9) or
+`POST /data/signed` (§6.13) is given:
+
+```js
+const forBob = { target: `notes:${bob}`, text, seconds: 10, minimum_bits: 24,
+                 encrypt: { for: bob } };
+const byPassword = { target: "my notes", text, seconds: 10, minimum_bits: 24,
+                     encrypt: { username: "alice", password } };
+```
+
+- **`{for: id}`** encrypts it for the person whose id that is, with their
+  public key, so that only they open it (Bundle Specification §8). The node
+  answers `503` while it fetches a key it does not hold, so wait as §5.3
+  shows. An id that names no person's key is `400`. Any client may encrypt
+  for a person.
+- **`{username, password}`** encrypts it by the key the two derive, as an
+  identity's private key is kept (§6.10). The password is at least 8
+  characters. Only a local client may, from a trusted application's page,
+  since the password would otherwise cross the network as it was typed.
+
+Signed and encrypted, a drop is signed first, then encrypted, so that only
+whoever opens it learns who signed it. The node opens a drop for the person
+signed in, with:
+
+```js
+const response = await fetch(`/data/encrypted/${drop}`);
+const opened = await response.json();
+```
+
+and one encrypted by a password with:
+
+```js
+const response = await fetch(`/data/encrypted/${drop}`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ username: "alice", password }),
+});
+```
+
+`opened` is `{id, text}`, or `{id, base64}` for what is not text. What was
+signed comes back checked, as `GET /data/signed` answers (§6.13), as
+`{id, signer, contents}`, so check `signer` as that section says. A drop
+the key does not open is `403`, with the problem type `wrong-key`; with no
+one signed in, `GET` is `401` `session-required`; and a drop not encrypted
+the way the request opens it is `400` `unusable-bundle`. No answer is cached.
+Opening is for a local client only, from a trusted application's page, and
+each password costs the node a fifth of a second or so, as signing in does.
+
+**Say whom it is for.** A drop names no one it is encrypted for, and whoever
+opens a signed one can encrypt it again for someone else, who would take it
+to be meant for them. A page whose reader must know a message was meant for
+them, such as mail, names the reader in what it signs.
+
+### 6.16 Mail
+
+The shipped `mail` application, at `/mail/`, sends and reads messages
+between people. Like the directory, it is kept by applications, not by the
+node: each message, address book, and mark is a drop that one person signs
+(§6.13) and that is encrypted for one person (§6.15). A page that reads or
+sends mail follows the same rules, so that each reads what the others
+write. All of it needs someone signed in, so only a local client reads or
+sends mail.
+
+Each target names a person's id whole, and a date in UTC, two digits for
+each part but the year, such as `mail:sha256/…:2026/10/12`:
+
+| Drop | What is placed there |
+| --- | --- |
+| `mail:{id}:{year}/{month}/{day}` | A copy of each message sent to the person on that day |
+| `mail sent:{id}:{year}/{month}/{day}` | The sender's own copy of each message they sent on it |
+| `mail address book:{id}` | The versions of the person's address book |
+| `mail state:{id}:{year}/{month}` | The versions of what they read and hid of the mail found in that month's days |
+
+Mail is kept by the day, since a search answers with as many results as
+fit in 1 MiB (HTTP API §6.1), tens of thousands. Each copy's `contents`
+is:
+
+```json
+{"bcc": ["sha256/…"],
+ "cc": [],
+ "for": "sha256/…",
+ "message": "9f2c40d1e8a7b6c5d4e3f2a1b0c9d8e7",
+ "reply_to": "41ab0c9d8e7f6a5b4c3d2e1f0a9b8c7d",
+ "sent": "2026-10-12T09:41:07Z",
+ "subject": "Lunch",
+ "text": "Noon?",
+ "to": ["sha256/…"]}
+```
+
+- **`for`** is the reader's id. Whoever opens a copy could encrypt it again
+  for someone else, so pass over a copy that does not name you.
+- **`to`** and **`cc`** list ids. **`bcc`** is in a BCC reader's copy,
+  naming only them, and in the sender's own, naming everyone, and left out
+  of the rest.
+- **`text`** is the body, or else **`bundle`**, a bundle's id, which may
+  carry its key, whose `index.html` is shown, and whose files are listed.
+  The node serves a read into a bundle in a sandbox, so its scripts never
+  run (§6.1). Only an id that carries its key keeps the bundle from
+  everyone but the readers.
+- **`sent`** is the sender's clock in UTC to the second. **`message`** is
+  32 hex digits that every copy of one message shares, and **`reply_to`**,
+  left out of a message that replies to none, the `message` it replies to,
+  so that a conversation can be shown together.
+- There is no `from`: whoever signed a copy sent it.
+
+**Send** a copy for each reader with `POST /data/signed`, given `encrypt:
+{for: reader}`, at their drop for the day it is sent, matching at least the
+bits its postage asks for, and one for yourself at `mail sent:`, matching at
+least 24. The mail application offers three: bulk, 24 bits; first class,
+28; and priority, 32. The more bits a copy matches, the nearer the top of a
+search of the reader's drop it is, however much else is placed there, and
+each 4 bits more takes the node 16 times as long to place, on average.
+Mail a compromised reader at their fallback instead, and at its fallback
+while that is compromised too (§6.14), and say so before sending.
+
+**Read** a period by searching each of its days (§6.9). Open each result
+with `GET /data/encrypted/{id}`, and pass over anything that does not open, is
+not signed, or is not shaped as above with `for` naming whoever is signed
+in. A copy at `mail sent:` counts only if you signed it. Ask again later for
+what is not held yet. Show a message from someone compromised with a
+warning, since whoever holds their key may have sent it.
+
+**What a person keeps**, their address book and each month's marks, is
+kept alike, in versions they sign and encrypt for themselves:
+
+```json
+{"entries": {"Alice": {"changed": "2026-10-12T09:40:55Z", "id": "sha256/…"},
+             "Bob": {"changed": "2026-10-12T09:41:30Z", "removed": true}},
+ "version": 3,
+ "versions": ["sha256/…"]}
+```
+
+A month's marks have `marks` in place of `entries`, mapping the drop id of
+each copy found in that month's days to `{"changed", "hidden", "read"}`.
+
+- **Read every version** at the drop that the person signed, and merge
+  them: of the changes to one key, the latest `changed` wins, and of two in
+  the same second, the one in the version whose drop's id comes first.
+  Names are compared without case, or the spaces around them. A removal is
+  a change, `"removed": true`, so that a merge does not undo it.
+- **A version that no other names in `versions` is a head.** Write a new
+  version when something changes, and when more than one head is found,
+  numbered one more than the highest read and naming every head. Hold off
+  while a version found there is not held yet.
+- **Shun what is replaced** (§6.11): every version a new one replaces,
+  and every version that another replaces, so that old versions do not
+  crowd the newest out of a search.
+
+To have someone mailed, link to `/mail/?to={id}`, as the directory does for
+each person.
+
+The mail application shows the trust of each person it shows (§6.17): each
+sender and reader in its lists and in a message, each person in the address
+book, and each it is to send to. A click on a name in a list opens the
+conversation, as the rest of the row does; a name in a message or the
+address book links to the person's page (§6.12). What each mark says ends
+with the person's Karma (§6.20), linked to the Karma application but among
+those a message being written is to, since following a link would lose it.
+
+### 6.17 The Trust List
+
+Whoever is signed in has a trust list: the identities they trust, and those
+they distrust ([Trust Network Specification](../../docs/specs/TrustNetwork.md)).
+The node keeps it in versions, each signed by the person and placed at the
+drop `trust:{id}`, their id after `trust:`. It is public, distrust
+included, since others read it for their scores to reach through it, so a
+page offering to change it says so. Trust one identity with:
+
+```js
+const response = await fetch(`/data/trust/${id}`, {
+  method: "PUT",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ trust: true }),
+});
+const { id: drop, version } = await response.json();
+```
+
+`false` distrusts it, and
+
+```js
+await fetch(`/data/trust/${id}`, { method: "DELETE" });
+```
+
+neither trusts nor distrusts it. The node reads the newest version of the
+list, makes the next with the change, has the person sign it, and places
+it. It answers `201 Created`, as a signed drop is answered (§6.13), with the
+new version's number in `version`. There is no `seconds` or `minimum_bits`
+to give: the node places each version matching as many bits as its search
+returns, and shuns the versions it replaces (§6.11), so that they do not
+crowd the newest out of a search. A change that changes nothing, such as trusting someone already
+trusted, places nothing, and is `204`.
+Make one change per request. The node makes one person's changes one at a
+time, each over the one before, so two pages changing the list at once lose
+nothing.
+
+- With no one signed in it is `401` `session-required`, and signed in as a
+  fallback that has not taken over (§6.10), `403`.
+- A body that is not `{"trust": true}` or `false`, or a change naming the
+  person themselves, is `400`.
+- While a version found at the list's drop is not held yet, it is `503`, so
+  wait as §5.3 shows, and ask again.
+- A list too large for an object is `413`.
+
+Signing in starts the node building the person's **scores**, from their own
+list, the lists of those they trust, the lists those lists trust, and so on,
+each step a tenth as strong as the one before (Trust Network §4). Read them
+with:
+
+```js
+const response = await fetch("/data/trust");
+const { complete, scores } = await response.json();
+// scores["sha256/…"] is {"score": 0.2, "step": 2}
+```
+
+or one identity's with `GET /data/trust/{id}`, which answers
+`{"id": "sha256/…", "score": 0.2, "step": 2, "complete": true}`. A score
+above 0 is trust, below 0 distrust, and 0 neither. The person themselves
+is at step 0, scoring 1, whatever any list says. At step 1 it says what
+their own list holds: 1 for trusted, and −1 for distrusted. An identity the
+scores do not reach is not in `scores`, and `GET /data/trust/{id}` answers
+it with a score of 0 and a `step` of `null`.
+
+The node builds the scores behind the sign-in, finding lists as it goes, so
+`complete` is `false` until it has read every list it will: read them again
+every few seconds until it is `true`. A change to the list scores again at
+once, reading only the lists it newly reaches, so read the scores again after
+one.
+
+- With no one signed in, each read is `401` `session-required`. A fallback
+  that has not taken over reads its scores, though it cannot change its
+  list.
+- An id that is not valid is `400` `invalid-content-address` (§5.4).
+
+Only a local client, from a trusted application's page, reads the scores or
+changes the list, and no answer is cached, since they say whom the person
+trusts.
+
+**Show each identity's trust** wherever a page shows a person or a node, by
+the scores of whoever is signed in: 🟢 for a score above 0, 🟡 for 0, an
+identity the scores do not reach among them, and 🔴 below. Say the trust in
+words, with its score and step, when the mark is hovered over, and when it
+is tapped, since a touch screen has no hover, and label the mark with the
+same words for a screen reader. Where there are no scores, with no one
+signed in or on a client elsewhere, show ⚪, saying why. Read the scores
+once with `GET /data/trust`, and look up each identity there, rather than
+asking for each, and read them again every few seconds while they are not
+complete. The person signed in is at step 0, scoring 1: mark them 🟢,
+saying it is them, or leave them unmarked among others a page names, as
+mail does. Each shipped application carries its own copy of the code that
+does it: the directory marks each person (§6.12), mail each person it shows
+(§6.16), the root application its own node (§6.18), and the nodes
+application each node (§6.18). `/config` marks its node ⚪ alone, saying it
+reads no scores, since its pages ask only its own endpoints.
+
+### 6.18 What Nodes Say of Themselves
+
+A node says what it is called, where it is, and anything else its operator
+gives it, as a person says what they say of themselves (§6.14). Its
+operator changes it on `/config`, and no page can: a node signs only what it
+places itself. The node keeps it in versions, each signed by the node and
+placed at the drop `node:{id}`, its id after `node:`. It is public. Each
+version's `contents` is:
+
+```json
+{"fields": {"name": "Attic", "description": "The family's node", "city": "Springfield"},
+ "version": 2,
+ "versions": ["sha256/…"]}
+```
+
+- **`fields`** maps each detail's name to its value, both strings. These
+  are the standard ones, each optional: `name`, `description`, `country`,
+  `state`, `province`, `county`, `city`, `latitude`, and `longitude`, the
+  last two in decimal degrees. An operator may give any other they name.
+- **`version`** is 1 for the first version, and one more than the version
+  it replaces for each after.
+- **`versions`** names the drop of the version it replaces, and is left out
+  of the first.
+
+Unlike a person's, it says nothing of when the node's id was made, and
+names no fallback, since a node has neither. To read what a node says, and
+follow the same rules as other pages do:
+
+- **Search the drop** `node:{id}` (§6.9), and read each result through
+  `GET /data/signed/{id}` (§6.13).
+- **Pass over what is not the node's.** Count only content that checks,
+  whose `signer` is the node, and whose `contents` is shaped as above. What
+  `versions` names need not be read: a name there that is no content id
+  does not make the version any less the node's.
+- **The newest is numbered highest**, and of two numbered as high, the one
+  whose drop's id comes first. Only the node signs a version, so no one else
+  can make one newer. There is no history to read back: the node shuns the
+  versions it replaces.
+
+**Show a node by its name.** Wherever a page shows a node, show it by the
+`name` its newest version gives, and by its id when it gives none or says
+nothing. Show the rest of what it says, and its id, when the name is hovered
+over, and when it is tapped, since a touch screen has no hover. The root
+application shows its own node this way, and `/config` does too, each with a
+link to its page. Each page carries its own copy of the code that does it, as
+each shipped application carries its own reading rules.
+
+To link a node, link to `/nodes/?id={id}`. The shipped `nodes` application,
+at `/nodes/`, lists the nodes known, each by its name, with the rest of what
+it says, and links each to its page, which shows it alone with its
+addresses. In a browser on the node's own machine, it lists what
+`GET /data/peers` gives (§6.8): whether each is connected, and which way,
+and everything the node has counted of it. It sorts them with those
+connected first, by name, or by trust, and shows only those connected, or
+hides those distrusted, on request; a search looks through what each says,
+its id, and its addresses. It shows each node's trust (§6.17), with
+**Trust**, **Distrust**, and **Clear** for whoever is signed in, and signs
+them in and out, and each node's Karma (§6.20), to any client. Elsewhere,
+it lists the nodes `GET /data/nodes` names, by name, with the addresses it
+gives, and says that whether each is connected, what the node counts of it,
+and its trust are shown only on the node's own machine. A page for a node
+the node knows nothing of says so, and still offers its trust, since a trust
+list may name any node.
+
+**Know a node by where you found it.** A node's id and a person's are of one
+form, so a page knows which an id is from where it found it: those of
+`GET /data/peers` (§6.8), and the node a response's signature names, are
+nodes, and those of the user directory (§6.12) are people. A trust list may
+name either (§6.17), so show an id it names by its id alone, unless you
+found it in one of those too. Read a node at `node:{id}`, never at
+`user:{id}`, and do not read a public key to tell the two apart.
+
+### 6.19 Keeping Content Offline
+
+A node lets go of content it has not been asked for in a while, to make room
+for more. To keep content held, to play offline say, ask the node to keep it
+in an archive of its own, until a time you give:
+
+```js
+const kept = await fetch("/data/archives", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    bundles: [collection],              // each with all it needs; a key too
+    objects: [version, block, person],  // each as it is
+    expires: "2026-11-20T00:00:00Z",    // or leave it out: kept until removed
+  }),
+});
+const { archive_id } = await kept.json();    // answered 202 at once
+```
+
+Each bundle is kept with everything it needs, its extensions and the parts
+of every file it holds, and each object as it is. Keep what a page reads
+before it can show the bundle: a version at a drop that lists it (§6.9), say.
+A person's versions are read only by whoever is signed in, so keep what
+signing in reads too: the `block` the session names (§6.10), and the
+person's `id`, their public key, which their signed versions are checked
+against (§6.13). The node fetches whatever it lacks before it writes the
+archive, so follow it at `GET /data/archives`, as an import (§6.4):
+
+```json
+{"archives": {"<archive_id>": {"bundles": ["sha256/…"], "status": "waiting",
+                               "expires": "2026-11-20T00:00:00Z",
+                               "needed": 412, "missing": 37,
+                               "written": 0, "size": null}}}
+```
+
+`status` is `waiting` while content is fetched, `running` while the archive
+is written, `done` once it is, or `failed`, with `error`. `bundles` names
+each bundle by its id alone, without its key, so match the archive to what
+you kept by that. The archive is read as soon as it is written, with no
+restart, and is never let go of. Asking again with the same content keeps it
+until the new time without writing it again. `DELETE
+/data/archives/{archive_id}` stops keeping it, as passing `expires` does.
+An archive keeps the node's disk as long as it is kept, so give a time
+unless the person asks to keep it for good.
+
+### 6.20 Karma
+
+An identity's Karma, to a node, is its balance as the Karma chain the node
+follows states it, the same on every node following that chain (HTTP API
+§10.10). Any client may read it. `GET /data/karma` gives the head the node
+follows, its own balance there, and how many identities hold Kismet:
+
+```json
+{"head": "sha256/…", "generation": 41, "weight": "1208",
+ "node_id": "sha256/…", "balance": {"kismet": "250", "last_won": "39.125"},
+ "holders": 12}
+```
+
+`kismet` is how many Kismet it holds, 10^14 to a Karma, written as decimal
+digits, since a JavaScript number holds no whole number above 2^53 exactly:
+read it with `BigInt`. `last_won` is the generation its Kismet has aged
+since: the generation whose reward last paid it a share as a staker, moved
+later by what it has received since, written as a string to a thousandth of
+a generation, like `"39.125"`, or `null` when it holds nothing. Each balance
+is the chain's at the head, with the head's reward paid, so whoever that
+reward pays holds it at once, the creator of a root its 20 Karma among them.
+`GET /data/karma/balances/{id}` gives anyone's
+balance, as the chain states it at the same head,
+`{"kismet": "0", "last_won": null}` for someone it does not name.
+`GET /data/karma/generations` lists the newest 100
+generations followed, the newest first, each with its validation block, its
+transaction block, and the chain's weight through them; ask again with
+`?before=` the oldest listed for those before it.
+
+Each answers `503` while the node follows no chain, which is usual on a new
+network, so show that rather than waiting. What the chain states changes
+with each generation the node follows, so read it again rather than keeping
+it.
+
+A person pays others, and stakes, through the node they are signed in on,
+which signs for them, as it signs a drop (§6.13). Pay with:
+
+```js
+const response = await fetch("/data/karma/payments", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ to: { [recipient]: "250" }, fee_kismet: "0", seconds: 10 }),
+});
+const { hash, from, created, covered } = await response.json();
+```
+
+The node makes the transaction, searches for its proof of work for
+`seconds`, and on until it has the 24 bits a transaction needs, in turn with
+the drops being made, so the answer takes at least that long. It signs the
+transaction as whoever is signed in, and puts it up. `202` says it was put
+up, not that the chain holds it yet: `covered` says whether the person's
+balance, as the node last read it, covers it now. One not covered waits for
+a while to be. Leave `fee_kismet` out to pay none. Stake on a transaction
+block with:
+
+```js
+const response = await fetch("/data/karma/stakes", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ transaction_block: block, kismet: "1000" }),
+});
+const { hash } = await response.json();
+```
+
+The node takes the stake into the validation blocks it builds on that block,
+while the head it follows stays the same, if what the person holds covers
+it. Each is refused as signing is (§6.13): `401` with no one signed in, `403`
+for a fallback that has not taken over, and `400` for a payment that moves
+nothing, or a stake of nothing. Each is `503` while the node follows no
+chain. Only a local client, from a trusted application's page, pays or
+stakes.
+
+A stake is taken only on the block the node itself builds validation
+blocks on: the best full transaction block placed for the generation after
+the head, at `karma transaction:{head}` (Karma Ledger §3.1). A page finds
+it by searching that drop (§6.9), reading each block found with
+`GET /data/{id}`, and taking those whose size is over the lesser of 1 MiB
+less 128 KiB and 8 KiB for each of the `holders` `GET /data/karma` gives,
+and at most 1 MiB (Karma Ledger §5.4). A block held compressed is answered
+as the node holds it, a zlib stream, whose size is the one that counts; one
+held as it is begins with the `{` of a signed bundle, and a page compresses
+it with `CompressionStream("deflate")` to measure it. Of those full, the best
+shares the most bits with the target, then has the shortest `reach`, read
+with `GET /data/signed/{id}` (§6.13).
+
+The shipped `karma` application, at `/karma/`, does each of these. It shows
+the generation the node follows, its head, and the heads competing with it,
+the other validation blocks placed at `karma validation:{id}` of the
+generation before; the node's own Karma; anyone's, by their id; and, in a
+browser on the node's own machine, the Karma of whoever is signed in, paying
+one person or several, and staking on the latest full block. Each
+validation block it names links to `/karma/?block={id}`, which shows that
+block alone: who stakes on the transaction block it validates, and how
+much, that block's payments, its payout, and the balances it states, and a
+link to the block before it. To link an identity's Karma, link to
+`/karma/?id={id}`, which shows it with the rest. It links an identity to
+its page elsewhere only where it knows whether it is a person or a node
+(§6.18): the node itself, and whoever is signed in.
+
+**Show each identity's Karma beside its trust** (§6.17), wherever a page
+shows a person or a node, linked to `/karma/?id={id}`, in Karma, with its
+Kismet when hovered over. Read `GET /data/karma` once, and, if the node
+follows a chain, each identity's balance as the page first shows it, a few
+at a time; if it follows none, read no balance, and say why none is shown,
+as for trust. Unlike trust, any client is shown it. Each shipped application
+carries its own copy of the code that does it: the directory shows each
+person's Karma beside their name (§6.12), and the nodes application each
+node's (§6.18); mail says it in what each mark says (§6.16).
+
+### 6.21 Putting a Site on Chaos
+
+Beneath `/chaos`, anyone may put a site at any path, with no operator
+registering it, and each person who opens it is served what those they
+trust put there (HTTP API §13.6). A site there is a directory bundle, or a
+file bundle for a single file, made as §6.5 makes one. It is **uploaded** at
+a path by a drop naming it, which a page places as it places any other
+(§6.9, §6.13):
+
+```js
+const upload = {
+  bundle: id,
+  created: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
+};
+const response = await fetch("/data/signed", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    target: "chaos:/recipes",
+    text: JSON.stringify(upload),
+    seconds: 10,
+    minimum_bits: 24,
+  }),
+});
+```
+
+- **`bundle`** is the bundle's id, or, for one stored encrypted, the
+  encrypted id that carries its key (§6.1).
+- **`created`** is when it is uploaded, in UTC, to the second, as
+  `2026-11-07T15:04:05Z`. The newest upload is chosen, and one dated more
+  than 5 minutes ahead of a node's clock is passed over.
+- **`target`** is `chaos:/` and the path the bundle is mounted at, its
+  elements joined by `/`, with no `/` at the end: `chaos:/` for the root,
+  `chaos:/recipes` for `/chaos/recipes/`. Each element is spelled as it
+  reads decoded, so `/chaos/a%20cake/` is `chaos:/a cake`.
+- **`minimum_bits`** is at least as many as a node's search returns, 24 by
+  default, or no node finds the upload.
+
+Placed with `POST /data/signed`, the upload is signed by whoever is
+signed in, and is served first to those who trust them. Placed with
+`POST /data/drop`, it is unsigned, and is served only where nothing a
+viewer's trusted people uploaded holds the path. Never give either
+`encrypt`: every viewer's node reads the upload. A newer upload of
+yours at a path replaces your older ones there, even where an older one
+holds a path the newer lacks, so upload again to change a site, or to
+take it down.
+
+A bundle uploaded at a path serves each path beneath it that it holds:
+`/chaos/recipes/bread.html` is the `bread.html` of a bundle uploaded at
+`chaos:/recipes`, or the `recipes/bread.html` of one uploaded at
+`chaos:/`. A path ending in `/` serves its directory's `index.html`, and
+one naming a directory without its `/` is redirected to it. **Each path is
+resolved on its own**, the page and each image, script, and page it links
+to, so a file of your site may be served from another bundle, where
+someone the viewer trusts more uploaded one holding it. At every level,
+from the root down, uploads by those the viewer trusts come first, then
+those of no trust specified; one by someone they distrust is never served.
+
+**Chaos is only for someone signed in.** A Chaos site is served on the
+node's Chaos port, a port of its own, without a sandbox, and only to a
+browser carrying a session; anything else asked for there without one is
+`401`. The node's port serves no Chaos site, only the Chaos page below.
+Link to, and load, only paths relative to the page, or beginning
+`/chaos/`, and never write a port in. Nothing but `/chaos` is served on the
+Chaos port, and what serves only the node's own pages refuses a Chaos
+site, so a site shows what the network holds by holding it in its bundle,
+or by linking to another Chaos path.
+
+**Every Chaos site shares one origin**, the Chaos port's. There, one site
+can read any Chaos path and what another keeps in `localStorage`, and can
+frame another and script it. Keep no secrets there, and name what you keep
+with your site's path. Every answer beneath `/chaos` carries
+`Cache-Control: no-store`, since what is chosen depends on who asks, and
+when.
+
+**Seeing why.** On the node's port, every path beneath `/chaos` is the
+node's **Chaos page** for that path. On the Chaos port, an address ending
+in a bare `?`, as `/chaos/recipes/?`, opens it, and so does a page for
+which nothing is chosen, or one opened without a session. It shows each
+level searched, at the address it serves, every upload found there, with
+its signer, date, and bundle, why each was passed over, and which was
+chosen, and lets a person signed in on the node's machine trust, distrust,
+or clear each signer. Its **View content** links to the path on the Chaos
+port. Signed in on the node's machine, a person uploads a zip there, which
+the page has the node make a bundle of (§6.5) and uploads, signed, at the
+address chosen, and downloads any bundle listed as a zip. It is served on
+the node's port alone, outside any sandbox, and no page may frame it. A query with anything in it, such as `?about`, is your
+site's, as any other is, so use one of those, never a bare `?`, for a page
+of your own.
+
+The node's own pages read what the Chaos page shows, the **report**, from
+any client:
+
+```js
+const response = await fetch(`/data/chaos/${path}`, { cache: "no-store" });
+const report = await response.json();
+// report.chosen is {level, drop}, or null when nothing is chosen.
+// report.served_at is the path on the Chaos port.
+// Each of report.levels[i].uploads has its signer, score, bundle,
+// created, holds, and passed_over.
+```
+
+`path` is spelled as it is beneath `/chaos/`, percent-encoded, and is empty
+for the root. The node resolves it as a request for the path would be, by
+the same person's scores, and may wait as long, up to
+`network.app_wait_seconds`. A browser no one is signed in on is `401`, and
+a path that names nothing is `404`. HTTP API §13.6.7 gives every member,
+and each reason an
+upload is passed over. A Chaos site cannot read the report: it is not one
+of the node's own pages, on either port.
+
+## 7. Patterns From the Movie Library
+
+The movie library, `applications/movie/index.html` at the top of the
+repository, is one page of HTML and script, and uses every endpoint above.
+What it does, and why:
+
+- **Data in bundles, the newest in the store.** A movie is a directory
+  bundle holding the video, an `info.json`, and a `poster.jpg`. A collection
+  is an encrypted directory bundle holding a `playlist.json`, which gives
+  its name and the order of its movies, and a directory for each movie,
+  copied in with `from`. Each change to a collection makes a new version,
+  with the one before as its `base`. The store's `playlists` key lists each
+  collection's name and newest id for whoever is not signed in. These
+  stored names keep the word playlist, which the page used before, so
+  that collections made then can still be read.
+- **A person's own, at their drop.** Signed in, a person's list of
+  collections is kept at the drop `movie collections:{id}`, never in the
+  store, in versions each signed by them and encrypted for them, merged as
+  they are read, as mail keeps its address book (§6.13, §6.15, §6.16).
+- **Changes that do not cross.** The list of collections is changed as
+  §6.6 shows. An edit made to an older version of a collection than the
+  newest is refused, and the page opens the newest, rather than merge the
+  two.
+- **More for a local client.** The page asks `/data/client` as it loads,
+  and shows adding and editing only to a local client. A browser elsewhere
+  plays.
+- **Sharing by id.** A collection is shared by its encrypted id, which carries
+  its key. Another node's movie library reads into it, and copies the
+  movies chosen into a collection of its own with `from`, without reading a
+  film.
+- **Playing.** A film is a `<video>` whose `src` reads into its collection
+  (§6.1). The browser asks for a range at a time, and the node fetches the
+  parts it needs first.
+- **Remembering per browser.** The last collection chosen is kept in
+  `localStorage` as `movie.playlist`, inside `try`, since storage may be
+  refused.
+- **Waiting.** Every read waits out `503`s as §5.3 shows.
+
+## 8. What Applications Cannot Do Yet
+
+- **Be password-protected.** A protected bundle registered as an
+  application is answered `500`, not with the password prompt HTTP API
+  §13.1 describes.
+- **Have an origin of their own.** Trusted applications share the main
+  port's, and with it all they may do (§4).
+- **Store content at an id they choose.** `PUT /data/{hash-algorithm}/{hash}`
+  takes content only from a node, signed with its key. A page stores
+  content by importing a file (§6.4), making a bundle (§6.5), or making a
+  drop (§6.9).
+- **Change the node.** Backups, builds, and registering applications are
+  `/config`'s, on a port of its own, which no application can reach.
+- **Say more about their files.** A bundle has no field yet for a default
+  file other than `index.html`, or a `404` page (HTTP API §13).
+
+## 9. Changing the Shipped Applications
+
+The applications a node ships with are directories under the
+repository's top-level [`applications/`](../../applications/), which
+every implementation shares: `root`, served at `/`, `config`, served at
+`/config`, `movie`, served at `/movie`, `tv`, served at `/tv`, `music`,
+served at `/music`, `photos`, served at `/photos`, `directory`, served at
+`/directory`, `mail`, served at `/mail`, `nodes`, served at `/nodes`, and
+`karma`, served at `/karma`.
+`SHIPPED_APPLICATIONS` in `packaged.py`
+names each, and a node trusts them from the start. Each but `root` links
+home from its upper right corner (§3.1), and each carries its own copy of
+the link and its style, as each carries its own code for showing trust
+(§6.17).
+
+Run from the source, the node builds them in memory as it starts, so a
+changed page is served once the node restarts. `uv build` builds them into
+the wheel instead, as a content archive, through
+[`hatch_build.py`](../hatch_build.py); nothing built is written to the
+source tree. Their bundles leave out hidden files, and the times and
+permissions a checkout gives each file, so a wheel and a checkout of the
+same source build the same ids. `tests/test_applications_packaged.py` tests
+them.
