@@ -34,7 +34,7 @@ and can be built alongside any phase.
 
 ## 2. What It Adds
 
-Twelve steps, the first seven built:
+Twelve steps, the first eight built:
 
 - **Importing a file encrypted.** The node's one change. Step 160.
 - **The photos application, and its albums.** Step 161.
@@ -1134,9 +1134,9 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 167 — Copying, Moving, and Removing Photos
+## Step 167 — Copying, Moving, and Removing Photos ✅
 
-**Issue:** to be made (§4), from #477. **Depends on:** Step 162.
+**Issue:** #675, from #477. **Depends on:** Step 162.
 
 Settled with the user:
 
@@ -1177,6 +1177,97 @@ My calls, not yet reviewed:
 whole album chosen; copied to an album, to a new one, and to one holding
 some of them already; moved; removed; an album's cover removed; and a copy
 past 100,000, made for the purpose, refused.
+
+Built, in one change set, the page alone, on Step 166's. It was checked on
+a node of its own in headless Chromium, with photos made for the purpose
+and kept out of the repository, imported as Step 162 imports them into two
+albums, of six photos and of three: Select, and `S`, giving each tile a box,
+and each day's heading one, and saying how many are chosen; a click
+choosing a photo, and showing none, and a click again leaving it out; a
+click with Shift choosing every photo from the last chosen, across two
+days, and the day wholly chosen shown so; a day's heading choosing every
+photo of that day, and again leaving each out; Select all, and then Select
+none; Enter on a tile choosing it; Escape stopping, each left out, and a
+click then showing a photo again; two photos copied to the other album,
+each folder there holding its original, `info.json`, and its thumbnail,
+and the index its entry; a day of three copied to it, the two it held
+already not copied again; one it held copied, copying nothing; two moved to
+it, taken out of the first album, folders and entries, a month left with
+none leaving no file of the index; one moved to a new album, which took it
+as its cover; a new album of a name held, ignoring case, refused; an
+album's cover removed, after asking, the album taking its first photo as
+its cover, and the other album keeping its copy; in the viewer, the photo
+shown copied, then moved, the photo after it then shown, and the last of
+the album removed, the one before it then shown, and so on until none was
+left, when the viewer went back to the album, saying what was done, with
+Select hidden and no cover; the albums read again after a reload, as they
+were; with the most an album holds lowered to 3 for the purpose, a copy
+and a move that would take an album past it refused, saying how many more
+it could hold, and nothing copied or moved; and a phone's width. The
+page's requests to make bundles were checked in Node, against a stand-in
+for the node: 100,000 photos removed at once, with twelve months of the
+index written again, in three requests, each within 4 MiB. Safari is yet
+to be checked.
+
+Calls made while building it, not yet reviewed:
+
+- **Choosing is a mode.** While photos are chosen, Select is shown pressed,
+  and a bar below the album's heading, kept in sight as the grid is
+  scrolled, says how many are chosen, with Select all, Copy to album, Move to
+  album, Remove from album, and Done. A click, or Enter, chooses a photo
+  rather than showing it. Done, Select, `S`, Escape, or Backspace stops
+  choosing, each left out, and so does opening another album.
+- **Select all, and a day's heading, leave each out** once every photo
+  they would choose is chosen, Select all then reading Select none.
+- **A click with Shift** chooses every photo from the last chosen by a
+  click to the one clicked, both included, in the grid's order, and the one
+  clicked is then the last chosen. With none chosen by a click, it is a
+  click.
+- **The undated** have a box of their own, Every undated photo, shown only
+  while photos are chosen, as they have no day's heading.
+- **Which album** is asked in a dialog listing A new album, with a field for
+  its name once chosen, then every other album, newest first, with how many
+  photos each holds. The album copied or moved to last is chosen to start
+  with, while the page is open.
+- **One version for each.** The album copied to, and, of a move, the album
+  moved from, are each made a new bundle, and one version of the list names
+  both, so that a move is never half made. Each album is read whole first,
+  every file of its index, and one part of which cannot be read is not
+  changed.
+- **A photo moved that the album holds already** is still taken out of the
+  album it was in, as each chosen is moved.
+- **The cover.** An album copied to with no cover takes its first photo with
+  a thumbnail as its cover, as an import does, and so does an album whose
+  cover is removed, first as the grid shows them, since a cover is shown by
+  its thumbnail. With none, it has no cover.
+- **An entry in the index is copied as it is**, `source` and all, into the
+  file of the same month.
+- **Removals in requests of their own.** `editInParts` keeps what each
+  request removes within what the node takes too, after what it adds, as
+  every path of thousands of photos removed at once would take one request
+  past it.
+- **Remove from album asks first**, with Cancel having focus, and says that
+  a copy in another album stays in that one.
+- **Once done**, choosing stops, and what was done is said above the grid,
+  or, in the viewer, below the photo's name. A photo shown that is moved or
+  removed gives way to the photo after it, or else the one before it, once
+  the grid is read again, and the viewer goes back to the album if none is
+  left.
+- **In the viewer**, Copy to album, Move to album, and Remove from album
+  are icons after Download, and the icons go below the photo's name where
+  both do not fit in one row, as at a phone's width.
+
+**Open questions:**
+
+- **How long a large copy takes.** A copy, a move, or a removal makes a
+  new bundle of each album it changes, which Step 161 measured at about 10
+  seconds for an album of 100,000 photos, and says nothing until it is done
+  but that it is copying, moving, or removing. Whether one of many photos
+  should show its progress, as an import does.
+- **Photos moved or removed coming back** when versions made apart are
+  merged (§6), as merging adds photos, and never removes any.
+- **Keys for copying, moving, and removing**, and for Select all, were not
+  asked. Whether `C`, `M`, and Delete, say, should be.
 
 ---
 
@@ -1350,7 +1441,7 @@ and this table then given their numbers.
 | #672 | Step 164 — Reading a Photo's Details | 164 |
 | #673 | Step 165 — Photos No Browser Shows as They Are | 165 |
 | #674 | Step 166 — Videos | 166 |
-| *to be made* | Step 167 — Copying, Moving, and Removing Photos | 167 |
+| #675 | Step 167 — Copying, Moving, and Removing Photos | 167 |
 | *to be made* | Step 168 — Editing a Photo's Details | 168 |
 | *to be made* | Step 169 — Slideshow | 169 |
 | *to be made* | Step 170 — Sharing an Album | 170 |

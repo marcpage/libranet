@@ -282,10 +282,17 @@ see the rest; `F` shows it full screen; `D` downloads its original under
 its file's name; and Escape goes back to the album, at the photo shown. A
 video plays with the browser's own controls, and one the browser cannot
 play, as a MOV of HEVC in a browser without it, is shown as a picture
-struck through, with Download.
+struck through, with Download. **Select**, beside an album's name, or `S`,
+gives each photo a box: click photos to choose them, click with Shift to
+choose every photo from the last chosen, click a day's heading for every
+photo of that day, or Select all, then copy them to another album, or to a
+new one, move them there, or remove them from the album. A photo shown has
+Copy to album, Move to album, and Remove from album too. A photo copied is
+copied with what is known of it, and its original is stored once however
+many albums hold it, and an album holds 100,000 photos at most.
 The arrow keys move through the
 albums, or an album's photos, Enter opens an album, Escape or Backspace goes
-back, `N` makes a new album, and `?` shows the keys. Your albums are kept for
+back, `N` makes a new album, `S` chooses photos, and `?` shows the keys. Your albums are kept for
 you alone, each encrypted, and are read on any node you sign in on, which
 fetches them from the network as it needs them, so the photos application
 keeps none for a browser no one is signed in on. Copying, moving, and
