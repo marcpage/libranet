@@ -34,7 +34,7 @@ and can be built alongside any phase.
 
 ## 2. What It Adds
 
-Twelve steps, the first six built:
+Twelve steps, the first seven built:
 
 - **Importing a file encrypted.** The node's one change. Step 160.
 - **The photos application, and its albums.** Step 161.
@@ -959,10 +959,10 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 166 — Videos
+## Step 166 — Videos ✅
 
-**Issue:** to be made (§4), from #477. **Depends on:** Steps 162, 164; TV
-App Step 144.
+**Issue:** #674, from #477. **Depends on:** Steps 162, 164; TV App Step
+144.
 
 Settled with the user:
 
@@ -1008,6 +1008,129 @@ and from a phone, kept out of the repository: a MOV of H.264, a MOV of
 HEVC, which Safari plays and Chrome may not, an MP4, and an AVI; dates and
 locations read; one that fails as it loads; and a Live Photo, imported as
 one photo, beside a video of the same name that is too long to be one.
+
+Built, in one change set, the page alone, on Step 165's. No phone was at
+hand, so videos were made by `ffmpeg` for the purpose, and kept out of the
+repository: a MOV of H.264 whose metadata was laid out as an iPhone's is, a
+QuickTime meta box in its moov box, with no version or flags, an mdta
+handler, and the keys of its make, its creation date, `-0700`, and its
+place, with an altitude; one as `ffmpeg` writes the same keys, in a meta
+box of its user data, with an offset of `+0900`; an MP4 with `mvhd`'s
+creation time and a `©xyz` added to its user data as Android writes it, in
+degrees and minutes; one with no creation time; one with its moov box first;
+an MP4 whose track's matrix turns it a quarter; a MOV of HEVC; an AVI; and
+a WebM. The page's own reading was checked in Node, by ranges of each from a
+stand-in for the node: each date, offset, place, duration, width, and
+height, the turned one as 360 by 640, in one range or two, the moov box at
+the end of a file read with its `mdat` passed over; and nothing of the AVI
+or the WebM. So were a movie built of version 1 boxes, behind an `mdat` of a
+64-bit size, its sound track before its video track, and its video track
+turned three quarters; dates with and without an offset, `Z`, a fraction of
+a second, and none that is real; and places in decimal degrees, in degrees
+and minutes, and in degrees, minutes, and seconds, south and west, below sea
+level, at 0, 0, and out of range. Then, on a node of its own, in headless
+Chromium: a folder of a photo with a MOV of 2.5 seconds of its name, a photo
+with a MOV of 10 seconds of its name, a PNG, and six videos imported, the
+folder and the list before importing naming each photo with its video,
+`IMG_0001.JPG, with IMG_0001.MOV`, and saying `3 photos and 6 videos`; the
+short MOV kept in its photo's folder, placed as `video/quicktime`,
+`info.json` and the index naming it as `motion`, and not counted; the long
+one added as a video of its own; each video's `info.json` and entry in the
+index keeping `kind` `video`, `duration_seconds`, its width and height, and
+when and where it was taken, from its metadata, from its name, or from the
+time modified, each original placed with its type; a thumbnail drawn of a
+frame of each Chromium plays, the turned one upright, and none of the HEVC
+MOV or the AVI, which Chromium cannot play, their tiles a picture struck
+through, with its extension; each video's tile showing how long it plays;
+each played in the viewer with Chromium's own controls, fitting the window,
+with its thumbnail as its poster, a click on it heard by its controls and
+not zooming it, and Zoom hidden; the HEVC MOV and the AVI shown as their
+placeholders, with Download; Details giving a video's length, and when and
+where it was taken, `As the video itself says`; the viewer closed with no
+video left in it; a Live Photo whose video was gone by the time it was
+imported, added without it, and the activity list saying why; and at a
+phone's width, with a touch screen, a tap on a video not zooming it, a swipe
+on it not moving to the next, and a swipe beside it moving to the next.
+Safari is yet to be checked, and with it a real iPhone's videos and Live
+Photos, and a real Android phone's.
+
+Calls made while building it, not yet reviewed:
+
+- **A QuickTime file is asked of as an MP4 too.** Chrome says `""` for
+  `video/quicktime`, though it plays a MOV of H.264, so a MOV the browser
+  says it cannot play as `video/quicktime` is played if it says it may as
+  `video/mp4`. A MOV of HEVC that Chrome cannot play then fails as it loads,
+  and has the placeholder. A video of a type the page does not know is
+  tried.
+- **The content types of videos**: `video/quicktime`, `video/mp4`,
+  `video/x-m4v`, `video/3gpp`, `video/3gpp2`, `video/x-msvideo`,
+  `video/x-matroska`, `video/webm`, `video/mp2t` for `.mts` and `.m2ts`, and
+  `video/x-ms-wmv`, and the node's for any other.
+- **Its frame is drawn from a bundle of its own**, encrypted, placing its
+  original with its content type, as an import is served as
+  `application/octet-stream`, which Safari may not play. The bundle is left
+  to be evicted. A video the browser says it cannot play is not asked for.
+- **The node gives a video's start first.** Before a video is played, in
+  the viewer or to draw its frame, its first bytes are read, waiting out the
+  503s the node answers while it fetches it, as a browser takes a 503 for a
+  video it cannot play.
+- **Halfway through a shorter video**: a frame one second in, or halfway
+  through a video shorter than two seconds. A video is waited for 30
+  seconds, at most, as its frame is drawn.
+- **Its width and height** are its video track's `tkhd`'s, turned as its
+  matrix turns it, as a browser shows it, the track being the first whose
+  `mdia` handler is `vide`; and else as the browser plays it. Its duration
+  is `mvhd`'s, to a thousandth of a second, and else the browser's.
+- **The metadata read**: an mdta meta box in the moov box, as an iPhone
+  writes it, or in its user data, as `ffmpeg` writes it, and an iTunes one;
+  and a `©xyz` in its user data, as Android writes it, or in an iTunes meta
+  box. ISO 6709 is read in decimal degrees, or in degrees and minutes, or in
+  degrees, minutes, and seconds, by how many digits each is written with.
+  A place at 0, 0 is taken as none, as for a photo.
+- **`taken_from` `metadata`**, shown as `As the video itself says`. A
+  QuickTime date keeps its fraction of a second in `taken`, as a photo's
+  does, and its offset as `offset`, `Z` as `+00:00`. An `mvhd` time before
+  1970 is taken as none, as one of 0, or one counted from 1970, as some
+  write it, gives.
+- **Read only of a QuickTime or an MP4 file**, known by its first box,
+  which may be any an old QuickTime file starts with. Of an AVI, an MKV, a
+  WebM, an MPEG-TS, or a WMV, nothing is read but what the browser plays.
+- **A Live Photo is paired as its folder is listed**, a video given to the
+  first photo of its name, ignoring the case of either, and listed as one,
+  `IMG_0001.JPG, with IMG_0001.MOV`, in the folder and before importing. Its
+  video is imported with it, and its length read by ranges; one longer than
+  five seconds, or whose length is not known, is then added as a video of its
+  own, after the photo. A photo chosen with its box brings its video with
+  it.
+- **A motion not imported** is said beside its photo in the activity list,
+  and counted as not imported, and the photo is added without it.
+- **The index names a photo's `motion`** too, so that Step 171 can mark its
+  tile without reading every `info.json`; and a video's `duration_seconds`,
+  which its tile shows.
+- **A video's tile** shows a play mark and its duration in its lower right
+  corner, as `0:04`, or `1:02:03`, at least a second, and its name for a
+  screen reader says it is a video, and how long. A video with no thumbnail
+  has the placeholder of Step 165, with its duration.
+- **In the viewer**, a video is not played until the person plays it, and
+  is not loaded ahead, nor zoomed; Zoom is hidden for it. What is pressed on
+  it is its controls', and a swipe beside it moves to the next. It is stopped
+  as the viewer moves on, or closes.
+- **Counted as photos.** An album's count, and an import's, says photos, as
+  the plan does of photos and videos both, though the list before importing,
+  and the import as it runs, say how many of each.
+
+**Open questions:**
+
+- **A video imported in a browser that cannot play it** has no thumbnail,
+  as a MOV of HEVC imported in Chrome. Whether it should be given one later,
+  shown in a browser that can play it, as Step 165 gives a photo its view.
+- **The bundle made to draw a frame.** Whether the node should serve an
+  import with the content type of its name, as it serves a file in a bundle
+  with none, so that the bundle made for each video imported is not needed.
+- **A Live Photo's video** is known only by its name and length, not by the
+  identifier an iPhone gives both photo and video. Whether that should be
+  read too, so that a photo is not paired with a short video of its name
+  that is not its motion.
 
 ---
 
@@ -1226,7 +1349,7 @@ and this table then given their numbers.
 | #671 | Step 163 — Viewing a Photo | 163 |
 | #672 | Step 164 — Reading a Photo's Details | 164 |
 | #673 | Step 165 — Photos No Browser Shows as They Are | 165 |
-| *to be made* | Step 166 — Videos | 166 |
+| #674 | Step 166 — Videos | 166 |
 | *to be made* | Step 167 — Copying, Moving, and Removing Photos | 167 |
 | *to be made* | Step 168 — Editing a Photo's Details | 168 |
 | *to be made* | Step 169 — Slideshow | 169 |

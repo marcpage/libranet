@@ -856,6 +856,10 @@ def test_the_photos_page_calls_only_endpoints_the_node_serves(photos_page: str) 
     assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/original%20thumb.jpg")
     assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/view.jpg")
     assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/IMG_0001.HEIC")
+    # A video, played from its original, and a frame of it drawn as it is
+    # imported, from a bundle placing it with its content type.
+    assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/IMG_0001.MOV")
+    assert fullmatch(BUNDLE_PATTERN, f"{album}/IMG_0001.MOV")
 
 
 def test_the_photos_page_keeps_albums_where_the_plan_names_them(photos_page: str) -> None:
@@ -939,7 +943,49 @@ def test_the_photos_page_takes_as_photos_the_files_the_plan_names(photos_page: s
     taken = 'OTHER_PHOTOS.has(extension) || type.startsWith("image/")) {\n    return PHOTO_KIND;'
     assert taken in photos_page
     [kinds] = findall(r"^const NOT_LISTED = \[\n(.*?)\n\];$", photos_page, DOTALL | MULTILINE)
-    assert findall(r'^  \["(\w+)"', kinds, MULTILINE) == ["video", "describing", "other"]
+    assert findall(r'^  \["(\w+)"', kinds, MULTILINE) == ["describing", "other"]
+
+
+def test_the_photos_page_takes_as_videos_the_files_the_plan_names(photos_page: str) -> None:
+    [types] = findall(r"const VIDEO_TYPES = \{([^}]*)\};", photos_page)
+    placed = dict(findall(r'^\s+"?(\w+)"?: "(video/[a-z0-9.-]+)",$', types, MULTILINE))
+
+    # By extension, each placed with its type, or as any video/… the node
+    # gives.
+    assert placed == {
+        "mov": "video/quicktime",
+        "mp4": "video/mp4",
+        "m4v": "video/x-m4v",
+        "3gp": "video/3gpp",
+        "3g2": "video/3gpp2",
+        "avi": "video/x-msvideo",
+        "mkv": "video/x-matroska",
+        "webm": "video/webm",
+        "mts": "video/mp2t",
+        "m2ts": "video/mp2t",
+        "wmv": "video/x-ms-wmv",
+    }
+    taken = (
+        'Object.hasOwn(VIDEO_TYPES, extension) || type.startsWith("video/")) {\n'
+        "    return VIDEO_KIND;"
+    )
+    assert taken in photos_page
+
+
+def test_the_photos_page_reads_and_plays_videos_as_the_plan_names_them(photos_page: str) -> None:
+    # Its thumbnail a frame one second in, or halfway through a shorter one.
+    assert "const FRAME_SECONDS = 1;" in photos_page
+    assert "video.currentTime = Math.min(FRAME_SECONDS, length / 2);" in photos_page
+    # When and where it was taken, by these keys of a QuickTime file, or by
+    # mvhd's creation time, counted from 1904, and ©xyz.
+    assert 'const CREATION_KEY = "com.apple.quicktime.creationdate";' in photos_page
+    assert 'const LOCATION_KEY = "com.apple.quicktime.location.ISO6709";' in photos_page
+    assert 'const XYZ_KEY = "\\xa9xyz";' in photos_page
+    assert "const MOVIE_EPOCH_SECONDS = 2082844800;" in photos_page
+    # A video the browser says it cannot play, "", is not played.
+    assert 'video.canPlayType(type) !== ""' in photos_page
+    # A Live Photo's motion is five seconds long at most.
+    assert "const MOTION_SECONDS = 5;" in photos_page
 
 
 def test_the_photos_page_views_photos_no_browser_shows_as_the_plan_names_them(
@@ -1026,15 +1072,19 @@ def test_the_photos_page_imports_into_albums_as_the_plan_names_them(photos_page:
         "height",
         "orientation",
         "size",
+        "duration_seconds",
         "camera",
         "exposure",
         "location",
         "original",
         "view",
+        "motion",
         "thumb",
     ]
     assert 'const PHOTO_KIND = "photo";' in photos_page
+    assert 'const VIDEO_KIND = "video";' in photos_page
     assert 'const TAKEN_FROM_EXIF = "exif";' in photos_page
+    assert 'const TAKEN_FROM_METADATA = "metadata";' in photos_page
     assert 'const TAKEN_FROM_NAME = "name";' in photos_page
     assert 'const TAKEN_FROM_MODIFIED = "modified";' in photos_page
 

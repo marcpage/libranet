@@ -257,26 +257,37 @@ NEF, an ARW, or a RAF, is shown from a JPEG view of it, which the browser
 importing it draws, as Safari draws an HEIC, or else is found within it, as
 a raw file holds a preview. One with neither is kept to be downloaded, shown
 as a picture struck through, with its file's extension, until a browser that
-can draw it shows it, which gives it its view then. A photo whose Exif does
-not say when it was taken is dated from its
+can draw it shows it, which gives it its view then. Videos are imported
+too, a MOV, an MP4, an AVI, or any other, each with a frame of it as its
+thumbnail, and of a QuickTime or an MP4 file, when and where it was taken,
+as an iPhone or an Android phone writes it, how long it plays, and its
+width and height are read from it. A photo beside a video of its name, five
+seconds long at most, is a Live Photo, and keeps the video as its motion,
+rather than as a video of its own. A photo or video whose file does not say
+when it was taken is dated from its
 file's name, as `IMG_20240514_093012.jpg`, or else from when the file was
 last changed. An album shows its photos oldest
 first, under a heading for each year, month, and day, with the years and
-months beside them to move to. Click a photo, or press Enter on it, to see
+months beside them to move to, and each video with how long it plays. Click
+a photo, or press Enter on it, to see
 it alone, as large as the window holds it, with its name and when it was
 taken: the arrows at its sides, or the left and right arrow keys, move to
 the photo before or after, as does a swipe on a touch screen; `I` shows
 its details beside it, with **Show on Google Maps** for a photo that says
 where it was taken; a click, or `Z`, zooms to its own pixels, dragged to
 see the rest; `F` shows it full screen; `D` downloads its original under
-its file's name; and Escape goes back to the album, at the photo shown.
+its file's name; and Escape goes back to the album, at the photo shown. A
+video plays with the browser's own controls, and one the browser cannot
+play, as a MOV of HEVC in a browser without it, is shown as a picture
+struck through, with Download.
 The arrow keys move through the
 albums, or an album's photos, Enter opens an album, Escape or Backspace goes
 back, `N` makes a new album, and `?` shows the keys. Your albums are kept for
 you alone, each encrypted, and are read on any node you sign in on, which
 fetches them from the network as it needs them, so the photos application
-keeps none for a browser no one is signed in on. Videos are the next step of
-its [plan](docs/implementation/Photos%20App.md).
+keeps none for a browser no one is signed in on. Copying, moving, and
+removing photos are the next step of its
+[plan](docs/implementation/Photos%20App.md).
 
 ### Use and share applications
 
@@ -486,7 +497,7 @@ you say so on `/config`.
 | [Movie App Plan](docs/implementation/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 83, 85–88, and 115, all built |
 | [TV App Plan](docs/implementation/TV%20App.md) | The TV application: steps 144–148, all built |
 | [Music App Plan](docs/implementation/Music%20App.md) | The music application: steps 149–154, steps 149 to 153 built |
-| [Photos App Plan](docs/implementation/Photos%20App.md) | The photos application: steps 160–171, steps 160 to 165 built |
+| [Photos App Plan](docs/implementation/Photos%20App.md) | The photos application: steps 160–171, steps 160 to 166 built |
 | [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |
 | [File Layout](docs/implementation/File%20Layout.md) | Every file a node reads or writes, and the settings that move them |
 | [Database Schema](docs/implementation/Database%20Schema.md) | The statistics database's tables, and what reads and writes them |
