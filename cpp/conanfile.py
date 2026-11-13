@@ -11,6 +11,10 @@ class LibranetConan(ConanFile):
     settings: tuple[str, ...] = ("os", "compiler", "build_type", "arch")
     generators: str = "CMakeDeps"
 
+    def build_requirements(self) -> None:
+        """GoogleTest, which only the tests use."""
+        self.test_requires("gtest/1.18.0")
+
     def layout(self) -> None:
         """Put the build in build/<build type>, with presets for CMake."""
         cmake_layout(self)
@@ -25,7 +29,8 @@ class LibranetConan(ConanFile):
         toolchain.generate()
 
     def build(self) -> None:
-        """Configure and build with CMake, for `conan build`."""
+        """Configure, build, and run the tests with CMake, for `conan build`."""
         cmake = CMake(self)
         cmake.configure()
         cmake.build()
+        cmake.test()

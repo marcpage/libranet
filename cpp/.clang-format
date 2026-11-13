@@ -1,5 +1,22 @@
-# WebKit for now, to be looked at again once there is production code.
+# WebKit for now, to be looked at again once there is more production code.
+# The settings after it are the ones that change the fewest lines of the
+# code as it was first written.
 BasedOnStyle: WebKit
-# A function's opening brace on the same line, as WebKit already puts every
-# other opening brace.
 BreakBeforeBraces: Attach
+SortIncludes: {Enabled: false}
+Cpp11BracedListStyle: true
+SpaceBeforeCpp11BracedList: false
+SpaceInEmptyBraces: Never
+SpaceAfterTemplateKeyword: false
+AlignAfterOpenBracket: Align
+AlignOperands: Align
+AlignTrailingComments: true
+BreakBeforeBinaryOperators: NonAssignment
+DerivePointerAlignment: true
+AllowShortLoopsOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
+IndentCaseLabels: true
+PackConstructorInitializers: CurrentLine
+LambdaBodyIndentation: OuterScope
+EmptyLineBeforeAccessModifier: Leave
+MaxEmptyLinesToKeep: 2
