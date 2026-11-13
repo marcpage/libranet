@@ -14,5 +14,10 @@
   "black-formatter.interpreter": [
     "${workspaceFolder}/.venv/bin/python"
   ],
-  "cmake.sourceDirectory": "/Users/marcp/Documents/Development/libranet/cpp"
+  "cmake.sourceDirectory": "${workspaceFolder}/cpp",
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "[cpp]": {
+    "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+    "editor.formatOnSave": true
+  }
 }
