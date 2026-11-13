@@ -116,8 +116,10 @@ jobs:
         run: ./build/Release/libranet
 
   # clang-format and clang-tidy, at the LLVM version cpp/README.md names.
-  # clang-tidy reads the build's compile commands, and cannot read the
-  # GCC-only warning options of a GCC build, so this job builds with Clang.
+  # This job builds and tests nothing; the cpp jobs do that. clang-tidy reads
+  # the compile commands CMake writes when it configures, and cannot read the
+  # GCC-only warning options of a GCC configuration, so this job configures
+  # with Clang.
   cpp-lint:
     name: C++ format and clang-tidy
     runs-on: ubuntu-latest
@@ -142,14 +144,16 @@ jobs:
           uv tool install "clang-tidy==23.1.*"
           uv tool dir --bin >> "$GITHUB_PATH"
 
+      - name: clang-format
+        run: git ls-files -z '*.cpp' '*.h' '*.hpp' | xargs -0 clang-format --dry-run --Werror
+
       - name: Conan profile
         run: conan profile detect --exist-ok
 
-      - name: Build
-        run: conan build . --build=missing
-
-      - name: clang-format
-        run: git ls-files -z '*.cpp' '*.h' '*.hpp' | xargs -0 clang-format --dry-run --Werror
+      - name: Configure
+        run: |
+          conan install . --build=missing
+          cmake --preset conan-release
 
       - name: clang-tidy
         run: run-clang-tidy.py -p build/Release -quiet

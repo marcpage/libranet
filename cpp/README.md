@@ -117,8 +117,10 @@ git ls-files -z '*.cpp' '*.h' '*.hpp' | xargs -0 clang-format -i
 run-clang-tidy.py -p build/Release -quiet
 ```
 
-In CI, clang-tidy reads a Clang build on Ubuntu, because it cannot read the
-GCC-only warning options in a GCC build's compile commands.
+In CI, the lint job builds nothing: it configures with Clang on Ubuntu,
+because clang-tidy cannot read the GCC-only warning options in a GCC
+configuration's compile commands, and runs clang-tidy on what CMake writes.
+The other C++ jobs build and run the tests.
 
 ---
 
