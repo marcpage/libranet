@@ -1206,6 +1206,32 @@ def test_the_photos_page_shows_a_photo_with_the_keys_the_plan_names(photos_page:
     assert "this.download.download = photo.name;" in photos_page
 
 
+def test_the_photos_page_copies_moves_and_removes_photos_as_the_plan_names_them(
+    photos_page: str,
+) -> None:
+    # Photos are chosen with Select, beside the album's heading, or S.
+    assert 'id="select-photos" title="Select"' in photos_page
+    [shortcuts] = findall(r"^const SHORTCUTS = \{\n(.*?)\n\};$", photos_page, DOTALL | MULTILINE)
+    assert "  s: () => selection.toggle()," in shortcuts.splitlines()
+    # Each is copied by its folder, from the album it is in, with its entry
+    # in the index, unless the album copied to holds it already.
+    copied = "add[`${PHOTOS}/${folder}`] = { from: from.bundle, path: `${PHOTOS}/${folder}` };"
+    assert copied in photos_page
+    assert "const copied = folders.filter((folder) => !index.holds(folder));" in photos_page
+    # Moved, or removed, its folder is taken out of the album it was in, with
+    # its entry in the index.
+    assert "folders.map((folder) => `${PHOTOS}/${folder}`)" in photos_page
+    # No album is taken past the most it holds.
+    assert "const room = MOST_PHOTOS - index.size;" in photos_page
+    # The photo shown has them too.
+    for control, name in [
+        ("viewer-copy", "Copy to album"),
+        ("viewer-move", "Move to album"),
+        ("viewer-remove", "Remove from album"),
+    ]:
+        assert f'id="{control}" title="{name}" aria-label="{name}"' in photos_page
+
+
 def test_the_photos_page_is_black_as_the_movie_and_tv_pages_are_dark(photos_page: str) -> None:
     assert '<meta name="color-scheme" content="dark">' in photos_page
     assert "--background: #000;" in photos_page

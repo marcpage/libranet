@@ -112,7 +112,7 @@
     padding: 0.4rem 0.55rem;
   }
 
-  input[type="checkbox"] { flex: none; width: 1.1rem; height: 1.1rem; margin: 0; padding: 0; accent-color: var(--accent); }
+  input[type="checkbox"], input[type="radio"] { flex: none; width: 1.1rem; height: 1.1rem; margin: 0; padding: 0; accent-color: var(--accent); }
 
   /* Lists of choices: folders and the photos in them, and the photos found to import. */
   .entries {
@@ -268,6 +268,51 @@
 
   .tile .duration svg { width: 0.65rem; height: 0.65rem; fill: currentColor; filter: drop-shadow(0 0 2px #000); }
 
+  /* Choosing photos of the album open: how many are chosen, and what is done
+     with them, kept in sight above the grid as it is scrolled. */
+  .choose-bar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.75rem 0 0;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--background);
+  }
+
+  .choose-bar #chosen-count { margin-right: auto; }
+  #album.choosing .years { top: 4rem; max-height: calc(100vh - 5rem); }
+  #album.choosing .grid :is(h3, h4, .tile) { scroll-margin-top: 4rem; }
+  #album.choosing .grid { -webkit-user-select: none; user-select: none; }
+
+  /* A photo's box, on its tile, and a day's, beside its heading, shown
+     while photos are chosen, and filled once it is chosen, or every photo
+     of the day is. */
+  .box {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 1.3rem;
+    height: 1.3rem;
+    border: 2px solid currentColor;
+    border-radius: 50%;
+  }
+
+  .box svg { width: 0.8rem; height: 0.8rem; fill: none; stroke: var(--accent-text); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; visibility: hidden; }
+  .tile > .box { position: absolute; top: 0.35rem; left: 0.35rem; color: #fff; background: rgb(0 0 0 / 0.35); box-shadow: 0 0 2px #000; pointer-events: none; }
+  [aria-pressed="true"] > .box { border-color: var(--accent); background: var(--accent); }
+  [aria-pressed="true"] > .box svg { visibility: visible; }
+  #album.choosing .tile[aria-pressed="true"]::after { content: ""; position: absolute; inset: 0; border: 3px solid var(--accent); border-radius: 2px; pointer-events: none; }
+
+  .day-pick { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
+  .day-pick:hover { color: var(--text); }
+  #album:not(.choosing) :is(.tile > .box, .day-pick, .choose-only), #album.choosing .day-text { display: none; }
+
   /* A photo shown alone, on black, over the album, with its name and when it
      was taken above it, and the photos before and after it at its sides. */
   .viewer {
@@ -281,9 +326,11 @@
   }
 
   .viewer:focus { outline: none; }
-  .viewer-bar { display: flex; align-items: center; gap: 1rem; padding: 0.5rem 0.5rem 0.5rem 1rem; }
-  .viewer-caption { flex: 1 1 auto; min-width: 0; }
+  .viewer-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1rem; padding: 0.5rem 0.5rem 0.5rem 1rem; }
+  .viewer-caption { flex: 1 1 12rem; min-width: 0; }
+  .viewer-bar > .icons { margin-left: auto; }
   .viewer-caption > * { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .viewer-caption > #viewer-result { white-space: normal; }
   .viewer-main { display: flex; flex: 1 1 auto; min-height: 0; }
   .viewer-body { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; }
 
@@ -443,6 +490,9 @@
       </div>
       <h2 id="album-name"></h2>
       <div class="icons">
+        <button type="button" class="icon changes-only" id="select-photos" title="Select" aria-label="Select" aria-pressed="false" aria-controls="choose-bar" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12l3 3 5-6"/></svg>
+        </button>
         <button type="button" class="icon changes-only" id="rename-album" title="Rename" aria-label="Rename" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
         </button>
@@ -452,6 +502,14 @@
       </div>
     </div>
     <p class="note facts" id="album-facts"></p>
+    <div class="choose-bar" id="choose-bar" role="toolbar" aria-label="Photos chosen" hidden>
+      <span id="chosen-count" role="status"></span>
+      <button type="button" class="secondary small" id="choose-all">Select all</button>
+      <button type="button" class="small" id="copy-chosen">Copy to album</button>
+      <button type="button" class="small" id="move-chosen">Move to album</button>
+      <button type="button" class="danger small" id="remove-chosen">Remove from album</button>
+      <button type="button" class="secondary small" id="choose-done">Done</button>
+    </div>
     <p class="result" id="album-result" role="status" hidden></p>
     <p class="state" id="grid-state" role="status" hidden></p>
     <div class="album-body">
@@ -466,6 +524,7 @@
     <div class="viewer-caption">
       <strong id="viewer-name"></strong>
       <span class="note" id="viewer-taken"></span>
+      <span class="note" id="viewer-result" role="status" hidden></span>
     </div>
     <div class="icons">
       <button type="button" class="icon" id="viewer-info" title="Details" aria-label="Details" aria-pressed="false" aria-controls="viewer-details">
@@ -480,6 +539,15 @@
       <a class="icon" id="viewer-download" title="Download" aria-label="Download" download>
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12 M7 10l5 5 5-5 M4 15v5h16v-5"/></svg>
       </a>
+      <button type="button" class="icon changes-only" id="viewer-copy" title="Copy to album" aria-label="Copy to album" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
+      </button>
+      <button type="button" class="icon changes-only" id="viewer-move" title="Move to album" aria-label="Move to album" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 13h7 M13 10l3 3-3 3"/></svg>
+      </button>
+      <button type="button" class="icon danger changes-only" id="viewer-remove" title="Remove from album" aria-label="Remove from album" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16 M9 7V4h6v3 M6 7l1 14h10l1-14 M10 11v6 M14 11v6"/></svg>
+      </button>
       <button type="button" class="icon" id="viewer-close" title="Close" aria-label="Close">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12 M18 6L6 18"/></svg>
       </button>
@@ -580,6 +648,35 @@
   </form>
 </dialog>
 
+<dialog id="copy-dialog" aria-labelledby="copy-heading">
+  <form id="copy-form">
+    <h3 id="copy-heading"></h3>
+    <p class="hint" id="copy-hint"></p>
+    <ul class="entries" id="copy-albums" aria-labelledby="copy-heading"></ul>
+    <div class="fields" id="copy-new" hidden>
+      <label class="wide">The new album's name <input id="copy-name" autocomplete="off"></label>
+    </div>
+    <p class="result" id="copy-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit" id="copy-submit"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="remove-photos-dialog" aria-labelledby="remove-photos-heading">
+  <form id="remove-photos-form">
+    <h3 id="remove-photos-heading"></h3>
+    <p class="hint">Each is taken out of this album, with what is known of it. A copy of it in another
+    album stays in that one.</p>
+    <p class="result" id="remove-photos-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit" class="danger">Remove from album</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="keys-dialog" aria-labelledby="keys-heading">
   <h3 id="keys-heading">Keys</h3>
   <p class="hint">Anywhere on the page but in a field, and while no other dialog is open.</p>
@@ -591,11 +688,13 @@
     <dt><kbd>Page Up</kbd> <kbd>Page Down</kbd></dt>
     <dd>Move through the photos of the album open by a screen.</dd>
     <dt><kbd>Enter</kbd></dt>
-    <dd>Open the album with focus, or show the photo with focus.</dd>
+    <dd>Open the album with focus, or show the photo with focus, or, while choosing photos, choose it or leave it out.</dd>
     <dt><kbd>Esc</kbd> <kbd>Backspace</kbd></dt>
-    <dd>Back to the albums.</dd>
+    <dd>Stop choosing photos, or back to the albums.</dd>
     <dt><kbd>N</kbd></dt>
     <dd>Make a new album.</dd>
+    <dt><kbd>S</kbd></dt>
+    <dd>Choose photos of the album open, to copy, move, or remove them, or stop choosing. A click with Shift chooses every photo from the last chosen, and a day's heading every photo of that day.</dd>
     <dt><kbd>?</kbd> <kbd>/</kbd></dt>
     <dd>These keys.</dd>
   </dl>
@@ -1316,27 +1415,35 @@ async function makeBundle(edit) {
 // added, and those `remove` names removed, as makeBundle takes them, in as
 // many requests as keep each within what the node takes, and returns the
 // last one's id. The requests are made in the order `add` names the entries,
-// so that an index named after its photos is never written before them.
+// so that an index named after its photos is never written before them, and
+// the removals after them, as many photos removed at once need requests of
+// their own.
 async function editInParts(base, add, remove = []) {
   const encoder = new TextEncoder();
+  const changes = [...Object.entries(add), ...remove.map((path) => [path, null])];
   let bundle = base;
-  let part = {};
+  let part = { add: {}, remove: [] };
   let size = 0;
 
-  for (const [path, entry] of Object.entries(add)) {
-    const bytes = encoder.encode(JSON.stringify({ [path]: entry })).length;
+  for (const [path, entry] of changes) {
+    const bytes = encoder.encode(JSON.stringify(entry ? { [path]: entry } : path)).length;
 
-    if (size + bytes > EDIT_BYTES && Object.keys(part).length > 0) {
-      bundle = await makeBundle({ base: bundle, add: part });
-      part = {};
+    if (size + bytes > EDIT_BYTES && size > 0) {
+      bundle = await makeBundle({ base: bundle, ...part });
+      part = { add: {}, remove: [] };
       size = 0;
     }
 
-    part[path] = entry;
+    if (entry) {
+      part.add[path] = entry;
+    } else {
+      part.remove.push(path);
+    }
+
     size += bytes;
   }
 
-  return makeBundle({ base: bundle, add: part, remove });
+  return makeBundle({ base: bundle, ...part });
 }
 
 // The day the photo an entry of an album's index describes was taken, as
@@ -1356,6 +1463,13 @@ function inTakenOrder(one, other) {
   }
 
   return one[0] < other[0] ? -1 : 1;
+}
+
+// The entries of an album's index, each [folder, entry], in the order its
+// grid shows them: as inTakenOrder orders them, but the undated last.
+function inGridOrder(one, other) {
+  const [oneUndated, otherUndated] = [one, other].map(([, entry]) => dayTaken(entry) === null);
+  return oneUndated === otherUndated ? inTakenOrder(one, other) : (oneUndated ? 1 : -1);
 }
 
 // The name of a file of an album's index: the `part`th of the month `month`,
@@ -1405,6 +1519,19 @@ class AlbumIndex {
     })));
     const index = new AlbumIndex();
     read.forEach((name, at) => index.addFile(name, files[at]));
+    return index;
+  }
+
+  // The index of `album`, an Album, every file of it read, so that what it
+  // holds is known; or an error, if any could not be, as nothing is then
+  // done with its photos.
+  static async whole(album) {
+    const index = await AlbumIndex.read(album.bundle);
+
+    if (index.unread.size > 0) {
+      throw new Error(`Part of “${album.name}” could not be read, so nothing is done. Reload the page, and try again.`);
+    }
+
     return index;
   }
 
@@ -1458,9 +1585,42 @@ class AlbumIndex {
     return this.folders.has(folder);
   }
 
+  // Takes the photo in `folder` out of it.
+  delete(folder) {
+    const month = this.folders.get(folder);
+
+    if (month === undefined) {
+      return;
+    }
+
+    this.months.get(month).delete(folder);
+    this.folders.delete(folder);
+
+    if (this.months.get(month).size === 0) {
+      this.months.delete(month);
+    }
+  }
+
   // How many photos it lists.
   get size() {
     return this.folders.size;
+  }
+
+  // The folder of its first photo with a thumbnail, as the grid shows them,
+  // which an album with no cover takes as its cover; or undefined, if none
+  // has one.
+  cover() {
+    let first = null;
+
+    for (const entries of this.months.values()) {
+      for (const each of entries) {
+        if (isText(each[1].thumb) && (!first || inGridOrder(each, first) < 0)) {
+          first = each;
+        }
+      }
+    }
+
+    return first ? first[0] : undefined;
   }
 
   // The days its first and its last dated photo were taken, as span gives them.
@@ -1936,6 +2096,11 @@ function render() {
     forget();
   }
 
+  // Photos are chosen in one album, and no longer once another is open.
+  if (selection.id !== state.open) {
+    selection.stop();
+  }
+
   byId("chooser").hidden = state.open !== null;
   byId("album").hidden = state.open === null;
 
@@ -2010,6 +2175,15 @@ function unviewable(name, large = false) {
   return placeholder;
 }
 
+// The box of a photo's tile, or of a day's heading, shown while photos are
+// chosen, and filled once it is chosen.
+function chosenBox() {
+  const box = make("span", null, "box");
+  box.setAttribute("aria-hidden", "true");
+  box.innerHTML = '<svg viewBox="0 0 24 24" focusable="false"><path d="M6 12l4 4 8-8"/></svg>';
+  return box;
+}
+
 // The cover at `url`, loaded as it is scrolled to, and asked for again a few
 // times if the node is still fetching it; a placeholder if `url` is null.
 function coverImage(url) {
@@ -2050,6 +2224,11 @@ function renderAlbum(album) {
   const facts = byId("album-facts");
   byId("album-name").textContent = album.name;
   facts.textContent = album.count ? countText(album) : "This album holds no photos.";
+  byId("select-photos").hidden = !canChange() || album.count === 0;
+
+  if (album.count === 0) {
+    selection.stop();
+  }
 
   if (album.count > 0) {
     spanOf(album.bundle).then((span) => {
@@ -2241,14 +2420,31 @@ class Grid {
       const tiles = make("div", null, "day-tiles");
       day.tiles = day.photos.map(([folder, entry], at) => this.tile(folder, entry, [day.at, at]));
       tiles.append(...day.tiles);
-
-      if (day.key) {
-        group.append(make("h5", dateText(day.key, { weekday: "long", month: "long", day: "numeric" })));
-      }
-
-      group.append(tiles);
+      group.append(this.dayHeading(day), tiles);
       month.body.append(group);
     }
+  }
+
+  // The heading of `day`, and, while photos are chosen, a box choosing every
+  // photo of it, or leaving each out, if every one is chosen. The undated
+  // have none but the box, shown only while photos are chosen.
+  dayHeading(day) {
+    const text = day.key ? dateText(day.key, { weekday: "long", month: "long", day: "numeric" }) : null;
+    const heading = make("h5", null, text ? "" : "choose-only");
+    const pick = make("button", null, "day-pick");
+    pick.type = "button";
+    pick.title = text ? "Choose every photo of this day" : "Choose every undated photo";
+    pick.append(chosenBox(), text || "Every undated photo");
+    pick.addEventListener("click", () => selection.chooseDay(this, day));
+
+    if (text) {
+      heading.append(make("span", text, "day-text"));
+    }
+
+    heading.append(pick);
+    day.pick = pick;
+    this.markDay(day);
+    return heading;
   }
 
   // The keys of the months whose tiles are made.
@@ -2276,7 +2472,7 @@ class Grid {
       tile.dataset.folder = folder;
       tile.dataset.thumb = thumb || "";
       tile.setAttribute("aria-label", `${name}${video}, ${taken}`);
-      tile.append(thumb ? coverImage(entryUrl(this.bundle, `${PHOTOS}/${folder}/${thumb}`)) : unviewable(name));
+      tile.append(thumb ? coverImage(entryUrl(this.bundle, `${PHOTOS}/${folder}/${thumb}`)) : unviewable(name), chosenBox());
 
       if (length) {
         const duration = make("span", null, "duration");
@@ -2286,10 +2482,17 @@ class Grid {
         tile.append(duration);
       }
 
-      tile.addEventListener("click", () => {
+      // While photos are chosen, a click chooses it, or leaves it out, and
+      // with Shift chooses every photo from the last chosen.
+      tile.addEventListener("click", (event) => {
         if (shownGrid && shownGrid.positions.has(tile)) {
           shownGrid.focus(shownGrid.positions.get(tile));
-          viewer.open(shownGrid, folder);
+
+          if (selection.active) {
+            selection.click(shownGrid, folder, event.shiftKey);
+          } else {
+            viewer.open(shownGrid, folder);
+          }
         }
       });
       this.tiles.set(folder, tile);
@@ -2297,7 +2500,70 @@ class Grid {
 
     tile.tabIndex = -1;
     this.positions.set(tile, position);
+    Grid.mark(tile);
     return tile;
+  }
+
+  // Shows, while photos are chosen, whether the photo of `tile` is.
+  static mark(tile) {
+    if (selection.active) {
+      tile.setAttribute("aria-pressed", String(selection.has(tile.dataset.folder)));
+    } else {
+      tile.removeAttribute("aria-pressed");
+    }
+  }
+
+  // Shows, while photos are chosen, whether every photo of `day` is, once
+  // its heading is made.
+  markDay(day) {
+    if (day.pick) {
+      day.pick.setAttribute("aria-pressed", String(selection.active && day.photos.every(([folder]) => selection.has(folder))));
+    }
+  }
+
+  // Shows whether each photo of `folders` is chosen, and whether every photo
+  // of each of their days is; or, if `folders` is null, of every photo whose
+  // tile is made, and every day.
+  marked(folders = null) {
+    const days = new Set(folders ? [] : this.days);
+
+    for (const folder of folders || this.tiles.keys()) {
+      const tile = this.tiles.get(folder);
+      const place = this.places.get(folder);
+
+      if (tile) {
+        Grid.mark(tile);
+      }
+
+      if (place) {
+        days.add(this.days[place[0]]);
+      }
+    }
+
+    days.forEach((day) => this.markDay(day));
+  }
+
+  // The folders of every photo it shows, in its order.
+  folders() {
+    return this.days.flatMap((day) => day.photos.map(([folder]) => folder));
+  }
+
+  // The folders of the photos from the one in `one` to the one in `other`,
+  // and of each between them, in its order.
+  between(one, other) {
+    const [from, to] = [this.place(one), this.place(other)].sort(([day, at], [otherDay, otherAt]) => day - otherDay || at - otherAt);
+    const folders = [];
+
+    for (let day = from[0]; day <= to[0]; day += 1) {
+      const photos = this.days[day].photos;
+      const last = day === to[0] ? to[1] : photos.length - 1;
+
+      for (let at = day === from[0] ? from[1] : 0; at <= last; at += 1) {
+        folders.push(photos[at][0]);
+      }
+    }
+
+    return folders;
   }
 
   // The tile at `position`, its month made first, if it is not.
@@ -2393,15 +2659,27 @@ class Grid {
   }
 }
 
-// The grid shown of the album open, a Grid, or null; and the album and
-// bundle whose grid is being read, as "{id} {bundle}", or null.
+// The grid shown of the album open, a Grid, or null; the album and bundle
+// whose grid is being read, as "{id} {bundle}", or null; and the reading of
+// the grid last asked for, which resolves once it is shown.
 let shownGrid = null;
 let readingGrid = null;
+let gridShown = Promise.resolve();
+
+// Shows the grid of `album`, as readGrid does, unless it is being read
+// already, and resolves once it is shown.
+function showGrid(album) {
+  if (readingGrid !== `${album.id} ${album.bundle}`) {
+    gridShown = readGrid(album);
+  }
+
+  return gridShown;
+}
 
 // Shows the grid of `album`, read from its index, unless it is shown of its
 // bundle already. The grid of an earlier bundle of it, shown while its index
-// is read, keeps the tile with focus, and the months made.
-async function showGrid(album) {
+// is read, keeps the tile with focus, the months made, and the photos chosen.
+async function readGrid(album) {
   const grid = byId("photo-grid");
   const status = byId("grid-state");
   const reading = `${album.id} ${album.bundle}`;
@@ -2450,6 +2728,7 @@ async function showGrid(album) {
     shown.current = before.current;
   }
 
+  selection.follow(shown);
   shownGrid = shown;
   shown.render(grid, byId("photo-years"), filled);
 
@@ -2475,6 +2754,332 @@ function stopGrid() {
   readingGrid = null;
   byId("photo-grid").replaceChildren();
   byId("photo-years").replaceChildren();
+}
+
+// The photos chosen of the album open, by their folders, to be copied,
+// moved, or removed together, while Select, beside its heading, or `S`,
+// gives each tile a box. A click chooses a photo, or leaves it out; a click
+// with Shift chooses every photo from the last chosen; a day's heading
+// chooses every photo of that day; and Select all every photo of the album.
+class Selection {
+  constructor() {
+    // Whether photos are being chosen, and of the album whose id is `id`;
+    // the folders of those chosen; and the last chosen by a click.
+    this.active = false;
+    this.id = null;
+    this.folders = new Set();
+    this.last = null;
+  }
+
+  has(folder) {
+    return this.folders.has(folder);
+  }
+
+  // Starts choosing photos of the album open, or stops.
+  toggle() {
+    if (this.active) {
+      this.stop();
+    } else {
+      this.begin();
+    }
+  }
+
+  // Starts choosing photos of the album open, none chosen yet, if its grid
+  // shows any, and the albums are changed.
+  begin() {
+    if (state.open === null || byId("select-photos").hidden || !shownGrid || shownGrid.id !== state.open) {
+      return;
+    }
+
+    this.active = true;
+    this.id = state.open;
+    show(byId("album-result"), "");
+    this.display(true);
+    shownGrid.marked();
+    this.told();
+  }
+
+  // Stops choosing photos, each left out. Focus in what is done with them
+  // goes to Select, or else to Back.
+  stop() {
+    if (!this.active) {
+      return;
+    }
+
+    const focused = byId("choose-bar").contains(document.activeElement);
+    this.active = false;
+    this.id = null;
+    this.folders.clear();
+    this.last = null;
+    this.display(false);
+
+    if (shownGrid) {
+      shownGrid.marked();
+    }
+
+    if (focused) {
+      (byId("select-photos").hidden ? byId("back") : byId("select-photos")).focus();
+    }
+  }
+
+  // Shows the box of each tile, and what is done with the photos chosen, if
+  // `active`, or hides them.
+  display(active) {
+    byId("album").classList.toggle("choosing", active);
+    byId("choose-bar").hidden = !active;
+    byId("select-photos").setAttribute("aria-pressed", String(active));
+  }
+
+  // Keeps chosen, of `grid`, shown again of an album, as photos are added to
+  // it or taken out, those it shows still.
+  follow(grid) {
+    if (!this.active) {
+      return;
+    }
+
+    if (grid.id !== this.id) {
+      this.stop();
+      return;
+    }
+
+    for (const folder of [...this.folders]) {
+      if (!grid.place(folder)) {
+        this.folders.delete(folder);
+      }
+    }
+
+    if (this.last && !grid.place(this.last)) {
+      this.last = null;
+    }
+
+    this.told(grid);
+  }
+
+  // Chooses each photo of `grid` in `folders`, or, unless `choose`, leaves
+  // each out.
+  set(grid, folders, choose) {
+    for (const folder of folders) {
+      if (choose) {
+        this.folders.add(folder);
+      } else {
+        this.folders.delete(folder);
+      }
+    }
+
+    grid.marked(folders);
+    this.told(grid);
+  }
+
+  // A click on the photo in `folder` of `grid`: chooses it, or leaves it
+  // out, or, `extending`, with Shift, chooses every photo from the last
+  // chosen to it.
+  click(grid, folder, extending) {
+    const from = extending && this.last && grid.place(this.last) ? this.last : null;
+    const choose = from !== null || !this.has(folder);
+    this.set(grid, from ? grid.between(from, folder) : [folder], choose);
+
+    if (choose) {
+      this.last = folder;
+    }
+  }
+
+  // Chooses every photo of `day` of `grid`, or leaves each out, if every
+  // one is chosen.
+  chooseDay(grid, day) {
+    const folders = day.photos.map(([folder]) => folder);
+    this.set(grid, folders, !folders.every((folder) => this.has(folder)));
+  }
+
+  // Chooses every photo of the album open, or leaves each out, if every one
+  // is chosen.
+  chooseAll() {
+    if (shownGrid) {
+      const folders = shownGrid.folders();
+      this.set(shownGrid, folders, this.folders.size < folders.length);
+    }
+  }
+
+  // Says how many are chosen, of `grid`, and offers what is done with them
+  // once any is.
+  told(grid = shownGrid) {
+    const count = this.folders.size;
+    const all = Boolean(grid) && count > 0 && count === grid.places.size;
+    byId("chosen-count").textContent = count ? `${plural(count, "photo", "photos")} chosen` : "No photos chosen";
+    byId("choose-all").textContent = all ? "Select none" : "Select all";
+
+    for (const id of ["copy-chosen", "move-chosen", "remove-chosen"]) {
+      byId(id).disabled = count === 0;
+    }
+  }
+
+  // The photos chosen, a ChosenPhotos, in the grid's order.
+  chosen() {
+    const folders = shownGrid ? shownGrid.folders().filter((folder) => this.has(folder)) : [];
+    return new ChosenPhotos(this.id, folders);
+  }
+}
+
+const selection = new Selection();
+
+// Photos of the album whose id is `id`, by their folders: those chosen in
+// its grid, or, if `shown`, the one the viewer shows. Each is copied, or
+// moved, to another album, or removed from its own, every album changed as a
+// new bundle of it, in one version of the albums.
+class ChosenPhotos {
+  constructor(id, folders, shown = false) {
+    this.id = id;
+    this.folders = folders;
+    this.shown = shown;
+  }
+
+  // What they are called, as "3 photos", or "this photo", of the one shown.
+  text() {
+    return this.shown ? "this photo" : plural(this.folders.length, "photo", "photos");
+  }
+
+  // What `count` of them did, as "This photo was", or "3 photos were".
+  were(count) {
+    return this.shown ? "This photo was" : plural(count, "photo was", "photos were");
+  }
+
+  // Their album, of `albums`, or an error, if it was removed.
+  album(albums) {
+    const album = albums.find((each) => each.id === this.id);
+
+    if (!album) {
+      throw new Error("Their album was removed, so nothing is done.");
+    }
+
+    return album;
+  }
+
+  // The folders of those `index` holds, or an error, if it holds none of
+  // them any longer, of the album named `name`, so that nothing is `done`.
+  held(index, name, done) {
+    const folders = this.folders.filter((folder) => index.holds(folder));
+
+    if (folders.length === 0) {
+      throw new Error(`${this.shown ? "This photo is" : "None of them is"} in “${name}” any longer, so nothing is ${done}.`);
+    }
+
+    return folders;
+  }
+
+  // Copies each to the album whose id is `to`, or, if it is null, to a new
+  // album named `name`: its folder, by {"from", "path"} of their album's
+  // bundle, and its entry in the index; but not each that album holds
+  // already, by its folder. If `move`, each is then removed from their album.
+  // Refused if it would take that album past MOST_PHOTOS, saying how many
+  // more it can hold. Gives what was done, `outcome`, as perform takes it,
+  // and the id of the album copied to, `into`.
+  async copy(to, name, move) {
+    const done = move ? "moved" : "copied";
+    let outcome = null;
+    let into = to;
+    await changeAlbums(async (albums) => {
+      const from = this.album(albums);
+      const target = to === null ? null : albums.find((each) => each.id === to);
+
+      if (to !== null && !target) {
+        throw new Error("The album chosen was removed. Choose another.");
+      }
+
+      if (to === null) {
+        refuseHeld(albums, name);
+      }
+
+      const named = target ? target.name : name;
+      const source = await AlbumIndex.whole(from);
+      const folders = this.held(source, from.name, done);
+      const index = target ? await AlbumIndex.whole(target) : new AlbumIndex();
+      const copied = folders.filter((folder) => !index.holds(folder));
+      const room = MOST_PHOTOS - index.size;
+      const there = folders.length - copied.length;
+      let changed = albums;
+
+      if (copied.length > room) {
+        const more = room > 0 ? plural(room, "more photo", "more photos") : "no more photos";
+        throw new Error(`“${named}” can hold ${more}, as an album holds ${MOST_PHOTOS.toLocaleString()} at most, so nothing is ${done}.`);
+      }
+
+      if (copied.length > 0) {
+        const add = {};
+        const months = new Set();
+
+        for (const folder of copied) {
+          const month = source.folders.get(folder);
+          index.set(month, folder, source.months.get(month).get(folder));
+          months.add(month);
+          add[`${PHOTOS}/${folder}`] = { from: from.bundle, path: `${PHOTOS}/${folder}` };
+        }
+
+        const base = target ? target.bundle : await makeBundle({ encrypted: true, add: {} });
+        const files = index.files(months);
+        const bundle = await editInParts(base, { ...add, ...files.add }, files.remove);
+        const kept = { bundle, count: index.size, cover: (target && target.cover) || index.cover() };
+        const made = target ? null : Album.made(name, bundle).with(kept);
+        changed = made ? [...albums, made] : albums.map((each) => (each.id === target.id ? each.with(kept) : each));
+        into = target ? target.id : made.id;
+      }
+
+      if (move) {
+        const left = await ChosenPhotos.without(from, source, folders);
+        changed = changed.map((each) => (each.id === from.id ? left : each));
+      }
+
+      if (move || copied.length > 0) {
+        const already = there ? ` ${this.shown ? "It was" : plural(there, "was", "were")} there already.` : "";
+        outcome = [`${this.were(folders.length - (move ? 0 : there))} ${done} to “${named}”.${already}`, false];
+      } else {
+        outcome = [`${this.shown ? "This photo is" : (there === 1 ? "The photo is" : "Each is")} in “${named}” already, so nothing is copied.`, false];
+      }
+
+      return changed;
+    });
+    return { outcome, into };
+  }
+
+  // Removes each from their album: its folder, and its entry in the index.
+  // Gives what was done, as perform takes it.
+  async remove() {
+    let outcome = null;
+    await changeAlbums(async (albums) => {
+      const album = this.album(albums);
+      const index = await AlbumIndex.whole(album);
+      const folders = this.held(index, album.name, "removed");
+      const left = await ChosenPhotos.without(album, index, folders);
+      outcome = [`${this.were(folders.length)} removed from “${album.name}”.`, false];
+      return albums.map((each) => (each.id === album.id ? left : each));
+    });
+    return outcome;
+  }
+
+  // `album`, whose index, read whole, is `index`, without the photos in
+  // `folders`, each of which it holds: their folders, and their entries in
+  // the index, taken out, as a new bundle of it; and, if its cover is among
+  // them, its first photo with a thumbnail made its cover.
+  static async without(album, index, folders) {
+    const months = new Set(folders.map((folder) => index.folders.get(folder)));
+    folders.forEach((folder) => index.delete(folder));
+    const files = index.files(months);
+    const bundle = await editInParts(album.bundle, files.add, [...folders.map((folder) => `${PHOTOS}/${folder}`), ...files.remove]);
+    const cover = album.cover && index.holds(album.cover) ? album.cover : index.cover();
+    return album.with({ bundle, count: index.size, cover });
+  }
+
+  // Says `outcome`, what was done, where they were chosen: in the album, as
+  // choosing stops; or in the viewer, which, once the photo it shows is
+  // `gone` from the album, shows `neighbor`, the photo beside it, if any.
+  async done(outcome, gone, neighbor) {
+    if (!this.shown) {
+      selection.stop();
+      show(byId("album-result"), ...outcome);
+    } else if (gone) {
+      await viewer.gone(neighbor, outcome);
+    } else {
+      show(byId("viewer-result"), ...outcome);
+    }
+  }
 }
 
 // Details, beside the photo shown, or below it at a phone's width: its name,
@@ -2648,6 +3253,9 @@ class Viewer {
     byId("viewer-next").addEventListener("click", () => this.move(true));
     byId("viewer-zoom").addEventListener("click", () => this.zoom());
     byId("viewer-fullscreen").addEventListener("click", () => this.toggleFullscreen());
+    byId("viewer-copy").addEventListener("click", () => openCopy(this.chosen(), false));
+    byId("viewer-move").addEventListener("click", () => openCopy(this.chosen(), true));
+    byId("viewer-remove").addEventListener("click", () => openRemovePhotos(this.chosen()));
     this.stage.addEventListener("pointerdown", (event) => this.pointerDown(event));
     this.stage.addEventListener("pointermove", (event) => this.pointerMove(event));
     this.stage.addEventListener("pointerup", (event) => this.pointerUp(event));
@@ -2736,6 +3344,46 @@ class Viewer {
     }
   }
 
+  // The photo shown, as ChosenPhotos, to be copied, moved, or removed.
+  chosen() {
+    return new ChosenPhotos(this.grid.id, [this.folder], true);
+  }
+
+  // The folder of the photo after the one shown, or else of the one before
+  // it, in the grid's order; or null, if there is neither.
+  neighbor() {
+    const grid = this.current();
+    const position = grid.place(this.folder);
+    const near = grid.moved(position, "ArrowRight") || grid.moved(position, "ArrowLeft");
+    return near ? grid.photoAt(near)[0] : null;
+  }
+
+  // Once the photo shown is taken out of its album, says `outcome`, what was
+  // done, and shows `neighbor`, the photo that was beside it, once the
+  // album's grid is read again; or, if there is none, goes back to the album.
+  async gone(neighbor, outcome) {
+    const album = openAlbumOf();
+
+    if (album) {
+      await showGrid(album);
+    }
+
+    const grid = shownGrid;
+
+    if (this.isOpen() && neighbor && album && grid && grid.id === album.id && grid.place(neighbor)) {
+      this.present(grid, neighbor);
+      show(byId("viewer-result"), ...outcome);
+      return;
+    }
+
+    this.close();
+    show(byId("album-result"), ...outcome);
+
+    if (focusLost()) {
+      (shownGrid && shownGrid.current ? shownGrid.current : byId("back")).focus();
+    }
+  }
+
   // Shows the photo in `folder` of `grid`, fitting the window, its name and
   // when it was taken, and its details, as its entry in the index gives
   // them, while what is shown of it, and what is known of it, is read.
@@ -2760,6 +3408,7 @@ class Viewer {
     byId("viewer-zoom").hidden = entry.kind === VIDEO_KIND;
     byId("viewer-name").textContent = name;
     byId("viewer-taken").textContent = isText(entry.taken) ? takenText(entry.taken) : "Undated";
+    show(byId("viewer-result"), "");
     byId("viewer-previous").hidden = !grid.moved(position, "ArrowLeft");
     byId("viewer-next").hidden = !grid.moved(position, "ArrowRight");
     this.panel.show(name, {}, entry);
@@ -3402,6 +4051,143 @@ async function removeAlbum() {
   const id = state.open;
   await changeAlbums((albums) => albums.filter((album) => album.id !== id));
   byId("remove-dialog").close();
+  return null;
+}
+
+// Escape, or Backspace: stops choosing photos, while they are chosen, or
+// else goes back to the albums.
+function goBack() {
+  if (selection.active) {
+    selection.stop();
+  } else {
+    backToAlbums();
+  }
+}
+
+// What the dialog copying photos offers them to as a new album, rather than
+// by an album's id.
+const NEW_ALBUM = "new";
+
+// The photos the dialog copying or moving them, or the one removing them,
+// is for, {photos, move}, `photos` a ChosenPhotos; and the id of the album
+// photos were last copied or moved to, chosen to start with the next time.
+let choice = null;
+let copiedTo = null;
+
+// A choice of the dialog copying photos: the album whose id is `value`,
+// named `name`, as `note` describes it, or a new album.
+function albumChoice(value, name, note) {
+  const item = make("li");
+  const check = make("label", null, "check");
+  const box = make("input");
+  box.type = "radio";
+  box.name = "copy-to";
+  box.value = value;
+  check.append(box, make("span", name));
+
+  if (note) {
+    check.append(make("span", note, "note"));
+  }
+
+  item.append(check);
+  return item;
+}
+
+// Asks which album to copy `photos`, a ChosenPhotos, to, or, if `move`, to
+// move them to: one of the person's others, newest first, or a new one.
+function openCopy(photos, move) {
+  if (photos.folders.length === 0 || !canChange()) {
+    return;
+  }
+
+  const others = state.albums.filter((album) => album.id !== photos.id);
+  const list = byId("copy-albums");
+  choice = { photos, move };
+  byId("copy-heading").textContent = `${move ? "Move" : "Copy"} ${photos.text()} to an album`;
+  byId("copy-hint").textContent = move
+    ? "Each is copied to the album chosen, unless it holds it already, then taken out of this one."
+    : "Each is copied to the album chosen, with what is known of it, unless it holds it already. Its original is stored once, however many albums hold it.";
+  byId("copy-submit").textContent = move ? "Move" : "Copy";
+  list.replaceChildren(
+    albumChoice(NEW_ALBUM, "A new album", ""),
+    ...others.map((album) => albumChoice(album.id, album.name, countText(album))),
+  );
+  const boxes = [...list.querySelectorAll("input")];
+  const first = boxes.find((box) => box.value === copiedTo) || (others.length ? null : boxes[0]);
+
+  if (first) {
+    first.checked = true;
+  }
+
+  byId("copy-name").value = "";
+  showNewName();
+  show(byId("copy-result"), "");
+  byId("copy-dialog").showModal();
+  (first || boxes[0]).focus();
+}
+
+// Shows the new album's name, while a new album is chosen.
+function showNewName() {
+  const picked = byId("copy-albums").querySelector("input:checked");
+  const isNew = Boolean(picked) && picked.value === NEW_ALBUM;
+  byId("copy-new").hidden = !isNew;
+  byId("copy-name").disabled = !isNew;
+}
+
+// Copies, or moves, the photos the dialog is for to the album chosen in it,
+// or to a new album of the name given.
+async function copyChosen() {
+  const { photos, move } = choice;
+  const picked = byId("copy-albums").querySelector("input:checked");
+  const name = byId("copy-name").value.trim();
+
+  if (!picked) {
+    throw new Error(`Choose the album to ${move ? "move" : "copy"} ${photos.shown ? "it" : "them"} to, or a new one.`);
+  }
+
+  const to = picked.value === NEW_ALBUM ? null : picked.value;
+
+  if (to === null && !name) {
+    throw new Error("Give the new album a name.");
+  }
+
+  if (to === null) {
+    refuseHeld(state.albums, name);
+  }
+
+  // The photo beside the one shown, which the viewer shows once it is moved.
+  const neighbor = photos.shown && move ? viewer.neighbor() : null;
+  show(byId("copy-result"), `${move ? "Moving" : "Copying"} ${photos.text()}…`);
+  const { outcome, into } = await photos.copy(to, name, move);
+  copiedTo = into;
+  byId("copy-dialog").close();
+  await photos.done(outcome, move, neighbor);
+  return null;
+}
+
+// Asks before removing `photos`, a ChosenPhotos, from their album.
+function openRemovePhotos(photos) {
+  const album = state.albums.find((each) => each.id === photos.id);
+
+  if (photos.folders.length === 0 || !album || !canChange()) {
+    return;
+  }
+
+  choice = { photos, move: false };
+  byId("remove-photos-heading").textContent = `Remove ${photos.text()} from “${album.name}”?`;
+  show(byId("remove-photos-result"), "");
+  byId("remove-photos-dialog").showModal();
+}
+
+// Removes the photos the dialog is for from their album.
+async function removePhotos() {
+  const { photos } = choice;
+  // The photo beside the one shown, which the viewer shows once it is removed.
+  const neighbor = photos.shown ? viewer.neighbor() : null;
+  show(byId("remove-photos-result"), `Removing ${photos.text()}…`);
+  const outcome = await photos.remove();
+  byId("remove-photos-dialog").close();
+  await photos.done(outcome, true, neighbor);
   return null;
 }
 
@@ -6255,9 +7041,10 @@ async function start() {
 // Keys anywhere but in a field, and while no dialog is open. Each is heard
 // before the element with focus hears it.
 const SHORTCUTS = {
-  escape: backToAlbums,
-  backspace: backToAlbums,
+  escape: goBack,
+  backspace: goBack,
   n: openNew,
+  s: () => selection.toggle(),
   arrowleft: intoTiles,
   arrowright: intoTiles,
   arrowup: intoTiles,
@@ -6345,6 +7132,13 @@ byId("import-photos").addEventListener("click", openImport);
 byId("back").addEventListener("click", backToAlbums);
 byId("rename-album").addEventListener("click", openRename);
 byId("remove-album").addEventListener("click", openRemove);
+byId("select-photos").addEventListener("click", () => selection.toggle());
+byId("choose-all").addEventListener("click", () => selection.chooseAll());
+byId("choose-done").addEventListener("click", () => selection.stop());
+byId("copy-chosen").addEventListener("click", () => openCopy(selection.chosen(), false));
+byId("move-chosen").addEventListener("click", () => openCopy(selection.chosen(), true));
+byId("remove-chosen").addEventListener("click", () => openRemovePhotos(selection.chosen()));
+byId("copy-albums").addEventListener("change", showNewName);
 byId("found-list").addEventListener("change", showFoundCount);
 byId("found-back").addEventListener("click", () => {
   showFolders();
@@ -6354,6 +7148,8 @@ byId("found-back").addEventListener("click", () => {
 onSubmit("new-form", "new-result", makeAlbum);
 onSubmit("rename-form", "rename-result", renameAlbum);
 onSubmit("remove-form", "remove-result", removeAlbum);
+onSubmit("copy-form", "copy-result", copyChosen);
+onSubmit("remove-photos-form", "remove-photos-result", removePhotos);
 onSubmit("found-form", "found-result", importFound);
 onClick("folder-all", "folder-state", findEvery);
 onClick("import-chosen", "folder-state", findChosen);
