@@ -42,3 +42,5 @@ cmake --build --preset conan-release
 For a debug build, pass `-s build_type=Debug` to `conan build`, and use the
 `conan-debug` preset. The build goes in `build/Release/` or `build/Debug/`,
 and `conan install` writes `CMakeUserPresets.json` here; git ignores both.
+
+CI builds the node and runs it on Ubuntu and macOS.

@@ -81,3 +81,36 @@ jobs:
 
       - name: Example config validates
         run: uv run libranet --config examples/libranet.yaml --check-config
+
+  # The C++ implementation, run from its own directory.
+  cpp:
+    name: C++ build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: false
+
+      - name: Install Conan and Ninja
+        run: |
+          uv tool install "conan>=2,<3"
+          uv tool install ninja
+          uv tool dir --bin >> "$GITHUB_PATH"
+
+      - name: Conan profile
+        run: conan profile detect --exist-ok
+
+      - name: Build
+        run: conan build . --build=missing
+
+      - name: Run
+        run: ./build/Release/libranet
