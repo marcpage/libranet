@@ -66,15 +66,26 @@ def _free_port(other_than: int = 0) -> int:
 
 
 def _free_ports(count: int, other_than: int) -> list[int]:
-    """``count`` ports nothing listens on, for now, none of them ``other_than``."""
-    probes = [socket() for _ in range(count + 1)]
+    """``count`` ports nothing listens on, for now, none of them ``other_than``.
+
+    Nor any :data:`CONFIG_PORT_STEP` apart from it, which ``/config`` takes
+    when a node listening at ``other_than`` picks its port itself, and which
+    the Chaos port must therefore never be (#697).
+    """
+    probes: list[socket] = []
+    ports: list[int] = []
 
     try:
-        for probe in probes:
+        while len(ports) < count:
+            probe = socket()
+            probes.append(probe)
             probe.bind(("127.0.0.1", 0))
+            port = int(probe.getsockname()[1])
 
-        ports = [int(probe.getsockname()[1]) for probe in probes]
-        return [port for port in ports if port != other_than][:count]
+            if (port - other_than) % CONFIG_PORT_STEP != 0:
+                ports.append(port)
+
+        return ports
 
     finally:
         for probe in probes:
