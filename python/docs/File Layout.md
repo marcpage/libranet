@@ -1,0 +1,1015 @@
+# Libranet File Layout
+
+Version 0.3 • October 2026
+
+---
+
+## 1. Purpose
+
+This document describes every file a Libranet node reads or writes: where
+it lives, what it holds, which module writes it, and which settings and
+command-line switches move it or change what goes into it. It describes the
+implementation as of version 0.6 and Phase 3, up to Step 77, Phase 4's
+Steps 30, 78–82, and 89–93, Phase 5's Steps 94 and 96–114, Phase 6's Steps
+56 and 116–143, and the movie application's Step 115. The protocol does
+not prescribe any of this layout; for normative behavior see
+[High-Level
+Design](../../docs/specs/HighLevelDesign.md), [HTTP
+API](../../docs/specs/HttpApi.md), and [Backup
+Specification](../../docs/specs/BackupSpecification.md).
+
+Only the roots of the layout are configurable. Everything beneath a root has
+a fixed name, defined as a property on `StorageConfig` or `IdentityConfig` in
+`src/libranet/config/models.py`, so moving a root moves everything under it.
+
+## 2. The Roots
+
+A node uses five locations. Four are directories; the fifth is the config
+file itself.
+
+| Root | Setting | Switch | Holds |
+| --- | --- | --- | --- |
+| Config file | — | `-c`, `--config` | The YAML configuration |
+| Data directory | `storage.data_dir` | `--data-dir` | Content, keys, database, registries |
+| Cache directory | `storage.cache_dir` | — | Files regenerated from the data directory |
+| Key directory | `identity.key_dir` | — | The node's secrets (default `{data_dir}/keys`) |
+| Log directory | `logging.directory` | `--log-dir` | One rotating log per process |
+
+The defaults come from `platformdirs`, with the application name `libranet`,
+no application author, and no roaming (`src/libranet/config/paths.py`):
+
+| Root | macOS | Linux | Windows |
+| --- | --- | --- | --- |
+| Config file | `~/Library/Application Support/libranet/libranet.yaml` | `~/.config/libranet/libranet.yaml` | `%LOCALAPPDATA%\libranet\libranet.yaml` |
+| Data | `~/Library/Application Support/libranet` | `~/.local/share/libranet` | `%LOCALAPPDATA%\libranet` |
+| Cache | `~/Library/Caches/libranet` | `~/.cache/libranet` | `%LOCALAPPDATA%\libranet\Cache` |
+| Logs | `~/Library/Logs/libranet` | `~/.local/state/libranet/log` | `%LOCALAPPDATA%\libranet\Logs` |
+
+On Linux, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, and
+`XDG_STATE_HOME` replace the `~/.config`, `~/.local/share`, `~/.cache`, and
+`~/.local/state` parts. On macOS and Windows the config file sits inside the
+data directory, and on Windows the cache and log directories do too.
+`libranet --help` prints the defaults for the machine it runs on.
+
+A node on macOS with every default, after its first run, looks like this:
+
+```text
+~/Library/
+├── Application Support/libranet/   config directory and storage.data_dir
+│   ├── libranet.yaml               the config file, if one was written
+│   ├── cas/                        verified content, resolved app entries
+│   ├── incoming/                   unverified uploads
+│   ├── keys/                       identity.key_dir
+│   ├── libranet.sqlite3            statistics database
+│   ├── applications.json           application registry
+│   ├── backup_jobs.json            backup jobs
+│   ├── backup_jobs/                each job's last bundle, kept expanded
+│   ├── connecting.json             which nodes to connect to
+│   ├── store/                      each application's store
+│   ├── archives/                   content archives kept offline
+│   ├── kept_archives.json          when each kept archive expires
+│   └── karma/                      the Karma chain followed
+├── Caches/libranet/                storage.cache_dir
+│   ├── lists/                      the lists stats derives (§4.1)
+│   └── search/                     cached search responses
+└── Logs/libranet/                  logging.directory
+    └── libranet-{module}.log       one per process
+```
+
+### 2.1 How a Location Is Chosen
+
+A value on the command line wins over the config file, and the config file
+wins over the default. A switch that is not given never erases what the file
+says (`src/libranet/config/models.py`, `_deep_merge`).
+
+- **No `--config`.** The default config file is loaded if it exists. If it
+  does not, the node starts on defaults alone.
+- **With `--config PATH`.** The file must exist; a missing one exits with
+  status 2.
+- **Unknown keys** in the file are errors, so a misspelled path setting
+  stops the node rather than being ignored.
+- **Relative paths** are not resolved against the config file's location.
+  They are relative to the working directory of the process that starts the
+  node.
+- **`--check-config`** prints the resolved configuration, with every root
+  as an absolute or relative path exactly as it will be used, and exits
+  without creating anything.
+
+At startup the supervisor creates the data directory, `cas/`, `incoming/`,
+the cache directory, the key directory, and the log directory
+(`LibranetConfig.directories()`). Everything else is created the first time
+something is written to it.
+
+## 3. The Data Directory
+
+```text
+{storage.data_dir}/
+├── cas/                                 source of truth
+│   ├── data/
+│   │   └── {algorithm}/                 e.g. sha256
+│   │       └── {hash[:4]}/              storage.hash_prefix_length characters
+│   │           └── {hash}               one object, plain or zlib-compressed
+│   └── resolved/                        application files' entries
+│       └── {algorithm}/
+│           └── {bundle hash}/
+│               ├── directory.jzon       the bundle's directory, resolved
+│               ├── {key[:4]}/
+│               │   └── {key}.jzon       key = SHA-256 of the entry path
+│               └── keyed/               an encrypted bundle's, decrypted
+│                   └── {SHA-256 of its key}/
+│                       └── ...          as above
+├── incoming/                            unverified uploads
+│   └── {algorithm}-{sender node hash}/
+│       └── data/{algorithm}/{hash[:4]}/{hash}
+├── keys/                                default identity.key_dir
+│   ├── node_private_key.pem
+│   ├── backup_secret
+│   └── config_credential
+├── libranet.sqlite3
+├── libranet.sqlite3-wal                 only while the node runs
+├── libranet.sqlite3-shm                 only while the node runs
+├── applications.json
+├── backup_jobs.json
+├── backup_jobs/
+│   └── {job id}                         a job's last bundle, kept expanded
+├── connecting.json
+├── store/
+│   └── {SHA-256 of a name}.json         an application's store
+├── archives/
+│   └── {archive id}.zip                 a content archive kept offline
+├── kept_archives.json                   each kept archive, and until when
+└── karma/                               the Karma chain followed
+    ├── genealogy                        each generation's winner, one a line
+    ├── generations/
+    │   └── {g}.json                     what a check reads of generation g
+    ├── head.json                        the head followed
+    ├── balances.json                    every balance stated at the head
+    ├── carried.json                     transactions carried, and put up
+    ├── payments.json                    the node's payments queued
+    └── staking.json                     how much the node stakes
+```
+
+| Path | Written by | Read by |
+| --- | --- | --- |
+| `cas/data/` | Validator; web server (a peer's own public key); supervisor (this node's public key); backup module; Karma module (the blocks it makes) | Most modules; deleted from only by eviction |
+| `cas/resolved/` | Unbundler; the web server deletes an entry it cannot read | Web server, unbundler |
+| `incoming/` | Web server (`PUT /data`, and `POST /data/bundles` as this node); connection manager (content fetched from peers) | Validator, which deletes each upload it checks |
+| `keys/node_private_key.pem` | Supervisor, on first start | Every module that signs or needs the node id |
+| `keys/backup_secret` | Backup module, when first needed | Backup module |
+| `keys/config_credential` | Web server, on the first `/config` request | Web server |
+| `libranet.sqlite3` | Stats module | Stats module only |
+| `applications.json` | Web server | Web server |
+| `backup_jobs.json` | Backup module | Backup module |
+| `backup_jobs/` | Backup module | Backup module |
+| `connecting.json` | Web server | Web server |
+| `store/` | Web server | Web server |
+| `archives/` | Backup module (`/data/archives`, Step 115) | Every module that reads content |
+| `kept_archives.json` | Backup module | Backup module |
+| `karma/` | Karma module; web server (`staking.json`) | Karma module; web server (`head.json`, `balances.json`, `generations/`, `carried.json`, `payments.json`, `staking.json`); stats module (`balances.json`) |
+
+### 3.1 The Source of Truth: `cas/data`
+
+Each verified object is one file, named by its lower-case hex hash, under a
+directory named by the hash algorithm and a subdirectory of the hash's first
+`storage.hash_prefix_length` characters. The path mirrors the URL, so
+`GET /data/sha256/0123abcd…` is served from
+`cas/data/sha256/0123/0123abcd…` (`src/libranet/cas/store.py`). The `data`
+segment leaves the rest of `cas/` free for `resolved/`.
+
+A file holds the bytes exactly as they were received: the content itself, or
+a zlib stream of it (HttpApi §8). The largest file is
+`storage.max_object_bytes`. Scans of the store skip any name that is not a
+lower-case hash of the right algorithm, so temporary files and stray files
+are never served, counted, or evicted.
+
+The node's own public key is stored here under the node id, so peers can
+fetch it. The supervisor writes it at startup whenever it is missing, and
+eviction never deletes it.
+
+`storage.min_free_bytes` is measured on the filesystem holding `cas/`, and
+`storage.max_storage_bytes` counts only the objects in `cas/data`. Once
+storage comes within one batch of hand-offs of either, eight objects of
+`storage.max_object_bytes`, eviction hands objects off to peers and then
+deletes them here. A backup, build, or import waits rather than store an
+object that would take storage past either (HighLevelDesign §4.5, Phase 2
+Step 63).
+
+`storage.hash_prefix_length` must not change once a node holds content.
+Every store looks only in prefix directories of the configured length, so
+objects filed under another length are neither served, counted, nor evicted.
+Nothing migrates them. The same setting shapes `incoming/`, `resolved/`, and
+the search cache.
+
+### 3.2 Resolved Application Files: `cas/resolved`
+
+When a request for an application path misses, the unbundler writes that
+one file's entry here: the file's `FileBundle`, which names its parts, as
+zlib-compressed JSON. The web server serves the file from those parts in
+`cas/data`, reading them as it sends it
+(`src/libranet/cas/resolved_files.py`, Phase 3 Step 65). No reassembled copy
+of any file is written. Both modules write and read what is saved here as
+`src/libranet/bundle/saved.py` does.
+
+- Entries are grouped by the content id of the application's bundle, which
+  never changes, so an entry never goes stale. Registering a new bundle for
+  an application starts a new tree.
+- An entry's name is `{key}.jzon`, `key` being the SHA-256 of its entry
+  path's UTF-8 bytes, not the path itself. Entry paths compare byte for
+  byte, but a filesystem may ignore case or Unicode normalization, limit
+  name length, or reserve names. No filesystem path is ever built from
+  request text.
+- `directory.jzon` is the bundle's directory with its extensions overlaid,
+  saved as zlib-compressed JSON, so the bundle and its extensions are
+  resolved only once. Its name is not hex, so no prefix directory can clash
+  with it. A directory read into is listed from it (Phase 3 Step 71).
+- A bundle stored encrypted (BundleSpecification §7) is grouped by the
+  content id of its ciphertext, and what is decrypted from it is kept
+  beneath `keyed/` and the SHA-256 of the key it was read with, so that only
+  a request carrying that key is answered from it. No path holds the key.
+- An entry the web server cannot read is deleted by it, and written again
+  by the unbundler when next asked for.
+
+Resolved entries are a cache of what bundles in `cas/data` hold. They are
+not counted toward `storage.max_storage_bytes`, but they take up free
+space, though little of it. When free space falls below
+`storage.min_free_bytes`, before any object is handed off, the unbundler
+deletes the whole tree of every bundle no application has been served from
+for `storage.resolved_idle_seconds` (Phase 2 Step 29). Deleting a tree by
+hand while the node is stopped is safe too; the next request resolves it
+again.
+
+### 3.3 Unverified Uploads: `incoming`
+
+Content arriving from a peer lands in a store of its own for the sending
+node, named `{algorithm}-{hash}` from the sender's node id, so one node's
+uploads are kept apart from another's until checked (HttpApi §7.2). Each has
+the same `data/{algorithm}/{prefix}/{hash}` layout as the source of truth.
+
+The web server writes uploads from `PUT /data/{algorithm}/{hash}`, and the
+connection manager writes content it fetched from peers. The web server
+also writes each object of a bundle a local client makes
+(`POST /data/bundles`, Phase 3 Step 72) to this node's own store, as an
+upload from itself, and reads it back from there until the validator has
+moved it. The validator
+checks each upload against its content id, writes it into `cas/data` if it
+matches, and deletes it from `incoming/` either way. Emptied per-node
+directories are left behind.
+
+### 3.4 Keys: `identity.key_dir`
+
+| File | Contents | Created |
+| --- | --- | --- |
+| `node_private_key.pem` | Ed25519 private key, unencrypted PKCS #8 PEM | On the node's first start |
+| `backup_secret` | 32 random bytes (BackupSpecification §4.2) | When a backup or restore first needs it |
+| `config_credential` | JSON: scrypt salt, hash, and cost parameters | On the first `/config` request with `Authorization: Basic` |
+
+- **The private key is the node's identity.** The node id is the hash, under
+  `identity.hash_algorithm`, of the matching public key's PEM encoding.
+  Losing the file gives the node a new id at its next start.
+- **The backup secret is the only way to read this node's backups.** Losing
+  it makes every backup bundle the node made unreadable. It belongs in a
+  backup of its own, kept somewhere other than the node's backups.
+- **The `/config` credential can be reset** by deleting the file. It is read
+  on every request, so the next `/config` request with Basic credentials
+  captures new ones, without a restart. The [Operator
+  Guide](Operator%20Guide.md) §8 says how, for operators.
+
+Each file is created once and never replaced: it is written under a
+temporary name and linked into place, so two processes racing to create it
+agree on one (`write_private_file` in `src/libranet/identity/keys.py`). The
+files are readable only by their owner (mode `0600`).
+
+`write_private_file` would create a missing key directory with mode `0700`,
+but the supervisor creates the directory first, at startup, with the process
+umask, so it is usually `0755`. Setting `identity.key_dir` moves all three
+files together; there is no switch for it.
+
+### 3.5 The Statistics Database
+
+`libranet.sqlite3` holds what the node knows about content and peers, in the
+tables `data_stats`, `node_stats`, `node_addresses`, `node_trust`,
+`app_bundles`, and `seek_entries` (`src/libranet/stats/schema.py`). Only the
+stats module ever opens it; every other module learns from messages and from
+the lists derived into the cache directory.
+
+It runs in write-ahead-log mode, so `libranet.sqlite3-wal` and
+`libranet.sqlite3-shm` sit beside it while the node runs. Its location
+follows `storage.data_dir` and cannot be set on its own.
+
+Deleting it, with the node stopped, makes the node forget every peer, every
+statistic, and every shunning (Phase 4 Step 30). Knowing no peers, it falls back
+to the seed list (§6.1). It forgets whom it trusted too, until it builds its
+trust scores again (Phase 5 Step 113).
+
+### 3.6 The Application Registry: `applications.json`
+
+The registry names the bundle each application is served from
+(`src/libranet/webserver/app_registry.py`):
+
+```json
+{
+  "applications": {
+    "/": "sha256/70eb028a…",
+    "config": "sha256/87a24e6e…",
+    "site": "sha256/54e4b7ee…"
+  },
+  "trusted": ["/"]
+}
+```
+
+`trusted` names the applications the operator trusts (Phase 3 Step 74). Any
+other is served in a sandbox. The applications a node ships are trusted, but
+`config`, which is never sandboxed. A file without `trusted` trusts nothing.
+
+Applications are not configured in the YAML file. They change while the node
+runs, through `/config/api/applications`, and only the web server writes this
+file. Until the first change the file does not exist and the node serves the
+applications it ships (§6.2); the first change saves those along with it.
+
+The web server checks the file's inode, modification time, and size on every
+request and rereads it when they change, so an edit by hand takes effect at
+once. A file that cannot be parsed is an error, not an empty registry, since
+saving over it would lose every registration.
+
+### 3.7 Backup Jobs: `backup_jobs.json` and `backup_jobs/`
+
+The backup jobs configured through `/config/api/backups`, and the bundle each
+was last backed up to (`src/libranet/backup/jobs.py`):
+
+```json
+{
+  "jobs": [
+    {
+      "directory": "/home/me/notes",
+      "interval_seconds": null,
+      "latest": {
+        "bundle": "sha256/3264db1d…",
+        "made_at": 1790465751.3,
+        "entries_digest": "8abcdd0b…",
+        "skipped": 0,
+        "layering": {"layers": 1, "extensions": 1}
+      }
+    }
+  ]
+}
+```
+
+Only the backup module opens it. This file is the only record of which bundle
+holds each directory's latest backup, so a file that cannot be read is an
+error rather than no jobs. Removing a job forgets its bundle but leaves the
+content in `cas/data`. A job whose `interval_seconds` is `null` is checked
+every `backup.interval_seconds`. `layering` says how many update layers lie
+above the last bundle stored whole, and how many extensions a reader follows
+from this one (Phase 2 Step 31); it is `null` for a bundle made before
+layers were written.
+
+Each job's latest bundle is also kept expanded, every entry it holds with
+its extensions overlaid, in `backup_jobs/{job id}`, so that the next backup
+is built from it without reading the bundle, or any file whose metadata is
+unchanged, back (Phase 2 Step 48; `ExpandedBackups` in
+`src/libranet/backup/jobs.py`). The job id is the one `/config/api/backups`
+reports. The file is JSON, password-protected with the backup secret as
+the bundle is (BackupSpecification §4), so its names and part hashes are
+not in the clear:
+
+```json
+{
+  "bundle": "sha256/3264db1d…",
+  "layering": {"layers": 1, "extensions": 1},
+  "beneath": ["sha256/9f1c08e2…"],
+  "contents": {"notes.txt": {"contents": ["sha256/…"], "metadata": {…}}},
+  "held_back": {"notes.txt": {"contents": ["sha256/…"], "metadata": {…}}}
+}
+```
+
+`contents` is a directory bundle's, and `beneath` lists the layers beneath
+the bundle, which the next layer lists after it. `held_back`, there only
+when something is, holds what changed since in metadata alone, which the
+next bundle carries (Phase 2 Step 49), as a layer's `contents` would, with
+`null` for an entry gone. The file is written on every backup that makes a
+new bundle or holds a change back, before `backup_jobs.json` if that changes
+too, and is used only if it names the job's latest bundle and the backup
+secret opens it; otherwise the bundle is read back from `cas/data` as
+before, and the file written anew. Deleting it is safe: the next backup
+reads the bundle back instead, or, if it has been evicted, every file, and
+finds any change held back again. Removing a job deletes its file.
+
+### 3.8 Application Stores: `store/`
+
+The values each application keeps on this node through `/data/store`
+(HttpApi §13.3; `src/libranet/webserver/app_store.py`), one file for each
+application that keeps any, named by the SHA-256 of its name, case-folded.
+The file holds the name too, and each value as compact JSON:
+
+```json
+{"application":"movie","values":{"playlists":[{"name":"Family","bundle":…}]}}
+```
+
+Only the web server writes these files. A store is named by the name an
+application is served at, whether or not one is registered there, so
+removing an application leaves its store, and registering another under
+the name gives it that store. Removing a store's last value removes its
+file. As for the registry, the web server checks a file's inode,
+modification time, and size on every request and rereads it when they
+change, and a file that cannot be read, or that holds another name's
+store, is an error, never saved over. A store's file is held to
+`storage.max_application_store_bytes`, 1 MiB by default, and each value in
+it to `storage.max_application_value_bytes`, 64 KiB.
+
+Deleting the directory, with the node stopped, makes every application
+forget what it kept here. What a store names is content, and stays in
+`cas/data` until it is evicted.
+
+### 3.9 Which Nodes to Connect To: `connecting.json`
+
+Whether the node connects only to the nodes it trusts, as the operator says
+on `/config` (Phase 5 Step 113; `src/libranet/webserver/peer_trust.py`):
+
+```json
+{
+  "only_trusted": true
+}
+```
+
+Only the web server writes it, through `/config/api/connecting`, and reads it
+as it starts. Until the first change the file does not exist, and the node
+connects to the nodes it trusts and to those of unknown trust. A file that
+cannot be read, or holds no such object, is read as `true`, connecting only
+to the trusted, rather than to more than the operator may have said, and a
+warning is logged; saving the choice again on `/config` writes it afresh. It
+never connects to a node it distrusts, whatever the file says.
+
+Deleting it, with the node stopped, puts the node back to connecting to the
+nodes of unknown trust too.
+
+### 3.10 Kept Archives: `archives/`
+
+Content archives the node keeps for itself, so that content stays held, for
+playing offline say, once the store has evicted it (Step 115;
+`src/libranet/cas/archive_folder.py`). Each `*.zip` here is a content
+archive as §6.3 describes. Every process that reads content reads them after
+every other layer, in name order, and looks at the folder again whenever a
+lookup finds nothing in another layer, and before each prefix scan. So an
+archive written or removed while the node runs is read, or left out, with no
+restart, from the moment the store no longer answers for its content.
+
+A name starting with `.`, as a file being written here has (§8), is not
+read. An archive that cannot be opened, or that holds anything but objects,
+is logged as an error and left out, without stopping the node, and tried
+again once it has changed. Anything else here, such as a file not named
+`*.zip` or a folder, is logged as a warning, once while it stays, and left
+out. An archive no longer here is closed at once, once any read of it under
+way is done, so the space it took is freed, and a read of it that comes after
+finds nothing.
+
+What an archive here holds, as any archive's, is never evicted, and not
+counted against the storage limits. Deleting a file here, even while the
+node runs, stops keeping what it holds; whatever the store still holds of it
+stays, and is evicted as any content is.
+
+The backup module writes each archive here as a local client asks
+(HttpApi §12.4; `src/libranet/backup/kept_archives.py`), once it holds
+everything the archive needs, and records it in `kept_archives.json`:
+
+```json
+{
+  "archives": [
+    {"archive_id": "0123456789abcdef", "bundles": ["sha256/…"],
+     "objects": ["sha256/…"], "requested_at": 1791892800.25,
+     "finished_at": 1791892861.5, "object_count": 4100,
+     "size_bytes": 4294967296, "expires": "2026-11-20T00:00:00Z"}
+  ]
+}
+```
+
+A record names each bundle by its id alone, never with the key it may be
+stored encrypted under. The module removes an archive, and its record, once
+`expires` has passed, or as it starts if it passed while the node was down,
+and when a local client asks. A record whose archive is gone is forgotten as
+the module starts, and an archive here with no record, as an operator may
+leave, or a crash between writing one and recording it, is read but never
+expires, and is not listed. A file that cannot be read stops the backup
+module, as `backup_jobs.json` does (§3.7), rather than being saved over.
+
+### 3.11 The Karma History: `karma/`
+
+The history of the chain the Karma module follows (KarmaLedger §3.5, Phase 6
+Step 123; `ChainHistory` in `src/libranet/karma/history.py`). Only the Karma
+module writes it, `staking.json` aside, and it reads all of it into memory as
+it starts. It adds a
+generation each time it follows the chain on (Phase 6 Step 126).
+
+`genealogy` is the id of the winning validation block of each generation,
+one a line, line g for generation g, from the root's (KarmaLedger §3.5.1):
+
+```text
+sha256/0a1b…
+sha256/9f8e…
+```
+
+`generations/{g}.json` is what a check of a later block reads of generation
+g: its validation block, the transaction block that validates, the chain's
+weight through the two, and the stake baseline after them, which the next
+transaction block states (KarmaLedger §3.3), each as decimal digits, the key
+of each of that block's transactions, its payout aside (§4.2), and the hashes
+its validation block witnesses (§6.4). Every key and witness is kept, back to
+the root, since a transaction never expires (§4.4):
+
+```json
+{"validation": "sha256/9f8e…", "transaction": "sha256/4c2d…", "weight": "1208",
+ "stake_baseline": "500",
+ "keys": [{"from": "sha256/0a1b…", "created": "2026-10-21T14:03:22Z"}],
+ "witnessed": ["7d3f…"]}
+```
+
+`head.json` is the head the node follows (§3.5), its generation, and the
+chain's weight through it, each `null` while it follows none:
+
+```json
+{"head": "sha256/9f8e…", "generation": 1, "weight": "1208"}
+```
+
+The web server reads it (`KarmaHead` in
+`src/libranet/protocol/karma_head.py`), and refuses to have a root made while
+it names a head (Phase 6 Step 125). It reads the generations' files too
+(`KarmaGeneration`), for `GET /data/karma/generations` (HttpApi §10.10).
+
+`balances.json` is every balance the chain states at the head (KarmaLedger
+§5.3): the latest stated of each identity in the head's transaction block, or
+in those before it as far back as its reach, with the payout of the block
+after applied, which pays the reward
+of the head's validation block (KarmaLedger §2), and with the head it was
+read at, as `head.json` names it. Each of the
+head's members is `null`, and `balances` empty, while the module follows no
+chain:
+
+```json
+{"head": "sha256/9f8e…", "generation": 1, "weight": "1208",
+ "balances": {"sha256/0a1b…": {"kismet": "250", "last_won": "0"}}}
+```
+
+An identity it does not name holds nothing. The module writes it each time
+its head changes, after the head, and as it first looks once started; while
+a transaction block it is read from is not held, it asks for it, and writes
+the file once it comes, so the file may name the head before `head.json`'s
+until then (`HeadBalances` in `src/libranet/karma/balances.py`, Phase 6 Step
+128). The web server reads it (`KarmaBalances` in
+`src/libranet/protocol/karma_balances.py`) for `GET /data/karma` and
+`GET /data/karma/balances/{algorithm}/{hash}`, and again once it is
+replaced, to keep connected the peers of more Karma (Phase 6 Step 142). The
+stats module reads it at each derivation, to order the node and candidate
+lists by how near each node's Karma is to this node's own (§4.1, Phase 6
+Steps 141 and 143).
+
+`carried.json` is each transaction of a chain the module left for a heavier
+one that the heavier one does not hold, which it carries over into the
+blocks it builds (KarmaLedger §3.5.3, §4.4), and each transaction it was
+given to put up itself, as a block of its own (§5.6), that is valid or
+pending (Phase 6 Step 131). Each has the generation it was witnessed in
+(§4.5), or `null` if it has not been, and whether the module puts it up
+itself (`put_up`), as it does each it was given, rather than only building
+it into blocks:
+
+```json
+{"transactions": [{"transaction": {"algorithm": "sha256", "contents": "…",
+  "hash": "…", "signature": "…", "signer": "sha256/0a1b…"}, "witnessed": 1,
+  "put_up": false}]}
+```
+
+Each `transaction` is a signed transaction as a transaction block holds it
+(KarmaLedger §5.1). An entry with no `put_up` is not put up.
+
+One is carried into the blocks of the generations up to
+`karma.carry_generations` after the one it was witnessed in, and one not
+witnessed until it is; one whose key the chain holds is carried no more. One
+the module puts up itself it tries at each head, and puts up there if it is
+valid. Every one it builds into the block it combines at the head, every
+`karma.build_interval_seconds` (Phase 6 Step 134), and lists each the chain
+has not yet witnessed in the validation blocks it builds (Phase 6 Step 136),
+so that a winning one starts its count. The module writes the
+file whole each time its head changes, leaving those out, and once it has
+carried something, and the file is not there before then
+(`CarriedTransactions` in `src/libranet/karma/carried.py`, Phase 6 Steps 129
+and 131). A file it cannot read it logs, and writes again without what it
+held. The web server reads it (`CarriedTransaction` in
+`src/libranet/protocol/karma_carried.py`) for `GET /config/api/karma`
+(Phase 6 Step 138).
+
+`payments.json` is the node's own payments, queued to be put up together as
+one transaction (KarmaLedger §4.6, Phase 6 Step 132): each a recipient, as
+each peer that sends content the node asked for is, and the servers the
+node rates highest every `karma.rating_interval_seconds` are (Phase 6 Step
+133), and an amount, `karma.payment_percent` of the
+node's balance at the head, with the head's reward paid, when it was
+queued; the
+`created` of the node's last transaction, or `null` before it has made one;
+and the transaction made of the queue, as its sender writes it, its nonce
+not yet searched for, until it is put up, or `null`:
+
+```json
+{"payments": [{"to": "sha256/9f8e…", "kismet": "200000000000"}],
+ "last_created": "2026-10-23T09:00:00Z", "transaction": null}
+```
+
+The module makes the queue a transaction once `karma.payment_batch` are
+queued, or `karma.payment_interval_seconds` have passed since `last_created`,
+and writes it in the queue's place, so that a node that stops before it is
+put up mines it again with the same `created`, and never pays twice (§4.2).
+Once it is carried (`carried.json`), or passed over for good, the module
+writes the file again without it (`NodePayments` in
+`src/libranet/karma/payments.py`). The file is not there before the first
+payment is queued. A file it cannot read it logs, and writes again empty.
+The web server reads it (`PaymentQueue` in
+`src/libranet/protocol/karma_payments.py`) for `GET /config/api/karma`, and
+says when the payments queued go.
+
+`staking.json` is how much the node stakes, as its operator sets it on
+`/config` (Phase 6 Step 138): the share of what covers the node's stakes it
+stakes on the best transaction block of each generation, in percent, from 0
+to 100:
+
+```json
+{
+  "stake_percent": 10
+}
+```
+
+The web server writes it, for `PUT /config/api/karma`, and the Karma module
+reads it each time it stakes (`StakingRule` in
+`src/libranet/protocol/karma_staking.py`), in place of `karma.stake_percent`.
+The file is not there until the operator first saves a share, and
+`karma.stake_percent` holds until then. A file that cannot be read is logged,
+and read as staking nothing, until it is saved again.
+
+A generation's file is written before the genealogy, and the head last, each
+replaced whole (§8), so that a write cut short leaves the genealogy as it was.
+The head is written again each time the module starts. The history read is
+the generations from the root on, up to the first that does not agree: a line
+of the genealogy naming no id, as a last line torn by a crash may not, or a
+generation whose file is missing, unreadable, or names another validation
+block, as one a replacement of later generations cut short has written does.
+What is left out is logged as a warning, and the genealogy written without
+it. Deleting the directory leaves the node following no chain, as a new one
+does.
+
+## 4. The Cache Directory
+
+```text
+{storage.cache_dir}/
+├── lists/
+│   ├── nodes.json            body of GET /data/nodes
+│   ├── seek.json             body of GET /data/seek
+│   ├── candidates.json       every known address of every peer
+│   ├── shunned.json          the content this node has shunned
+│   └── peers.json            body of GET /data/peers
+└── search/
+    └── {prefix[:4]}/         storage.hash_prefix_length characters
+        └── {prefix}.json     body of GET /data/search/{prefix}
+```
+
+Everything here is regenerated from the data directory, so the whole
+directory can be deleted while the node is stopped.
+
+### 4.1 Derived Lists: `lists`
+
+The stats module derives these from its database every
+`stats.derive_interval_seconds` and replaces a file only when its contents
+change (`src/libranet/stats/derivation.py`). They let the web server, the
+connection manager, the validator, and the fetcher answer from plain files,
+since none of them may open SQLite.
+
+| File | Read by | Bounded by |
+| --- | --- | --- |
+| `nodes.json` | Web server (`GET /data/nodes`); connection manager (the list it sends peers, and the nodes it newly names) | `stats.max_list_bytes` |
+| `seek.json` | Web server (`GET /data/seek`, and what keeps a peer connected); connection manager | `stats.max_list_bytes`, `stats.seek_entry_ttl_seconds` |
+| `candidates.json` | Connection manager, choosing whom to dial | `stats.max_addresses_per_node` |
+| `shunned.json` | Web server, validator, and fetcher, refusing shunned content (`src/libranet/cas/shunned.py`) | Nothing: every shunning the database holds |
+| `peers.json` | Web server (`GET /data/peers`, for local clients' pages) | `stats.max_peers_listed` |
+
+`shunned.json` is also written at once when content is first shunned
+(Phase 4 Step 30), and each reader reads it again only once it is replaced.
+Until it is derived, nothing is shunned. `seek.json` is also written at once
+when a search names a prefix it does not list, so that peers read the prefix
+on their next refresh (Phase 4 Step 93). `peers.json` says when it was
+derived, so it is written at every derivation (Phase 5 Step 107).
+`nodes.json` puts the nodes whose Karma is nearest this node's own first,
+and `candidates.json` climbs from this node's own Karma, then descends, as
+`karma/balances.json` (§3.11) states it when they are derived (Phase 6
+Steps 141 and 143). The web server reads `seek.json` again once it is
+replaced, and keeps connected a peer of less Karma than the others that
+pushes what it names (Phase 6 Step 142).
+
+Until a list has been derived, the web server answers requests for it with
+`503` and a `Retry-After` of `network.retry_after_seconds`.
+
+### 4.2 Search Results: `search`
+
+The web server writes the response to each `GET /data/search/{prefix}` here,
+and reuses it until the file is older than `storage.search_cache_ttl_seconds`
+(`src/libranet/protocol/search.py`). The stats module may then rewrite a
+fresh file with identifiers it knows of but the node does not hold
+(`src/libranet/stats/enrichment.py`). A response lists only the hashes
+sharing at least `storage.search_min_bits` leading bits with the prefix, or
+all of a shorter one, and as many of them as fit in an answer of less than
+1 MiB once compressed (HTTP API §6.1). The file is never compressed, so it
+may be larger. A prefix shorter than
+`hash_prefix_length` is filed under itself, so `ab` is `search/ab/ab.json`.
+
+An expired file is replaced on the next search for the same prefix, but
+nothing ever deletes one. The directory grows with the number of distinct
+prefixes the node has been asked about.
+
+## 5. Log Files
+
+Every process writes its own log, because a rotating file handler cannot be
+shared across processes (`src/libranet/logging_setup.py`). The module name
+goes between the stem and suffix of `logging.file_name`:
+
+```text
+{logging.directory}/
+├── libranet-supervisor.log
+├── libranet-dispatcher.log
+├── libranet-stats.log
+├── libranet-webserver.log
+├── libranet-webserver.log.1      rotated, up to logging.backup_count
+├── libranet-validator.log
+├── libranet-connections.log
+├── libranet-fetcher.log
+├── libranet-unbundler.log
+├── libranet-eviction.log
+└── libranet-backup.log
+```
+
+A file rotates at `logging.max_bytes`, and `logging.backup_count` rotated
+files are kept per process. `logging.level`, `logging.format`, and
+`logging.console` (whether every process also logs to standard error) apply
+to all of them. The supervisor logs where the data directory is and which
+content archives are open.
+
+## 6. Files Shipped With the Package
+
+```text
+libranet/                         the installed package
+├── config/                       wheels only
+│   └── seed_peers.json           the default seed list
+└── archives/                     wheels only
+    ├── applications.zip          the shipped applications, built
+    └── applications.json         each shipped application's bundle id
+```
+
+Run from a source checkout, the package holds neither. The node reads the
+seed list, and builds the applications, from the top of the repository,
+where they are shared by every implementation:
+
+```text
+applications/                     source checkouts only
+├── root/index.html               the application served at /
+├── config/index.html             the application served at /config
+├── movie/index.html              the application served at /movie
+└── directory/index.html          the application served at /directory
+data/                             source checkouts only
+└── seed_peers.json               the default seed list
+```
+
+### 6.1 The Seed List
+
+`seed_peers.json` is consulted only when the node knows no peers at
+all. It has the shape of `GET /data/nodes` (HttpApi §10.6), with `null`
+allowed for an unknown node id:
+
+```json
+{"nodes": {"http://peer.example:8080": "sha256/…", "http://other.example:8080": null}}
+```
+
+It ships empty. `peers.seed_file` names a file to use instead. A seed list
+that cannot be read is logged as a warning and does not stop the node.
+
+### 6.2 The Shipped Applications
+
+A wheel carries the applications built. `hatch_build.py` builds them into
+`archives/applications.zip` and names their bundles in
+`archives/applications.json`; `pyproject.toml` leaves the `applications/*/`
+source directories out of the wheel. A node run from a checkout, or from an
+editable install, has no `archives/` directory and builds the applications
+from `applications/` in memory each time a process opens its content
+(`src/libranet/cas/layered.py`). Either way the bundle ids match, so neither
+form keeps a built file in the repository.
+
+### 6.3 Content Archives
+
+A content archive is a zip file whose members are objects named
+`{algorithm}/{hash}`, holding what `cas/data` would hold
+(`src/libranet/cas/archive.py`). Serving, searching, unbundling, restoring,
+and exporting read content through these layers in order, and the first
+that holds an object answers:
+
+1. `cas/data`, so nothing an archive holds can shadow verified content;
+2. each archive in `storage.archives`, in the order listed;
+3. each `*.zip` in the package's `archives/` directory, in name order;
+4. the shipped applications built in memory, when run from source;
+5. each archive the node keeps in `archives/` (§3.10), in name order.
+
+Archive content is never evicted, never counted against the storage limits,
+and never written to. An archive in `storage.archives` or the package that
+cannot be opened, or that holds anything but objects, stops the node at
+startup with exit status 2; one the node keeps is left out instead (§3.10).
+Exports (§7) write archives in this format.
+
+## 7. Files Outside the Node's Directories
+
+Requests to `/config/api` can read and write anywhere the node's user can.
+Requests from local clients to `/data/directory` and `/data/imports` read
+only within the folders `local.folders` offers (HttpApi §12.2, Phase 3 Steps
+68 and 69).
+
+```text
+/home/me/
+├── notes/                a backup job's directory: read, never written
+├── site/                 a directory built with POST /config/api/builds
+│   └── index.html
+├── site.bundle           the build record: what site/ was last built as
+├── site.zip              an archive written by POST /config/api/exports
+├── restored/             a restore's target directory
+│   └── .restore-{16 hex digits}.partial    a file being restored
+├── restored.bundle       its record, once done, if what it restored was plain
+└── Movies/               a folder local.folders offers: listed and read
+    └── Film.mp4          a file imported with POST /data/imports
+```
+
+- **Backups** read the job's directory and write only into `cas/data`.
+- **Imports** read one file in a folder offered and write only into
+  `cas/data`. The web server lists the folders and finds the file, never
+  following a symbolic link out of them or listing a name `local.hidden`
+  matches, and the backup module reads it. A file whose size or
+  modification time changes while it is read fails the import.
+- **Builds** write a record named `{directory name}.bundle` beside the
+  directory (`src/libranet/backup/builds.py`), holding the bundle kept
+  expanded, as §3.7 describes, in the clear, and whether it is
+  password-protected:
+
+  ```json
+  {"bundle": "sha256/…", "layering": {"layers": 1, "extensions": 1},
+   "protected": false, "beneath": ["sha256/…"],
+   "contents": {"index.html": {…}}}
+  ```
+
+  Building the directory again makes the new bundle supersede the one
+  recorded, built from the entries recorded. A record written before Phase
+  2 Step 48 holds only `bundle` and `layering`; the bundle is then read
+  back, and the record written anew. A file of that name that is not a
+  record is never replaced; the build fails instead.
+- **Exports** write a content archive at the path the request names,
+  replacing a file there only if the request allows it.
+- **Restores** write each file under a temporary name,
+  `.restore-{random}.partial`, beside where it goes, and rename it into place
+  once it has passed its checks (`src/libranet/backup/writing.py`). A
+  directory that is not empty is refused unless the request allows
+  overwriting. Once done, a restore of a plain bundle, such as an
+  application, writes the same record a build writes beside the directory,
+  replacing a record there, so that building the directory makes that
+  bundle's next version. A file there that is not a record fails the
+  restore, before anything is written if it is there from the start. A
+  restore of a backup, which is encrypted, writes no record.
+
+None of these ever reads from or writes into the node's own directories:
+the data directory, `cas/`, `incoming/`, the cache directory, the key
+directory, or the log directory. A backup or build treats them as absent,
+so one aimed inside them fails, and a restore or export never writes in
+them.
+
+## 8. How Files Are Written
+
+- **Replaced whole.** Nearly every file is written to a temporary file named
+  `.{name}.{random}.partial` in the same directory and then renamed over the
+  target (`src/libranet/atomic_file.py`), so a reader sees the old file or
+  the new one, never part of one. This covers CAS objects, resolved entries,
+  derived lists, search results, the registry, the jobs file, each job's
+  last bundle, the applications' stores, build records, export
+  archives, and the Karma history. A `.partial` file left
+  by a crash is not cleaned up, but every scan skips it.
+- **Owner-only by accident of the method.** A file replaced this way gets
+  mode `0600`, because the temporary file is created with it. The database
+  and log files follow the process umask, as do all directories.
+- **Private files are never replaced.** The key directory's files are
+  created once, by linking, as §3.4 describes.
+- **One node per data directory.** No lock file guards a data directory,
+  and the node keeps no pid file. Nothing stops two nodes from sharing one,
+  and nothing in the design expects it, so give each node its own.
+
+## 9. Settings Reference
+
+Every setting that moves a file or decides what goes into one. Each is
+optional; `examples/libranet.yaml` shows them all with their defaults.
+
+| Setting | Default | Switch | Effect on files |
+| --- | --- | --- | --- |
+| `storage.data_dir` | Platform data directory | `--data-dir` | Root of §3 |
+| `storage.cache_dir` | Platform cache directory | — | Root of §4 |
+| `storage.hash_prefix_length` | `4` | — | Prefix directory length in `cas/`, `incoming/`, and `search/`; do not change on a node holding content |
+| `storage.archives` | `[]` | — | Content archives read after `cas/data` (§6.3) |
+| `storage.max_object_bytes` | `1048576` | — | Largest object accepted or stored; the part size backups and builds cut files into |
+| `storage.min_free_bytes` | `1073741824` | — | Free space kept on the filesystem holding `cas/` |
+| `storage.max_storage_bytes` | `null` | — | Most bytes of objects kept in `cas/data` |
+| `storage.resolved_idle_seconds` | `2592000.0` | — | How long an application goes unused before its tree in `cas/resolved/` may be deleted for free space |
+| `storage.reclaim_interval_seconds` | `3600.0` | — | How often, at most, trees in `cas/resolved/` are deleted while free space stays short |
+| `storage.max_application_store_bytes` | `1048576` | — | Largest file in `store/` |
+| `storage.max_application_value_bytes` | `65536` | — | Largest value in a file in `store/` |
+| `storage.search_cache_ttl_seconds` | `300.0` | — | How long a file in `search/` is reused |
+| `storage.search_min_bits` | `24` | — | Fewest leading bits a hash in `search/` shares with its prefix, or all of a shorter one, for a search to return it |
+| `identity.key_dir` | `{data_dir}/keys` | — | Where the three private files live |
+| `identity.hash_algorithm` | `sha256` | — | Algorithm of the node id, and so where the public key is stored |
+| `peers.seed_file` | `null` (packaged list) | — | Seed list read when no peers are known |
+| `stats.derive_interval_seconds` | `60.0` | — | How often `lists/` is rewritten |
+| `stats.max_list_bytes` | `1048576` | — | Largest `nodes.json` and `seek.json` |
+| `stats.seek_entry_ttl_seconds` | `3600.0` | — | How long an unmet request stays in `seek.json` |
+| `stats.max_addresses_per_node` | `16` | — | Most addresses of one peer kept, and so in `candidates.json` |
+| `stats.max_address_failures` | `5` | — | Failed attempts in a row after which an address that has never worked is dropped from the lists |
+| `stats.max_node_failures` | `5` | — | Failed attempts in a row to reach a peer at every address after which it is left out of `candidates.json` |
+| `stats.node_cool_off_seconds` | `86400.0` | — | How long a peer given up on is left out of `candidates.json` |
+| `stats.max_peers_listed` | `1000` | — | Most peers in `peers.json`, those connected first |
+| `backup.interval_seconds` | `3600.0` | — | How often a job's directory is checked |
+| `backup.max_update_layers` | `32` | — | Update layers a backup or build stores over its last whole bundle before storing a whole one again |
+| `backup.restore_stall_seconds` | `86400.0` | — | How long a restore waits with none of the content it lacks arriving before it gives up |
+| `backup.storage_stall_seconds` | `3600.0` | — | How long a backup or build waits for eviction to make room before it gives up |
+| `backup.excluded_xattrs` | macOS local-copy attributes; Linux `security.*`, `system.*`, `trusted.*` | — | Extended attributes a backup or build leaves out of its bundle, and a restore does not set |
+| `karma.carry_generations` | `10` | — | How many generations after it was witnessed a transaction stays in `karma/carried.json` |
+| `karma.payment_batch` | `100` | — | How many payments `karma/payments.json` queues before they are made one transaction |
+| `karma.payment_interval_seconds` | `3600.0` | — | How long after the node's last transaction the payments in `karma/payments.json` are made one, however few |
+| `local.folders` | The user's desktop, documents, downloads, music, pictures, and videos folders | — | The folders local clients may list and import files from (§7) |
+| `local.hidden` | `[".*"]` | — | Names within those folders never listed or imported |
+| `logging.directory` | Platform log directory | `--log-dir` | Root of §5 |
+| `logging.file_name` | `libranet.log` | — | Stem and suffix of every log file |
+| `logging.max_bytes` | `10485760` | — | Size at which a log rotates |
+| `logging.backup_count` | `5` | — | Rotated logs kept per process |
+| `logging.level` | `INFO` | `--log-level` | What is logged |
+| `logging.console` | `true` | `--no-console-log` | Whether logs also go to standard error |
+| `logging.format` | See `models.py` | — | Layout of each log line |
+
+The cache directory and key directory have no switch; set them in the config
+file.
+
+## 10. Command-Line Reference
+
+`libranet`, or `python -m libranet`, starts a node (`src/libranet/cli.py`):
+
+| Switch | Effect |
+| --- | --- |
+| `-c PATH`, `--config PATH` | Load this YAML file, which must exist. Without it, the default config file is loaded if present. |
+| `--data-dir PATH` | Set `storage.data_dir`. |
+| `--log-dir PATH` | Set `logging.directory`. |
+| `--log-level LEVEL` | Set `logging.level`: `CRITICAL`, `ERROR`, `WARNING`, `INFO`, or `DEBUG`. |
+| `--port PORT` | Set `network.listen_port`. Not a file setting, listed for completeness. |
+| `--no-console-log` | Set `logging.console` to `false`. |
+| `--check-config` | Print the resolved configuration as JSON and exit, creating nothing. |
+| `--version` | Print the version and exit. |
+| `-h`, `--help` | Print usage, with this machine's default paths, and exit. |
+
+The node exits with status 0 after a clean stop on `SIGINT` or `SIGTERM`,
+and with status 2 when the configuration is invalid, a directory cannot be
+created, the node's key cannot be loaded, or a content archive cannot be
+opened.
+
+## 11. The Local Network Script
+
+`libranet-local-network`, or `python -m libranet.local_network`, runs a
+network of nodes at every address, or the `--host` given, for manual testing
+(`src/libranet/local_network.py`), each with its own directories:
+
+```text
+{--dir, or a temporary libranet-* directory}/
+├── node-00/
+│   ├── libranet.yaml          written by the script
+│   ├── console.log            the node's standard output and error
+│   ├── data/                  storage.data_dir
+│   │   └── keys/node_private_key.pem
+│   ├── cache/                 storage.cache_dir
+│   └── logs/                  logging.directory; console logging is off
+├── node-01/
+│   └── …
+└── node-{count - 1}/
+```
+
+| Switch | Default | Effect |
+| --- | --- | --- |
+| `--count` | `40` | Nodes to run, at least 2 |
+| `--base-port` | `18400` | Port of `node-00`; node *n* listens on `base-port + n` |
+| `--dir` | A new temporary directory | Where the nodes' directories go |
+| `--debug` | Off | Every node sets `logging.level` to `DEBUG`, for this run only |
+| `--host` | `::` | Every node sets `network.listen_address` to it, and is told the others are there, or at `127.0.0.1` for `0.0.0.0` and `::` |
+| `--max-storage-bytes` | No limit | Every node sets `storage.max_storage_bytes` to it, for this run only |
+
+The script writes each node's key before starting it, so that the ids of
+`node-00` to `node-0f` begin with the hex digits `0` to `f`. Its config sets
+`stats.derive_interval_seconds` to 5 so new peers are noticed quickly,
+`logging.level` to `INFO`, or `DEBUG` with `--debug`, since the progress
+display reads the connections log's `INFO` lines, and `network.config_port`
+to the node's port plus the first multiple of 100 no less than `--count`,
+100 for up to 100 nodes, so that no node's `/config` takes another node's
+port. With
+`--dir`, the directory is kept and a later run reuses the keys it finds.
+Without it, the temporary directory is deleted after a clean stop and kept,
+with its location printed, after a failure.
+
+## 12. Planned Changes
+
+No planned step changes this layout yet.

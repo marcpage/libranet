@@ -184,8 +184,10 @@ username: each finds only the blocks their own passwords open.
   [Bundle Specification §6.2.1](BundleSpecification.md#621-argon2id) for
   the key derivation.
 - **See also:**
-  [App Developer Guide §6.10](../operations/App%20Developer%20Guide.md#610-identities-and-signing-in);
-  [Operator Guide §6.5](../operations/Operator%20Guide.md#65-creating-a-user).
+  [App Developer Guide
+  §6.10](../../python/docs/App%20Developer%20Guide.md#610-identities-and-signing-in);
+  [Operator Guide
+  §6.5](../../python/docs/Operator%20Guide.md#65-creating-a-user).
 
 ### 3.2 What a Person Says of Themselves
 
@@ -213,13 +215,14 @@ of its own id.
   version is the one numbered highest. Of two numbered as high, the newest
   is the one whose drop's id comes first. No version is ever shunned.
 - **Defined in:**
-  [App Developer Guide §6.14](../operations/App%20Developer%20Guide.md#614-what-people-say-of-themselves)
-  for the versions and their reading;
-  [HTTP API §11.3](HttpApi.md#113-a-persons-identity) for the first
-  version.
+  [App Developer Guide
+  §6.14](../../python/docs/App%20Developer%20Guide.md#614-what-people-say-of-themselves)
+  for the versions and their reading; [HTTP API
+  §11.3](HttpApi.md#113-a-persons-identity) for the first version.
 - **See also:**
   [HTTP API §11.5](HttpApi.md#115-signing-as-a-person) for signing;
-  [App Developer Guide §6.13](../operations/App%20Developer%20Guide.md#613-signing-as-a-person).
+  [App Developer Guide
+  §6.13](../../python/docs/App%20Developer%20Guide.md#613-signing-as-a-person).
 
 ### 3.3 The User Directory
 
@@ -243,10 +246,12 @@ of the directory: only applications keep it.
   newest copy does not list everyone, a reader makes a new copy that does,
   and shuns the copies it was made from.
 - **Defined in:**
-  [App Developer Guide §6.12](../operations/App%20Developer%20Guide.md#612-the-user-directory).
+  [App Developer Guide
+  §6.12](../../python/docs/App%20Developer%20Guide.md#612-the-user-directory).
 - **See also:**
-  [App Developer Guide §6.11](../operations/App%20Developer%20Guide.md#611-shunning-content)
-  for shunning what is replaced.
+  [App Developer Guide
+  §6.11](../../python/docs/App%20Developer%20Guide.md#611-shunning-content) for
+  shunning what is replaced.
 
 ### 3.4 Trust Lists
 
@@ -259,7 +264,7 @@ replaces. A list is public, including distrust, since others read it for
 their scores to reach through it.
 
 - **Status:** in use, placed by the node when a page asks, since
-  [Phase 5](../implementation/Phase%205.md) Step 97. The directory
+  [Phase 5](../../python/docs/plans/Phase%205.md) Step 97. The directory
   application asks (Step 101). A node's own list is in use since Step 110.
 - **Placed by** the node, when the person signed in trusts, distrusts, or
   clears an identity, with `PUT` or `DELETE /data/trust/{id}`. A node keeps
@@ -309,7 +314,8 @@ compromised is mailed at their fallback instead.
   signed, or does not name them. Every copy left is mail. What the reader
   has read and hidden is kept apart (§3.8).
 - **Defined in:**
-  [App Developer Guide §6.16](../operations/App%20Developer%20Guide.md#616-mail).
+  [App Developer Guide
+  §6.16](../../python/docs/App%20Developer%20Guide.md#616-mail).
 - **See also:**
   [HTTP API §11.6](HttpApi.md#116-encrypting-a-block) for encrypting;
   [Bundle Specification §8](BundleSpecification.md#8-encryption-for-a-person).
@@ -329,7 +335,8 @@ included.
 - **Reading:** as for mail received (§3.5), except that a copy counts only
   if the person reading it signed it.
 - **Defined in:**
-  [App Developer Guide §6.16](../operations/App%20Developer%20Guide.md#616-mail).
+  [App Developer Guide
+  §6.16](../../python/docs/App%20Developer%20Guide.md#616-mail).
 
 ### 3.7 Address Books
 
@@ -350,7 +357,8 @@ replaces. A removal is kept as a change, so that a merge does not undo it.
   Versions that are replaced are shunned, so that they do not crowd the
   newest out of a search.
 - **Defined in:**
-  [App Developer Guide §6.16](../operations/App%20Developer%20Guide.md#616-mail).
+  [App Developer Guide
+  §6.16](../../python/docs/App%20Developer%20Guide.md#616-mail).
 
 ### 3.8 Read and Hidden Marks
 
@@ -367,7 +375,8 @@ drop id of each copy to whether the person has read it and hidden it.
 - **Reading:** as for address books (§3.7). Versions are merged by the drop
   id of each copy, rather than by name.
 - **Defined in:**
-  [App Developer Guide §6.16](../operations/App%20Developer%20Guide.md#616-mail).
+  [App Developer Guide
+  §6.16](../../python/docs/App%20Developer%20Guide.md#616-mail).
 
 ### 3.9 What a Node Says of Itself
 
@@ -395,9 +404,10 @@ over or tapped.
   [HTTP API §11.8](HttpApi.md#118-what-a-node-says-of-itself) for the
   versions, their reading, and the endpoints that place them.
 - **See also:**
-  [App Developer Guide §6.18](../operations/App%20Developer%20Guide.md#618-what-nodes-say-of-themselves)
-  for reading them from a page and showing a node by its name;
-  [Operator Guide §4.5](../operations/Operator%20Guide.md#45-what-this-node-says-of-itself).
+  [App Developer Guide
+  §6.18](../../python/docs/App%20Developer%20Guide.md#618-what-nodes-say-of-themselves)
+  for reading them from a page and showing a node by its name; [Operator Guide
+  §4.5](../../python/docs/Operator%20Guide.md#45-what-this-node-says-of-itself).
 
 ### 3.10 Karma Transaction Blocks
 
@@ -495,10 +505,11 @@ reads the node's collections from the application's store instead.
   places a version holding the merged list, and shuns the versions read,
   which it replaces, so that they do not crowd the newest out of a search.
 - **Defined in:**
-  [Improve Movie Web App](../implementation/Improve%20Movie%20Web%20App.md)
+  [Improve Movie Web App](../apps/Improve%20Movie%20Web%20App.md)
   Step 83.
 - **See also:**
-  [App Developer Guide §7](../operations/App%20Developer%20Guide.md#7-patterns-from-the-movie-library).
+  [App Developer Guide
+  §7](../../python/docs/App%20Developer%20Guide.md#7-patterns-from-the-movie-library).
 
 ### 3.13 Movies Kept Offline
 
@@ -523,12 +534,13 @@ node's search leaves out what it has shunned, archived or not.
   its bundle. A version older than a minute whose bundle no archive holds, as
   once its archive expires, is shunned.
 - **Defined in:**
-  [Improve Movie Web App](../implementation/Improve%20Movie%20Web%20App.md)
+  [Improve Movie Web App](../apps/Improve%20Movie%20Web%20App.md)
   Step 115.
 - **See also:**
   [HTTP API §12.4](HttpApi.md#124-keeping-content-offline) for the
   archives;
-  [App Developer Guide §6.19](../operations/App%20Developer%20Guide.md#619-keeping-content-offline).
+  [App Developer Guide
+  §6.19](../../python/docs/App%20Developer%20Guide.md#619-keeping-content-offline).
 
 ### 3.14 TMDB Keys
 
@@ -553,7 +565,7 @@ that a key given in either serves both.
   empty key is none. Each change places a version, and shuns the versions
   read, which it replaces.
 - **Defined in:** the movie application's page (#588), and
-  [TV App](../implementation/TV%20App.md) Step 144.
+  [TV App](../apps/TV%20App.md) Step 144.
 
 ### 3.15 TV Series
 
@@ -586,7 +598,7 @@ for a client no one is signed in on.
   stay. A `watching` that is not one is passed over. Each change places a
   version holding the merged list, and shuns the versions read, which it
   replaces, as for movie collections (§3.12).
-- **Defined in:** [TV App](../implementation/TV%20App.md) Steps 144 and
+- **Defined in:** [TV App](../apps/TV%20App.md) Steps 144 and
   147.
 
 ### 3.16 TV Series Kept Offline
@@ -614,11 +626,12 @@ the person watches of a series kept offline is kept nowhere.
   sign. Each series listed in a version left is kept offline while the node
   reports an archive holding its bundle. A version older than a minute
   whose bundle no archive holds, as once its archive expires, is shunned.
-- **Defined in:** [TV App](../implementation/TV%20App.md) Step 148.
+- **Defined in:** [TV App](../apps/TV%20App.md) Step 148.
 - **See also:**
   [HTTP API §12.4](HttpApi.md#124-keeping-content-offline) for the
   archives;
-  [App Developer Guide §6.19](../operations/App%20Developer%20Guide.md#619-keeping-content-offline).
+  [App Developer Guide
+  §6.19](../../python/docs/App%20Developer%20Guide.md#619-keeping-content-offline).
 
 ### 3.17 Music Libraries
 
@@ -660,7 +673,7 @@ are read. The node keeps no library for a client no one is signed in on.
   library's newest bundle, and holding every playlist merged, and shuns the
   versions read, which it replaces, as for movie collections (§3.12), but
   for any it could not merge whole.
-- **Defined in:** [Music App](../implementation/Music%20App.md) Steps 149
+- **Defined in:** [Music App](../apps/Music%20App.md) Steps 149
   and 151.
 
 ### 3.18 Chaos Uploads
@@ -674,7 +687,7 @@ holds. Anyone may upload at any level, signed or not, and the node of each
 viewer chooses among the uploads by the viewer's trust. Chaos is only
 for someone signed in, so a node's own trust chooses for no one.
 
-- **Status:** specified, in [Phase 7](../implementation/Phase%207.md) Step
+- **Status:** specified, in [Phase 7](../../python/docs/plans/Phase%207.md) Step
   155. The node reads it from Step 156, and the Chaos page places it from
   Step 159.
 - **Placed by** anyone. The Chaos page places one, signed, with
@@ -732,11 +745,12 @@ archived or not.
   sign. Each playlist listed in a version left is kept offline while the
   node reports an archive holding its bundle. A version older than a minute
   whose bundle no archive holds, as once its archive expires, is shunned.
-- **Defined in:** [Music App](../implementation/Music%20App.md) Step 153.
+- **Defined in:** [Music App](../apps/Music%20App.md) Step 153.
 - **See also:**
   [HTTP API §12.4](HttpApi.md#124-keeping-content-offline) for the
   archives;
-  [App Developer Guide §6.19](../operations/App%20Developer%20Guide.md#619-keeping-content-offline).
+  [App Developer Guide
+  §6.19](../../python/docs/App%20Developer%20Guide.md#619-keeping-content-offline).
 
 ### 3.20 Photo Albums
 
@@ -777,4 +791,4 @@ one is signed in on.
   a version holding every album merged, and shuns the versions read, which
   it replaces, as for movie collections (§3.12), but for any naming an
   album it could not merge whole.
-- **Defined in:** [Photos App](../implementation/Photos%20App.md) Step 161.
+- **Defined in:** [Photos App](../apps/Photos%20App.md) Step 161.

@@ -36,8 +36,9 @@ The applications that ship with every node show what the network is for:
 - **Mail.** Send messages to other people, encrypted so that only they can
   read them.
 
-This repository holds the protocol specifications and the reference node,
-written in Python. The node runs today on macOS and Linux. There is no
+This repository holds the protocol specifications, the applications every
+node ships, and the reference node, written in Python, in
+[`python/`](python/). The node runs today on macOS and Linux. There is no
 public network to join yet, but you can run nodes on your own computers —
 see [Project Status](#project-status).
 
@@ -61,6 +62,8 @@ see [Project Status](#project-status).
   - [Getting Started](#getting-started)
   - [Project Status](#project-status)
   - [Documentation](#documentation)
+    - [Shared by every implementation](#shared-by-every-implementation)
+    - [The Python node](#the-python-node)
   - [Contributing](#contributing)
   - [Not to be confused with](#not-to-be-confused-with)
   - [License](#license)
@@ -136,7 +139,7 @@ from the backups: without it, no one can read them, you included.
 To get your files back, give the administration page the backup's id and a
 folder to restore into. The node fetches from other nodes whatever it no
 longer holds. The
-[Operator Guide](docs/operations/Operator%20Guide.md#5-backing-up-and-restoring)
+[Operator Guide](python/docs/Operator%20Guide.md#5-backing-up-and-restoring)
 says where the secret is, and how to restore onto a new computer.
 
 ### Watch movies
@@ -287,7 +290,7 @@ you alone, each encrypted, and are read on any node you sign in on, which
 fetches them from the network as it needs them, so the photos application
 keeps none for a browser no one is signed in on. Copying, moving, and
 removing photos are the next step of its
-[plan](docs/implementation/Photos%20App.md).
+[plan](docs/apps/Photos%20App.md).
 
 ### Use and share applications
 
@@ -309,7 +312,7 @@ nodes application does. It can sign people in and act for them, as the user
 directory and mail do, and pay and stake Karma for them, as the Karma
 application does, and have your node delete content and never hold it
 again. The
-[App Developer Guide](docs/operations/App%20Developer%20Guide.md) describes
+[App Developer Guide](python/docs/App%20Developer%20Guide.md) describes
 what an application can do, and how to write one.
 
 ### Put a site at any path
@@ -323,7 +326,7 @@ you trust or distrust whoever uploaded one, upload a zip of your own site,
 and download any bundle there as a zip. View content opens the path on the
 node's Chaos port. End any address on the Chaos port with `?` to come back
 to it. The
-[App Developer Guide](docs/operations/App%20Developer%20Guide.md) shows how
+[App Developer Guide](python/docs/App%20Developer%20Guide.md) shows how
 a page uploads a site.
 
 ---
@@ -403,7 +406,7 @@ network of many nodes on one computer:
 uv run libranet-local-network --count 8
 ```
 
-The [Operator Guide](docs/operations/Operator%20Guide.md) covers all of
+The [Operator Guide](python/docs/Operator%20Guide.md) covers all of
 this: installing and configuring a node, the administration page, backups,
 applications, and running test networks and super nodes.
 
@@ -468,10 +471,10 @@ you say so on `/config`.
 
 ## Documentation
 
+### Shared by every implementation
+
 | Document | What it covers |
 | ------------------------------------------------------------------- | ------------------------------------------------------- |
-| [Operator Guide](docs/operations/Operator%20Guide.md) | Running a node: installing and configuring it, the `/config` administration page, backups, applications, logs, test networks, and super nodes |
-| [App Developer Guide](docs/operations/App%20Developer%20Guide.md) | Writing applications: building and sharing them, trust, and the endpoints a page can use |
 | [High-Level Design](docs/specs/HighLevelDesign.md) | Network architecture, identity, storage, and the peer mix |
 | [Protocol Specification](docs/specs/ProtocolSpecification.md) | Normative protocol behavior |
 | [HTTP API](docs/specs/HttpApi.md) | Endpoints, status codes, headers, and error format |
@@ -484,30 +487,44 @@ you say so on `/config`.
 | [Karma and Kismet](docs/specs/Karma.md) | The reputation and contribution system |
 | [Karma Ledger Specification](docs/specs/KarmaLedger.md) | How Karma's transactions and blocks are kept in the store, found, and checked |
 | [Karma Scaling](docs/specs/KarmaScaling.md) | How much the ledger carries as a network grows, the backlog, and what nodes adjust |
-| [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–15, 17–20, and 33–40, all built |
-| [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63, all built |
-| [Phase 3 Plan](docs/implementation/Phase%203.md) | Video playback: steps 64–77, all built |
-| [Phase 4 Plan](docs/implementation/Phase%204.md) | User accounts: steps 30, 78–82, and 89–93, all built |
-| [Phase 5 Plan](docs/implementation/Phase%205.md) | The trust network: steps 94 and 96–114, all built |
-| [Phase 6 Plan](docs/implementation/Phase%206.md) | Karma: steps 56 and 116–143, all built |
-| [Phase 7 Plan](docs/implementation/Phase%207.md) | The Chaos endpoint: steps 155–159, all built |
-| [Phase 9 Plan](docs/implementation/Phase%209.md) | Polish: steps 57 and 95, planned |
-| [Phase 10 Plan](docs/implementation/Phase%2010.md) | A seed node: step 84, planned |
-| [Phase 11 Plan](docs/implementation/Phase%2011.md) | Bonus features: steps 16 and 50, planned |
-| [Movie App Plan](docs/implementation/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 83, 85–88, and 115, all built |
-| [TV App Plan](docs/implementation/TV%20App.md) | The TV application: steps 144–148, all built |
-| [Music App Plan](docs/implementation/Music%20App.md) | The music application: steps 149–154, steps 149 to 153 built |
-| [Photos App Plan](docs/implementation/Photos%20App.md) | The photos application: steps 160–171, steps 160 to 166 built |
-| [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |
-| [File Layout](docs/implementation/File%20Layout.md) | Every file a node reads or writes, and the settings that move them |
-| [Database Schema](docs/implementation/Database%20Schema.md) | The statistics database's tables, and what reads and writes them |
-| [Coding Style](docs/implementation/Coding%20Style.md) | Rules for writing Python, general enough to carry to another project |
-| [Coding Style in Libranet](docs/implementation/Coding%20Style%20in%20Libranet.md) | The tools, helpers, and tests behind those rules here, and where the code departs from them |
+| [Movie App Plan](docs/apps/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 83, 85–88, and 115, all built |
+| [TV App Plan](docs/apps/TV%20App.md) | The TV application: steps 144–148, all built |
+| [Music App Plan](docs/apps/Music%20App.md) | The music application: steps 149–154, steps 149 to 153 built |
+| [Photos App Plan](docs/apps/Photos%20App.md) | The photos application: steps 160–171, steps 160 to 166 built |
 
-The guides describe the Python node in this repository. The specifications
-are normative; the implementation plans record the decisions the Python node
-made within them, and the other implementation documents describe the node as
-it is built.
+The specifications are normative, and every implementation meets them. The
+applications, in [`applications/`](applications/), are shared too: every
+node ships the same pages, so their plans are kept beside the
+specifications.
+
+### The Python node
+
+| Document | What it covers |
+| ------------------------------------------------------------------- | ------------------------------------------------------- |
+| [Python README](python/README.md) | Running the Python node, and developing it |
+| [Operator Guide](python/docs/Operator%20Guide.md) | Running a node: installing and configuring it, the `/config` administration page, backups, applications, logs, test networks, and super nodes |
+| [App Developer Guide](python/docs/App%20Developer%20Guide.md) | Writing applications: building and sharing them, trust, and the endpoints a page can use |
+| [Phase 1 Plan](python/docs/plans/Phase%201.md) | Implementation steps 1–15, 17–20, and 33–40, all built |
+| [Phase 2 Plan](python/docs/plans/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63, all built |
+| [Phase 3 Plan](python/docs/plans/Phase%203.md) | Video playback: steps 64–77, all built |
+| [Phase 4 Plan](python/docs/plans/Phase%204.md) | User accounts: steps 30, 78–82, and 89–93, all built |
+| [Phase 5 Plan](python/docs/plans/Phase%205.md) | The trust network: steps 94 and 96–114, all built |
+| [Phase 6 Plan](python/docs/plans/Phase%206.md) | Karma: steps 56 and 116–143, all built |
+| [Phase 7 Plan](python/docs/plans/Phase%207.md) | The Chaos endpoint: steps 155–159, all built |
+| [Phase 9 Plan](python/docs/plans/Phase%209.md) | Polish: steps 57 and 95, planned |
+| [Phase 10 Plan](python/docs/plans/Phase%2010.md) | A seed node: step 84, planned |
+| [Phase 11 Plan](python/docs/plans/Phase%2011.md) | Bonus features: steps 16 and 50, planned |
+| [Module System](python/docs/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |
+| [File Layout](python/docs/File%20Layout.md) | Every file a node reads or writes, and the settings that move them |
+| [Database Schema](python/docs/Database%20Schema.md) | The statistics database's tables, and what reads and writes them |
+| [Coding Style](python/docs/Coding%20Style.md) | Rules for writing Python, general enough to carry to another project |
+| [Coding Style in Libranet](python/docs/Coding%20Style%20in%20Libranet.md) | The tools, helpers, and tests behind those rules here, and where the code departs from them |
+
+The guides describe the Python node, whose command line and configuration
+file are its own. Its implementation plans record the decisions it made
+within the specifications, and the other documents describe the node as it
+is built. Another implementation would keep its own guides and plans in its
+own directory.
 
 ---
 
@@ -516,28 +533,22 @@ it is built.
 Issues and pull requests are welcome at
 [github.com/marcpage/libranet](https://github.com/marcpage/libranet/issues).
 
-```bash
-uv sync                  # install the package and dev tools
-uv run pytest            # run the test suite
-uv run pytest --cov      # with coverage (the build fails under 90%)
-uv run black .           # format (line length 100)
-uv run flake8            # lint
-uv run mypy              # type-check (strict)
-uv run pylint src tests hatch_build.py   # lint further
-```
+The repository is laid out by what every implementation shares:
 
-Before opening a pull request, please make sure `black`, `flake8`, `mypy`,
-`pylint`, and `pytest` all pass. CI runs the lint and type checks once, and
-the test suite on Ubuntu and macOS against Python 3.11 and 3.14. It also
-verifies that [`examples/libranet.yaml`](examples/libranet.yaml) still loads.
+| Path | What it holds |
+| ------------------------------- | ------------------------------------------------------- |
+| [`docs/specs/`](docs/specs/) | The specifications every implementation meets |
+| [`docs/apps/`](docs/apps/) | The plans for the applications every node ships |
+| [`applications/`](applications/) | Those applications, one directory each |
+| [`data/`](data/) | The seed list a node starts from |
+| [`python/`](python/) | The Python node: its code, tests, documents, and plans |
 
-The layout is one package per module area under
-[`src/libranet/`](src/libranet/), with a matching `tests/test_<area>_<file>.py`
-for each source file. New code is expected to come with tests; coverage is
-gated at 90%. Changes to protocol behavior should say which section of which
-specification they implement, and specification changes are best raised as
-an issue first. The applications a node ships with are described in the
-[App Developer Guide](docs/operations/App%20Developer%20Guide.md#9-changing-the-shipped-applications).
+Each implementation says how to build and check it: the Python node in its
+[README](python/README.md#development). Changes to protocol behavior should
+say which section of which specification they implement, and specification
+changes are best raised as an issue first. The applications a node ships
+with are described in the
+[App Developer Guide](python/docs/App%20Developer%20Guide.md#9-changing-the-shipped-applications).
 
 ---
 

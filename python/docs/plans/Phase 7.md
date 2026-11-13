@@ -1,0 +1,1261 @@
+# Libranet Python Implementation Plan — Phase 7
+
+Version 0.1 • November 2026
+
+---
+
+## 1. Purpose
+
+This document plans the Chaos endpoint: pages that anyone may put at any
+path beneath `/chaos`, and that each person sees as the people they trust
+choose. Anyone may upload a bundle to a path, by placing a drop named
+for it. A node serving a path beneath `/chaos` looks at the drop for each
+part of the path, from the root down, and serves the newest bundle holding
+the rest of the path, preferring one signed by someone the viewer trusts.
+Chaos is only for someone signed in, and every request their browser
+makes for a Chaos path follows their trust: the page, its images and
+scripts, and each link followed from it. A path for which no bundle is
+found is answered with a page saying what was looked at. The same page,
+reached by ending any address with `?`, shows every bundle uploaded to
+the path, lets the viewer trust or distrust whoever signed each, and lets
+them download a bundle as a zip or upload one of their own.
+
+Every step below comes from an issue in the GitHub **Phase 7 - Chaos
+endpoint** milestone. Issue #595 asks for this plan, and has no text of
+its own: the milestone's description, quoted in §2.1, is what is asked
+for. Each step is to have an issue of its own, made from the text in §7.
+Every issue in the milestone is either a step or accounted for in §4. As
+in the phases before it, this is an implementation plan, not a protocol
+specification: Step 155 writes the specification first, in
+[HTTP API](../../../docs/specs/HttpApi.md) and [Known
+Drops](../../../docs/specs/KnownDrops.md), and the steps after it build what it
+says.
+
+Nothing here changes the architecture of Phase 1 §2: the same supervisor,
+the same dispatcher, the same module processes, the same filesystem CAS,
+and the same invariant that only the stats module opens SQLite. The Chaos
+endpoint is served by the web server, on a port of its own (Step 157),
+with the Chaos page on its main port (Steps 158 and 159), from the
+building blocks it has: the search of a drop and of the node's peers,
+signed content checked, the trust scores of whoever is signed in, reading
+into a bundle, and making bundles and drops.
+
+The web endpoint of Phase 8 (#596) is to work as this one does, but with
+an owner for each path, who delegates the paths beneath it. Step 156's
+resolution is written so that Phase 8 can reuse it.
+
+## 2. What Phase 7 Adds
+
+### 2.1 What the Milestone Asks
+
+The milestone's description, as it is:
+
+> A browser accessible endpoint that allows anyone to propose a bundle to
+> be placed at a given path. Each user who views the Chaos endpoint may see
+> different content depending on who they trust.
+>
+> When a path under chaos is given we evaluate each element of the path.
+> starting at root and then adding each directory. We use that as a drop to
+> look for a bundle. We list the bundles signed by trusted people that have
+> the remaining path inside it and choose the latest one. If there is no
+> trusted one then we move on to no trust specified bundles. If no
+> zero-trust bundles have been found to contain the remaining path, we look
+> at a drop that adds the next path element. This continues until the last
+> path element.
+>
+> A 404 is shown if no bundle was found. The 404 page will show all the
+> stats and have a reload button. Placing a question mark (?) at the end of
+> any URL will show the same page, which will show the potential bundles,
+> their dates, signers, etc. and will allow them to trust, distrust, or
+> clear trust rating (remove self-references to trust, but still allow the
+> trust web to dictate trust). It will also allow you to download and
+> upload a bundle to that URL.
+
+### 2.2 The Steps
+
+Five steps, each built on the one before it:
+
+- **The specification.** HTTP API gains a section for the Chaos
+  endpoint, and Known Drops the drop an upload is placed at. Step 155.
+- **Resolving a path.** Which bundle a path beneath `/chaos` names, for
+  whom, and why each other upload was passed over. Step 156.
+- **Serving `/chaos`.** For whoever is signed in, on a port of the node's
+  own, where every request their browser makes carries their session, and
+  so follows their trust. For anyone else, on the main port, in a sandbox.
+  Step 157.
+- **The Chaos page.** What a path resolves to, and why, shown for a `404`
+  and for any address ending in `?`, with Trust, Distrust, and Clear for
+  each signer. Step 158.
+- **Uploading and downloading a zip**, on the Chaos page, with Chaos
+  only for someone signed in, and the main port's `/chaos` only the Chaos
+  page. Step 159.
+
+### 2.3 How a Path Is Resolved
+
+A path beneath `/chaos/` has a **level** for the root and for each of its
+elements in turn. Each level is a drop, named `chaos:/` and the level's
+elements. A bundle uploaded at a level is mounted there, and must hold the
+**rest** of the path, what is left after the level's elements:
+
+| Level | Drop | Rest, for `/chaos/a/b/c.html` |
+| --- | --- | --- |
+| 0 | `chaos:/` | `a/b/c.html` |
+| 1 | `chaos:/a` | `b/c.html` |
+| 2 | `chaos:/a/b` | `c.html` |
+| 3 | `chaos:/a/b/c.html` | nothing: a file bundle's own file |
+
+A path ending in `/` names that directory's `index.html`, so the rest of
+`/chaos/a/b/` at level 2 is `index.html`, and it has no level 3.
+
+```mermaid
+flowchart TD
+    req["GET /chaos/a/b/c.html"] --> port{"Which port?"}
+    port -->|main| page["200, the Chaos page"]
+    port -->|Chaos| session{"Carries a session?"}
+    session -->|no| signin["302 to the Chaos page for a page opened,<br/>401 for anything else"]
+    session -->|yes| trusted["Pass 1, by the person's scores: uploads whose signer is trusted,<br/>at chaos:/, chaos:/a, chaos:/a/b, chaos:/a/b/c.html"]
+    trusted -->|"at the shallowest level holding one,<br/>the newest holding the rest"| serve["Serve it"]
+    trusted -->|none| unknown["Pass 2: uploads of no trust specified,<br/>at the same levels"]
+    unknown -->|"as in pass 1"| serve
+    unknown -->|none| missing["404; a page opened is sent<br/>to the Chaos page"]
+```
+
+Each request is resolved so, a page's images and scripts as much as the
+page. Distrusted signers' uploads are never chosen. The order of the two
+passes is this plan's, not the milestone's (Step 156, and §6). This is as
+Step 159 leaves it. Before it, the main port served Chaos sites, in a
+sandbox and by the node's own scores, to whoever was not signed in, and
+sent whoever was to the Chaos port.
+
+## 3. How to Read the Steps Below
+
+The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
+
+- **Step numbers stay stable**, and new steps take the next free number.
+  [Music App](../../../docs/apps/Music%20App.md) ends at Step 154, the highest
+  assigned, so this plan starts at Step 155.
+- **A step of another plan is named with its plan**, as Phase 2 names
+  Phase 1's. A step number alone is a step of this document.
+- **Settled in the milestone** is what the milestone's description says.
+  **Ruled** is what the user decided once this plan was written, with the
+  date. **My calls, not yet reviewed** are what this plan chose without
+  asking, to be reviewed before the step is built. Every call is listed in
+  §6 too.
+- **Change sets.** Each step is one change set, under the 500 new lines
+  of Python (not counting tests) past which CLAUDE.md asks for a split,
+  but Step 159, which is three, so that its change to Steps 157 and 158 is
+  reviewed alone. The Chaos page is HTML and script, not Python.
+- **Testing.** The Python is tested as the web server's is, with fakes for
+  the store, the search, the scores, and the bundles read. The Chaos page
+  has no automated tests but those of `tests/test_applications_packaged.py`;
+  it is checked by hand, in at least Safari and one other browser, on a
+  local client and on one elsewhere. Every change set passes the checks of
+  [Phase 3](Phase%203.md) §3.
+
+---
+
+## Step 155 — Specifying the Chaos Endpoint ✅
+
+**Kind:** specification. **Issue:** #655 (§7.1). **Depends on:**
+nothing.
+
+Settled in the milestone: everything quoted in §2.1.
+
+Ruled (2026-11-07): what a person signed in sees at a Chaos path follows
+their trust, for every request their browser makes for one.
+
+What is written:
+
+- **HTTP API §13.6, The Chaos Endpoint** (new), with every rule Steps 156
+  to 159 build: a path's levels and their drops; what an upload is, signed
+  or not; whose scores choose, and how; the Chaos port, and what each port
+  serves, with what headers; the `404` and the page a bare `?` shows; and
+  the report that page reads, `GET /data/chaos/{path}`. A sequence diagram,
+  as §9.6 has, of a person's first view: the `302` to the Chaos port, and
+  the page and its images served there, each carrying the session.
+- **HTTP API §2**: `chaos` names the Chaos endpoint, rather than being
+  reserved for the future, and is still never an application's name. The
+  Chaos port is the node's third, beside the main port and `/config`'s.
+- **HTTP API §2.5**: a page beneath `/chaos` on the main port is the Chaos
+  page's, which counts as a trusted application's page, and the report is
+  among the endpoints meant only for the node's own pages, served to any
+  client.
+- **HTTP API §13**, **§21**, and **§25**: the routing diagram's reserved
+  names, the levels a node searches among the default limits, and the new
+  endpoints in the summary.
+- **High-Level Design §3.3.1 and §8**: `/chaos` is in use.
+- **Known Drops**: a row in §1 and a section, §3.18, for `chaos:/{path}`.
+- **Terms**: `chaos` defined.
+
+The App Developer Guide and the Operator Guide change with the steps that
+build what they describe.
+
+My calls, not yet reviewed:
+
+- **The specification first**, in a step of its own, as for the trust
+  network (Phase 5 Step 94), so that the rules of §6 are reviewed once,
+  before any code depends on them.
+- **HTTP API §13.6**, beside the application routing it shares the main
+  port's paths with, rather than a section of its own.
+
+Calls made in writing it, not yet reviewed:
+
+- **The open items of §6 are written in as this plan's calls**, so that a
+  ruling against one changes the specification, not code.
+- **An upload's other members are ignored**, as a trust list's are (Trust
+  Network §3.1), so that a later version can add one.
+- **What is passed over before an uploader's newest is found.** An upload
+  that is not one, or whose signature, bundle, or date passes it over, does
+  not supersede the uploader's older ones. One whose bundle lacks the
+  rest, is unusable, or is still pending does, so that an uploader can take
+  a path away.
+- **The report's `null`s.** `signer`, `score`, and `step` are `null` for an
+  unsigned upload, `bundle` and `created` for what is not an upload,
+  `holds` where it was not asked, and `passed_over` for the upload chosen
+  and every one after it, which is not looked at.
+- **Every cookie of the session's name is tried** (HttpApi §11.4), as the
+  node already does, so that a Chaos site's script cannot hide the session
+  behind a cookie it sets for a path of its own.
+- **A link from another site's page** arrives without the session cookie,
+  which is `SameSite=Strict`, so it is served by the node's scores, in the
+  sandbox, and so is each link followed from that page. The specification
+  says so (HttpApi §13.6.4) rather than working around it.
+- **More sections than listed above**, so that none contradicts §13.6:
+  HttpApi §2.1 and §2.4 (the report, and Chaos sites kept out), §11.4 (the
+  cookie reaching the Chaos port), §13's opening, §13.5's text, §20
+  (`no-store`), §23 (the TBD of sandboxing rules), and Terms' **Main Port**
+  and **Reserved Names**.
+
+**Testable in isolation:** a specification. Every link resolves, and
+nothing still calls `/chaos` reserved.
+
+---
+
+## Step 156 — Resolving a Chaos Path ✅
+
+**Kind:** new node code. **Issue:** #656 (§7.2). **Depends on:**
+Step 155; Phase 3 Steps 65 and 71; Phase 4 Steps 80, 89, and 93; Phase 5
+Steps 99 and 113.
+
+Settled in the milestone:
+
+- **Anyone may upload a bundle** for a path.
+- **Each level is a drop**, from the root, adding one element at a time,
+  to the last.
+- **The newest of those signed by trusted people that hold the rest** of
+  the path is chosen, or else the newest of those with no trust specified.
+- **What each viewer sees depends on whom they trust.**
+
+Ruled (2026-11-07): **the person's trust.** A request carrying the session
+of a person signed in is resolved by their scores, whatever it asks for.
+
+What is built:
+
+- **A Chaos path** (`ChaosPath`, `protocol/chaos.py`): the path beneath
+  `/chaos/`, percent-decoded as an application's is, `%2F` becoming a `/`
+  like any other, and split into its elements. Each element is an entry
+  path's (BundleSpecification §3.1): not empty, `.`, or `..`, or the path
+  names nothing, and is `404`. A path that is empty or ends in `/` names
+  that directory's `index.html`. Its levels and their rests are as §2.3
+  says, and level i's drop is the target string `chaos:/` followed by its
+  first i elements, joined by `/`. Elements are compared byte for byte, as
+  bundle paths are (BundleSpecification §1): never case-folded or
+  normalized.
+- **An upload** (`ChaosUpload`, with `from_value` and `value`, in
+  `protocol/chaos.py`):
+
+  ```json
+  {"bundle": "sha256/…", "created": "2026-11-07T15:04:05Z"}
+  ```
+
+  `bundle` names the bundle uploaded, a directory bundle or a file bundle,
+  in either form a read into a bundle takes (HttpApi §12.1), and `created`
+  when it was uploaded, in UTC, to the second. A **signed upload** is a
+  signed bundle (BundleSpecification §5) whose `contents` is an upload,
+  placed with `POST /data/signed`. An **unsigned upload** is the upload
+  itself, placed with `POST /data/drop`. Either is placed at its level's
+  drop, matching at least as many bits as a search returns
+  (`storage.search_min_bits`).
+- **Reading a level** (`ChaosResolver`, `webserver/chaos_resolver.py`).
+  The drop is searched as signing in searches one
+  (`SearchHandler.fresh_results`), so that an upload placed since the last
+  search is found at once, and the node's peers are asked for it too
+  (Phase 4 Step 93). Each result held is read with its nonce stripped, as a
+  signed upload, checked under its signer's key as `GET /data/signed`
+  checks one, or else as an unsigned upload. Each upload is passed
+  over, with the reason kept, if:
+  - it is neither (`not-an-upload`), or its signature does not check
+    (`bad-signature`);
+  - its bundle is shunned (`shunned`);
+  - it is dated more than `chaos.future_seconds` ahead of the node's clock
+    (`future`);
+  - its signer placed a newer one at the same level (`superseded`). Of two
+    of the same moment, the one whose drop's id sorts first is the newer;
+  - its signer is distrusted (`distrusted`).
+
+  What is found and not held, a drop or a signer's key, is asked for, as
+  any miss is (HttpApi §5.2), and named as missing. What a drop holds never
+  changes, so an upload read and checked is kept by its drop's id, for the
+  1,000 drops read last, and not read again. What a level's search found
+  is kept for `chaos.search_seconds`, so that a page's images and scripts,
+  each resolved, do not each search every level again.
+- **Whose scores choose.** Those of the person signed in, if the request
+  carries their session (HttpApi §11.4), as `GET /data/trust` reads them,
+  and otherwise the node's own (Phase 5 Step 113). A signer scoring above 0
+  is **trusted**, and one below 0 **distrusted**. An upload that is
+  unsigned, or whose signer scores 0 or is not reached, is of **no trust
+  specified**.
+- **Choosing.** Two passes: first the trusted uploads at every level,
+  from the root down, then those of no trust specified, the same way. At
+  each level, its uploads of the pass are taken newest first, and the
+  first whose bundle holds the rest is chosen. Whether it does is as
+  `BundlePaths.entry` answers (Phase 3 Steps 65 and 71): a file, or a
+  directory or symbolic link to be redirected to, holds it, a path not
+  found does not (`lacks-path`), and a bundle that cannot be read, or is
+  password-protected, is passed over (`unusable`).
+- **Waiting.** What could change the choice, a drop, a signer's key, or
+  an entry of a bundle not yet resolved, is waited for within one deadline,
+  `network.app_wait_seconds`, as serving a file waits. What is still not
+  known when it passes is left out (`pending`), named in the resolution,
+  and asked for, so that the page's Reload finds it.
+- **The resolution** (`ChaosResolution`): each level with its drop, its
+  target hash, and its rest; each upload with its drop's id, how many
+  bits it shares with the target hash, its signer and their score, its
+  bundle, when it was uploaded, whether it holds the rest, and why it was
+  passed over; what is missing; whose scores chose, and whether they are
+  complete; and the upload chosen, if any. Its `value()` is the report of
+  Step 158.
+- **Settings**, in a new `chaos` section of the configuration and of
+  `examples/libranet.yaml`: `max_levels`, the levels searched, the
+  shallowest first, 16 by default, so that a deeper path is served only
+  from a bundle at one of those levels; `future_seconds`, how far ahead of
+  the clock an upload may be dated, 300 by default; and `search_seconds`,
+  how long what a level's search found is kept, 5 by default.
+
+My calls, not yet reviewed:
+
+- **Two passes, which departs from the milestone.** Read literally, the
+  milestone takes a level's uploads of no trust specified before the
+  next level's trusted ones. Then anyone could take over a trusted site from
+  a shallower drop: an unsigned upload at `chaos:/` whose bundle holds
+  `recipes/index.html` would beat one at `chaos:/recipes` signed by someone
+  the viewer trusts. Two passes put trust first, at whatever level.
+- **No trust specified** is an unsigned upload, or one whose signer
+  scores 0 or is not reached.
+- **The node's own scores** for whoever is not signed in. That is every
+  client not on the node's own machine, since only a local client signs in.
+  The node's operator then decides what a stranger sees. Without them, a
+  stranger would see only uploads of no trust specified, and none would
+  be passed over.
+- **Newest by `created`**, which the upload says: a drop has no date of
+  its own. Without the limit on dating ahead, an upload dated 9999 would
+  win for ever.
+- **A signer's newest upload at a level replaces their older ones**,
+  before whether it holds the rest is asked. Otherwise no one could take a
+  path away: an older upload still holding it would win.
+- **An upload names a bundle**, rather than being one. A drop must fit
+  in one object, and one bundle can then be uploaded at many paths.
+- **What a level's search found is kept for 5 seconds**, so that a page of
+  many images searches each level once, not once for each image. An
+  upload placed meanwhile is found up to 5 seconds later.
+- **`chaos:/` with a slash**, so that a level's drop reads as its path.
+- **The limits are settings**, as other policy numbers only this node uses
+  are, with the specification's values as defaults.
+
+**Testable in isolation:** tests of paths and uploads, and of the
+resolver with a fake store, search, scores, and bundle entries: each pass,
+each level, each reason an upload is passed over, a signer's newer
+upload lacking the path, the node's scores for a request with no session,
+what a level's search found kept and then searched again, and what is still
+pending when the deadline passes.
+
+**Size:** about 450 new lines of Python.
+
+Built in three change sets, 1,021 added lines of non-test Python in all,
+and 1,414 of tests. That is over twice the estimate, and over 500, so it is
+split where it reads in three, each a commit of its own. Most of the lines
+are docstrings, comments, and blank lines.
+
+- **Set 1, paths, uploads, and settings** (253 lines, and 201 of tests):
+  `ChaosPath`, `ChaosLevel`, `ChaosUpload`, and the words of the report,
+  `PassedOver` and `ChoosingScores`, in `protocol/chaos.py`, and
+  `ChaosConfig`, the `chaos` section, with `examples/libranet.yaml`.
+- **Set 2, reading a level** (285 lines, and 386 of tests): `ChaosLevels`
+  and `DropRead`, in `webserver/chaos_levels.py`: what a level's search
+  finds, kept for `chaos.search_seconds`, and what each drop found is,
+  read and checked, kept for the 1,000 drops read last.
+- **Set 3, choosing** (483 lines, and 827 of tests): `ChaosScores`,
+  `ChaosResolver`, and the resolution, `ChaosResolution`, `LevelResolution`,
+  `ChaosCandidate`, and `ChaosChoice`, in `webserver/chaos_resolver.py`.
+
+Nothing serves it yet: Step 157 builds a `ChaosResolver` from the web
+server's search and bundle paths, `TrustBuilds` for people, and
+`PeerTrust.builds` for the node, and the Operator Guide gains the `chaos`
+settings with `network.chaos_port`, as that step says.
+
+Calls made in building it, not yet reviewed:
+
+- **Only what could change the choice is waited for.** The first pass
+  waits for each drop not held, which could hold anyone's upload, and for
+  the key of each trusted uploader; the second, for the key of each
+  uploader of no trust specified. A distrusted uploader's key, and what a
+  level below the one chosen lacks, are asked for and named as missing,
+  but not waited for, so that a page's images are not each held up for
+  `network.app_wait_seconds` by what cannot change what they are served.
+- **A signed upload whose uploader's key is not held is pending**, and
+  so is every other upload of theirs, since none is checked. It shows its
+  uploader and their score in the report, unchecked.
+- **A bad signature names the signer it claims** where the signature fails
+  under their key, so that the page can show whom it claims to be from.
+  One whose `hash` is not of its `contents` names none. So Step 158's page
+  should offer no Trust or Distrust beside a bad signature.
+- **An uploader's key the node has shunned is a bad signature**, since it is
+  never fetched, rather than pending on every request.
+- **A signed bundle hashed under an algorithm this node lacks, or whose
+  signer is named under one**, is a bad signature, as its signer names no
+  key that can sign for it here (HttpApi §13.6.2), logged at warning.
+- **An upload naming a bundle under an algorithm or a cipher this node
+  lacks is not an upload**, logged at warning, rather than unusable, so
+  it does not supersede its uploader's older ones.
+- **A drop is read as UTF-8 alone**, though `json.loads` reads UTF-16 and
+  UTF-32 too, since JSON text is UTF-8 (RFC 8259 §8.1).
+- **What is held for a drop that is not what its id names** is not an
+  upload, logged at warning.
+- **The reasons a drop is passed over for what it holds**, and for being
+  superseded or distrusted, are reported for every drop at every level,
+  even below the upload chosen. Only the reasons found by looking into a
+  bundle, `lacks-path`, `unusable`, and a bundle's `pending`, are left
+  `null`, with `holds`, for the uploads after the one chosen. That is how
+  this reads HttpApi §13.6.7's "any that came after it": those taken in
+  the passes after it, not those passed over before the passes.
+- **A session whose person has no scores**, as when their last session
+  ends while a request is resolved, is resolved by the node's scores, and
+  reported as `node`.
+- **No scores at all**, as before the node's build starts, make every
+  uploader of no trust specified, and the scores not complete.
+- **A `%2F` ending a path names a directory**, as a `/` does, and a path
+  beneath `/chaos/` beginning with `/` names nothing, its first element
+  being empty, rather than naming the root.
+- **The choice keeps the entry found** (`ChaosChoice.entry`): the file's,
+  or the redirect to where the rest leads, so that Step 157 serves it
+  without asking the unbundler again.
+- **`ChaosResolution.value()` leaves out `served_at`**, which only the
+  handler knows, as it knows the ports and the `Host`; Step 158 adds it.
+- **An upload's moment is read as a Karma member's is**
+  (`protocol/karma_members.py`), strictly as `2026-11-07T15:04:05Z`.
+
+---
+
+## Step 157 — Serving /chaos ✅
+
+**Kind:** new node code. **Issue:** #657 (§7.3). **Depends on:**
+Step 156; Phase 2 Step 58; Phase 3 Steps 65, 66, and 74.
+
+Settled in the milestone: a path beneath `/chaos` is reached by a browser,
+and a `404` is shown if no bundle is found.
+
+Ruled (2026-11-07): what a person signed in sees follows their trust, for
+every request their browser makes for a Chaos path.
+
+Why a port of its own: the session cookie is `SameSite=Strict` (HttpApi
+§11.4). A Chaos page served on the main port must be served in a sandbox,
+since its scripts would otherwise have every power a trusted application
+has (HttpApi §13.5). But a sandboxed page has an origin of its own, which
+the browser takes to be another site. So each request it makes, for its
+images and scripts and for each link followed from it, would come without
+the cookie, as without a `Referer` (Phase 3 Step 74), and could not follow
+the person's trust. A page served from a port of the node's own is not the
+main port's origin, so it needs no sandbox, and can use nothing that serves
+only the node's own pages: HttpApi §2.4's checks refuse a request from
+another port of the machine, which the browser marks `same-site`. But the
+cookie is sent to every port of a host, and every request such a page makes
+of its own port is same-origin. So each one carries the person's session.
+
+What is built:
+
+- **The Chaos port**, `network.chaos_port`. Unset, it is the first port
+  free of `listen_port` + 50, + 150, + 250, and so on, found as `/config`'s
+  port is (Phase 2 Step 58), so that it is never one `/config` may take.
+  It listens where the main port does, `listen_address`, since a local
+  client reaches the node at any of the machine's addresses (HttpApi §2.4).
+  The web server module runs a third server for it, with a router that
+  serves `/chaos` and the paths beneath it, and nothing else. The local
+  network script gives each node a Chaos port of its own, as it gives each
+  its `/config` port.
+- **`ChaosHandler`** (`webserver/chaos_handler.py`), on both ports, for
+  `GET` and `HEAD` of `/chaos` and every path beneath it, the name matched
+  ignoring case, as a reserved name is. `/chaos` is redirected to
+  `/chaos/`. Any other method is `405 Method Not Allowed`.
+- **On the main port**, a request carrying a session is `302 Found` to the
+  same path, with its query, on the Chaos port, at the host the request
+  named. Any other is resolved by the node's scores (Step 156), and served
+  in the sandbox of an untrusted application (`UNTRUSTED_APP_HEADERS`,
+  HttpApi §13.5). Only a local client signs in, so a client elsewhere is
+  always served here, and needs nothing but the main port to reach the
+  node.
+- **On the Chaos port**, every request is resolved by the scores of the
+  person whose session it carries, or else the node's, and served as it
+  is, with `X-Content-Type-Options: nosniff` and no sandbox.
+- **Serving** is as reading into a bundle serves (HttpApi §12.1): ranges,
+  the content type, `503` while what is needed is not held, a directory's
+  `index.html`, and a directory named without its `/`, or a symbolic link,
+  redirected to the Chaos path it leads to, which is then resolved as any
+  other. Nothing chosen is `404 Not Found`, a plain problem until Step 158
+  gives it the Chaos page. Every answer carries `Cache-Control: no-store`,
+  since it depends on who asks.
+- **The App Developer Guide** gains §6.21, putting a site on Chaos: what to
+  place, that each path is resolved on its own, and that its pages share
+  one origin with every other Chaos site's. **The Operator Guide** gains
+  `network.chaos_port` and the `chaos` settings.
+
+My calls, not yet reviewed:
+
+- **A port of its own**, which is how this plan follows the ruling. Phase
+  3 Step 74 ruled out an origin for each application, for now, and this is
+  one origin for all of Chaos, not one for each site. The other ways
+  found each leave some requests without the person's session: a path
+  naming the viewer is lost by a link written from the root, and a
+  `SameSite=Lax` session cookie reaches a link followed, but not a page's
+  images.
+- **One origin for every Chaos site.** They share the browser's storage,
+  and one can frame another and script it. That is Chaos, but the Guide
+  says so.
+- **Scripts on the Chaos port can set cookies for the host**, which every
+  port is sent. They cannot replace the session cookie, which is
+  `HttpOnly`, but could fill the browser's cookies for the host until its
+  requests are refused, until they are cleared.
+- **What a Chaos page's scripts read** of other Chaos paths shows them what
+  the person's trust chose. That is inherent in following the person's
+  trust. The scores themselves are only ever served on the main port.
+- **The main port serves without a session**, rather than sending everyone
+  to the Chaos port, so that a client elsewhere reaches Chaos without the
+  Chaos port being reachable.
+- **No `Host` check on the Chaos port.** What a request without the
+  session cookie is served is public, and a site pointing a name of its own
+  at the machine has no cookie for it.
+
+**Testable in isolation:** handler tests with a fake resolver and fake
+bundle paths: the `302` from the main port with a session, what is served
+there without one and its sandbox, what the Chaos port serves with and
+without a session, ranges, the `404`, and `no-store`; and tests of the
+port's setting and of a third server bound. Live: in Chrome and Safari, a
+site of several pages, images, and links, signed in and not, checking that
+each request the Chaos port answers carries the session, and that a Chaos
+page's request to the main port's endpoints is refused.
+
+**Size:** about 400 new lines of Python.
+
+Built as one change set: 428 added lines of non-test Python, and 654 of
+tests. `ChaosHandler` and `ChaosPort` are in `webserver/chaos_handler.py`;
+`network.chaos_port` and `NetworkConfig.chaos_ports()` in the configuration;
+the third server in the web server module; and the routes in
+`build_router`, which adds the Chaos port's to its router, so that both
+ports share who is signed in. It has not yet been checked live in Chrome
+and Safari.
+
+Calls made in building it, not yet reviewed:
+
+- **The Chaos port is bound after `/config`'s, and before the main
+  port's**, and its defaults pass over a `config_port` set among them. A
+  `chaos_port` set to `listen_port`, or to a port `/config` may take, is
+  refused as the configuration is read, and a `listen_port` with no port 50
+  above it needs `chaos_port` set, as one with none 100 above needs
+  `config_port`.
+- **The local network script** puts each node's Chaos port 50 above its
+  port, for 50 nodes or fewer, and otherwise at the next 100 up taking no
+  node's port and no `/config` port: 250 above, for 51 to 100 nodes.
+- **The query is passed on as it came.** `Request` keeps `query_text`, the
+  query string as sent, since the parameters parsed leave out one with no
+  value and keep one of a name given twice. `/chaos` keeps its spelling as
+  it is sent to `/chaos/`.
+- **On the main port, a session is looked for before the path is read**, so
+  a path naming nothing is sent to the Chaos port too, and is `404` there. A
+  session that has ended is no session. A request with no `Host` is sent to
+  the address its connection reached.
+- **A `405` is the router's**, with `Allow: GET, HEAD`, and carries no
+  `Cache-Control: no-store`, though HttpApi §13.6.5 asks it of every
+  answer. No cache keeps an answer to a method other than `GET` or `HEAD`
+  that says nothing of its freshness.
+- **The path is resolved, and its file's first part waited for, within one
+  `network.app_wait_seconds`**: `ChaosResolver.resolve` takes the handler's
+  deadline.
+- **Nothing chosen is `404`**, even while what is pending could change that,
+  as HttpApi §13.6.6 has it, rather than `503`.
+- **A file bundle's own file**, at the empty rest, is served with the
+  content type its last element's name gives, if its bundle gives none.
+- **A file the bundle chosen cannot serve from its parts is `500`**, as an
+  application's is, not the `400` of a read into a bundle, since the path
+  names no bundle. It is logged at debug, as anyone may upload any bundle,
+  or at warning for an algorithm or a cipher the node lacks. The next
+  upload is not tried instead.
+- **A redirect names `/chaos` in lower case**, and each element above the
+  level percent-encoded.
+- **`/chaos` is routed only given `node`, `peers`, and the Chaos port** to
+  `build_router`, as the module always gives them. A router built without
+  them answers `/chaos` as a reserved name, `404`.
+
+---
+
+## Step 158 — The Chaos Page ✅
+
+**Kind:** new node code, and a page. **Issue:** #658 (§7.4).
+**Depends on:** Steps 156 and 157; Phase 5 Steps 97, 100, and 106.
+
+Settled in the milestone:
+
+- **A `404` shows all the stats, with a reload button.**
+- **A `?` at the end of any address shows the same page**, with the
+  bundles uploaded, their dates, and their signers.
+- **Trust, distrust, or clear the rating** of a signer, where clearing
+  takes the person's own entry away and leaves the trust network to score
+  them.
+
+What is built:
+
+- **A bare `?`.** `Request` (`webserver/http_types.py`) keeps whether its
+  target held a `?`, even with nothing after it, since `urlsplit` reads
+  `/chaos/a?` as it reads `/chaos/a` (`webserver/server.py`). On the main
+  port, a `GET` or `HEAD` of a path beneath `/chaos` ending in a bare `?`
+  is answered `200` with the Chaos page, and nothing is resolved for it. On
+  the Chaos port, it is `302 Found` to the same address on the main port. A
+  query with anything in it is ignored, as an application's is.
+- **The `404`.** On the main port, a `404` from Step 157 carries the Chaos
+  page. On the Chaos port, a `404` for a page the browser is opening
+  (`Sec-Fetch-Dest: document`) is `302 Found` to the path with a bare `?`
+  on the main port, and any other is a plain problem.
+- **The page**, `applications/chaos/index.html`, one self-contained
+  document, as each shipped page is. It is built with the shipped
+  applications, and is not registered, since `chaos` is reserved. It is
+  served only on the main port, on its origin, without a sandbox, under a
+  policy like `/config`'s: it loads only what the node serves, and no page
+  may frame it, so that no Chaos site can have a person click its buttons
+  unseen.
+- **The report**, `GET /data/chaos/{path}`, on the main port: Step 156's
+  resolution of the path, resolved as a request for the path would be, and
+  waiting as long, with where the path is served for whoever asks:
+
+  ```json
+  {"path": "a/b/c.html", "scores": "person", "complete": true,
+   "served_at": "http://localhost:8130/chaos/a/b/c.html",
+   "chosen": {"level": 1, "drop": "sha256/…"},
+   "levels": [
+     {"target": "chaos:/", "hash": "<target hash>", "rest": "a/b/c.html",
+      "uploads": [
+        {"drop": "sha256/…", "matching_bits": 26, "signer": "sha256/…",
+         "score": 1, "step": 1, "bundle": "sha256/…",
+         "created": "2026-11-07T15:04:05Z", "holds": false,
+         "passed_over": "lacks-path"}],
+      "missing": ["sha256/…"]}]}
+  ```
+
+  It is served to the node's own pages, from any client, as making a drop
+  is (HttpApi §2.5), with `Cache-Control: no-store`. `scores` is `person`
+  or `node`.
+- **A page beneath `/chaos` on the main port is the Chaos page's** to
+  HttpApi §2.5's `Referer` checks, and counts as a trusted application's
+  (`webserver/own_pages.py`). So the page may change the person's trust
+  list, sign, and make bundles (Step 159), on a local client. A Chaos site
+  cannot, whatever `Referer` it sends: on the Chaos port its requests come
+  from another origin, and on the main port from a sandbox, and either way
+  HttpApi §2.4's checks of `Origin` and `Sec-Fetch-Site` refuse them, as
+  §2.5 already relies on them to keep out an untrusted application.
+- **What the page shows**: the path, whose scores chose and whether they
+  are complete, and the bundle chosen, with a link to the path where it is
+  served. For each level: its drop, and each upload, with its signer,
+  their mark (⚪🟢🟡🔴, as Phase 5 Step 106 shows them) and name, when it
+  was uploaded, its bundle, whether it holds the rest, and why it was
+  passed over, with a link reading into its bundle at the rest (HttpApi
+  §12.1); then what is still missing. **Reload** asks for the path again,
+  so that what has been found since is served. While anything is pending,
+  or the scores are not complete, the page reads the report again every 2
+  seconds, as the user directory reads scores (Phase 5 Step 101).
+- **Trust, Distrust, and Clear** beside each signer, through
+  `PUT /data/trust/{id}` and `DELETE /data/trust/{id}` (HttpApi §11.7),
+  shown only to a client signed in on the node's own machine. The page
+  reads the report again after each.
+- **The App Developer Guide** §6.21 gains the `?` page and the report, and
+  the README names the Chaos endpoint among what a node serves.
+
+My calls, not yet reviewed:
+
+- **One page** for the `404` and the `?`, as the milestone says, and only
+  on the main port: the Chaos port can use none of the endpoints it needs,
+  and every Chaos site's scripts could read a report served there.
+- **A page opened on the Chaos port that is not found** goes to the Chaos
+  page, rather than showing a page of its own, which could show no stats.
+- **The node reports, and the page shows**, so that the rule of Step 156
+  is written once, rather than again in the page's script.
+- **Any `Referer` beneath `/chaos`** on the main port is the page's, rather
+  than only one ending in `?`. `RefererPage` drops the `?` as `urlsplit`
+  does, and browsers may not send it.
+- **An upload not chosen is shown by reading into its bundle**, which is
+  sandboxed with no scripts, rather than at a path of the Chaos port.
+- **A signer's name** is the one they give themselves (Phase 4 Step 80),
+  read as the user directory reads it, with their id beside it.
+- **No page may frame it.**
+
+**Testable in isolation:** tests of the `?` kept on a request, of the `?`
+and the `404` on each port, of the report's handler, of the `Referer` of a
+page beneath `/chaos`, and of the page as shipped: built from its
+directory, reaching nothing beyond the node, and calling only endpoints the
+node serves. The page is checked by hand.
+
+**Size:** about 250 new lines of Python, and the page, about 900 lines.
+
+Built as one change set: 262 added lines of non-test Python, 496 of tests,
+and the page, 822 lines. The bare `?` is `Request.has_query`, with
+`bare_query()`. `ChaosPage` and `ChaosReport` are in
+`webserver/chaos_handler.py`. The page is `applications/chaos/index.html`,
+shipped as `chaos` in `SHIPPED_APPLICATIONS`. It was checked live in
+headless Chrome on a throwaway node, with an unsigned upload chosen:
+Chrome sends the bare `?` as the address has it. It has not been checked in
+Safari, nor signed in, nor with a signed upload, so the Trust, Distrust,
+and Clear buttons have not been seen live.
+
+Calls made in building it, not yet reviewed:
+
+- **The page is shipped as an application is**, built and archived with
+  them, and left out of the registry a node starts with, since `chaos` is
+  reserved. So `/data/applications` does not list it, and an operator
+  cannot point it at another bundle. A router given no content ships none,
+  and answers a bare `?` and a `404` with a plain problem.
+- **The page is served from its bundle as an application's page is**:
+  reported used, `503` until the unbundler resolves its `index.html`, and
+  `500`, logged as an error, if it cannot be served. A `404` of a path on
+  the main port waits for that as an application's page does.
+- **Every `404` on the main port carries the page**, whether the path
+  names nothing or nothing is chosen. On the Chaos port, a `404` sent to
+  the page loses any query it had, since the page takes only the path.
+- **The Chaos port sends to the main port at `network.listen_port`**, the
+  port configured, at the host the request named, as the main port sends
+  to the Chaos port.
+- **A refusal of the report carries no `Cache-Control: no-store`**, though
+  HttpApi §13.6.7 asks it of every answer. The `403` is the checks' that
+  every endpoint for the node's own pages makes, and no cache keeps a
+  `403` that says nothing of its freshness.
+- **`served_at` follows the session**, not whose scores chose. A person
+  signed in whose scores are not being built is still sent to the Chaos
+  port, which is then where the path is served for them. The path is
+  spelled as the report's address spelled it.
+- **`chaos` is one of the names beneath `/data` that are not content**, so
+  `/data/chaos/...` is never read as a hash algorithm, and a method other
+  than `GET` is `405`.
+- **The mark is by the scores the report says chose**, from its `score`:
+  ⚪ only where none is given. An unsigned upload has no mark, and is
+  shown as unsigned.
+- **The page reads the report again every 2 seconds while anything is
+  missing, or pending, or the scores are not complete**, and again after
+  each change of trust.
+- **Reload opens the path without its `?`**, so that it is served, by
+  whichever port the node sends it to, if anything is chosen for it now,
+  and shows this page again if not.
+- **A signer's name is their handle, or else their first and last names**,
+  as mail names a person, linked to their page in the user directory.
+- **An upload's bundle is linked at the rest of its level**, the root with
+  its `/`.
+- **Trust, Distrust, and Clear disable the choice the person's own list
+  holds**, as the user directory does, only when the person's scores chose.
+
+---
+
+## Step 159 — Uploading and Downloading a Zip ✅
+
+**Kind:** a change to what Steps 157 and 158 built, new node code, and the
+page. **Issue:** #659 (§7.5).
+**Depends on:** Step 158; Phase 3 Steps 69 and 72; Phase 4 Steps 80 and
+89.
+
+Settled in the milestone: the page lets a viewer download and upload a
+bundle to the address it is open on.
+
+Ruled on 2026-11-11:
+
+- **Upload, not propose.** A person uploads a bundle to a path. Whether
+  anyone is served it depends on what others uploaded and on each viewer's
+  trust, which is why the endpoint is called Chaos. This step's page says
+  upload. The specification, the code, and the report kept "proposal"
+  until #682 renamed it, everywhere, as a change of its own (§6).
+- **Chaos is only for someone signed in.** Without a person's trust to
+  choose by, it makes no sense.
+- **The main port's `/chaos` is only the Chaos page**, for every path
+  beneath it, whether or not its address ends in `?`: what could have been
+  chosen for the path and what was, with Trust and Distrust to change the
+  outcome. A Chaos site's own files are served only on the Chaos port. The
+  Chaos page's **View content** is a plain link to the same path on the
+  Chaos port.
+- **A `.zip` both ways**, and nothing else to start with: no files,
+  folders, or the node's folders.
+- **The node handles the zip both ways**: it makes a directory bundle of a
+  zip uploaded to it, and serves any bundle as a zip.
+- **`created` is the browser's clock.** Chaining requests by `base` was
+  ruled fine too, but nothing is chained now: the zip is one request.
+
+What is built, as three change sets, each green on its own. The first
+changes what Steps 157 and 158 built, so that it can be reviewed alone.
+
+**Set 1: Chaos only for someone signed in.** In
+`webserver/chaos_handler.py`, `webserver/chaos_resolver.py`, and the page.
+On a node whose main port is 8080 and whose Chaos port is 8130:
+
+- **The main port.** A `GET` or `HEAD` of any path beneath `/chaos` is
+  answered `200 OK` with the Chaos page, whatever its query, and whether or
+  not the request carries a session, and nothing is resolved for it.
+  `http://localhost:8080/chaos/a/b/c.html` is the Chaos page for
+  `/chaos/a/b/c.html`. Gone: the `302` to the Chaos port for a request
+  carrying a session, and serving a Chaos site in a sandbox to one that
+  carries none.
+- **The Chaos port, signed in**, serves as it does now.
+  `http://localhost:8130/chaos/a/b/c.html?` is `302 Found` to
+  `http://localhost:8080/chaos/a/b/c.html`, and so is a page being opened
+  (`Sec-Fetch-Dest: document`) for which nothing is chosen. An image, or
+  anything else not found, is a plain `404`.
+- **The Chaos port, not signed in.** A page being opened is `302 Found` to
+  the Chaos page, as above, which says to sign in. Anything else is
+  `401 Unauthorized`, `session-required`.
+- **The node's own scores choose for no one.** The report, asked without a
+  session, is `401`, `session-required`. Its `scores` member goes, since it
+  is always the person's, and `served_at` is always on the Chaos port.
+- **The page** heads each level with its base URL, `/chaos/a/`, and its
+  drop, `chaos:/a`, beneath it. **View content** is a plain link to the
+  same path on the Chaos port, `http://localhost:8130/chaos/a/b/c.html`,
+  whatever was chosen. **Reload** reads the report again, since the main
+  port shows only this page for the path. Without a session, it
+  says to sign in, with a link to the home page, `/`; on a client
+  elsewhere, which cannot sign in, it says Chaos is used on the node's own
+  machine.
+- **The specification**: HttpApi §13.6, §13.6.3 to §13.6.7, and §2.5's
+  mention of a sandbox on the main port; the App Developer Guide §6.21;
+  the Operator Guide; and the README.
+
+Set 1 was built with 121 added lines of non-test Python, and 158 taken
+away. `ChaosPage` answers every path beneath `/chaos` on the main port
+itself, and `ChaosHandler` serves the Chaos port alone. `ChaosScores`
+reads only the person's scores, and `ChoosingScores` is gone. Calls made in
+building it, not yet reviewed:
+
+- **A path naming nothing is the Chaos page too** on the main port, which
+  says so from the report's `404`, rather than a `404` of its own.
+- **The Chaos port checks for a session before the path**, so a request
+  without one for a path naming nothing is `401`, or sent to the Chaos
+  page.
+- **A person whose scores are not being built** has every uploader of no
+  trust specified, rather than being answered as one without a session:
+  it happens only when their last session has just ended.
+- **The Chaos port's `401` carries no `WWW-Authenticate`**, as the other
+  `session-required` answers do not.
+- **View content is shown once the report is read**, whatever was chosen,
+  since its address comes from the report's `served_at`.
+
+**Set 2: the node's zip, both ways.**
+
+- **Upload**: `POST /data/bundles` with `Content-Type: application/zip`,
+  and the zip as the body, neither JSON nor base64. Served as the JSON
+  form is: to a local client, from a page of a trusted application. It
+  needs a `Content-Length` (`411` without one), and takes at most
+  `network.max_bundles_zip_bytes` (`413`). The node writes the body to a
+  temporary file beside its store, since a zip's index is at its end, and
+  makes a directory bundle of it: each file cut into parts as an import
+  cuts one, read a part at a time, never held whole; each directory kept,
+  empty or not; each symbolic link kept as one. It answers `201 Created`
+  with `{"bundle": "sha256/…"}`, as the JSON form does. An entry whose
+  name is not an entry path (an empty segment, `.`, `..`, or a leading
+  `/`), one encrypted, or one compressed in a way the node cannot read, is
+  `400 Bad Request`, naming the entry.
+- **Download**: `GET /data/zip/{hash-algorithm}/{hash}/{path}`, and the
+  encrypted form, as reading into a bundle has (HttpApi §12.1). It answers
+  with the directory at `{path}`, the bundle's root when empty, and every
+  entry beneath it, as a zip, with `Content-Type: application/zip` and
+  `Content-Disposition: attachment`: files stored uncompressed, and
+  directories and symbolic links as entries of their own. It is sent as it
+  is made. Any client may ask, as any may read into a bundle. `zip` joins
+  the names beneath `/data` that are not content (`DATA_ENDPOINT_NAMES`).
+- **The specification**: HttpApi §12.3 (the zip form), a new §12.5 (a
+  bundle as a zip), and §21 (the limit); the Operator Guide (the
+  settings); and the App Developer Guide.
+
+Set 2 came to 749 added lines of non-test Python, more than twice the
+estimate and over the 500 past which CLAUDE.md asks for a split, so it was
+committed in two parts, each green on its own. Making a bundle of a zip,
+405 lines: `ZipBundleMaker` and `BundlesHandler` in
+`webserver/bundle_zips.py`, `RequestBody.copy_to`, `Request.media_type`,
+and an `or_else` on `LocalOnly` and `OwnSiteOnly` for a body of another type
+than JSON. Sending a bundle as a zip, 344 lines: `BundleZipHandler` in
+`webserver/bundle_zip_reads.py`, and `named_bundle`, made public from
+`webserver/bundle_reads.py` so that both read a bundle's address alike.
+Calls made in building it, not yet reviewed:
+
+- **A zip body is let through the check that a body is JSON**, for making
+  bundles alone. No form sends `application/zip`, so a page on another
+  site cannot send one without the node agreeing first, as for JSON.
+- **The temporary file is unnamed**, in the node's data directory, so
+  that nothing is left of it should the node stop while it is read.
+- **A directory with something in it gets no entry of its own**, so that
+  a zip downloaded and uploaded again is the same bundle.
+- **A file bundle is no directory to zip**, and is `400`; so is a path in
+  a bundle naming a file or a link.
+- **A downloaded zip's file is dated by its bundle's `modified`**, or 1980,
+  the earliest a zip can say, and its mode is `0644`, or `0755` if its
+  bundle says it is executable. A time not readable is not logged.
+- **A file whose size its bundle does not record is given ZIP64's
+  sizes**, as one of 4 GiB or more is.
+- **The download is named for the last element of its path**, or
+  `bundle.zip` for the root, though the Chaos page names its own.
+- **A download is `no-store`**, though what an id names never changes:
+  sent until the connection closes, a download cut short could not be told
+  from a whole one by a cache.
+
+**Set 3: the page, uploading and downloading.**
+
+- **Upload a zip**, signed in on the node's own machine. The person
+  chooses one `.zip`, and the base URL to upload it at: the directory of
+  the address by default, `/chaos/a/b/` for `/chaos/a/b/c.html`, or any
+  above it, from the report's levels. The page sends the zip, showing its
+  progress. It then checks that the bundle made holds the rest of the path
+  at that base URL, with a `HEAD` reading into it, and if not asks before
+  going on: "This zip has no `c.html` at its top. Upload it anyway?" Then
+  it places the upload at the base URL's drop, signed, with
+  `POST /data/signed`, as
+  `{"bundle": "sha256/…", "created": "2026-11-11T15:04:05Z"}`, matching at
+  least 24 bits, searched for 5 seconds, and reads the report again.
+- **Download**, beside each bundle listed: a link to
+  `/data/zip/{bundle}/`, saved as the last element of its base URL,
+  `b.zip`, or `chaos.zip` at the root.
+
+Set 3 was built as the page alone, about 230 lines, and the page's words
+now say upload rather than propose. Checked live on a throwaway node: a zip
+holding a 5 MiB file was made a bundle over a real connection, sent back
+as a zip holding the same bytes, and made the same bundle again; an upload
+placed signed was chosen, and served on the Chaos port, its page and the
+large file; and the Chaos port answered `401` without a session, and sent
+a page opened without one, and a bare `?`, to the main port. In headless
+Chrome, the page offered `/chaos/` and `/chaos/tarts/` for
+`/chaos/tarts/plum.html`, the latter first, uploaded a zip there, showed
+it chosen, and offered it as `tarts.zip`. Not checked: Safari, a zip
+lacking the rest, which asks first, and the download saved by a browser.
+Calls made in building it, not yet reviewed:
+
+- **Only a person signed in on the node's own machine sees the upload
+  form**, as only they can make bundles and sign. Download is offered to
+  whoever sees the page.
+- **A file's own level is offered neither for upload nor download**: a
+  directory bundle cannot serve it, and a file bundle is no directory to
+  zip.
+- **The zip is sent with `XMLHttpRequest`**, not `fetch`, to show how much
+  of it is sent.
+- **The check that the bundle holds the rest waits out one `503`**, and
+  goes on without asking if it still cannot tell.
+- **After an upload, the zip chosen is cleared and the base URL kept**, so
+  that another can go to the same place.
+- **The node's answers in Python still said "proposed"**, as in a `404`'s
+  detail, until #682 renamed them (§6).
+
+My calls, not yet reviewed:
+
+- **One endpoint, two forms.** A zip is made a bundle by
+  `POST /data/bundles` with its content type, rather than at a path of its
+  own. The JSON form keeps its 4 MiB limit.
+- **`network.max_bundles_zip_bytes`, 16 GiB by default**, since the zip is
+  written to disk before it is read.
+- **The bundle is made while the request waits**, rather than answered
+  `202` and followed, as an import is. The page shows the upload's
+  progress, and then that the bundle is being made.
+- **A zip holding one folder and nothing else is made a bundle of that
+  folder's contents**, since compressing a folder in macOS's Finder or
+  Windows' File Explorer puts the folder's name before every entry.
+- **`__MACOSX` and `.DS_Store` are left out**, as the default of a setting
+  of names, with patterns.
+- **The bundle made is not encrypted**, since what is uploaded to Chaos is
+  for anyone to read.
+- **Symbolic links are kept both ways.** A zip entry is a link if its Unix
+  mode says so.
+- **A download is sent as it is made**, its length unknown, so a part that
+  does not arrive in time ends it short, and the browser says the download
+  failed.
+- **A download's files are stored uncompressed**, since a site's large
+  files, its images and videos, are compressed already.
+- **A request whose session's scores are not being built** is answered as
+  one without a session.
+- **Uploads are always signed**, since only someone signed in uses Chaos.
+  An unsigned one placed by other means is still chosen as Step 156 says.
+- **The page asks, rather than refuses, when the bundle does not hold the
+  rest**, since a bundle uploaded at `/chaos/` may be meant for other paths
+  beneath it.
+
+**Testable in isolation:** tests of each port's answers, signed in or not,
+and of the report without a session; of making a bundle from zips holding
+files, empty directories, links, one folder, names left out, names that are
+not entry paths, encrypted entries, a body too large, and one without a
+length; and of serving a bundle as a zip, read back by `zipfile`, and
+uploaded again, holding the same files. The page is checked by hand, in
+Safari and Chrome.
+
+**Size:** set 1, about 80 new lines of Python, most of its change taking
+code away; set 2, about 300; set 3, the page alone, about 250 lines.
+
+---
+
+## 4. Issues in the Milestone
+
+Every issue in the **Phase 7 - Chaos endpoint** milestone, by number, and
+where it went. The issue of each step was made from the text in §7.
+
+| Issue | Asks for | Step |
+| --- | --- | --- |
+| #595 | Planning the Chaos endpoint | None: this plan |
+| #655 | Specifying the Chaos endpoint (§7.1) | 155 |
+| #656 | Resolving a Chaos path (§7.2) | 156 |
+| #657 | Serving `/chaos` (§7.3) | 157 |
+| #658 | The Chaos page (§7.4) | 158 |
+| #659 | Uploading and downloading a zip (§7.5) | 159 |
+| #682 | Renaming Chaos "proposals" to "uploads" everywhere | None: a rename after Step 159 (§6) |
+
+## 5. Suggested Build Order
+
+| Order | Step | Why here |
+| --- | --- | --- |
+| 1 | 155 | Settles the rules of §6 before any code depends on them. |
+| 2 | 156 | Every other step serves or shows what it resolves. |
+| 3 | 157 | The endpoint itself; it is usable once this is built, by uploads placed from a script. |
+| 4 | 158 | Shows what Step 157 chose, and why, and lets the viewer change it through whom they trust. |
+| 5 | 159 | Lets a person upload from a browser, and is needed least. |
+
+## 6. Open Items Not Yet Decided
+
+Ruled on 2026-11-07, once this plan was written:
+
+- **The person's trust.** What a person signed in sees at a Chaos path
+  follows their trust, for every request their browser makes for one: the
+  page, its images and scripts, and each link followed from it (Steps 156
+  and 157).
+
+Ruled on 2026-11-11, while planning Step 159 again:
+
+- **Only for someone signed in.** Chaos makes no sense without a person's
+  trust to choose by. The node's own scores choose for no one, and the
+  Chaos port serves nothing to a request without a session (Step 159).
+- **The main port's `/chaos` is only the Chaos page**, for every path
+  beneath it, with or without a `?`: what could have been chosen and what
+  was, with Trust and Distrust. A Chaos site's own files are served only
+  on the Chaos port, and the page's View content is a plain link to the
+  same path there (Step 159).
+- **Upload, not propose.** A person uploads a bundle to a path, and whether
+  anyone sees it depends on what others uploaded and on each viewer's
+  trust: that is the chaos. "Propose", "proposal", and "proposer" were
+  renamed "upload", "upload", and "uploader" everywhere, in the
+  specifications, the guides, this plan, the code, the tests, the report's
+  members, and the page, by #682, a change of its own after Step 159. Only
+  the milestone's description, quoted in §2.1, still says propose.
+- **Download and upload** (Step 159): a `.zip` both ways, and nothing else
+  to start with. The node makes a directory bundle of a zip, and serves a
+  bundle as one.
+
+Still to be ruled on, each this plan's call. Step 155 writes each into the
+specification as it stands, to be changed there if ruled otherwise:
+
+- **Trust before depth** (Step 156): two passes, every level's trusted
+  uploads before any of no trust specified, rather than the milestone's
+  order, which lets a shallower upload of no trust specified override a
+  trusted one.
+- **No trust specified** (Step 156): unsigned, or signed by someone
+  scoring 0 or not reached.
+- **Newest** (Step 156): by the upload's `created`, those dated more than
+  5 minutes ahead passed over, and each signer's newest alone counting.
+- **What a drop holds** (Step 156): an upload naming a bundle, rather
+  than the bundle.
+- **A port of its own** (Step 157), the way this plan follows the ruling
+  above. What it costs: a third port; one origin shared by every Chaos
+  site; cookies for the host that a Chaos page's scripts can set; and what
+  those scripts can read of what the person's trust chose. Without it, a
+  page's images, or the links followed from it, would come without the
+  person's session.
+
+Not asked by the milestone, and not planned:
+
+- **Shunning an unsigned upload.** A signer can be distrusted, but an
+  unsigned upload cannot, so the only way to keep one off a node is to
+  shun its drop (HttpApi §5.5). The Chaos page could offer that.
+- **Whether a browser sends a bare `?`.** Chrome does (Step 158). Safari
+  is still to be checked. Since Step 159, only the Chaos port looks for it.
+  If Safari drops it, a named query, such as `?about`, would send the
+  address to the Chaos page instead.
+- **Phase 8's reuse** of Step 156's resolution, for paths with owners.
+
+## 7. Issues to Make
+
+One issue for each step, to be made in the **Phase 7 - Chaos endpoint**
+milestone. Each body is written to be copied as it is.
+
+### 7.1 Step 155
+
+**Title:** Specify the Chaos endpoint
+
+```markdown
+Plan: docs/implementation/Phase 7.md, Step 155.
+
+Write the Chaos endpoint into the specifications before any code depends
+on it, once the open items of the plan's §6 are ruled on:
+
+- HTTP API §13.6 (new), The Chaos Endpoint: a path's levels and their
+  drops (`chaos:/`, `chaos:/a`, ...), what an upload is, signed or not,
+  whose scores choose and how, the Chaos port and what each port serves,
+  the 404, the page a bare `?` shows, and the report,
+  `GET /data/chaos/{path}`.
+- HTTP API §2: `chaos` names the Chaos endpoint, no longer reserved for
+  the future, and still never an application's name; the Chaos port is
+  the node's third.
+- HTTP API §2.5: a page beneath `/chaos` on the main port is the Chaos
+  page's, a trusted application's; the report serves the node's own pages.
+- HTTP API §13, §21, and §25, High-Level Design §3.3.1 and §8, and Terms.
+- Known Drops: a row and §3.18 for `chaos:/{path}`.
+
+What a person signed in sees follows their trust, for every request their
+browser makes for a Chaos path (ruled 2026-11-07).
+
+Done when the specifications say everything Steps 156 to 159 build, and
+nothing still calls `/chaos` reserved for the future.
+```
+
+### 7.2 Step 156
+
+**Title:** Resolve a Chaos path
+
+```markdown
+Plan: docs/implementation/Phase 7.md, Step 156.
+
+Work out which bundle a path beneath `/chaos` names, for whom, and why
+every other upload was passed over:
+
+- `ChaosPath` and `ChaosUpload` (`protocol/chaos.py`): a path's levels,
+  their drops and rests, and an upload,
+  `{"bundle": "sha256/…", "created": "…"}`, signed or not.
+- `ChaosResolver` (`webserver/chaos_resolver.py`): search each level's
+  drop and the node's peers, check each signature, and pass over what is
+  not an upload, is shunned, dated ahead, superseded by its signer's
+  newer one, or distrusted.
+- Choose by the scores of the person whose session the request carries,
+  whatever it asks for, or else the node's own: trusted uploads at every
+  level from the root down, then those of no trust specified; at a level,
+  the newest whose bundle holds the rest.
+- Wait within `network.app_wait_seconds` for what could change the
+  choice, and name what is still pending.
+- `ChaosResolution`, with every level, upload, and reason, as the report
+  will give it.
+- Settings `chaos.max_levels` (16), `chaos.future_seconds` (300), and
+  `chaos.search_seconds` (5).
+
+Done when the resolver's tests cover each pass, each level, and each
+reason an upload is passed over.
+```
+
+### 7.3 Step 157
+
+**Title:** Serve /chaos, on a port of its own for whoever is signed in
+
+```markdown
+Plan: docs/implementation/Phase 7.md, Step 157.
+
+Serve the bundle a Chaos path resolves to, following the trust of the
+person signed in for every request their browser makes:
+
+- `network.chaos_port`, the node's third port, listening where the main
+  port does; unset, the first free of `listen_port` + 50, + 150, and so
+  on. A third server serves `/chaos` there and nothing else. The local
+  network script gives each node one.
+- `ChaosHandler` (`webserver/chaos_handler.py`) for `GET` and `HEAD` of
+  `/chaos` and beneath it, on both ports.
+- Main port: a request carrying a session is a `302` to the same path on
+  the Chaos port; any other is resolved by the node's scores and served in
+  the untrusted application's sandbox.
+- Chaos port: resolved by the scores of the person whose session the
+  request carries, or else the node's, and served without a sandbox.
+- Served as reading into a bundle is; nothing found is a `404`; everything
+  carries `Cache-Control: no-store`.
+- App Developer Guide §6.21, putting a site on Chaos; Operator Guide, the
+  Chaos port and the `chaos` settings.
+
+The session cookie is `SameSite=Strict`, so a sandboxed page's images,
+scripts, and followed links come without it. A port of its own is another
+origin, which needs no sandbox and is refused the main port's endpoints,
+and the cookie reaches every port of the host.
+
+Done when, in Chrome and Safari, a site of several pages, images, and
+links is served by the person's trust on the Chaos port, signed in, and by
+the node's on the main port, signed out; a Chaos page's requests to the
+main port's endpoints are refused; and the handler's tests pass.
+```
+
+### 7.4 Step 158
+
+**Title:** The Chaos page: what a path resolves to, and trust
+
+```markdown
+Plan: docs/implementation/Phase 7.md, Step 158.
+
+Show what a Chaos path resolves to, and why, and let the viewer change it
+through whom they trust:
+
+- `Request` keeps a bare `?`, which `urlsplit` drops. On the main port, a
+  path beneath `/chaos` ending in `?` is the Chaos page, `200`, and a
+  `404` carries it too. On the Chaos port, a `?`, or a `404` for a page
+  being opened, is a `302` to the Chaos page on the main port.
+- `applications/chaos/index.html`, built with the shipped applications but
+  not registered, served on the main port alone, unsandboxed and
+  unframeable.
+- `GET /data/chaos/{path}`: the resolution as JSON, with where the path is
+  served for whoever asks, for the node's own pages, `no-store`.
+- A `Referer` beneath `/chaos` on the main port is the Chaos page's, a
+  trusted application's.
+- The page shows every level, upload, signer (mark and name), date,
+  whether it holds the rest, why it was passed over, and the one chosen,
+  with Reload, and Trust, Distrust, and Clear beside each signer for a
+  client signed in on the node's machine.
+
+Done when the `404` and the `?` page show every upload of a path with
+its reason, Trust, Distrust, and Clear change what is chosen, and Chrome
+and Safari both send the bare `?`.
+```
+
+### 7.5 Step 159
+
+**Title:** Upload and download a zip on the Chaos page, and Chaos only for
+someone signed in
+
+```markdown
+Plan: docs/implementation/Phase 7.md, Step 159.
+
+Ruled 2026-11-11: Chaos is only for someone signed in; the main port's
+`/chaos` is only the Chaos page; a person uploads, rather than proposes;
+and a `.zip` both ways, handled by the node.
+
+Set 1, Chaos only for someone signed in:
+
+- Main port: every path beneath `/chaos` is the Chaos page, `200`, with
+  or without `?`: what could have been chosen and what was, with Trust
+  and Distrust. A Chaos site's own files are served only on the Chaos
+  port.
+- Chaos port: a `?`, or a page being opened for which nothing is chosen,
+  is `302` to the path on the main port. Without a session, a page being
+  opened is `302` there too, and anything else is `401`.
+- The node's own scores choose for no one; the report needs a session.
+- The page heads each level with its base URL (`/chaos/a/`), has View
+  content, a plain link to the same path on the Chaos port, and says to
+  sign in.
+
+Set 2, the node's zip, both ways:
+
+- `POST /data/bundles` with `Content-Type: application/zip` makes a
+  directory bundle of the zip in the body, any size up to
+  `network.max_bundles_zip_bytes`.
+- `GET /data/zip/{hash-algorithm}/{hash}/{path}` serves a bundle's
+  directory as a zip.
+
+Set 3, the page: upload a zip at a base URL, signed, with
+`POST /data/signed`; download any bundle listed as a zip.
+
+Done when, in Safari and Chrome, signed in on the node's machine, a zip
+uploaded at a base URL is chosen as the report says and served on the
+Chaos port; that bundle downloaded as a zip and uploaded again holds the
+same files; the main port's `/chaos` shows only the Chaos page; and the
+Chaos port, signed out, sends a page to the Chaos page and refuses an
+image.
+```
