@@ -34,7 +34,7 @@ and can be built alongside any phase.
 
 ## 2. What It Adds
 
-Twelve steps, the first five built:
+Twelve steps, the first six built:
 
 - **Importing a file encrypted.** The node's one change. Step 160.
 - **The photos application, and its albums.** Step 161.
@@ -788,9 +788,9 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 165 — Photos No Browser Shows as They Are
+## Step 165 — Photos No Browser Shows as They Are ✅
 
-**Issue:** to be made (§4), from #477. **Depends on:** Steps 162, 164.
+**Issue:** #673, from #477. **Depends on:** Steps 162, 164.
 
 Settled with the user:
 
@@ -848,6 +848,114 @@ its view once opened in Safari and shown in Chrome after; a DNG, a CR2, a
 NEF, an ARW, a CR3, and a RAF, each viewed from its preview; a raw file
 with no preview, downloaded; a TIFF; and the details of an HEIC and of a
 raw file.
+
+Built, in one change set, the page alone, on Step 164's. No raw file of a
+camera was at hand, so files of each format were made for the purpose, and
+kept out of the repository: a real HEIC and AVIF, by `pillow-heif` and
+Pillow, with Exif; an HEIC's meta box laid out as an iPhone's is, its
+primary item a grid, with `ispe` 4,032 by 3,024, `irot` of three quarter
+turns, and an Exif item in `mdat`; a TIFF with Exif, and one compressed as
+JPEG with shared tables; and, built on TIFF, a DNG with a thumbnail, a raw
+image of a lossless JPEG of CFA, and a preview in its `SubIFDs`, one of
+them with 3 MB before its directories; a CR2 with a preview as its first
+directory's strip, a thumbnail, and a lossless raw image; a big-endian NEF
+with a preview by `JPEGInterchangeFormat` in a `SubIFD`; an RW2, of
+Panasonic's header, with a `JpgFromRaw` holding Exif of its own; and an ORF,
+of Olympus's; a CR3 with `CMT1`, `CMT2`, and `CMT4` in its moov box's
+Canon box, and a `PRVW` box; and a RAF whose header names a JPEG with
+Exif. The page's own reading was checked in Node, by ranges of each from a
+stand-in for the node: the details of each, and its largest preview,
+passing over thumbnails, lossless raw images, and a TIFF's JPEG of shared
+tables, and whether the preview turns itself. Then, on a node of its own,
+in headless Chromium: a folder of thirteen imported, with each photo
+listed, and none counted as not imported; each raw file given a view of
+its largest preview, and a thumbnail from it, upright, turned by the raw
+file's orientation, 6 and 8, or by the preview's own, 3 and 6, and not
+twice; a preview of 5,000 by 3,750 of noise given a view of 3,840 by 2,880,
+its quality lowered until it fit, 1.97 MB; each HEIC, the TIFF, and a file
+that only looks like a raw file kept with no view or thumbnail, its tile a
+picture struck through with its extension, and the HEICs' widths and
+heights from `ispe` and `irot`; a raw file shown in the viewer from its
+view, and Download linking to its original, under its name; an HEIC
+shown as its placeholder, large, with Download, saving its original by a
+tap on it and by `D`, the second HEIC not read whole once the first could
+not be drawn; and an HEIC given its view later,
+in a page that answered its original with a JPEG, standing in for a
+browser that draws it, its tile made again with its thumbnail and focus
+kept on it, and then shown from its view in Chromium; and a phone's width.
+Safari is yet to be checked, and with it a real iPhone's HEIC, and real raw
+files of each make.
+
+Calls made while building it, not yet reviewed:
+
+- **Every photo is listed**, of whatever kind, and counted as not imported
+  no longer.
+- **The content type of an HEIC, an HEIF, and a TIFF** is the one each is
+  registered as; a raw file is placed with the type the node gives, as no
+  type for each is shared by every system.
+- **The browser draws an original read whole**, as the thumbnail of Step
+  162 is drawn, and the preview is cut from it, rather than read again by
+  a range. Where the preview is, and the details, are read by ranges.
+- **The JPEGs an image file directory names**: by `JPEGInterchangeFormat`;
+  by Panasonic's `JpgFromRaw`; or as its one strip, compressed as a JPEG,
+  old or new, holding its own tables, and of no raw image's own data, CFA or
+  LinearRaw. The directories walked are each of the chain from the first,
+  and those its `SubIFDs` name, 32 at most, and 8 JPEGs at most are looked
+  at. A JPEG is taken only if its frame is one every browser draws,
+  baseline, extended, or progressive, at 8 bits a sample, so that a
+  lossless raw image is not; of those, the largest by its pixels, then its
+  bytes.
+- **Turned as the raw file says**, by its orientation, unless the preview's
+  own Exif gives one, which the browser turns it by, as a RAF's and an
+  RW2's do.
+- **The headers of Panasonic's, Leica's, and Olympus's raw files** are read
+  as TIFF, as each is built on it with a number of its own.
+- **A CR3's details** are read from its `CMT1`, `CMT2`, and `CMT4` boxes,
+  each a TIFF structure, as its image's, its photo's, and its GPS
+  directory; and a RAF's from the Exif of the JPEG it holds.
+- **An HEIF's orientation** is its `irot`'s, kept as the Exif orientation
+  of as many quarter turns, and its Exif's orientation is not used, as
+  browsers turn it by `irot`. `imir` is not read.
+- **Its width and height** are as the browser draws the original, as in
+  Step 164; of a photo drawn from a preview, as its details give them, and
+  else as the preview is drawn, as a preview may be smaller than the photo.
+- **The quality is lowered by a tenth**, from 0.9 to 0.3, and its base64 is
+  to fit in 3 MiB, as `editInParts` makes its requests. A view that does not
+  fit at 0.3 is not kept, and the photo has no view.
+- **The view is added with its batch**, as a thumbnail is, so that a batch
+  of 50 photos may hold as many as 150 MB of views in the page until it is
+  added.
+- **A photo with no view** is one whose original's name is not of a kind
+  every browser shows. The viewer reads it whole, and the browser draws it
+  if it can; once a browser cannot draw a photo of one extension, it does
+  not read another whole while the page is open, and the photos before and
+  after one with no view are not loaded ahead.
+- **A view made later** is kept, with its thumbnail, as a change of the
+  album, its `info.json` naming both, with the width and height as drawn,
+  and its entry in the index its thumbnail, written again by its month. The
+  photo is made the album's cover if it has none. Nothing is changed if the
+  photo has a view already, or the album holds it no longer, or the albums
+  are not changed, as signed in with a fallback password.
+- **A tile with no thumbnail is made again** once the index gives one, and
+  a tile with one is kept as before.
+- **`view.jpg` is kept from an original's name**, as `thumb.jpg` and
+  `info.json` are, an original of that name kept as `original view.jpg`.
+
+**Open questions:**
+
+- **Raw files whose previews are in their maker notes**, as an ORF's and a
+  PEF's large ones are, are viewed from the thumbnail their directories
+  name, which may be 160 by 120, or are not viewed at all. Whether maker
+  notes should be read too, and whether a preview so small should be taken.
+- **CRW, MRW, X3F, and IIQ** are not built on TIFF, and are viewed only if
+  the browser draws them.
+- **An import of raw files in Chrome** reads each whole for the browser to
+  try to draw it, which it cannot. Whether a browser that cannot draw one of
+  an extension should be asked once for each import.
+- **The memory a batch of views holds**, as above. Whether views should be
+  made bundles of their own as they are made, and copied into the album,
+  or batches made smaller when they hold views.
+- **The view of the Step 169 slideshow**, which is not built yet.
 
 ---
 
@@ -1117,7 +1225,7 @@ and this table then given their numbers.
 | #670 | Step 162 — Importing Photos into a New Album | 162 |
 | #671 | Step 163 — Viewing a Photo | 163 |
 | #672 | Step 164 — Reading a Photo's Details | 164 |
-| *to be made* | Step 165 — Photos No Browser Shows as They Are | 165 |
+| #673 | Step 165 — Photos No Browser Shows as They Are | 165 |
 | *to be made* | Step 166 — Videos | 166 |
 | *to be made* | Step 167 — Copying, Moving, and Removing Photos | 167 |
 | *to be made* | Step 168 — Editing a Photo's Details | 168 |

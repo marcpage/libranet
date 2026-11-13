@@ -249,9 +249,16 @@ offers, as adding a song does: choose photos in any of them, or import
 every photo in a folder and the folders within it, and each import makes a
 new album, named `Import` and the date and time, which fills as the photos
 are added. Each photo is imported encrypted, with a thumbnail the page
-draws, and its details are read from the Exif of a JPEG, a PNG, or a WebP:
-when it was taken, the camera and lens, the exposure, and where it was
-taken. A photo whose Exif does not say when it was taken is dated from its
+draws, and its details are read from its Exif, of a JPEG, a PNG, a WebP, an
+HEIC, an AVIF, a TIFF, or a raw file: when it was taken, the camera and
+lens, the exposure, and where it was taken. A photo not every browser shows
+as it is, as an HEIC, a TIFF, or a raw file such as a DNG, a CR2, a CR3, a
+NEF, an ARW, or a RAF, is shown from a JPEG view of it, which the browser
+importing it draws, as Safari draws an HEIC, or else is found within it, as
+a raw file holds a preview. One with neither is kept to be downloaded, shown
+as a picture struck through, with its file's extension, until a browser that
+can draw it shows it, which gives it its view then. A photo whose Exif does
+not say when it was taken is dated from its
 file's name, as `IMG_20240514_093012.jpg`, or else from when the file was
 last changed. An album shows its photos oldest
 first, under a heading for each year, month, and day, with the years and
@@ -268,9 +275,8 @@ albums, or an album's photos, Enter opens an album, Escape or Backspace goes
 back, `N` makes a new album, and `?` shows the keys. Your albums are kept for
 you alone, each encrypted, and are read on any node you sign in on, which
 fetches them from the network as it needs them, so the photos application
-keeps none for a browser no one is signed in on. Photos no browser shows as
-they are, as HEIC and raw files, are the next step of its
-[plan](docs/implementation/Photos%20App.md).
+keeps none for a browser no one is signed in on. Videos are the next step of
+its [plan](docs/implementation/Photos%20App.md).
 
 ### Use and share applications
 
@@ -480,7 +486,7 @@ you say so on `/config`.
 | [Movie App Plan](docs/implementation/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 83, 85–88, and 115, all built |
 | [TV App Plan](docs/implementation/TV%20App.md) | The TV application: steps 144–148, all built |
 | [Music App Plan](docs/implementation/Music%20App.md) | The music application: steps 149–154, steps 149 to 153 built |
-| [Photos App Plan](docs/implementation/Photos%20App.md) | The photos application: steps 160–171, steps 160 to 164 built |
+| [Photos App Plan](docs/implementation/Photos%20App.md) | The photos application: steps 160–171, steps 160 to 165 built |
 | [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |
 | [File Layout](docs/implementation/File%20Layout.md) | Every file a node reads or writes, and the settings that move them |
 | [Database Schema](docs/implementation/Database%20Schema.md) | The statistics database's tables, and what reads and writes them |

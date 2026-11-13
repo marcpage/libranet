@@ -851,9 +851,11 @@ def test_the_photos_page_calls_only_endpoints_the_node_serves(photos_page: str) 
     assert fullmatch(BUNDLE_PATTERN, f"{album}/index/2024-05.json")
     assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/thumb.jpg")
     # A photo shown: what is known of it, and its original, shown and
-    # downloaded.
+    # downloaded, or its view, shown in its place.
     assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/info.json")
     assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/original%20thumb.jpg")
+    assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/view.jpg")
+    assert fullmatch(BUNDLE_PATTERN, f"{album}/photos/{hex_digits[:16]}/IMG_0001.HEIC")
 
 
 def test_the_photos_page_keeps_albums_where_the_plan_names_them(photos_page: str) -> None:
@@ -901,6 +903,103 @@ def test_the_photos_page_takes_as_photos_the_files_the_plan_names(photos_page: s
     }
     # Those beside them that only describe them are counted, not listed.
     assert 'const DESCRIBING = new Set(["xmp", "aae", "thm", "json"]);' in photos_page
+    # Those no browser shows as they are, each given a view, by extension, or
+    # as any other image/… the node gives.
+    [others] = findall(
+        r"^const OTHER_PHOTOS = new Set\(\[(.*?)\]\);$", photos_page, DOTALL | MULTILINE
+    )
+    assert set(findall(r'"(\w+)"', others)) == {
+        "heic",
+        "heif",
+        "hif",
+        "tif",
+        "tiff",
+        "dng",
+        "cr2",
+        "cr3",
+        "crw",
+        "nef",
+        "nrw",
+        "arw",
+        "srf",
+        "sr2",
+        "raf",
+        "orf",
+        "rw2",
+        "pef",
+        "srw",
+        "x3f",
+        "3fr",
+        "iiq",
+        "erf",
+        "kdc",
+        "mrw",
+        "rwl",
+    }
+    taken = 'OTHER_PHOTOS.has(extension) || type.startsWith("image/")) {\n    return PHOTO_KIND;'
+    assert taken in photos_page
+    [kinds] = findall(r"^const NOT_LISTED = \[\n(.*?)\n\];$", photos_page, DOTALL | MULTILINE)
+    assert findall(r'^  \["(\w+)"', kinds, MULTILINE) == ["video", "describing", "other"]
+
+
+def test_the_photos_page_views_photos_no_browser_shows_as_the_plan_names_them(
+    photos_page: str,
+) -> None:
+    # A JPEG, at most 3,840 pixels on its longer side, its quality lowered
+    # from 0.9 until it fits in one request to make a bundle.
+    assert 'const VIEW_FILE = "view.jpg";' in photos_page
+    assert "const VIEW_SIZE = 3840;" in photos_page
+    [qualities] = findall(r"^const VIEW_QUALITIES = \[(.*)\];$", photos_page, MULTILINE)
+    steps = [float(quality) for quality in qualities.split(",")]
+    assert steps[0] == 0.9
+    assert steps == sorted(steps, reverse=True)
+    assert "Picture.encoded(canvas, VIEW_QUALITIES, EDIT_BYTES)" in photos_page
+    # The thumbnail is made from it.
+    assert (
+        "new Picture(canvas, canvas.width, canvas.height).jpeg(THUMB_SIZE, [THUMB_QUALITY])"
+        in photos_page
+    )
+    # Download still saves the original.
+    assert "download.download = photo.name;" in photos_page
+
+
+def test_the_photos_page_finds_a_jpeg_within_a_raw_file_as_the_plan_names_it(
+    photos_page: str,
+) -> None:
+    [tags] = findall(r"^const PREVIEW_TAGS = \{\n(.*?)\n\};$", photos_page, DOTALL | MULTILINE)
+
+    # In a raw file built on TIFF, the JPEG an image file directory names,
+    # by the tags of TIFF 6.0, TIFF/EP, DNG, and Panasonic's JpgFromRaw.
+    assert {
+        name: int(number, 16)
+        for name, number in findall(r"^\s+(\w+): 0x([0-9a-f]{4}),$", tags, MULTILINE)
+    } == {
+        "JpgFromRaw": 0x002E,
+        "Compression": 0x0103,
+        "PhotometricInterpretation": 0x0106,
+        "StripOffsets": 0x0111,
+        "StripByteCounts": 0x0117,
+        "SubIFDs": 0x014A,
+        "JPEGTables": 0x015B,
+        "JPEGInterchangeFormat": 0x0201,
+        "JPEGInterchangeFormatLength": 0x0202,
+    }
+    # TIFF's own, and Panasonic's, Leica's, and Olympus's, built on it.
+    assert "const TIFF_MAGIC = new Set([42, 0x0055, 0x4f52, 0x5352]);" in photos_page
+    # Old and new JPEG compression, not of a raw image's own CFA or
+    # LinearRaw data, and only frames every browser draws.
+    assert "const JPEG_COMPRESSIONS = new Set([6, 7]);" in photos_page
+    assert "const RAW_PHOTOMETRICS = new Set([32803, 34892]);" in photos_page
+    assert "const DRAWN_FRAMES = new Set([0xc0, 0xc1, 0xc2]);" in photos_page
+    # In a CR3, its PRVW box, and its details from its CMT boxes; and in a
+    # RAF, the JPEG its header names.
+    assert 'const CR3_BRAND = "crx ";' in photos_page
+    assert 'const CR3_METADATA = "85c0b687820f11e08111f4ce462b6a48";' in photos_page
+    assert 'const CR3_PREVIEW = "eaf42b5e1c984b88b9fbb7dc406e4d16";' in photos_page
+    assert 'const RAF_SIGNATURE = "FUJIFILMCCD-RAW ";' in photos_page
+    assert "const RAF_JPEG = 84;" in photos_page
+    # An HEIC's and an AVIF's rotation, by irot's quarter turns anticlockwise.
+    assert "const IROT_ORIENTATIONS = [1, 8, 3, 6];" in photos_page
 
 
 def test_the_photos_page_imports_each_photo_encrypted(photos_page: str) -> None:
@@ -931,6 +1030,7 @@ def test_the_photos_page_imports_into_albums_as_the_plan_names_them(photos_page:
         "exposure",
         "location",
         "original",
+        "view",
         "thumb",
     ]
     assert 'const PHOTO_KIND = "photo";' in photos_page
