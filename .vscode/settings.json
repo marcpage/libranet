@@ -11,5 +11,8 @@
   "mypy-type-checker.interpreter": ["${workspaceFolder}/.venv/bin/python"],
   "black-formatter.cwd": "${workspaceFolder}/python",
   "black-formatter.importStrategy": "fromEnvironment",
-  "black-formatter.interpreter": ["${workspaceFolder}/.venv/bin/python"]
+  "black-formatter.interpreter": [
+    "${workspaceFolder}/.venv/bin/python"
+  ],
+  "cmake.sourceDirectory": "/Users/marcp/Documents/Development/libranet/cpp"
 }

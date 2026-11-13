@@ -542,9 +542,11 @@ The repository is laid out by what every implementation shares:
 | [`applications/`](applications/) | Those applications, one directory each |
 | [`data/`](data/) | The seed list a node starts from |
 | [`python/`](python/) | The Python node: its code, tests, documents, and plans |
+| [`cpp/`](cpp/) | The C++ node, just begun |
 
 Each implementation says how to build and check it: the Python node in its
-[README](python/README.md#development). Changes to protocol behavior should
+[README](python/README.md#development), and the C++ node in its
+[README](cpp/README.md#building). Changes to protocol behavior should
 say which section of which specification they implement, and specification
 changes are best raised as an issue first. The applications a node ships
 with are described in the
