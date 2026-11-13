@@ -1,0 +1,5 @@
+# WebKit for now, to be looked at again once there is production code.
+BasedOnStyle: WebKit
+# A function's opening brace on the same line, as WebKit already puts every
+# other opening brace.
+BreakBeforeBraces: Attach

@@ -1,0 +1,23 @@
+# Every check, to start as strict as possible, less those that cannot apply
+# here or cannot be met:
+#
+# - altera-*: advice for FPGA OpenCL kernels.
+# - llvmlibc-*: rules for LLVM's C library, such as its namespace.
+# - modernize-use-trailing-return-type: contradicts fuchsia-trailing-return.
+# - llvm-prefer-static-over-anonymous-namespace: contradicts
+#   misc-use-anonymous-namespace.
+# - llvm-header-guard: names the guard from the file's absolute path, which
+#   differs between machines. portability-avoid-pragma-once still requires
+#   guards.
+Checks: >
+  *,
+  -altera-*,
+  -llvmlibc-*,
+  -modernize-use-trailing-return-type,
+  -llvm-prefer-static-over-anonymous-namespace,
+  -llvm-header-guard
+WarningsAsErrors: '*'
+# Every header that is not a system header. CMake includes Conan's packages
+# as system headers, so their findings are not shown.
+HeaderFilterRegex: '.*'
+FormatStyle: file

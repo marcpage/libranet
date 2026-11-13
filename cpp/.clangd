@@ -1,0 +1,4 @@
+# clangd, the editor's language server, reads the compile commands of the
+# Release build, which `conan build` or `conan install` sets up.
+CompileFlags:
+  CompilationDatabase: build/Release

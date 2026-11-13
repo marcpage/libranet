@@ -114,3 +114,42 @@ jobs:
 
       - name: Run
         run: ./build/Release/libranet
+
+  # clang-format and clang-tidy, at the LLVM version cpp/README.md names.
+  # clang-tidy reads the build's compile commands, and cannot read the
+  # GCC-only warning options of a GCC build, so this job builds with Clang.
+  cpp-lint:
+    name: C++ format and clang-tidy
+    runs-on: ubuntu-latest
+    env:
+      CC: clang
+      CXX: clang++
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: false
+
+      - name: Install Conan, Ninja, clang-format, and clang-tidy
+        run: |
+          uv tool install "conan>=2,<3"
+          uv tool install ninja
+          uv tool install "clang-format==23.1.*"
+          uv tool install "clang-tidy==23.1.*"
+          uv tool dir --bin >> "$GITHUB_PATH"
+
+      - name: Conan profile
+        run: conan profile detect --exist-ok
+
+      - name: Build
+        run: conan build . --build=missing
+
+      - name: clang-format
+        run: git ls-files -z '*.cpp' '*.h' '*.hpp' | xargs -0 clang-format --dry-run --Werror
+
+      - name: clang-tidy
+        run: run-clang-tidy.py -p build/Release -quiet
