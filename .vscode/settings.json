@@ -1,0 +1,15 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "flake8.cwd": "${workspaceFolder}/python",
+  "flake8.importStrategy": "fromEnvironment",
+  "flake8.interpreter": ["${workspaceFolder}/.venv/bin/python"],
+  "pylint.cwd": "${workspaceFolder}/python",
+  "pylint.importStrategy": "fromEnvironment",
+  "pylint.interpreter": ["${workspaceFolder}/.venv/bin/python"],
+  "mypy-type-checker.cwd": "${workspaceFolder}/python",
+  "mypy-type-checker.importStrategy": "fromEnvironment",
+  "mypy-type-checker.interpreter": ["${workspaceFolder}/.venv/bin/python"],
+  "black-formatter.cwd": "${workspaceFolder}/python",
+  "black-formatter.importStrategy": "fromEnvironment",
+  "black-formatter.interpreter": ["${workspaceFolder}/.venv/bin/python"]
+}
