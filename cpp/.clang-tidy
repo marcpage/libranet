@@ -251,9 +251,11 @@ WarningsAsErrors: '*'
 HeaderFilterRegex: '.*'
 FormatStyle: file
 CheckOptions:
-  # misc-include-cleaner learns which header provides a POSIX type from the
-  # macOS SDK, whose private headers (sys/_types/...) differ from Linux's, so
-  # it checks only C++ and project includes and leaves the POSIX ones as
-  # written. Private headers of the standard libraries (libc++'s __chrono/...,
-  # libstdc++'s and glibc's bits/...) are never included.
-  misc-include-cleaner.IgnoreHeaders: '__.*;bits/.*;sys/.*\.h$;net/.*\.h$;netinet/.*\.h$;arpa/.*\.h$;netdb\.h$;unistd\.h$;ifaddrs\.h$'
+  # misc-include-cleaner learns which header provides a POSIX type or macro
+  # from the system's own private headers (the macOS SDK's sys/_types/...;
+  # on Linux, glibc's bits/... and the kernel's asm/, asm-generic/ and
+  # linux/), which differ between systems. So it checks only C++ and project
+  # includes, and leaves the POSIX ones as written. It also never suggests a
+  # standard library's private headers (libc++'s __chrono/..., libstdc++'s
+  # bits/...).
+  misc-include-cleaner.IgnoreHeaders: '__.*;bits/.*;asm/.*\.h$;asm-generic/.*\.h$;linux/.*\.h$;sys/.*\.h$;net/.*\.h$;netinet/.*\.h$;arpa/.*\.h$;netdb\.h$;unistd\.h$;ifaddrs\.h$'
