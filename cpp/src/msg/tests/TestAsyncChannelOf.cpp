@@ -3,13 +3,13 @@
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
-#include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "msg/AsyncChannelOf.hpp"
-#include "msg/Message.hpp"
+#include "msg/Channel.hpp"
 
 using namespace msg;
 using namespace std::chrono_literals;

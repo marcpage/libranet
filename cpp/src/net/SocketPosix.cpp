@@ -3,11 +3,15 @@
 #include "SocketPosix.hpp"
 
 #include <cerrno>
+#include <cstddef>
 #include <cstring>
+#include <ctime>
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <system_error>
+#include <vector>
 
 #include <netdb.h>
 #include <netinet/in.h>
@@ -16,6 +20,9 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+#include "Address.hpp"
+#include "ISocket.hpp"
 
 namespace {
 

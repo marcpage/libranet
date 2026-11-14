@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 
 #include "http/Request.hpp"

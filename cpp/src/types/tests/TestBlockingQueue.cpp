@@ -1,9 +1,10 @@
 #include <gtest/gtest.h>
 #include <atomic>
-#include <chrono>
+#include <chrono> // IWYU pragma: keep (the ms literals)
 #include <cstddef>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "types/BlockingQueue.hpp"

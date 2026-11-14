@@ -6,10 +6,12 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "msg/AsyncChannel.hpp"
-#include "msg/Message.hpp"
+#include "msg/Channel.hpp"
+#include "msg/IMessage.hpp"
 
 using namespace msg;
 using namespace std::chrono_literals;

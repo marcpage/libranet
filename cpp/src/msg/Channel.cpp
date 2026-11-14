@@ -1,5 +1,15 @@
 #include "Channel.hpp"
 
+#include <algorithm>
+#include <cstddef>
+#include <map>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "IMessage.hpp"
+
 namespace msg {
 
 std::map<std::string, std::vector<Channel*>> Channel::m_channels;

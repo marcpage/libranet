@@ -3,10 +3,8 @@
 #include <chrono>
 #include <string>
 #include <thread>
-#include <vector>
 
 #include "msg/Channel.hpp"
-#include "msg/Message.hpp"
 
 using namespace msg;
 using namespace std::chrono_literals;

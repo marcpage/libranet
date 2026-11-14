@@ -31,7 +31,7 @@ Checks:
   - '-abseil-string-find-str-contains'
 
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:235: prefer accept4() to accept() because accept4()
+  # src/net/SocketPosix.cpp:242: prefer accept4() to accept() because accept4()
   # allows SOCK_CLOEXEC
   #     fd = ::accept(m_socket_fd, nullptr, nullptr);
   - '-android-cloexec-accept'
@@ -53,12 +53,12 @@ Checks:
   - '-bugprone-unchecked-optional-access'
 
   # 2 to clean up (0 in library code, 2 in tests), such as
-  # src/types/tests/TestBlockingQueue.cpp:44: 's1' used after it was moved
+  # src/types/tests/TestBlockingQueue.cpp:45: 's1' used after it was moved
   #     EXPECT_TRUE(s1.empty()); // moved-from
   - '-bugprone-use-after-move'
 
   # 6 to clean up (6 in library code, 0 in tests), such as
-  # src/net/AddressPosix.cpp:36: do not declare C-style arrays, use 'std::array'
+  # src/net/AddressPosix.cpp:39: do not declare C-style arrays, use 'std::array'
   # instead
   #     char ip_buf[NI_MAXHOST];
   - '-cppcoreguidelines-avoid-c-arrays'
@@ -71,7 +71,7 @@ Checks:
   - '-cppcoreguidelines-avoid-const-or-ref-data-members'
 
   # 4 to clean up (4 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:196: avoid do-while loops
+  # src/net/SocketPosix.cpp:203: avoid do-while loops
   #     do {
   - '-cppcoreguidelines-avoid-do-while'
 
@@ -84,7 +84,7 @@ Checks:
   - '-misc-explicit-constructor'
 
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:140: forwarding reference parameter 'socket_call' is
+  # src/net/SocketPosix.cpp:147: forwarding reference parameter 'socket_call' is
   # never forwarded inside the function body
   #     net::Address query_socket_address(int socket_fd, Func&& socket_call,
   - '-cppcoreguidelines-missing-std-forward'
@@ -97,7 +97,7 @@ Checks:
   - '-misc-non-private-member-variables-in-classes'
 
   # 11 to clean up (11 in library code, 0 in tests), such as
-  # src/net/AddressPosix.cpp:38: do not implicitly decay an array into a
+  # src/net/AddressPosix.cpp:41: do not implicitly decay an array into a
   # pointer; consider using gsl::array_view or an explicit cast instead
   #     ip_buf, sizeof(ip_buf),
   - '-cppcoreguidelines-pro-bounds-array-to-pointer-decay'
@@ -115,7 +115,7 @@ Checks:
   - '-cppcoreguidelines-pro-bounds-constant-array-index'
 
   # 4 to clean up (2 in library code, 2 in tests), such as
-  # src/net/SocketPosix.cpp:146: do not use reinterpret_cast
+  # src/net/SocketPosix.cpp:153: do not use reinterpret_cast
   #     reinterpret_cast<sockaddr*>(&storage), &length);
   - '-cppcoreguidelines-pro-type-reinterpret-cast'
 
@@ -127,7 +127,7 @@ Checks:
   - '-cppcoreguidelines-special-member-functions'
 
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:120: enum 'Direction' is unscoped, use 'enum class'
+  # src/net/SocketPosix.cpp:127: enum 'Direction' is unscoped, use 'enum class'
   # instead
   #     enum Direction { DirectionSend,
   - '-cppcoreguidelines-use-enum-class'
@@ -150,7 +150,7 @@ Checks:
   - '-fuchsia-overloaded-operator'
 
   # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/msg/Channel.cpp:5: static objects are disallowed; if possible, use a
+  # src/msg/Channel.cpp:15: static objects are disallowed; if possible, use a
   # constexpr constructor instead
   #     std::map<std::string, std::vector<Channel*>> Channel::m_channels;
   - '-fuchsia-statically-constructed-objects'
@@ -168,7 +168,7 @@ Checks:
   - '-google-build-using-namespace'
 
   # 7 to clean up (7 in library code, 0 in tests), such as
-  # src/msg/AsyncChannel.cpp:7: anonymous namespace not terminated with a
+  # src/msg/AsyncChannel.cpp:12: anonymous namespace not terminated with a
   # closing comment
   #     }
   - '-google-readability-namespace-comments'
@@ -180,15 +180,9 @@ Checks:
   - '-google-runtime-int'
 
   # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/msg/Channel.cpp:18: use an LLVM range-based algorithm
+  # src/msg/Channel.cpp:28: use an LLVM range-based algorithm
   #     const auto it = std::find(channelList.begin(), channelList.end(),...
   - '-llvm-use-ranges'
-
-  # 72 to clean up (43 in library code, 29 in tests), such as
-  # src/msg/AsyncChannel.cpp:6: no header providing "std::string" is directly
-  # included
-  #     void noop(const std::string& /*unused*/) {}
-  - '-misc-include-cleaner'
 
   # 5 to clean up (5 in library code, 0 in tests), such as
   # src/types/Integer.hpp:697: function 'operator&' is within a recursive call
@@ -197,7 +191,7 @@ Checks:
   - '-misc-no-recursion'
 
   # 7 to clean up (0 in library code, 7 in tests), such as
-  # src/msg/tests/TestAsyncChannel.cpp:25: function 'wait_until' declared
+  # src/msg/tests/TestAsyncChannel.cpp:27: function 'wait_until' declared
   # 'static', move to anonymous namespace instead
   #     static bool wait_until(Predicate predicate, std::chrono::millisec...
   - '-misc-use-anonymous-namespace'
@@ -223,7 +217,7 @@ Checks:
   - '-performance-enum-size'
 
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/AddressPosix.cpp:117: constness of 'ip' prevents automatic move
+  # src/net/AddressPosix.cpp:120: constness of 'ip' prevents automatic move
   #     return ip;
   - '-performance-no-automatic-move'
 
@@ -234,7 +228,7 @@ Checks:
   - '-portability-avoid-pragma-once'
 
   # 2 to clean up (0 in library code, 2 in tests), such as
-  # src/types/tests/TestBlockingQueue.cpp:171: function 'TestBody' has cognitive
+  # src/types/tests/TestBlockingQueue.cpp:172: function 'TestBody' has cognitive
   # complexity of 26 (threshold 25)
   #     TEST(BlockingQueueTest, MultipleProducersConsumers) {
   - '-readability-function-cognitive-complexity'
@@ -256,3 +250,10 @@ WarningsAsErrors: '*'
 # as system headers, so their findings are not shown.
 HeaderFilterRegex: '.*'
 FormatStyle: file
+CheckOptions:
+  # misc-include-cleaner learns which header provides a POSIX type from the
+  # macOS SDK, whose private headers (sys/_types/...) differ from Linux's, so
+  # it checks only C++ and project includes and leaves the POSIX ones as
+  # written. Private headers of the standard libraries (libc++'s __chrono/...,
+  # libstdc++'s and glibc's bits/...) are never included.
+  misc-include-cleaner.IgnoreHeaders: '__.*;bits/.*;sys/.*\.h$;net/.*\.h$;netinet/.*\.h$;arpa/.*\.h$;netdb\.h$;unistd\.h$;ifaddrs\.h$'

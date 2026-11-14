@@ -3,6 +3,7 @@
 #include <string>
 #include <utility>
 
+#include "msg/IMessage.hpp"
 #include "msg/Message.hpp"
 
 using namespace msg;

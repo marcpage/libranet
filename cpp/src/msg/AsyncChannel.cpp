@@ -1,6 +1,11 @@
 #include "AsyncChannel.hpp"
 
 #include <exception>
+#include <stdexcept>
+#include <string>
+
+#include "Channel.hpp"
+#include "IMessage.hpp"
 
 namespace {
 void noop(const std::string& /*unused*/) {}
