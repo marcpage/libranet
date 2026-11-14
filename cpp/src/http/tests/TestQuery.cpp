@@ -4,7 +4,12 @@
 
 #include "http/Query.hpp"
 
-using namespace http;
+using http::Query;
+
+// The tests read optionals after ASSERT_TRUE(x.has_value()), which this
+// check does not follow, or with value(), whose exception gtest reports as
+// a failure.
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
 
 TEST(QueryTest, ConstructorsAndBasicAccessors) {
     // Default constructor (empty state)
@@ -104,3 +109,5 @@ TEST(QueryTest, StreamOperatorsAndParsing) {
     EXPECT_EQ(parsed_stream_query.get_first("alpha"), "one");
     EXPECT_EQ(parsed_stream_query.get_first("beta"), "two");
 }
+
+// NOLINTEND(bugprone-unchecked-optional-access)

@@ -5,7 +5,7 @@
 
 #include "net/Address.hpp"
 
-using namespace net;
+using net::Address;
 
 namespace {
 

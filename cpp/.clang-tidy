@@ -47,16 +47,6 @@ Checks:
   #     inline std::string_view Headers::get(std::string_view key, std::s...
   - '-bugprone-easily-swappable-parameters'
 
-  # 28 to clean up (0 in library code, 28 in tests), such as
-  # src/http/tests/TestHeaders.cpp:26: unchecked access to optional value
-  #     EXPECT_EQ(val.value(), "application/json");
-  - '-bugprone-unchecked-optional-access'
-
-  # 2 to clean up (0 in library code, 2 in tests), such as
-  # src/types/tests/TestBlockingQueue.cpp:45: 's1' used after it was moved
-  #     EXPECT_TRUE(s1.empty()); // moved-from
-  - '-bugprone-use-after-move'
-
   # 6 to clean up (6 in library code, 0 in tests), such as
   # src/net/AddressPosix.cpp:39: do not declare C-style arrays, use 'std::array'
   # instead
@@ -161,12 +151,6 @@ Checks:
   #     return std::visit([](auto&& value) -> Type {
   - '-fuchsia-trailing-return'
 
-  # 14 to clean up (0 in library code, 14 in tests), such as
-  # src/http/tests/TestHeaders.cpp:8: do not use namespace using-directives; use
-  # using-declarations instead
-  #     using namespace http;
-  - '-google-build-using-namespace'
-
   # 7 to clean up (7 in library code, 0 in tests), such as
   # src/msg/AsyncChannel.cpp:12: anonymous namespace not terminated with a
   # closing comment
@@ -189,12 +173,6 @@ Checks:
   # chain
   #     inline Integer operator&(const Integer& left, const Integer& righ...
   - '-misc-no-recursion'
-
-  # 7 to clean up (0 in library code, 7 in tests), such as
-  # src/msg/tests/TestAsyncChannel.cpp:27: function 'wait_until' declared
-  # 'static', move to anonymous namespace instead
-  #     static bool wait_until(Predicate predicate, std::chrono::millisec...
-  - '-misc-use-anonymous-namespace'
 
   # 10 to clean up (10 in library code, 0 in tests), such as
   # src/types/Json.hpp:669: avoid repeating the return type from the
@@ -226,12 +204,6 @@ Checks:
   # instead
   #     #pragma once
   - '-portability-avoid-pragma-once'
-
-  # 2 to clean up (0 in library code, 2 in tests), such as
-  # src/types/tests/TestBlockingQueue.cpp:172: function 'TestBody' has cognitive
-  # complexity of 26 (threshold 25)
-  #     TEST(BlockingQueueTest, MultipleProducersConsumers) {
-  - '-readability-function-cognitive-complexity'
 
   # 106 to clean up (43 in library code, 63 in tests), such as
   # src/http/Headers.hpp:69: parameter name 'c1' is too short, expected at least

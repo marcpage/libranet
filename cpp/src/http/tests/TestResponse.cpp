@@ -4,7 +4,7 @@
 
 #include "http/Response.hpp"
 
-using namespace http;
+using http::Response;
 
 TEST(ResponseTest, ConstructorsAndAccessors) {
     constexpr auto not_found_code = 404;

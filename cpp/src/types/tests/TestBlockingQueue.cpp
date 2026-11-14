@@ -9,8 +9,13 @@
 
 #include "types/BlockingQueue.hpp"
 
-using namespace types;
+using types::BlockingQueue;
 using namespace std::chrono_literals;
+
+// The tests read optionals after ASSERT_TRUE(x.has_value()), which this
+// check does not follow, or with value(), whose exception gtest reports as
+// a failure.
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
 
 TEST(BlockingQueueTest, BasicOperations) {
     BlockingQueue<int> q; // unbounded by default
@@ -36,6 +41,8 @@ TEST(BlockingQueueTest, BasicOperations) {
     EXPECT_EQ(q.size(), 0U);
 }
 
+// This test reads strings after moving them, to see that push() emptied them.
+// NOLINTBEGIN(bugprone-use-after-move)
 TEST(BlockingQueueTest, MoveSemantics) {
     constexpr auto timeout = 10ms;
     BlockingQueue<std::string> q;
@@ -55,6 +62,7 @@ TEST(BlockingQueueTest, MoveSemantics) {
     const std::string result = q.pop(); // move out
     EXPECT_EQ(result, "world");
 }
+// NOLINTEND(bugprone-use-after-move)
 
 TEST(BlockingQueueTest, CapacityAndTimeouts) {
     constexpr auto timeout = 5ms;
@@ -169,6 +177,9 @@ TEST(BlockingQueueTest, ProducerConsumer) {
     EXPECT_TRUE(q.empty());
 }
 
+// This test's threads and nested loops, and gtest's assertion macros, which
+// count as branches, put it over this check's limit.
+// NOLINTBEGIN(readability-function-cognitive-complexity)
 TEST(BlockingQueueTest, MultipleProducersConsumers) {
     constexpr int items_per_producer = 2000;
     constexpr int num_producers = 4;
@@ -217,3 +228,6 @@ TEST(BlockingQueueTest, MultipleProducersConsumers) {
     EXPECT_EQ(checksum.load(), static_cast<long long>(total) * (total + 1) / 2);
     EXPECT_TRUE(q.empty());
 }
+// NOLINTEND(readability-function-cognitive-complexity)
+
+// NOLINTEND(bugprone-unchecked-optional-access)

@@ -4,7 +4,7 @@
 
 #include "http/Request.hpp"
 
-using namespace http;
+using http::Request;
 
 TEST(RequestTest, ConstructorsAndAccessors) {
     // Default constructor state
