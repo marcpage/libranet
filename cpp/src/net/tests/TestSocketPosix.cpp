@@ -11,7 +11,9 @@
 #include "net/ISocket.hpp"
 #include "net/SocketPosix.hpp"
 
-using namespace net;
+using net::Address;
+using net::ISocket;
+using net::SocketPosix;
 
 namespace {
 

@@ -6,7 +6,8 @@
 #include "msg/IMessage.hpp"
 #include "msg/Message.hpp"
 
-using namespace msg;
+using msg::IMessage;
+using msg::Message;
 
 TEST(MessageTest, ConstructionAndValue) {
     // Arithmetic types

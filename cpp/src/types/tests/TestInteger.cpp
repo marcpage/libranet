@@ -6,7 +6,8 @@
 
 #include "types/Integer.hpp"
 
-using namespace types;
+using types::Integer;
+using types::operator""_i;
 
 TEST(IntegerTest, ConstructorsAndExceptions) {
     // Default constructor (zero state)

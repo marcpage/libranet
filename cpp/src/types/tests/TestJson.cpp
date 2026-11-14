@@ -7,7 +7,7 @@
 
 #include "types/Json.hpp"
 
-using namespace types;
+using types::Json;
 
 TEST(JsonTest, ConstructorsAndTypes) {
     // Default constructor (null state)
@@ -118,6 +118,9 @@ TEST(JsonTest, SubscriptAndAccess) {
     EXPECT_EQ(doc["user"].string(), "Charlie");
 }
 
+// This test's try and catch blocks, and gtest's assertion macros, which count
+// as branches, put it over this check's limit.
+// NOLINTBEGIN(readability-function-cognitive-complexity)
 TEST(JsonTest, ExceptionsAndTypeSafety) {
     constexpr auto number = 100;
     const Json num(number);
@@ -148,6 +151,7 @@ TEST(JsonTest, ExceptionsAndTypeSafety) {
     constexpr std::size_t out_of_range_index = 10;
     EXPECT_THROW((void)arr.at(out_of_range_index), std::out_of_range);
 }
+// NOLINTEND(readability-function-cognitive-complexity)
 
 TEST(JsonTest, SerializationAndStreams) {
     constexpr auto user_id = 1001;

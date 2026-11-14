@@ -5,7 +5,12 @@
 
 #include "http/Headers.hpp"
 
-using namespace http;
+using http::Headers;
+
+// The tests read optionals after ASSERT_TRUE(x.has_value()), which this
+// check does not follow, or with value(), whose exception gtest reports as
+// a failure.
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
 
 TEST(HeadersTest, ConstructorsAndBasicAccessors) {
     // Default constructor (empty state)
@@ -128,3 +133,5 @@ TEST(HeadersTest, HelperUtilities) {
     const bool fail_success = Headers::parse_header_line("InvalidLine", key, value);
     EXPECT_FALSE(fail_success);
 }
+
+// NOLINTEND(bugprone-unchecked-optional-access)

@@ -6,20 +6,29 @@
 
 #include "msg/Channel.hpp"
 
-using namespace msg;
+using msg::Channel;
 using namespace std::chrono_literals;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-static void sleep_ms(int ms) {
+namespace {
+
+void sleep_ms(int ms) {
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 }
+
+} // namespace
 
 // ---------------------------------------------------------------------------
 // Test cases
 // ---------------------------------------------------------------------------
+
+// The tests read optionals after ASSERT_TRUE(x.has_value()), which this
+// check does not follow, or with value(), whose exception gtest reports as
+// a failure.
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
 
 TEST(ChannelTest, ConstructionAndBasicOperations) {
     Channel ch("test.basic");
@@ -185,3 +194,5 @@ TEST(ChannelTest, MixedTypesAndToString) {
     ASSERT_TRUE(raw2.has_value());
     EXPECT_EQ(raw2.value()->to_string(), "forty-two");
 }
+
+// NOLINTEND(bugprone-unchecked-optional-access)

@@ -4,7 +4,12 @@
 
 #include "http/Url.hpp"
 
-using namespace http;
+using http::Url;
+
+// The tests read optionals after ASSERT_TRUE(x.has_value()), which this
+// check does not follow, or with value(), whose exception gtest reports as
+// a failure.
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
 
 TEST(UrlTest, ConstructorsAndBasicAccessors) {
     constexpr auto port = 8080;
@@ -241,3 +246,5 @@ TEST(UrlTest, StreamOperatorsAndParsing) {
     bad_iss >> bad_url;
     EXPECT_TRUE(bad_iss.fail());
 }
+
+// NOLINTEND(bugprone-unchecked-optional-access)

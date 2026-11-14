@@ -13,18 +13,22 @@
 #include "msg/Channel.hpp"
 #include "msg/IMessage.hpp"
 
-using namespace msg;
+using msg::AsyncChannel;
+using msg::Channel;
+using msg::IMessage;
 using namespace std::chrono_literals;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
+namespace {
+
 // How long a test waits for its messages to be handled.
 constexpr auto handling_timeout = 500ms;
 
 template<typename Predicate>
-static bool wait_until(Predicate predicate, std::chrono::milliseconds timeout = handling_timeout) {
+bool wait_until(Predicate predicate, std::chrono::milliseconds timeout = handling_timeout) {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline) {
         if (predicate()) {
@@ -34,6 +38,8 @@ static bool wait_until(Predicate predicate, std::chrono::milliseconds timeout = 
     }
     return predicate();
 }
+
+} // namespace
 
 // ---------------------------------------------------------------------------
 // Test cases
