@@ -108,16 +108,10 @@ void add_unique(std::string_view value, std::vector<std::string>& results) {
         return host;
     }
 
-    const std::string ip = host;
-
     // Strip IPv6 interface scope IDs (e.g., "%en0")
-    const auto pos = ip.find('%');
+    const std::string_view address = host;
 
-    if (pos != std::string::npos) {
-        return ip.substr(0, pos);
-    }
-
-    return ip;
+    return std::string(address.substr(0, address.find('%')));
 }
 
 } // namespace

@@ -187,18 +187,13 @@ Checks:
   #     enum class EncodeContext {
   - '-performance-enum-size'
 
-  # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/AddressPosix.cpp:120: constness of 'ip' prevents automatic move
-  #     return ip;
-  - '-performance-no-automatic-move'
-
   # 17 to clean up (17 in library code, 0 in tests), such as
   # src/http/Headers.hpp:1: avoid 'pragma once' directive; use include guards
   # instead
   #     #pragma once
   - '-portability-avoid-pragma-once'
 
-  # 106 to clean up (43 in library code, 63 in tests), such as
+  # 105 to clean up (42 in library code, 63 in tests), such as
   # src/http/Headers.hpp:69: parameter name 'c1' is too short, expected at least
   # 3 characters
   #     [](unsigned char c1, unsigned char c2) {
