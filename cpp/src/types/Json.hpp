@@ -133,8 +133,8 @@ private:
     };
 
     static bool is_digit(char character);
-    static void serialize_array(const Array& arr, std::ostringstream& out_stream, int indent, int current_indent);
-    static void serialize_object(const Object& obj, std::ostringstream& out_stream, int indent, int current_indent);
+    static void serialize_array(const Array& the_array, std::ostringstream& out_stream, int indent, int current_indent);
+    static void serialize_object(const Object& the_object, std::ostringstream& out_stream, int indent, int current_indent);
     static void serialize(const Json& json_value, std::ostringstream& out_stream,
                           int indent, int current_indent);
     static void escape_string(const std::string& str, std::ostringstream& out_stream);

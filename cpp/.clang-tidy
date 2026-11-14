@@ -211,12 +211,6 @@ Checks:
   #     [](unsigned char c1, unsigned char c2) {
   - '-readability-identifier-length'
 
-  # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/types/Json.hpp:136: function 'types::Json::serialize_array' has a
-  # definition with different parameter names
-  #     static void serialize_array(const Array& arr, std::ostringstream&...
-  - '-readability-inconsistent-declaration-parameter-name'
-
 WarningsAsErrors: '*'
 # Every header that is not a system header. CMake includes Conan's packages
 # as system headers, so their findings are not shown.
