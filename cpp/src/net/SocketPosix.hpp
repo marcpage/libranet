@@ -9,7 +9,10 @@ public:
     static ISocket::Ptr bind(const Address& address);
     static ISocket::Ptr connect(const Address& address);
 
+    SocketPosix() = delete;
     ~SocketPosix() override;
+    SocketPosix(const SocketPosix&) = delete;
+    SocketPosix& operator=(const SocketPosix&) = delete;
 
     void listen(int backlog) override;
     ISocket::Ptr accept() override;
@@ -24,10 +27,6 @@ public:
 
 private:
     explicit SocketPosix(int socket_fd) noexcept;
-
-    SocketPosix() = delete;
-    SocketPosix(const SocketPosix&) = delete;
-    SocketPosix& operator=(const SocketPosix&) = delete;
 
     int m_socket_fd;
 };
