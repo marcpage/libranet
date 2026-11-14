@@ -327,7 +327,7 @@ C++ jobs build and run the tests.
 CI also runs [CodeQL](https://codeql.github.com/), GitHub's code scanning,
 on the C++ code as it builds it, and on the rest of the repository. Its
 alerts are in the repository's Security tab, and in a CodeQL check on each
-pull request, and CI fails on any of them, marking each where it is.
+pull request.
 
 ---
 
