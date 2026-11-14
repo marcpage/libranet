@@ -23,6 +23,10 @@ public:
 
     explicit Channel(const std::string& name);
     ~Channel();
+    Channel(const Channel&) = delete;
+    Channel& operator=(const Channel&) = delete;
+    Channel(Channel&&) = delete;
+    Channel& operator=(Channel&&) = delete;
     [[nodiscard]] bool empty() const;
     [[nodiscard]] size_t size() const;
 
@@ -40,11 +44,6 @@ protected:
     types::BlockingQueue<IMessage::Ptr> m_message_queue;
 
 private:
-    Channel(const Channel&) = delete;
-    Channel& operator=(const Channel&) = delete;
-    Channel(Channel&&) = delete;
-    Channel& operator=(Channel&&) = delete;
-
     static std::map<std::string, std::vector<Channel*>> m_channels;
     static std::mutex m_channel_lock;
 };

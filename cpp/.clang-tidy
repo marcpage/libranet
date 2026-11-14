@@ -149,11 +149,6 @@ Checks:
   # are.
   - '-modernize-return-braced-init-list'
 
-  # 11 to clean up (11 in library code, 0 in tests), such as
-  # src/msg/AsyncChannel.hpp:29: deleted member function should be public
-  #     AsyncChannel(const AsyncChannel&) = delete;
-  - '-modernize-use-equals-delete'
-
   # 3 to clean up (3 in library code, 0 in tests), such as src/http/Url.hpp:22:
   # enum 'EncodeContext' uses a larger base type ('int', size: 4 bytes) than
   # necessary for its value set, consider using 'std::uint8_t' (1 by...
