@@ -151,13 +151,6 @@ Checks:
   #     return std::visit([](auto&& value) -> Type {
   - '-fuchsia-trailing-return'
 
-  # 7 to clean up (7 in library code, 0 in tests), such as
-  # src/msg/AsyncChannel.cpp:12: anonymous namespace not terminated with a
-  # closing comment
-  #     }
-  - '-google-readability-namespace-comments'
-  - '-llvm-namespace-comment'
-
   # 17 to clean up (11 in library code, 6 in tests), such as
   # src/http/Url.hpp:614: consider replacing 'unsigned long' with 'uint64'
   #     unsigned long p = std::stoul(std::string(str));

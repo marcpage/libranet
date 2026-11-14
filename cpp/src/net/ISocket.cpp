@@ -88,4 +88,4 @@ std::string ISocket::read_line(char delimiter) {
     return line;
 }
 
-} // net
+} // namespace net

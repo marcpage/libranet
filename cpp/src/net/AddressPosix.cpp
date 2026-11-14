@@ -120,7 +120,7 @@ void add_unique(std::string_view value, std::vector<std::string>& results) {
     return ip;
 }
 
-} // anonymous
+} // namespace
 
 namespace net {
 
@@ -156,6 +156,6 @@ std::vector<std::string> Address::get_local_addresses() {
 }
 
 
-} // net
+} // namespace net
 
 #endif // __linux__ || __APPLE__
