@@ -2,6 +2,7 @@
 
 #include "SocketPosix.hpp"
 
+#include <array>
 #include <cerrno>
 #include <cstddef>
 #include <cstring>
@@ -104,24 +105,24 @@ int create_socket(const addrinfo& info) {
 }
 
 net::Address address_from_sockaddr(const sockaddr* address, socklen_t length) {
-    char host[NI_MAXHOST]{};
-    char service[NI_MAXSERV]{};
+    std::array<char, NI_MAXHOST> host{};
+    std::array<char, NI_MAXSERV> service{};
 
     const auto error = ::getnameinfo(address, length,
-                                     host, sizeof(host),
-                                     service, sizeof(service),
+                                     host.data(), static_cast<socklen_t>(host.size()),
+                                     service.data(), static_cast<socklen_t>(service.size()),
                                      NI_NUMERICHOST | NI_NUMERICSERV);
 
     assert_condition<std::runtime_error>(
         error == 0, std::string("getnameinfo: ") + ::gai_strerror(error));
 
-    const auto port = std::stoul(service);
+    const auto port = std::stoul(service.data());
 
     assert_condition<std::runtime_error>(
         port <= std::numeric_limits<net::Address::Port>::max(),
         "Socket returned an invalid port");
 
-    return {host, static_cast<net::Address::Port>(port)};
+    return {host.data(), static_cast<net::Address::Port>(port)};
 }
 
 enum Direction { DirectionSend,

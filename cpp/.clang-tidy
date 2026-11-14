@@ -31,7 +31,7 @@ Checks:
   - '-abseil-string-find-str-contains'
 
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:242: prefer accept4() to accept() because accept4()
+  # src/net/SocketPosix.cpp:243: prefer accept4() to accept() because accept4()
   # allows SOCK_CLOEXEC
   #     fd = ::accept(m_socket_fd, nullptr, nullptr);
   - '-android-cloexec-accept'
@@ -47,13 +47,6 @@ Checks:
   #     inline std::string_view Headers::get(std::string_view key, std::s...
   - '-bugprone-easily-swappable-parameters'
 
-  # 6 to clean up (6 in library code, 0 in tests), such as
-  # src/net/AddressPosix.cpp:39: do not declare C-style arrays, use 'std::array'
-  # instead
-  #     char ip_buf[NI_MAXHOST];
-  - '-cppcoreguidelines-avoid-c-arrays'
-  - '-modernize-avoid-c-arrays'
-
   # 1 to clean up (1 in library code, 0 in tests), such as
   # src/types/BlockingQueue.hpp:50: member 'm_capacity' of type 'const size_t'
   # (aka 'const unsigned long') is const qualified
@@ -61,7 +54,7 @@ Checks:
   - '-cppcoreguidelines-avoid-const-or-ref-data-members'
 
   # 4 to clean up (4 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:203: avoid do-while loops
+  # src/net/SocketPosix.cpp:204: avoid do-while loops
   #     do {
   - '-cppcoreguidelines-avoid-do-while'
 
@@ -74,7 +67,7 @@ Checks:
   - '-misc-explicit-constructor'
 
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:147: forwarding reference parameter 'socket_call' is
+  # src/net/SocketPosix.cpp:148: forwarding reference parameter 'socket_call' is
   # never forwarded inside the function body
   #     net::Address query_socket_address(int socket_fd, Func&& socket_call,
   - '-cppcoreguidelines-missing-std-forward'
@@ -86,26 +79,14 @@ Checks:
   - '-cppcoreguidelines-non-private-member-variables-in-classes'
   - '-misc-non-private-member-variables-in-classes'
 
-  # 11 to clean up (11 in library code, 0 in tests), such as
-  # src/net/AddressPosix.cpp:41: do not implicitly decay an array into a
-  # pointer; consider using gsl::array_view or an explicit cast instead
-  #     ip_buf, sizeof(ip_buf),
-  - '-cppcoreguidelines-pro-bounds-array-to-pointer-decay'
-
-  # 115 to clean up (64 in library code, 51 in tests), such as
+  # 117 to clean up (66 in library code, 51 in tests), such as
   # src/http/Headers.hpp:255: possibly unsafe 'operator[]', consider bounds-safe
   # alternatives
   #     return !line.empty() && (line[0] == ' ' || line[0] == '\t');
   - '-cppcoreguidelines-pro-bounds-avoid-unchecked-container-access'
 
-  # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/types/Json.hpp:472: do not use array subscript when the index is not an
-  # integer constant expression
-  #     out_stream << hex[(code >> nibble_bits) & nibble_mask] << hex[cod...
-  - '-cppcoreguidelines-pro-bounds-constant-array-index'
-
   # 4 to clean up (2 in library code, 2 in tests), such as
-  # src/net/SocketPosix.cpp:153: do not use reinterpret_cast
+  # src/net/SocketPosix.cpp:154: do not use reinterpret_cast
   #     reinterpret_cast<sockaddr*>(&storage), &length);
   - '-cppcoreguidelines-pro-type-reinterpret-cast'
 
@@ -117,7 +98,7 @@ Checks:
   - '-cppcoreguidelines-special-member-functions'
 
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:127: enum 'Direction' is unscoped, use 'enum class'
+  # src/net/SocketPosix.cpp:128: enum 'Direction' is unscoped, use 'enum class'
   # instead
   #     enum Direction { DirectionSend,
   - '-cppcoreguidelines-use-enum-class'

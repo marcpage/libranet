@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <arpa/inet.h>
+#include <array>
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <netdb.h>
@@ -36,12 +37,12 @@ namespace {
 }
 
 [[nodiscard]] std::string get_numeric_ip(const addrinfo* p) {
-    char ip_buf[NI_MAXHOST];
+    std::array<char, NI_MAXHOST> ip_buf{};
     const int error = getnameinfo(p->ai_addr, p->ai_addrlen,
-                                  ip_buf, sizeof(ip_buf),
+                                  ip_buf.data(), static_cast<socklen_t>(ip_buf.size()),
                                   nullptr, 0, NI_NUMERICHOST);
     if (error == 0) {
-        return ip_buf;
+        return ip_buf.data();
     }
 
     return {};
@@ -49,12 +50,12 @@ namespace {
 
 [[nodiscard]] std::string get_reverse_dns_name(const addrinfo* p,
                                                const std::string& numeric_ip) {
-    char host_buf[NI_MAXHOST];
+    std::array<char, NI_MAXHOST> host_buf{};
     const int error = getnameinfo(p->ai_addr, p->ai_addrlen,
-                                  host_buf, sizeof(host_buf),
+                                  host_buf.data(), static_cast<socklen_t>(host_buf.size()),
                                   nullptr, 0, 0);
     if (error == 0) {
-        std::string dns_name = host_buf;
+        std::string dns_name = host_buf.data();
 
         if (!dns_name.empty() && dns_name != numeric_ip) {
             return dns_name;
@@ -95,21 +96,21 @@ void add_unique(std::string_view value, std::vector<std::string>& results) {
         return {};
     }
 
-    char host[NI_MAXHOST];
+    std::array<char, NI_MAXHOST> host{};
     const socklen_t len = get_sockaddr_len(family);
 
-    const int error = getnameinfo(ifa->ifa_addr, len, host, sizeof(host),
+    const int error = getnameinfo(ifa->ifa_addr, len, host.data(), static_cast<socklen_t>(host.size()),
                                   nullptr, 0, NI_NUMERICHOST);
     if (error != 0) {
         return {};
     }
 
     if (family != AF_INET6) {
-        return host;
+        return host.data();
     }
 
     // Strip IPv6 interface scope IDs (e.g., "%en0")
-    const std::string_view address = host;
+    const std::string_view address = host.data();
 
     return std::string(address.substr(0, address.find('%')));
 }

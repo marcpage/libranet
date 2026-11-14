@@ -465,7 +465,7 @@ inline void Json::escape_string(const std::string& str, std::ostringstream& out_
                 if (code < first_unescaped) {
                     out_stream << "\\u00";
 
-                    const char hex[] = "0123456789abcdef";
+                    constexpr std::string_view hex = "0123456789abcdef";
                     constexpr auto nibble_bits = 4U;
                     constexpr auto nibble_mask = 0xFU;
 
