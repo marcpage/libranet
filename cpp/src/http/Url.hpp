@@ -191,18 +191,21 @@ inline std::optional<uint16_t> Url::effective_port() const noexcept {
         return explicit_port;
     }
 
+    constexpr uint16_t http_port = 80;
+    constexpr uint16_t https_port = 443;
+    constexpr uint16_t ftp_port = 21;
     const std::string lower_scheme = to_lower_copy(m_scheme);
 
     if (lower_scheme == "http" || lower_scheme == "ws") {
-        return 80;
+        return http_port;
     }
 
     if (lower_scheme == "https" || lower_scheme == "wss") {
-        return 443;
+        return https_port;
     }
 
     if (lower_scheme == "ftp") {
-        return 21;
+        return ftp_port;
     }
 
     return std::nullopt; // Unknown or empty scheme/port

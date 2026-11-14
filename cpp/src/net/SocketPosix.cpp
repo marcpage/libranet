@@ -125,8 +125,11 @@ int set_timeout(int socket_fd, Direction direction, net::ISocket::Milliseconds t
     timeval tv{};
 
     if (timeout.count() > 0) {
-        tv.tv_sec = static_cast<time_t>(timeout.count() / 1000);
-        tv.tv_usec = static_cast<suseconds_t>((timeout.count() % 1000) * 1000);
+        constexpr auto milliseconds_per_second = 1000;
+        constexpr auto microseconds_per_millisecond = 1000;
+
+        tv.tv_sec = static_cast<time_t>(timeout.count() / milliseconds_per_second);
+        tv.tv_usec = static_cast<suseconds_t>((timeout.count() % milliseconds_per_second) * microseconds_per_millisecond);
     }
 
     return ::setsockopt(socket_fd, SOL_SOCKET, direction_flag, &tv, sizeof(tv));

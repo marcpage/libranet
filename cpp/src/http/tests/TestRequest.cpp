@@ -1,8 +1,9 @@
 #include <gtest/gtest.h>
 #include <sstream>
-#include <string>
 #include <stdexcept>
-#include "Request.hpp"
+#include <string>
+
+#include "http/Request.hpp"
 
 using namespace http;
 

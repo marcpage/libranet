@@ -8,10 +8,10 @@ target_link_libraries(libranet_msg PUBLIC libranet::types Threads::Threads)
 
 if(BUILD_TESTING)
     add_executable(msg_tests
-        TestAsyncChannel.cpp
-        TestAsyncChannelOf.cpp
-        TestChannel.cpp
-        TestMessage.cpp)
+        tests/TestAsyncChannel.cpp
+        tests/TestAsyncChannelOf.cpp
+        tests/TestChannel.cpp
+        tests/TestMessage.cpp)
     target_link_libraries(msg_tests PRIVATE libranet::msg GTest::gtest_main)
     gtest_discover_tests(msg_tests)
 endif()

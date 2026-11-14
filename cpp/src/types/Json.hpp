@@ -458,12 +458,17 @@ inline void Json::escape_string(const std::string& str, std::ostringstream& out_
             case '\r': out_stream << "\\r"; break;
             case '\t': out_stream << "\\t"; break;
             default:
-                if (static_cast<unsigned char>(character) < 0x20) {
+                // Control characters, those below a space, are escaped.
+                constexpr unsigned char first_unescaped = 0x20;
+
+                if (static_cast<unsigned char>(character) < first_unescaped) {
                     out_stream << "\\u00";
 
                     const char hex[] = "0123456789abcdef";
+                    constexpr auto nibble_bits = 4;
+                    constexpr auto nibble_mask = 0xF;
 
-                    out_stream << hex[(character >> 4) & 0xF] << hex[character & 0xF];
+                    out_stream << hex[(character >> nibble_bits) & nibble_mask] << hex[character & nibble_mask];
                 } else {
                     out_stream << character;
                 }
@@ -657,8 +662,10 @@ inline Json Json::Parser::parse_value() {
 }
 
 inline Json Json::Parser::parse_null() {
-    if (m_input.substr(m_cursor, 4) == "null") {
-        m_cursor += 4;
+    constexpr std::string_view null_text = "null";
+
+    if (m_input.substr(m_cursor, null_text.size()) == null_text) {
+        m_cursor += null_text.size();
         return Json(nullptr);
     }
 
@@ -666,13 +673,17 @@ inline Json Json::Parser::parse_null() {
 }
 
 inline Json Json::Parser::parse_boolean() {
-    if (m_input.substr(m_cursor, 4) == "true") {
-        m_cursor += 4;
+    constexpr std::string_view true_text = "true";
+
+    if (m_input.substr(m_cursor, true_text.size()) == true_text) {
+        m_cursor += true_text.size();
         return Json(true);
     }
 
-    if (m_input.substr(m_cursor, 5) == "false") {
-        m_cursor += 5;
+    constexpr std::string_view false_text = "false";
+
+    if (m_input.substr(m_cursor, false_text.size()) == false_text) {
+        m_cursor += false_text.size();
         return Json(false);
     }
 

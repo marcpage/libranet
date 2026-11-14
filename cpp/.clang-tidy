@@ -31,7 +31,7 @@ Checks:
   - '-abseil-string-find-str-contains'
 
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:227: prefer accept4() to accept() because accept4()
+  # src/net/SocketPosix.cpp:230: prefer accept4() to accept() because accept4()
   # allows SOCK_CLOEXEC
   #     fd = ::accept(m_socket_fd, nullptr, nullptr);
   - '-android-cloexec-accept'
@@ -42,7 +42,7 @@ Checks:
   - '-boost-use-ranges'
 
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/types/Json.hpp:642: switch has 2 consecutive identical branches
+  # src/types/Json.hpp:647: switch has 2 consecutive identical branches
   #     case 't': return parse_boolean();
   - '-bugprone-branch-clone'
 
@@ -52,7 +52,7 @@ Checks:
   #     inline std::string_view Headers::get(std::string_view key, std::s...
   - '-bugprone-easily-swappable-parameters'
 
-  # 2 to clean up (2 in library code, 0 in tests), such as src/http/Url.hpp:609:
+  # 2 to clean up (2 in library code, 0 in tests), such as src/http/Url.hpp:619:
   # empty catch statements hide issues; to handle exceptions appropriately,
   # consider re-throwing, handling, or avoiding catch altogether
   #     } catch (const std::invalid_argument&) {
@@ -65,25 +65,25 @@ Checks:
   - '-bugprone-exception-escape'
 
   # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/types/Integer.hpp:238: either cast from 'word_t' (aka 'unsigned long
+  # src/types/Integer.hpp:239: either cast from 'word_t' (aka 'unsigned long
   # long') to 'double_word_t' (aka 'unsigned __int128') is ineffective, or there
   # is loss of pre...
   #     const double_word_t max_word = static_cast<double_word_t>(~word_t...
   - '-bugprone-misplaced-widening-cast'
 
   # 5 to clean up (5 in library code, 0 in tests), such as
-  # src/types/Integer.hpp:214: use of a signed integer operand with a binary
+  # src/types/Integer.hpp:215: use of a signed integer operand with a binary
   # bitwise operator
   #     high_word <<= 1;
   - '-bugprone-signed-bitwise'
 
   # 28 to clean up (0 in library code, 28 in tests), such as
-  # src/http/TestHeaders.cpp:25: unchecked access to optional value
+  # src/http/tests/TestHeaders.cpp:26: unchecked access to optional value
   #     EXPECT_EQ(val.value(), "application/json");
   - '-bugprone-unchecked-optional-access'
 
   # 2 to clean up (0 in library code, 2 in tests), such as
-  # src/types/TestBlockingQueue.cpp:38: 's1' used after it was moved
+  # src/types/tests/TestBlockingQueue.cpp:44: 's1' used after it was moved
   #     EXPECT_TRUE(s1.empty()); // moved-from
   - '-bugprone-use-after-move'
 
@@ -101,16 +101,9 @@ Checks:
   - '-cppcoreguidelines-avoid-const-or-ref-data-members'
 
   # 4 to clean up (4 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:192: avoid do-while loops
+  # src/net/SocketPosix.cpp:195: avoid do-while loops
   #     do {
   - '-cppcoreguidelines-avoid-do-while'
-
-  # 120 to clean up (27 in library code, 93 in tests), such as
-  # src/http/ResponseCode.hpp:144: 100 is a magic number; consider replacing it
-  # with a named constant
-  #     return c >= 100 && c < 200;
-  - '-cppcoreguidelines-avoid-magic-numbers'
-  - '-readability-magic-numbers'
 
   # 12 to clean up (12 in library code, 0 in tests), such as
   # src/http/ResponseCode.hpp:78: constructors that are callable with a single
@@ -121,12 +114,12 @@ Checks:
   - '-misc-explicit-constructor'
 
   # 4 to clean up (4 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:190: variable 'result' is not initialized
+  # src/net/SocketPosix.cpp:193: variable 'result' is not initialized
   #     int result;
   - '-cppcoreguidelines-init-variables'
 
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:136: forwarding reference parameter 'socket_call' is
+  # src/net/SocketPosix.cpp:139: forwarding reference parameter 'socket_call' is
   # never forwarded inside the function body
   #     net::Address query_socket_address(int socket_fd, Func&& socket_call,
   - '-cppcoreguidelines-missing-std-forward'
@@ -151,13 +144,13 @@ Checks:
   - '-cppcoreguidelines-pro-bounds-avoid-unchecked-container-access'
 
   # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/types/Json.hpp:466: do not use array subscript when the index is not an
+  # src/types/Json.hpp:471: do not use array subscript when the index is not an
   # integer constant expression
-  #     out_stream << hex[(character >> 4) & 0xF] << hex[character & 0xF];
+  #     out_stream << hex[(character >> nibble_bits) & nibble_mask] << he...
   - '-cppcoreguidelines-pro-bounds-constant-array-index'
 
   # 4 to clean up (2 in library code, 2 in tests), such as
-  # src/net/SocketPosix.cpp:142: do not use reinterpret_cast
+  # src/net/SocketPosix.cpp:145: do not use reinterpret_cast
   #     reinterpret_cast<sockaddr*>(&storage), &length);
   - '-cppcoreguidelines-pro-type-reinterpret-cast'
 
@@ -204,13 +197,13 @@ Checks:
   - '-fuchsia-trailing-return'
 
   # 14 to clean up (0 in library code, 14 in tests), such as
-  # src/http/TestHeaders.cpp:7: do not use namespace using-directives; use
+  # src/http/tests/TestHeaders.cpp:8: do not use namespace using-directives; use
   # using-declarations instead
   #     using namespace http;
   - '-google-build-using-namespace'
 
   # 6 to clean up (6 in library code, 0 in tests), such as
-  # src/types/Integer.hpp:213: C-style casts are discouraged; use static_cast
+  # src/types/Integer.hpp:214: C-style casts are discouraged; use static_cast
   #     while ((high_word & (word_t(1) << (word_bits - 1))) == 0) {
   - '-google-readability-casting'
   - '-modernize-avoid-c-style-cast'
@@ -223,7 +216,7 @@ Checks:
   - '-llvm-namespace-comment'
 
   # 18 to clean up (12 in library code, 6 in tests), such as
-  # src/http/Url.hpp:604: consider replacing 'unsigned long' with 'uint64'
+  # src/http/Url.hpp:614: consider replacing 'unsigned long' with 'uint64'
   #     unsigned long p = std::stoul(std::string(str));
   - '-google-runtime-int'
 
@@ -233,15 +226,8 @@ Checks:
   - '-llvm-else-after-return'
   - '-readability-else-after-return'
 
-  # 14 to clean up (3 in library code, 11 in tests), such as
-  # src/http/Query.hpp:4: #includes are not sorted properly
-  #     #include <string>
-  # clang-format leaves the order of includes alone (SortIncludes is off), so it
-  # will not sort them for this check.
-  - '-llvm-include-order'
-
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/types/Json.hpp:519: 'const auto newline' can be declared as 'const auto
+  # src/types/Json.hpp:524: 'const auto newline' can be declared as 'const auto
   # *const newline'
   #     const auto newline = pretty ? "\n" : "";
   - '-llvm-qualified-auto'
@@ -266,19 +252,19 @@ Checks:
   - '-misc-include-cleaner'
 
   # 5 to clean up (5 in library code, 0 in tests), such as
-  # src/types/Integer.hpp:696: function 'operator&' is within a recursive call
+  # src/types/Integer.hpp:697: function 'operator&' is within a recursive call
   # chain
   #     inline Integer operator&(const Integer& left, const Integer& righ...
   - '-misc-no-recursion'
 
   # 7 to clean up (0 in library code, 7 in tests), such as
-  # src/msg/TestAsyncChannel.cpp:22: function 'wait_until' declared 'static',
-  # move to anonymous namespace instead
+  # src/msg/tests/TestAsyncChannel.cpp:25: function 'wait_until' declared
+  # 'static', move to anonymous namespace instead
   #     static bool wait_until(Predicate predicate, std::chrono::millisec...
   - '-misc-use-anonymous-namespace'
 
   # 3 to clean up (3 in library code, 0 in tests), such as
-  # src/types/Integer.hpp:338: use range-based for loop instead
+  # src/types/Integer.hpp:339: use range-based for loop instead
   #     for (std::size_t word_index = 0; word_index < value.size(); ++wor...
   - '-modernize-loop-convert'
 
@@ -294,7 +280,7 @@ Checks:
   - '-modernize-return-braced-init-list'
 
   # 3 to clean up (3 in library code, 0 in tests), such as
-  # src/types/Integer.hpp:238: use auto when initializing with a cast to avoid
+  # src/types/Integer.hpp:239: use auto when initializing with a cast to avoid
   # duplicating the type name
   #     const double_word_t max_word = static_cast<double_word_t>(~word_t...
   - '-modernize-use-auto'
@@ -329,12 +315,12 @@ Checks:
   - '-performance-prefer-single-char-overloads'
 
   # 2 to clean up (0 in library code, 2 in tests), such as
-  # src/types/TestBlockingQueue.cpp:169: 'emplace_back' is called inside a loop;
-  # consider pre-allocating the container capacity before the loop
+  # src/types/tests/TestBlockingQueue.cpp:186: 'emplace_back' is called inside a
+  # loop; consider pre-allocating the container capacity before the loop
   #     producers.emplace_back([&, p] {
   - '-performance-inefficient-vector-operation'
 
-  # 1 to clean up (1 in library code, 0 in tests), such as src/http/Url.hpp:399:
+  # 1 to clean up (1 in library code, 0 in tests), such as src/http/Url.hpp:402:
   # std::move of the const expression has no effect; remove std::move()
   #     url = std::move(parsed_url.value());
   - '-performance-move-const-arg'
@@ -344,7 +330,7 @@ Checks:
   #     return ip;
   - '-performance-no-automatic-move'
 
-  # 2 to clean up (2 in library code, 0 in tests), such as src/http/Url.hpp:228:
+  # 2 to clean up (2 in library code, 0 in tests), such as src/http/Url.hpp:231:
   # redundant conversion to 'std::string' (aka 'basic_string<char>') and then
   # back to '__self_view' (aka 'basic_string_view<char, std::char_t...
   #     const auto value = m_query.get_first(std::string(key));
@@ -371,7 +357,7 @@ Checks:
   - '-readability-avoid-const-params-in-decls'
 
   # 2 to clean up (0 in library code, 2 in tests), such as
-  # src/types/TestBlockingQueue.cpp:188: statement should be inside braces
+  # src/types/tests/TestBlockingQueue.cpp:205: statement should be inside braces
   #     for (auto& t : producers) t.join();
   - '-readability-braces-around-statements'
 
@@ -382,7 +368,7 @@ Checks:
   - '-readability-container-data-pointer'
 
   # 2 to clean up (0 in library code, 2 in tests), such as
-  # src/types/TestBlockingQueue.cpp:156: function 'TestBody' has cognitive
+  # src/types/tests/TestBlockingQueue.cpp:171: function 'TestBody' has cognitive
   # complexity of 26 (threshold 25)
   #     TEST(BlockingQueueTest, MultipleProducersConsumers) {
   - '-readability-function-cognitive-complexity'
@@ -405,13 +391,13 @@ Checks:
   - '-readability-inconsistent-declaration-parameter-name'
 
   # 3 to clean up (2 in library code, 1 in tests), such as
-  # src/types/Integer.hpp:560: multiple declarations in a single statement
+  # src/types/Integer.hpp:561: multiple declarations in a single statement
   # reduces readability
   #     std::vector<word_t> quotient, remainder;
   - '-readability-isolate-declaration'
 
   # 3 to clean up (2 in library code, 1 in tests), such as
-  # src/types/Integer.hpp:192: '*' has higher precedence than '+'; add
+  # src/types/Integer.hpp:193: '*' has higher precedence than '+'; add
   # parentheses to explicitly specify the order of operations
   #     carry += static_cast<double_word_t>(left[left_index])
   - '-readability-math-missing-parentheses'
@@ -439,7 +425,7 @@ Checks:
   - '-readability-use-concise-preprocessor-directives'
 
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/types/Integer.hpp:240: use `std::min` instead of `>`
+  # src/types/Integer.hpp:241: use `std::min` instead of `>`
   #     if (estimated_quotient > max_word) {
   - '-readability-use-std-min-max'
 

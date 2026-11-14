@@ -6,11 +6,11 @@ target_include_directories(libranet_http INTERFACE ${PROJECT_SOURCE_DIR}/src)
 
 if(BUILD_TESTING)
     add_executable(http_tests
-        TestHeaders.cpp
-        TestQuery.cpp
-        TestRequest.cpp
-        TestResponse.cpp
-        TestUrl.cpp)
+        tests/TestHeaders.cpp
+        tests/TestQuery.cpp
+        tests/TestRequest.cpp
+        tests/TestResponse.cpp
+        tests/TestUrl.cpp)
     target_link_libraries(http_tests PRIVATE libranet::http GTest::gtest_main)
     gtest_discover_tests(http_tests)
 endif()

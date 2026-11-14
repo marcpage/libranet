@@ -3,7 +3,18 @@
 # code as it was first written.
 BasedOnStyle: WebKit
 BreakBeforeBraces: Attach
-SortIncludes: {Enabled: false}
+# Includes are sorted as clang-tidy's llvm-include-order wants them, within
+# each block of lines: the file's own header first, then the project's
+# headers, then GoogleTest's, then the rest in angle brackets, each group in
+# case-sensitive order.
+SortIncludes: {Enabled: true, IgnoreCase: false}
+IncludeCategories:
+  - Regex: '^[<"](gtest|gmock)/'
+    Priority: 3
+  - Regex: '^<'
+    Priority: 4
+  - Regex: '.*'
+    Priority: 1
 Cpp11BracedListStyle: true
 SpaceBeforeCpp11BracedList: false
 SpaceInEmptyBraces: Never

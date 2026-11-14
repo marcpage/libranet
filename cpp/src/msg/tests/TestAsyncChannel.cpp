@@ -8,8 +8,8 @@
 #include <thread>
 #include <vector>
 
-#include "AsyncChannel.hpp"
-#include "Message.hpp"
+#include "msg/AsyncChannel.hpp"
+#include "msg/Message.hpp"
 
 using namespace msg;
 using namespace std::chrono_literals;
@@ -18,8 +18,11 @@ using namespace std::chrono_literals;
 // Helpers
 // ---------------------------------------------------------------------------
 
+// How long a test waits for its messages to be handled.
+constexpr auto handling_timeout = 500ms;
+
 template<typename Predicate>
-static bool wait_until(Predicate predicate, std::chrono::milliseconds timeout = 500ms) {
+static bool wait_until(Predicate predicate, std::chrono::milliseconds timeout = handling_timeout) {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline) {
         if (predicate()) {
@@ -50,10 +53,11 @@ TEST(AsyncChannelTest, ConstructionAndCallback) {
 
         EXPECT_TRUE(ch.empty());
 
-        Channel::post("test.async.basic", 42);
+        constexpr auto posted_value = 42;
+        Channel::post("test.async.basic", posted_value);
 
         std::unique_lock<std::mutex> lock(mutex);
-        const bool delivered = condition.wait_for(lock, 500ms, [&] {
+        const bool delivered = condition.wait_for(lock, handling_timeout, [&] {
             return received.size() == 1;
         });
         ASSERT_TRUE(delivered);
@@ -75,12 +79,15 @@ TEST(AsyncChannelTest, MultipleMessagesFifoOrder) {
             condition.notify_one();
         });
 
-        Channel::post("test.async.fifo", 10);
-        Channel::post("test.async.fifo", 20);
-        Channel::post("test.async.fifo", 30);
+        constexpr auto first_value = 10;
+        constexpr auto second_value = 20;
+        constexpr auto third_value = 30;
+        Channel::post("test.async.fifo", first_value);
+        Channel::post("test.async.fifo", second_value);
+        Channel::post("test.async.fifo", third_value);
 
         std::unique_lock<std::mutex> lock(mutex);
-        const bool delivered = condition.wait_for(lock, 500ms, [&] {
+        const bool delivered = condition.wait_for(lock, handling_timeout, [&] {
             return received.size() == 3;
         });
         ASSERT_TRUE(delivered);
@@ -113,15 +120,16 @@ TEST(AsyncChannelTest, BroadcastToMultipleAsyncChannels) {
             condition.notify_one();
         });
 
-        Channel::post("test.async.broadcast", 7);
+        constexpr auto posted_value = 7;
+        Channel::post("test.async.broadcast", posted_value);
 
         std::unique_lock<std::mutex> lock(mutex);
-        const bool delivered = condition.wait_for(lock, 500ms, [&] {
+        const bool delivered = condition.wait_for(lock, handling_timeout, [&] {
             return received_a.size() == 1 && received_b.size() == 1;
         });
         ASSERT_TRUE(delivered);
-        EXPECT_EQ(received_a[0], 7);
-        EXPECT_EQ(received_b[0], 7);
+        EXPECT_EQ(received_a[0], posted_value);
+        EXPECT_EQ(received_b[0], posted_value);
     }
 }
 
@@ -154,7 +162,7 @@ TEST(AsyncChannelTest, CallbackExceptionDoesNotStopProcessing) {
         Channel::post("test.async.exceptions", 2);
 
         std::unique_lock<std::mutex> lock(mutex);
-        const bool processed = condition.wait_for(lock, 500ms, [&] {
+        const bool processed = condition.wait_for(lock, handling_timeout, [&] {
             return !received.empty() && !logged.empty();
         });
         ASSERT_TRUE(processed);
@@ -181,7 +189,8 @@ TEST(AsyncChannelTest, StopAndIdempotence) {
     ch.stop();
 
     Channel::post("test.async.stop", 2);
-    std::this_thread::sleep_for(20ms);
+    constexpr auto delivery_wait = 20ms;
+    std::this_thread::sleep_for(delivery_wait);
     EXPECT_EQ(callback_count.load(), 1);
 }
 

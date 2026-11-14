@@ -1,12 +1,12 @@
 #include <gtest/gtest.h>
+#include <atomic>
+#include <chrono>
 #include <string>
 #include <thread>
-#include <chrono>
 #include <vector>
-#include <atomic>
 
-#include "Channel.hpp"
-#include "Message.hpp"
+#include "msg/Channel.hpp"
+#include "msg/Message.hpp"
 
 using namespace msg;
 using namespace std::chrono_literals;
@@ -29,7 +29,8 @@ TEST(ChannelTest, ConstructionAndBasicOperations) {
     EXPECT_TRUE(ch.empty());
     EXPECT_EQ(ch.size(), 0U);
 
-    Channel::post("test.basic", 42);
+    constexpr auto posted_value = 42;
+    Channel::post("test.basic", posted_value);
     EXPECT_FALSE(ch.empty());
     EXPECT_EQ(ch.size(), 1U);
 
@@ -57,31 +58,36 @@ TEST(ChannelTest, TimeoutBehaviour) {
     EXPECT_FALSE(timed_out_typed.has_value());
 
     // Short timeout with no message
-    auto still_timeout = ch.next_message(20ms);
+    constexpr auto short_timeout = 20ms;
+    auto still_timeout = ch.next_message(short_timeout);
     EXPECT_FALSE(still_timeout.has_value());
 
     // Post then consume with timeout
-    Channel::post("test.timeout", 99);
-    auto got = ch.next_message(50ms);
+    constexpr auto posted_value = 99;
+    constexpr auto timeout = 50ms;
+    Channel::post("test.timeout", posted_value);
+    auto got = ch.next_message(timeout);
     EXPECT_TRUE(got.has_value());
 
-    auto typed = ch.next<int>(50ms); // queue is empty again
+    auto typed = ch.next<int>(timeout); // queue is empty again
     EXPECT_FALSE(typed.has_value());
 }
 
 TEST(ChannelTest, TypeMismatch) {
     Channel ch("test.types");
 
-    Channel::post("test.types", 12345);
+    constexpr auto posted_value = 12345;
+    constexpr auto timeout = 10ms;
+    Channel::post("test.types", posted_value);
 
     // Correct type
-    auto ok = ch.next<int>(10ms);
+    auto ok = ch.next<int>(timeout);
     ASSERT_TRUE(ok.has_value());
-    EXPECT_EQ(*ok, 12345);
+    EXPECT_EQ(*ok, posted_value);
 
     // Wrong type after another post
     Channel::post("test.types", std::string("not an int"));
-    auto mismatch = ch.next<int>(10ms);
+    auto mismatch = ch.next<int>(timeout);
     EXPECT_FALSE(mismatch.has_value());
 
     // The message is still consumed by next_message / next
@@ -94,7 +100,8 @@ TEST(ChannelTest, BroadcastToMultipleSubscribers) {
     Channel b("test.broadcast");
     Channel c("test.other"); // different name – should not receive
 
-    Channel::post("test.broadcast", 7);
+    constexpr auto posted_value = 7;
+    Channel::post("test.broadcast", posted_value);
 
     EXPECT_EQ(a.size(), 1U);
     EXPECT_EQ(b.size(), 1U);
@@ -103,9 +110,9 @@ TEST(ChannelTest, BroadcastToMultipleSubscribers) {
     auto va = a.next<int>();
     auto vb = b.next<int>();
     ASSERT_TRUE(va.has_value());
-    EXPECT_EQ(*va, 7);
+    EXPECT_EQ(*va, posted_value);
     ASSERT_TRUE(vb.has_value());
-    EXPECT_EQ(*vb, 7);
+    EXPECT_EQ(*vb, posted_value);
     EXPECT_TRUE(c.empty());
 }
 
@@ -127,17 +134,19 @@ TEST(ChannelTest, DestructorRemovesSubscriber) {
 TEST(ChannelTest, WaitForeverAndConcurrentProducer) {
     Channel ch("test.concurrent");
     std::atomic<bool> producer_done{false};
+    constexpr auto block_wait_ms = 30;
+    constexpr auto posted_value = 55;
 
     std::thread producer([&] {
-        sleep_ms(30); // give the consumer a moment to block
-        Channel::post("test.concurrent", 55);
+        sleep_ms(block_wait_ms); // give the consumer a moment to block
+        Channel::post("test.concurrent", posted_value);
         producer_done = true;
     });
 
     // This blocks until the producer posts
     auto value = ch.next<int>(Channel::WaitForever);
     EXPECT_TRUE(value.has_value());
-    EXPECT_EQ(value, 55);
+    EXPECT_EQ(value, posted_value);
 
     // The producer sets producer_done after posting, so it is only certain to
     // be set once the producer has finished.
@@ -148,22 +157,26 @@ TEST(ChannelTest, WaitForeverAndConcurrentProducer) {
 TEST(ChannelTest, MultipleMessagesFifoOrder) {
     Channel ch("test.fifo");
 
-    Channel::post("test.fifo", 10);
-    Channel::post("test.fifo", 20);
-    Channel::post("test.fifo", 30);
+    constexpr auto first_value = 10;
+    constexpr auto second_value = 20;
+    constexpr auto third_value = 30;
+    Channel::post("test.fifo", first_value);
+    Channel::post("test.fifo", second_value);
+    Channel::post("test.fifo", third_value);
 
     EXPECT_EQ(ch.size(), 3U);
 
-    EXPECT_EQ(ch.next<int>(), 10);
-    EXPECT_EQ(ch.next<int>(), 20);
-    EXPECT_EQ(ch.next<int>(), 30);
+    EXPECT_EQ(ch.next<int>(), first_value);
+    EXPECT_EQ(ch.next<int>(), second_value);
+    EXPECT_EQ(ch.next<int>(), third_value);
     EXPECT_TRUE(ch.empty());
 }
 
 TEST(ChannelTest, MixedTypesAndToString) {
     Channel ch("test.mixed");
 
-    Channel::post("test.mixed", 42);
+    constexpr auto posted_value = 42;
+    Channel::post("test.mixed", posted_value);
     Channel::post("test.mixed", std::string("forty-two"));
 
     auto raw1 = ch.next_message();

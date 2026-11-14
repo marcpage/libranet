@@ -82,9 +82,10 @@ public:
 private:
     bool m_negative = false;
     std::vector<word_t> m_magnitude; // little-endian, no zero padding
+    static constexpr word_t decimal_base = 10;
 
     static_assert(sizeof(double_word_t) >= 2 * sizeof(word_t)
-                      || (sizeof(double_word_t) > sizeof(word_t) && sizeof(word_t) >= 8),
+                      || (sizeof(double_word_t) > sizeof(word_t) && sizeof(word_t) >= sizeof(std::uint64_t)),
                   "double_word_t must be wide enough to hold product/sum carries between words.");
     static_assert(sizeof(double_word_t) >= sizeof(unsigned long long),
                   "double_word_t must be at least as large as unsigned long long for safe conversions.");
@@ -395,7 +396,7 @@ inline Integer::Integer(long long value) {
         while (unsigned_value > 0) {
             m_magnitude.push_back(static_cast<word_t>(unsigned_value));
 
-            if constexpr (word_bits < 64) {
+            if constexpr (word_bits < std::numeric_limits<decltype(unsigned_value)>::digits) {
                 unsigned_value >>= word_bits;
             } else {
                 break;
@@ -407,7 +408,7 @@ inline Integer::Integer(long long value) {
         while (unsigned_value > 0) {
             m_magnitude.push_back(static_cast<word_t>(unsigned_value));
 
-            if constexpr (word_bits < 64) {
+            if constexpr (word_bits < std::numeric_limits<decltype(unsigned_value)>::digits) {
                 unsigned_value >>= word_bits;
             } else {
                 break;
@@ -442,7 +443,7 @@ inline Integer::Integer(const std::string& text) {
 
         for (std::size_t word_index = 0; word_index < m_magnitude.size(); ++word_index) {
             double_word_t temp =
-                static_cast<double_word_t>(m_magnitude[word_index]) * 10 + carry;
+                static_cast<double_word_t>(m_magnitude[word_index]) * decimal_base + carry;
 
             m_magnitude[word_index] = static_cast<word_t>(temp);
             carry = static_cast<word_t>(temp >> word_bits);
@@ -825,8 +826,8 @@ inline std::ostream& operator<<(std::ostream& out_stream, const Integer& value) 
             Integer::double_word_t cur =
                 (static_cast<Integer::double_word_t>(remainder) << Integer::word_bits) | temp[word_index];
 
-            temp[word_index] = static_cast<Integer::word_t>(cur / 10);
-            remainder = static_cast<Integer::word_t>(cur % 10);
+            temp[word_index] = static_cast<Integer::word_t>(cur / Integer::decimal_base);
+            remainder = static_cast<Integer::word_t>(cur % Integer::decimal_base);
         }
 
         digits.push_back(static_cast<char>('0' + remainder));

@@ -1,12 +1,12 @@
 #include <gtest/gtest.h>
-#include <string>
-#include <vector>
-#include <thread>
 #include <chrono>
 #include <stdexcept>
+#include <string>
+#include <thread>
+#include <vector>
 
-#include "SocketPosix.hpp"
-#include "Address.hpp"
+#include "net/Address.hpp"
+#include "net/SocketPosix.hpp"
 
 using namespace net;
 
@@ -97,7 +97,8 @@ TEST(SocketPosixTest, SendAndReceive) {
     EXPECT_EQ(sent, message.size());
 
     // Test receiving into a std::vector<std::byte>
-    std::vector<std::byte> buffer(64);
+    constexpr std::size_t buffer_bytes = 64;
+    std::vector<std::byte> buffer(buffer_bytes);
     bool success = peer->receive(buffer);
     EXPECT_TRUE(success);
 
@@ -186,7 +187,8 @@ TEST(SocketPosixTest, OperationsOnClosedSocket) {
     EXPECT_THROW(server->listen(1), std::logic_error);
     EXPECT_THROW((void)server->accept(), std::logic_error);
     EXPECT_THROW(server->send("test"), std::logic_error);
-    std::vector<std::byte> buf(10);
+    constexpr std::size_t buffer_bytes = 10;
+    std::vector<std::byte> buf(buffer_bytes);
     EXPECT_THROW((void)server->receive(buf), std::logic_error);
     EXPECT_THROW((void)server->local_address(), std::logic_error);
 }
