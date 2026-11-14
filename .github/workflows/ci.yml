@@ -83,10 +83,10 @@ jobs:
         run: uv run libranet --config examples/libranet.yaml --check-config
 
   # The C++ implementation, run from its own directory. It is built for
-  # Debug, instrumented for coverage, and for Release; the Debug build's
-  # tests are run. gcovr reads its settings, and the floor below which the
-  # job fails, from cpp/gcovr.cfg. The program itself is built but not run:
-  # it is to be a server.
+  # Debug, instrumented for coverage, for Release, and twice more for Debug
+  # with sanitizers; the tests of the Debug builds are run. gcovr reads its
+  # settings, and the floor below which the job fails, from cpp/gcovr.cfg.
+  # The program itself is built but not run: it is to be a server.
   cpp:
     name: C++ build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -127,8 +127,44 @@ jobs:
           cmake --preset conan-release
           cmake --build --preset conan-release
 
+      # AddressSanitizer and ThreadSanitizer cannot share a build, so each
+      # has one of its own, with UndefinedBehaviorSanitizer. On Linux,
+      # AddressSanitizer finds leaks too. Both use the Debug build's Conan
+      # files.
+      - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
+        run: |
+          cmake -S . -B build/address -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            --toolchain "$PWD/build/Debug/generators/conan_toolchain.cmake" \
+            -DLIBRANET_SANITIZERS=address,undefined
+          cmake --build build/address
+
+      - name: Build with ThreadSanitizer and UndefinedBehaviorSanitizer
+        run: |
+          cmake -S . -B build/thread -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            --toolchain "$PWD/build/Debug/generators/conan_toolchain.cmake" \
+            -DLIBRANET_SANITIZERS=thread,undefined
+          cmake --build build/thread
+
       - name: Test
         run: ctest --preset conan-debug --output-on-failure
+
+      # The sanitizers in older compilers, such as Ubuntu's GCC 13, can fail
+      # as a program starts when Linux spreads memory over 32 bits of random
+      # addresses, as Ubuntu 24.04 does. 28 bits was the default before.
+      - name: Address randomization the sanitizers can run with
+        if: runner.os == 'Linux'
+        run: sudo sysctl vm.mmap_rnd_bits=28
+
+      - name: Test with AddressSanitizer and UndefinedBehaviorSanitizer
+        env:
+          ASAN_OPTIONS: detect_stack_use_after_return=1
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: ctest --test-dir build/address --output-on-failure
+
+      - name: Test with ThreadSanitizer and UndefinedBehaviorSanitizer
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: ctest --test-dir build/thread --output-on-failure
 
       # gcov must match the compiler: GCC's on Ubuntu, LLVM's for Apple's
       # Clang on macOS.

@@ -41,6 +41,23 @@ if(LIBRANET_COVERAGE)
     add_link_options(--coverage)
 endif()
 
+# Sanitizers: configure a Debug build with LIBRANET_SANITIZERS set to what
+# -fsanitize= takes, such as "address,undefined" or "thread,undefined", and
+# run the tests. A finding fails the test it is in: AddressSanitizer and,
+# with -fno-sanitize-recover, UndefinedBehaviorSanitizer stop at the first,
+# and ThreadSanitizer exits with an error status.
+set(LIBRANET_SANITIZERS "" CACHE STRING
+    "Sanitizers to build with, as -fsanitize= takes them; empty for none")
+if(LIBRANET_SANITIZERS)
+    if(MSVC)
+        message(FATAL_ERROR "LIBRANET_SANITIZERS needs GCC or Clang")
+    endif()
+    add_compile_options(
+        -fsanitize=${LIBRANET_SANITIZERS} -fno-sanitize-recover=all
+        -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=${LIBRANET_SANITIZERS})
+endif()
+
 find_package(Threads REQUIRED)
 
 # Each library's tests use GoogleTest, which Conan provides. Configure

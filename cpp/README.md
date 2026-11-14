@@ -46,7 +46,8 @@ and `conan install` writes `CMakeUserPresets.json` here; git ignores both.
 
 CI builds the node and its tests on Ubuntu and macOS, for Debug and for
 Release, runs the Debug build's tests, and measures how much of the code
-they run; see [Coverage](#coverage).
+they run; see [Coverage](#coverage). It also runs the tests with
+sanitizers; see [Sanitizers](#sanitizers).
 
 ---
 
@@ -144,6 +145,55 @@ Clang on macOS. Each fails when coverage falls below the floor, and shows
 its totals in the run's summary. The two compilers count the same code and
 tests differently, by a little for lines and by a lot for branches, which
 is why only lines have a floor.
+
+---
+
+## Sanitizers
+
+Sanitizers check the code as the tests run it, and fail a test that does
+something the code must never do. Configuring with `LIBRANET_SANITIZERS`
+set to what `-fsanitize=` takes builds every target with them. Two builds
+cover all the sanitizers that can run here, since AddressSanitizer and
+ThreadSanitizer cannot share one:
+
+| Build | Finds |
+| ----- | ----- |
+| `address,undefined` | Reading or writing outside a buffer, use after free or after a variable's scope ends, double free; leaks, on Linux only; and undefined behavior, such as signed overflow, shifts out of range, and misaligned or null pointers |
+| `thread,undefined` | Data races, locks taken in orders that can deadlock, and undefined behavior |
+
+From this directory, each in a directory of its own beside the Debug
+build, whose Conan files it uses:
+
+```bash
+conan install . -s build_type=Debug --build=missing
+cmake -S . -B build/address -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  --toolchain "$PWD/build/Debug/generators/conan_toolchain.cmake" \
+  -DLIBRANET_SANITIZERS=address,undefined
+cmake --build build/address
+ASAN_OPTIONS=detect_stack_use_after_return=1 \
+  ctest --test-dir build/address --output-on-failure
+cmake -S . -B build/thread -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  --toolchain "$PWD/build/Debug/generators/conan_toolchain.cmake" \
+  -DLIBRANET_SANITIZERS=thread,undefined
+cmake --build build/thread
+ctest --test-dir build/thread --output-on-failure
+```
+
+`detect_stack_use_after_return=1` has AddressSanitizer also find a pointer
+to a function's local variable used after the function returns. The build
+stops a test at the first undefined behavior, as AddressSanitizer does at
+its first finding; ThreadSanitizer reports every race it sees, then fails
+the test.
+
+CI runs both builds' tests on Ubuntu, with GCC, and on macOS, with Apple's
+Clang. Others are left out:
+
+- MemorySanitizer, which finds reads of memory never set, needs every
+  library the tests use built with it too, the C++ standard library and
+  GoogleTest among them, and reports false findings otherwise. It also
+  needs Clang on Linux.
+- HWAddressSanitizer runs only on 64-bit ARM Linux.
+- Apple's Clang has no LeakSanitizer, so leaks are found only on Linux.
 
 ---
 
