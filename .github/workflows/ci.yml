@@ -82,7 +82,11 @@ jobs:
       - name: Example config validates
         run: uv run libranet --config examples/libranet.yaml --check-config
 
-  # The C++ implementation, run from its own directory.
+  # The C++ implementation, run from its own directory. It is built for
+  # Debug, instrumented for coverage, and for Release; the Debug build's
+  # tests are run. gcovr reads its settings, and the floor below which the
+  # job fails, from cpp/gcovr.cfg. The program itself is built but not run:
+  # it is to be a server.
   cpp:
     name: C++ build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -100,20 +104,53 @@ jobs:
         with:
           enable-cache: false
 
-      - name: Install Conan and Ninja
+      - name: Install Conan, Ninja, and gcovr
         run: |
           uv tool install "conan>=2,<3"
           uv tool install ninja
+          uv tool install "gcovr==8.*"
           uv tool dir --bin >> "$GITHUB_PATH"
 
       - name: Conan profile
         run: conan profile detect --exist-ok
 
-      - name: Build
-        run: conan build . --build=missing
+      - name: Build for Debug, with coverage
+        run: |
+          conan install . -s build_type=Debug --build=missing
+          cmake --preset conan-debug -DLIBRANET_COVERAGE=ON
+          cmake --build --preset conan-debug
 
-      - name: Run
-        run: ./build/Release/libranet
+      # Some warnings, such as GCC's -Wnull-dereference, need the optimizer.
+      - name: Build for Release
+        run: |
+          conan install . --build=missing
+          cmake --preset conan-release
+          cmake --build --preset conan-release
+
+      - name: Test
+        run: ctest --preset conan-debug --output-on-failure
+
+      # gcov must match the compiler: GCC's on Ubuntu, LLVM's for Apple's
+      # Clang on macOS.
+      - name: Coverage
+        env:
+          GCOV: ${{ runner.os == 'macOS' && 'xcrun llvm-cov gcov' || 'gcov' }}
+        run: >-
+          gcovr --txt --cobertura coverage.xml
+          --markdown-summary coverage.md
+          --markdown-title "C++ coverage (${{ matrix.os }})"
+
+      - name: Coverage summary
+        if: ${{ !cancelled() && hashFiles('cpp/coverage.md') != '' }}
+        run: cat coverage.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-cpp-${{ matrix.os }}
+          path: cpp/coverage.xml
+          if-no-files-found: ignore
 
   # clang-format and clang-tidy, at the LLVM version cpp/README.md names.
   # This job builds and tests nothing; the cpp jobs do that. clang-tidy reads

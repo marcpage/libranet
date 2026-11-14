@@ -44,7 +44,9 @@ For a debug build, pass `-s build_type=Debug` to `conan build`, and use the
 `conan-debug` preset. The build goes in `build/Release/` or `build/Debug/`,
 and `conan install` writes `CMakeUserPresets.json` here; git ignores both.
 
-CI builds the node, runs its tests, and runs it, on Ubuntu and macOS.
+CI builds the node and its tests on Ubuntu and macOS, for Debug and for
+Release, runs the Debug build's tests, and measures how much of the code
+they run; see [Coverage](#coverage).
 
 ---
 
@@ -89,6 +91,59 @@ tests by name:
 ```
 
 To build without the tests, configure with `-DBUILD_TESTING=OFF`.
+
+---
+
+## Coverage
+
+Coverage shows how much of the code the tests run. Configuring with
+`-DLIBRANET_COVERAGE=ON` builds every target with `--coverage`, so that
+running the tests writes the counts, and
+[gcovr](https://gcovr.com/) reports them. Install it with uv:
+
+```bash
+uv tool install gcovr
+```
+
+From this directory, build for Debug, so that the counts follow the code as
+written, then run the tests and report:
+
+```bash
+conan install . -s build_type=Debug --build=missing
+cmake --preset conan-debug -DLIBRANET_COVERAGE=ON
+cmake --build --preset conan-debug
+ctest --preset conan-debug
+gcovr
+```
+
+gcovr reads [`gcovr.cfg`](gcovr.cfg): it counts the code under `src/` but
+not the tests, lists the lines no test runs in each file, and exits with
+status 2 when the tests run less than 80% of the lines. Counts add up over
+runs; to start again, delete them with
+`find build/Debug -name '*.gcda' -delete`. CMake remembers the option, so
+the Debug build keeps measuring until configured with
+`-DLIBRANET_COVERAGE=OFF`.
+
+gcovr runs `gcov`, which must match the compiler. With GCC that is the
+default. With Clang, name LLVM's in its place, `llvm-cov gcov`; on macOS,
+with Apple's Clang:
+
+```bash
+GCOV="xcrun llvm-cov gcov" gcovr
+```
+
+For a page per file that marks each line:
+
+```bash
+mkdir -p build/coverage
+gcovr --html-details build/coverage/index.html
+```
+
+CI measures coverage in its Debug builds, with GCC on Ubuntu and Apple's
+Clang on macOS. Each fails when coverage falls below the floor, and shows
+its totals in the run's summary. The two compilers count the same code and
+tests differently, by a little for lines and by a lot for branches, which
+is why only lines have a floor.
 
 ---
 
