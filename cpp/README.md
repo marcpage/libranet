@@ -120,10 +120,43 @@ git ls-files -z '*.cpp' '*.h' '*.hpp' | xargs -0 clang-format -i
 run-clang-tidy.py -p build/Release -quiet
 ```
 
+[cppcheck](https://cppcheck.sourceforge.io/) checks the code as well, with
+every check it has, less those
+[`cppcheck-suppressions.txt`](cppcheck-suppressions.txt) turns off, in the
+same way as `.clang-tidy`. Some of those findings are on purpose or
+mistaken, and the file says which. A line there that matches no finding
+fails the check, so remove a check's lines once its places are clean.
+
+CI runs Cppcheck 2.22.0, which the PyPI package `cppcheck` 1.5.3 carries.
+Install the same:
+
+```bash
+uv tool install "cppcheck==1.5.3"
+```
+
+After a build, from this directory:
+
+```bash
+cppcheck --project=build/Release/compile_commands.json -D__linux__ \
+  --enable=all --inconclusive --check-level=exhaustive \
+  --library=googletest --inline-suppr \
+  --suppressions-list=cppcheck-suppressions.txt \
+  --error-exitcode=1 --quiet
+```
+
+cppcheck does not know the compiler's own macros, so `-D__linux__` names a
+platform, on macOS too; without one, `src/net/ISocket.cpp` stops at its
+`#error`. The POSIX code is the same on both.
+
 In CI, the lint job builds nothing: it configures with Clang on Ubuntu,
 because clang-tidy cannot read the GCC-only warning options in a GCC
-configuration's compile commands, and runs clang-tidy on what CMake writes.
-The other C++ jobs build and run the tests.
+configuration's compile commands, and runs clang-tidy and cppcheck on what
+CMake writes. The other C++ jobs build and run the tests.
+
+CI also runs [CodeQL](https://codeql.github.com/), GitHub's code scanning,
+on the C++ code as it builds it, and on the rest of the repository. Its
+alerts are in the repository's Security tab, and in a CodeQL check on each
+pull request.
 
 ---
 

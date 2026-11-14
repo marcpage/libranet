@@ -1,0 +1,108 @@
+# cppcheck runs every check it has (--enable=all, with --inconclusive), to
+# start as strict as possible, less those below:
+#
+# - findings that cannot apply here, and
+# - checks the code does not yet meet. These came with the code as it was
+#   on 2026-11-14. Each says how many places would need cleaning up, counted
+#   on macOS, and shows one of them. Some are noted as on purpose or
+#   mistaken; a `// cppcheck-suppress <id>` comment on the line before each
+#   such place lets the check back on everywhere else. Remove a check's
+#   lines once its places are clean: cppcheck fails on a suppression that
+#   matches nothing.
+
+# Cannot apply here.
+
+# cppcheck needs no standard library headers, and does not read those
+# included with -isystem, such as GoogleTest's.
+missingIncludeSystem
+# A count of the checkers that ran, not a finding.
+checkersReport
+
+# Not yet met by the code.
+
+# 2 to clean up (0 in library code, 2 in tests), such as
+# src/types/tests/TestBlockingQueue.cpp:52: Access of moved variable
+# 'first_text'.
+#     EXPECT_TRUE(first_text.empty()); // moved-from
+# On purpose: the test reads the strings after moving them, to see that push()
+# emptied them.
+accessMoved
+
+# 1 to clean up (0 in library code, 1 in tests), such as
+# src/msg/tests/TestMessage.cpp:78: Variable 'concrete' can be declared as
+# pointer to const
+#     auto* concrete = dynamic_cast<Message<int>*>(msg1.get());
+constVariablePointer
+
+# 4 to clean up (4 in library code, 0 in tests), such as
+# src/net/SocketPosix.cpp:164: The class 'SocketPosix' defines member function
+# with name 'bind' also defined in its parent class 'ISocket'.
+#     ISocket::Ptr SocketPosix::bind(const Address& address) {
+# On purpose: ISocket's static bind() and connect() call SocketPosix's.
+duplInheritedMember
+
+# 1 to clean up (1 in library code, 0 in tests), such as src/http/Url.hpp:104:
+# Return value of function escaped.fill() is not used.
+#     escaped.fill('0');
+# Mistaken: fill() returns the old fill character, which is not needed.
+ignoredReturnValue
+
+# 1 to clean up (1 in library code, 0 in tests), such as src/net/Address.hpp:12:
+# The class 'Address' does not declare a constructor although it has private
+# member variables which likely require initialization.
+#     class Address {
+# Mistaken: Address's constructor is defined after the class.
+noConstructor
+
+# 1 to clean up (1 in library code, 0 in tests), such as
+# src/http/ResponseCode.hpp:79: Class 'ResponseCode' has a constructor with 1
+# argument that is not explicit.
+#     ResponseCode(Status status, std::optional<std::string> custom_reason = ...
+# On purpose: a Status converts to a ResponseCode, as for clang-tidy.
+noExplicitConstructor
+
+# 1 to clean up (1 in library code, 0 in tests), such as src/http/Query.hpp:34:
+# Function 'items()' should return member 'm_parameters' by const reference.
+#     [[nodiscard]] std::vector<std::pair<std::string, std::string>> items() ...
+returnByReference
+
+# 5 to clean up (5 in library code, 0 in tests), such as src/types/Json.hpp:779:
+# Returning object that will be invalid when returning.
+#     return Json(parse_raw_string());
+# Mistaken: each Json constructor copies or moves its argument into the Json.
+returnDanglingLifetime
+
+# 19 to clean up (19 in library code, 0 in tests), such as
+# src/http/Request.hpp:71: Argument 'method' shadows outer function
+#     inline void Request::set_method(std::string method) {
+shadowFunction
+
+# 1 to clean up (1 in library code, 0 in tests), such as src/net/Address.hpp:28:
+# Member variable 'Address::m_port' has no initializer.
+#     Port m_port;
+# Mistaken: Address's constructor sets m_port.
+uninitMemberVarNoCtor
+
+# 7 to clean up (7 in library code, 0 in tests), such as
+# src/http/ResponseCode.hpp:150: The function 'is_informational' is never used.
+#     inline bool ResponseCode::is_informational() const noexcept {
+# Functions nothing calls yet, not even a test.
+unusedFunction
+
+# 1 to clean up (0 in library code, 1 in tests), such as
+# src/msg/tests/TestAsyncChannel.cpp:220: Instance of 'msg::AsyncChannel' object
+# is destroyed immediately.
+#     EXPECT_THROW(AsyncChannel("test.async.null", nullptr), std::invalid_arg...
+# On purpose: EXPECT_THROW constructs one to see it throw.
+unusedScopedObject
+
+# 1 to clean up (1 in library code, 0 in tests), such as src/http/Url.hpp:544:
+# Consider using std::transform algorithm instead of a raw loop.
+#     character = static_cast<char>(std::tolower(static_cast<unsigned char>(c...
+useStlAlgorithm
+
+# 11 to clean up (0 in library code, 11 in tests), such as
+# src/msg/tests/TestAsyncChannel.cpp:51: The scope of the variable 'received'
+# can be reduced.
+#     std::vector<std::string> received;
+variableScope
