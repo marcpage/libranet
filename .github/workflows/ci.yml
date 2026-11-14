@@ -115,6 +115,57 @@ jobs:
       - name: Run
         run: ./build/Release/libranet
 
+  # How much of the C++ code its tests run, from a Debug build instrumented
+  # for coverage. gcovr reads its settings, and the floor below which this
+  # job fails, from cpp/gcovr.cfg. GCC writes the data and Ubuntu's gcov,
+  # the default, matches it.
+  cpp-coverage:
+    name: C++ test coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: false
+
+      - name: Install Conan, Ninja, and gcovr
+        run: |
+          uv tool install "conan>=2,<3"
+          uv tool install ninja
+          uv tool install "gcovr==8.*"
+          uv tool dir --bin >> "$GITHUB_PATH"
+
+      - name: Conan profile
+        run: conan profile detect --exist-ok
+
+      - name: Build with coverage
+        run: |
+          conan install . -s build_type=Debug --build=missing
+          cmake --preset conan-debug -DLIBRANET_COVERAGE=ON
+          cmake --build --preset conan-debug
+
+      - name: Test
+        run: ctest --preset conan-debug --output-on-failure
+
+      - name: Coverage
+        run: gcovr --txt --cobertura coverage.xml --markdown-summary coverage.md
+
+      - name: Coverage summary
+        if: ${{ !cancelled() }}
+        run: cat coverage.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-cpp
+          path: cpp/coverage.xml
+          if-no-files-found: ignore
+
   # clang-format and clang-tidy, at the LLVM version cpp/README.md names.
   # This job builds and tests nothing; the cpp jobs do that. clang-tidy reads
   # the compile commands CMake writes when it configures, and cannot read the
