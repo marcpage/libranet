@@ -29,6 +29,18 @@ else()
         "$<$<CXX_COMPILER_ID:GNU>:-Wduplicated-cond;-Wduplicated-branches;-Wlogical-op>")
 endif()
 
+# Coverage: configure a Debug build with -DLIBRANET_COVERAGE=ON, run the
+# tests, and gcovr reports which lines they ran. GCC and Clang both write
+# the gcov data gcovr reads.
+option(LIBRANET_COVERAGE "Instrument the code to measure test coverage" OFF)
+if(LIBRANET_COVERAGE)
+    if(MSVC)
+        message(FATAL_ERROR "LIBRANET_COVERAGE needs GCC or Clang")
+    endif()
+    add_compile_options(--coverage)
+    add_link_options(--coverage)
+endif()
+
 find_package(Threads REQUIRED)
 
 # Each library's tests use GoogleTest, which Conan provides. Configure
