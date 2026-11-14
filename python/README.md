@@ -46,7 +46,9 @@ Before opening a pull request, please make sure `black`, `flake8`, `mypy`,
 `pylint`, and `pytest` all pass. CI runs the lint and type checks once, and
 the test suite on Ubuntu and macOS against Python 3.11 and 3.14. It also
 verifies that [`examples/libranet.yaml`](examples/libranet.yaml) still
-loads.
+loads. [CodeQL](https://codeql.github.com/), GitHub's code scanning, checks
+the code as well; its alerts are in the repository's Security tab, and in a
+CodeQL check on each pull request.
 
 The layout is one package per module area under
 [`src/libranet/`](src/libranet/), with a matching
