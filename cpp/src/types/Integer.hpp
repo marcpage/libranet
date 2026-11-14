@@ -212,7 +212,7 @@ inline unsigned Integer::get_normalization_shift(word_t high_word) noexcept {
     unsigned shift = 0;
 
     while ((high_word & (word_t(1) << (word_bits - 1))) == 0) {
-        high_word <<= 1;
+        high_word <<= 1U;
         ++shift;
     }
 
@@ -236,7 +236,7 @@ inline Integer::double_word_t Integer::calculate_estimated_quotient(
                              / divisor_high_word;
     }
 
-    const double_word_t max_word = static_cast<double_word_t>(~word_t(0));
+    const auto max_word = static_cast<double_word_t>(std::numeric_limits<word_t>::max());
 
     if (estimated_quotient > max_word) {
         estimated_quotient = max_word;
@@ -891,7 +891,7 @@ inline std::size_t Integer::bit_length() const noexcept {
     auto high = m_magnitude.back();
 
     while (high) {
-        high >>= 1;
+        high >>= 1U;
         ++bits;
     }
 

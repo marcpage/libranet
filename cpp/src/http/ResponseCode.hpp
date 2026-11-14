@@ -140,7 +140,7 @@ inline std::uint16_t ResponseCode::code() const noexcept {
 
 inline std::string_view ResponseCode::reason_phrase() const noexcept {
     if (m_custom_reason.has_value()) {
-        return m_custom_reason.value();
+        return *m_custom_reason;
     }
 
     return default_reason_phrase(m_status);

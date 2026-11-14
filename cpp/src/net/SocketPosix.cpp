@@ -190,7 +190,7 @@ ISocket::Ptr SocketPosix::connect(const Address& address) {
             continue;
         }
 
-        int result;
+        int result = -1;
 
         do {
             result = ::connect(fd, current->ai_addr, current->ai_addrlen);
@@ -212,7 +212,11 @@ SocketPosix::SocketPosix(int socket_fd) noexcept
     : m_socket_fd(socket_fd) {}
 
 SocketPosix::~SocketPosix() {
-    close();
+    // close() throws when ::close fails, which a destructor cannot report.
+    // The descriptor is released either way.
+    if (m_socket_fd >= 0) {
+        (void)::close(m_socket_fd);
+    }
 }
 
 void SocketPosix::listen(int backlog) {
@@ -224,7 +228,7 @@ void SocketPosix::listen(int backlog) {
 ISocket::Ptr SocketPosix::accept() {
     assert_condition<std::logic_error>(is_open(), "Cannot accept on a closed socket");
 
-    int fd;
+    int fd = -1;
 
     do {
         fd = ::accept(m_socket_fd, nullptr, nullptr);
@@ -245,7 +249,7 @@ std::size_t SocketPosix::send(std::string_view data) {
     const std::size_t count = data.size() > static_cast<std::size_t>(max_count)
                                   ? static_cast<std::size_t>(max_count)
                                   : data.size();
-    ssize_t byte_count;
+    ssize_t byte_count = -1;
 
     do {
         byte_count = ::send(m_socket_fd, data.data(), count, SEND_FLAGS);
@@ -267,7 +271,7 @@ bool SocketPosix::receive(std::vector<std::byte>& buffer) {
                            ? static_cast<std::size_t>(max_count)
                            : buffer.size();
 
-    ssize_t byte_count;
+    ssize_t byte_count = -1;
 
     do {
         byte_count = ::recv(m_socket_fd, buffer.data(), count, 0);

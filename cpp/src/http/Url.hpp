@@ -41,13 +41,13 @@ public:
     Url& operator=(Url&&) noexcept = default;
 
     std::string_view scheme() const noexcept;
-    std::string username() const noexcept;
-    std::string password() const noexcept;
+    std::string username() const;
+    std::string password() const;
     std::string_view host() const noexcept;
     std::optional<uint16_t> port() const noexcept;
-    std::optional<uint16_t> effective_port() const noexcept;
+    std::optional<uint16_t> effective_port() const;
     std::string path() const;
-    std::string fragment() const noexcept;
+    std::string fragment() const;
 
     const Query& query() const noexcept;
     Query& query() noexcept;
@@ -168,11 +168,11 @@ inline std::string_view Url::scheme() const noexcept {
     return m_scheme;
 }
 
-inline std::string Url::username() const noexcept {
+inline std::string Url::username() const {
     return decode(m_username, EncodeContext::UriComponent);
 }
 
-inline std::string Url::password() const noexcept {
+inline std::string Url::password() const {
     return decode(m_password, EncodeContext::UriComponent);
 }
 
@@ -184,7 +184,7 @@ inline std::optional<std::uint16_t> Url::port() const noexcept {
     return m_port;
 }
 
-inline std::optional<uint16_t> Url::effective_port() const noexcept {
+inline std::optional<uint16_t> Url::effective_port() const {
     const auto explicit_port = port();
 
     if (explicit_port.has_value()) {
@@ -215,7 +215,7 @@ inline std::string Url::path() const {
     return decode(m_path, EncodeContext::UriComponent);
 }
 
-inline std::string Url::fragment() const noexcept {
+inline std::string Url::fragment() const {
     return decode(m_fragment, EncodeContext::UriComponent);
 }
 
@@ -617,9 +617,9 @@ inline std::optional<uint16_t> Url::parse_port(std::string_view str) {
             return static_cast<uint16_t>(p);
         }
     } catch (const std::invalid_argument&) {
-        // Fallthrough on conversion error
+        return std::nullopt; // not a number
     } catch (const std::out_of_range&) {
-        // Fallthrough on conversion error
+        return std::nullopt; // too large for unsigned long
     }
 
     return std::nullopt;

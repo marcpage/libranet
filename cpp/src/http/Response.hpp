@@ -19,7 +19,7 @@ public:
     std::string_view version() const noexcept;
     ResponseCode code() const noexcept;
     int status_code() const noexcept;
-    std::string reason_phrase() const noexcept;
+    std::string reason_phrase() const;
 
     const Headers& headers() const noexcept;
     Headers& headers() noexcept;
@@ -51,7 +51,7 @@ inline int Response::status_code() const noexcept {
     return m_status.code();
 }
 
-inline std::string Response::reason_phrase() const noexcept {
+inline std::string Response::reason_phrase() const {
     return std::string(m_status.reason_phrase());
 }
 

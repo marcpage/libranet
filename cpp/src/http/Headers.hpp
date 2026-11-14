@@ -48,7 +48,7 @@ public:
     friend std::istream& operator>>(std::istream& in_stream, Headers& headers);
 
     static std::string_view trim_trailing_cr(std::string_view line) noexcept;
-    static std::string_view trim_whitespace(std::string_view text) noexcept;
+    static std::string_view trim_whitespace(std::string_view text);
     static bool is_continuation_line(std::string_view line) noexcept;
     static bool parse_header_line(std::string_view line, std::string& out_key,
                                   std::string& out_value);
@@ -238,7 +238,7 @@ inline std::string_view Headers::trim_trailing_cr(std::string_view line) noexcep
     return line;
 }
 
-inline std::string_view Headers::trim_whitespace(std::string_view text) noexcept {
+inline std::string_view Headers::trim_whitespace(std::string_view text) {
     const auto start = text.find_first_not_of(" \t\r\n");
 
     if (start == std::string_view::npos) {

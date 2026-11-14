@@ -459,16 +459,17 @@ inline void Json::escape_string(const std::string& str, std::ostringstream& out_
             case '\t': out_stream << "\\t"; break;
             default:
                 // Control characters, those below a space, are escaped.
-                constexpr unsigned char first_unescaped = 0x20;
+                constexpr unsigned first_unescaped = 0x20;
+                const unsigned code = static_cast<unsigned char>(character);
 
-                if (static_cast<unsigned char>(character) < first_unescaped) {
+                if (code < first_unescaped) {
                     out_stream << "\\u00";
 
                     const char hex[] = "0123456789abcdef";
-                    constexpr auto nibble_bits = 4;
-                    constexpr auto nibble_mask = 0xF;
+                    constexpr auto nibble_bits = 4U;
+                    constexpr auto nibble_mask = 0xFU;
 
-                    out_stream << hex[(character >> nibble_bits) & nibble_mask] << hex[character & nibble_mask];
+                    out_stream << hex[(code >> nibble_bits) & nibble_mask] << hex[code & nibble_mask];
                 } else {
                     out_stream << character;
                 }
@@ -518,7 +519,7 @@ inline void Json::serialize_array(const Array& the_array, std::ostringstream& ou
 
     const bool pretty = indent >= 0;
     const auto current = static_cast<std::string::size_type>(current_indent);
-    const auto indented = static_cast<std::string::size_type>(current_indent + indent);
+    const auto indented = current + static_cast<std::string::size_type>(indent);
     const auto indent_str = pretty ? std::string(current, ' ') : std::string();
     const auto next_indent_str = pretty ? std::string(indented, ' ') : std::string();
     const auto newline = pretty ? "\n" : "";
@@ -644,7 +645,7 @@ inline Json Json::Parser::parse_value() {
 
     switch (character) {
         case 'n': return parse_null();
-        case 't': return parse_boolean();
+        case 't':
         case 'f': return parse_boolean();
         case '"': return parse_string_value();
         case '[': return parse_array();
