@@ -44,9 +44,8 @@ For a debug build, pass `-s build_type=Debug` to `conan build`, and use the
 `conan-debug` preset. The build goes in `build/Release/` or `build/Debug/`,
 and `conan install` writes `CMakeUserPresets.json` here; git ignores both.
 
-CI builds the node, runs its tests, and runs it, on Ubuntu and macOS. It
-also measures how much of the code the tests run; see
-[Coverage](#coverage).
+CI builds the node and its tests on Ubuntu and macOS, runs the tests, and
+measures how much of the code they run; see [Coverage](#coverage).
 
 ---
 
@@ -139,10 +138,11 @@ mkdir -p build/coverage
 gcovr --html-details build/coverage/index.html
 ```
 
-CI measures coverage with GCC on Ubuntu, fails when it falls below the
-floor, and shows the totals in the run's summary. Clang counts the same
-code and tests differently, by a little for lines and by a lot for
-branches, which is why only lines have a floor.
+CI measures coverage in its Debug builds, with GCC on Ubuntu and Apple's
+Clang on macOS. Each fails when coverage falls below the floor, and shows
+its totals in the run's summary. The two compilers count the same code and
+tests differently, by a little for lines and by a lot for branches, which
+is why only lines have a floor.
 
 ---
 
