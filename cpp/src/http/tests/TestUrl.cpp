@@ -175,6 +175,25 @@ TEST(UrlTest, DecodeOnlyAcceptsTwoHexDigits) {
     EXPECT_EQ(Url::decode("%%41", false), "%A");
 }
 
+TEST(UrlTest, EncodeNonAsciiBytes) {
+    // "é" in UTF-8 is the bytes C3 A9, each encoded as two hex digits
+    const std::string e_acute = "\xC3\xA9";
+
+    EXPECT_EQ(Url::encode(e_acute, Url::EncodeContext::UriComponent), "%C3%A9");
+    EXPECT_EQ(Url::encode(e_acute, Url::EncodeContext::FormUrl), "%C3%A9");
+    EXPECT_EQ(Url::encode("caf\xC3\xA9 au lait"), "caf%C3%A9+au+lait");
+    EXPECT_EQ(Url::encode("\x80\xFF\x01", "", false), "%80%FF%01");
+
+    // Encoded bytes decode back to the original
+    EXPECT_EQ(Url::decode(Url::encode(e_acute)), e_acute);
+
+    // A path is encoded the same way
+    Url url;
+    url.set_path("/caf\xC3\xA9");
+    EXPECT_EQ(url.to_string(), "/caf%C3%A9");
+    EXPECT_EQ(url.path(), "/caf\xC3\xA9");
+}
+
 TEST(UrlTest, TransparentComponentEncoding) {
     Url url;
     url.set_path("/my folder/sub folder/file.txt");

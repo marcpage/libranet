@@ -106,19 +106,23 @@ inline std::string Url::encode(std::string_view value, std::string_view allowed_
     escaped << std::hex;
 
     for (const auto character : value) {
+        // Bytes above 0x7F are negative in a signed char, so they go through
+        // unsigned char before std::isalnum and before printing as hex.
+        const auto byte = static_cast<unsigned char>(character);
+
         if (character == ' ') {
             if (space_to_plus) {
                 escaped << '+';
             } else {
                 escaped << "%20";
             }
-        } else if (std::isalnum(character) != 0
+        } else if (std::isalnum(byte) != 0
                    || allowed_chars.find(character) != std::string_view::npos) {
             // Keep character as-is if it's alphanumeric or explicitly allowed
             escaped << character;
         } else {
             escaped << '%' << std::uppercase
-                    << std::setw(2) << static_cast<int>(character);
+                    << std::setw(2) << static_cast<int>(byte);
         }
     }
 
