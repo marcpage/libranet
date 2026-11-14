@@ -217,3 +217,28 @@ TEST(JsonTest, ParseValues) {
     EXPECT_EQ(Json::parse("[1,2]").dump(), "[1,2]");
     EXPECT_EQ(Json::parse(R"({"key":"value"})").dump(), R"({"key":"value"})");
 }
+
+TEST(JsonTest, NumbersOutOfRange) {
+    // Too large for a 64-bit integer, and too large for a double.
+    EXPECT_THROW((void)Json::parse("99999999999999999999"), std::invalid_argument);
+    EXPECT_THROW((void)Json::parse("1e999"), std::invalid_argument);
+}
+
+TEST(JsonTest, NestingLimit) {
+    constexpr std::size_t deepest = 128;
+
+    const std::string deepest_arrays = std::string(deepest, '[') + std::string(deepest, ']');
+    EXPECT_EQ(Json::parse(deepest_arrays).dump().size(), 2 * deepest);
+
+    const std::string deeper_arrays =
+        std::string(deepest + 1, '[') + std::string(deepest + 1, ']');
+    EXPECT_THROW((void)Json::parse(deeper_arrays), std::invalid_argument);
+
+    // Objects count as levels too.
+    std::string deeper_objects;
+    for (std::size_t level = 0; level <= deepest; ++level) {
+        deeper_objects += R"({"a":)";
+    }
+    deeper_objects += "null" + std::string(deepest + 1, '}');
+    EXPECT_THROW((void)Json::parse(deeper_objects), std::invalid_argument);
+}

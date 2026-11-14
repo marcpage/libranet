@@ -118,8 +118,13 @@ private:
         Json parse();
 
     private:
+        // Arrays and objects may hold each other this deep, and no deeper:
+        // each level parsed takes stack, and the input may come from anyone.
+        static constexpr std::size_t max_depth = 128;
+
         std::string_view m_input;
         std::size_t m_cursor = 0;
+        std::size_t m_depth = 0;
 
         void skip_whitespace() noexcept;
         [[nodiscard]] char peek() const noexcept;
@@ -181,7 +186,7 @@ inline Json::Json(Object value)
     : m_data(std::move(value)) {}
 
 inline Json::Json(std::initializer_list<Json> arguments) {
-    if (arguments.size() <= 0) {
+    if (arguments.size() == 0) {
         return;
     }
 
@@ -652,8 +657,17 @@ inline Json Json::Parser::parse_value() {
         case 't':
         case 'f': return parse_boolean();
         case '"': return parse_string_value();
-        case '[': return parse_array();
-        case '{': return parse_object();
+        case '[':
+        case '{': {
+            if (m_depth >= max_depth) {
+                throw std::invalid_argument("Json::parse: arrays and objects nested too deeply");
+            }
+
+            ++m_depth;
+            Json value = character == '[' ? parse_array() : parse_object();
+            --m_depth;
+            return value;
+        }
         case '-': return parse_number();
         default:
             if (is_digit(character)) {
@@ -732,11 +746,15 @@ inline Json Json::Parser::parse_number() {
 
     const std::string num_str(m_input.substr(start, m_cursor - start));
 
-    if (is_float_num) {
-        return Json(std::stod(num_str));
-    }
+    try {
+        if (is_float_num) {
+            return Json(std::stod(num_str));
+        }
 
-    return Json(static_cast<std::int64_t>(std::stoll(num_str)));
+        return Json(static_cast<std::int64_t>(std::stoll(num_str)));
+    } catch (const std::out_of_range&) {
+        throw std::invalid_argument("Json::parse: number out of range");
+    }
 }
 
 inline std::string Json::Parser::parse_raw_string() {

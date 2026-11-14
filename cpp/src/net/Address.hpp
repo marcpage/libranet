@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -44,8 +45,19 @@ inline Address Address::parse(std::string_view endpoint) {
         host = host.substr(1, host.size() - 2);
     }
 
-    const Port port = static_cast<Port>(std::stoi(std::string(port_str)));
-    return {host, port};
+    int port_number = 0;
+
+    try {
+        port_number = std::stoi(std::string(port_str));
+    } catch (const std::out_of_range&) {
+        throw std::invalid_argument("Invalid address format, port out of range");
+    }
+
+    if (port_number < 0 || port_number > std::numeric_limits<Port>::max()) {
+        throw std::invalid_argument("Invalid address format, port out of range");
+    }
+
+    return {host, static_cast<Port>(port_number)};
 }
 
 inline Address::Address(std::string_view host, Port port)

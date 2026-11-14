@@ -13,3 +13,7 @@ if(BUILD_TESTING)
     target_link_libraries(net_tests PRIVATE libranet::net GTest::gtest_main)
     gtest_discover_tests(net_tests)
 endif()
+
+if(LIBRANET_FUZZERS)
+    libranet_add_fuzzer(address_fuzzer fuzz/FuzzAddress.cpp libranet::net)
+endif()

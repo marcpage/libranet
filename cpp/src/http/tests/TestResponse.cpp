@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <cstddef>
 #include <sstream>
 #include <string>
 
@@ -85,6 +86,38 @@ TEST(ResponseTest, StreamParsingAndBody) {
     EXPECT_EQ(res.headers().get("content-type"), "text/plain");
     EXPECT_EQ(res.headers().get("content-length"), "12");
     EXPECT_EQ(res.body(), "Hello World!");
+}
+
+TEST(ResponseTest, ContentLengthBeyondStream) {
+    // A length far past what arrives fails the stream, without first taking
+    // that much memory.
+    std::istringstream iss(
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 99999999999\r\n"
+        "\r\n"
+        "partial");
+
+    Response res;
+    iss >> res;
+
+    EXPECT_TRUE(iss.fail());
+    EXPECT_EQ(res.body(), "partial");
+}
+
+TEST(ResponseTest, BodyLongerThanOnePiece) {
+    constexpr std::size_t body_bytes = 100000;
+    const std::string body(body_bytes, 'x');
+    std::istringstream iss(
+        std::string("HTTP/1.1 200 OK\r\n")
+        + "Content-Length: " + std::to_string(body_bytes) + "\r\n"
+        + "\r\n"
+        + body);
+
+    Response res;
+    iss >> res;
+
+    EXPECT_FALSE(iss.fail());
+    EXPECT_EQ(res.body(), body);
 }
 
 TEST(ResponseTest, Serialization) {

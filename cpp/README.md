@@ -54,7 +54,8 @@ sanitizers; see [Sanitizers](#sanitizers).
 ## Layout
 
 The code is in libraries, one for each directory under [`src/`](src/), with
-each library's tests in a `tests/` directory within it:
+each library's tests in a `tests/` directory within it, and fuzzers for its
+parsers in `fuzz/`:
 
 | Directory | Library | What it holds |
 | ------------------------- | ---------------- | ------------------------------------------------------------- |
@@ -93,6 +94,14 @@ tests by name:
 
 To build without the tests, configure with `-DBUILD_TESTING=OFF`.
 
+In Debug builds, the C++ standard library checks what it is asked to do: an
+index past a container's size, the front of an empty container, or the
+value of an empty `optional` stops the program, where a Release build would
+go on with whatever memory is there. CMake turns this on with
+`_GLIBCXX_ASSERTIONS` for GCC's library, and
+`_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE` for LLVM's, which
+Apple's Clang uses. CI runs the tests in Debug builds.
+
 ---
 
 ## Coverage
@@ -119,7 +128,7 @@ gcovr
 
 gcovr reads [`gcovr.cfg`](gcovr.cfg): it counts the code under `src/` but
 not the tests, lists the lines no test runs in each file, and exits with
-status 2 when the tests run less than 80% of the lines. Counts add up over
+status 2 when the tests run less than 84% of the lines. Counts add up over
 runs; to start again, delete them with
 `find build/Debug -name '*.gcda' -delete`. CMake remembers the option, so
 the Debug build keeps measuring until configured with
@@ -203,6 +212,56 @@ Clang. Others are left out:
 
 ---
 
+## Fuzzing
+
+A fuzzer gives a parser inputs that
+[libFuzzer](https://llvm.org/docs/LibFuzzer.html) makes up, keeps each one
+that reaches code no earlier input reached, and makes more from those. Each parser of text from outside has one, in its
+library's `fuzz/` directory, which knows how the parser turns down input it
+cannot read:
+
+| Fuzzer | Parser | Turns down bad input with |
+| ------ | ------ | ------------------------- |
+| `json_fuzzer` | `Json::parse` | `std::invalid_argument` |
+| `integer_fuzzer` | `Integer` from text | `std::invalid_argument` |
+| `url_fuzzer` | `Url::parse` | an empty `optional` |
+| `query_fuzzer` | `Query::parse` | nothing: it takes any text |
+| `headers_fuzzer` | reading `Headers` | `std::runtime_error` or `std::invalid_argument` |
+| `request_fuzzer` | reading a `Request` | a failed stream, or as `Headers` does |
+| `response_fuzzer` | reading a `Response` | a failed stream, or as `Headers` does |
+| `address_fuzzer` | `Address::parse` | `std::invalid_argument` |
+
+Anything else a parser does with an input is a fault: crashing, hanging,
+leaking, a finding of AddressSanitizer or UndefinedBehaviorSanitizer, a
+failed standard library check, using gigabytes of memory, or throwing
+anything but its own error.
+
+libFuzzer comes with LLVM's Clang, but not with Apple's. On macOS, install
+LLVM with `brew install llvm` and build with its Clang; on Linux, use
+`clang` and `clang++`. The fuzzers build without the tests, so they need
+nothing from Conan. From this directory:
+
+```bash
+CC=/opt/homebrew/opt/llvm/bin/clang CXX=/opt/homebrew/opt/llvm/bin/clang++ \
+  cmake -S . -B build/fuzz -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DBUILD_TESTING=OFF -DLIBRANET_FUZZERS=ON \
+  -DLIBRANET_SANITIZERS=address,undefined
+cmake --build build/fuzz
+./build/fuzz/src/types/json_fuzzer -max_total_time=60
+```
+
+A fuzzer that finds a fault stops, and saves the input that caused it in
+the current directory, in a file named for the kind of fault, such as
+`crash-` and a hash. To run the parser on that input again, give the file to
+the fuzzer in place of `-max_total_time=60`.
+
+CI fuzzes on Ubuntu: all the fuzzers run at once, for two minutes, and the
+job fails on any fault, with the inputs that caused it uploaded as
+`fuzz-findings`. Each run starts afresh; no inputs are kept from one run to
+the next.
+
+---
+
 ## Checking
 
 clang-format keeps the code in one layout, set in
@@ -261,8 +320,9 @@ platform, on macOS too; without one, `src/net/ISocket.cpp` stops at its
 
 In CI, the lint job builds nothing: it configures with Clang on Ubuntu,
 because clang-tidy cannot read the GCC-only warning options in a GCC
-configuration's compile commands, and runs clang-tidy and cppcheck on what
-CMake writes. The other C++ jobs build and run the tests.
+configuration's compile commands, and with the fuzzers, so their code is
+checked too. It runs clang-tidy and cppcheck on what CMake writes. The other
+C++ jobs build and run the tests.
 
 CI also runs [CodeQL](https://codeql.github.com/), GitHub's code scanning,
 on the C++ code as it builds it, and on the rest of the repository. Its

@@ -180,16 +180,7 @@ inline std::istream& operator>>(std::istream& in_stream, Response& response) {
         return in_stream;
     }
 
-    if (body_length > 0) {
-        response.m_body.resize(body_length);
-        in_stream.read(response.m_body.data(), static_cast<std::streamsize>(body_length));
-
-        if (static_cast<std::size_t>(in_stream.gcount()) != body_length) {
-            in_stream.setstate(std::ios_base::failbit);
-        }
-    } else {
-        response.m_body.clear();
-    }
+    Headers::read_body(in_stream, body_length, response.m_body);
 
     return in_stream;
 }

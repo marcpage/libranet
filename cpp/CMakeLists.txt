@@ -29,6 +29,17 @@ else()
         "$<$<CXX_COMPILER_ID:GNU>:-Wduplicated-cond;-Wduplicated-branches;-Wlogical-op>")
 endif()
 
+# In Debug builds, the ones the tests run in, the C++ standard library
+# checks bounds and preconditions, such as an index past a vector's size or
+# reading an empty optional, and stops the program when one fails. Each
+# library reads only its own setting: _GLIBCXX_ASSERTIONS for GCC's
+# libstdc++, _LIBCPP_HARDENING_MODE for LLVM's libc++, which Apple's Clang
+# uses. Neither changes the library's ABI, so prebuilt GoogleTest still
+# links.
+add_compile_definitions(
+    "$<$<CONFIG:Debug>:_GLIBCXX_ASSERTIONS>"
+    "$<$<CONFIG:Debug>:_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE>")
+
 # Coverage: configure a Debug build with -DLIBRANET_COVERAGE=ON, run the
 # tests, and gcovr reports which lines they ran. GCC and Clang both write
 # the gcov data gcovr reads.
@@ -57,6 +68,24 @@ if(LIBRANET_SANITIZERS)
         -fno-omit-frame-pointer)
     add_link_options(-fsanitize=${LIBRANET_SANITIZERS})
 endif()
+
+# Fuzzers: configure with -DLIBRANET_FUZZERS=ON to build a libFuzzer program
+# for each parser, from each library's fuzz/ directory. libFuzzer feeds the
+# parser inputs it makes up, keeping those that reach new code; built with
+# LIBRANET_SANITIZERS=address,undefined, it stops at the first fault.
+# libFuzzer comes with LLVM's Clang, but not with Apple's.
+option(LIBRANET_FUZZERS "Build a libFuzzer program for each parser" OFF)
+if(LIBRANET_FUZZERS AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    message(FATAL_ERROR "LIBRANET_FUZZERS needs LLVM's Clang")
+endif()
+
+# A fuzzer: one source file, with the libraries it uses.
+function(libranet_add_fuzzer name source)
+    add_executable(${name} ${source})
+    target_link_libraries(${name} PRIVATE ${ARGN})
+    target_compile_options(${name} PRIVATE -fsanitize=fuzzer)
+    target_link_options(${name} PRIVATE -fsanitize=fuzzer)
+endfunction()
 
 find_package(Threads REQUIRED)
 

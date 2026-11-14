@@ -84,9 +84,10 @@ jobs:
 
   # The C++ implementation, run from its own directory. It is built for
   # Debug, instrumented for coverage, for Release, and twice more for Debug
-  # with sanitizers; the tests of the Debug builds are run. gcovr reads its
-  # settings, and the floor below which the job fails, from cpp/gcovr.cfg.
-  # The program itself is built but not run: it is to be a server.
+  # with sanitizers; the tests of the Debug builds are run. On Ubuntu, its
+  # parsers are fuzzed as well. gcovr reads its settings, and the floor below
+  # which the job fails, from cpp/gcovr.cfg. The program itself is built but
+  # not run: it is to be a server.
   cpp:
     name: C++ build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -147,6 +148,20 @@ jobs:
             -DLIBRANET_SANITIZERS=thread
           cmake --build build/thread
 
+      # libFuzzer comes with LLVM's Clang, which Ubuntu has, and not with
+      # Apple's, so only Ubuntu fuzzes. The fuzzers build without the tests,
+      # so they need nothing from Conan.
+      - name: Build fuzzers
+        if: runner.os == 'Linux'
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -S . -B build/fuzz -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTING=OFF -DLIBRANET_FUZZERS=ON \
+            -DLIBRANET_SANITIZERS=address,undefined
+          cmake --build build/fuzz
+
       - name: Test
         run: ctest --preset conan-debug --output-on-failure
 
@@ -165,6 +180,48 @@ jobs:
 
       - name: Test with ThreadSanitizer
         run: ctest --test-dir build/thread --output-on-failure
+
+      # Every fuzzer runs for two minutes, all at once. One that finds a
+      # fault stops, shows the end of its log here, and saves the input that
+      # caused it in build/fuzz/findings/, which the next step uploads.
+      - name: Fuzz
+        if: runner.os == 'Linux'
+        env:
+          ASAN_OPTIONS: detect_stack_use_after_return=1
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: |
+          mkdir -p build/fuzz/findings
+          names=()
+          pids=()
+          for fuzzer in build/fuzz/src/*/*_fuzzer; do
+            name=$(basename "$fuzzer")
+            mkdir -p "build/fuzz/corpus/$name"
+            "$fuzzer" -max_total_time=120 -timeout=10 \
+              -artifact_prefix="build/fuzz/findings/$name-" \
+              "build/fuzz/corpus/$name" > "build/fuzz/$name.log" 2>&1 &
+            names+=("$name")
+            pids+=("$!")
+          done
+          failed=0
+          for index in "${!pids[@]}"; do
+            name=${names[$index]}
+            if wait "${pids[$index]}"; then
+              echo "$name: no faults"
+            else
+              echo "::error::$name found a fault"
+              tail -n 60 "build/fuzz/$name.log"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+      - name: Upload fuzzing findings
+        if: ${{ failure() && runner.os == 'Linux' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: fuzz-findings
+          path: cpp/build/fuzz/findings/
+          if-no-files-found: ignore
 
       # gcov must match the compiler: GCC's on Ubuntu, LLVM's for Apple's
       # Clang on macOS.
@@ -192,8 +249,9 @@ jobs:
   # This job builds and tests nothing; the cpp jobs do that. clang-tidy reads
   # the compile commands CMake writes when it configures, and cannot read the
   # GCC-only warning options of a GCC configuration, so this job configures
-  # with Clang. cppcheck, at the version cpp/README.md names, reads the same
-  # compile commands.
+  # with Clang, and with the fuzzers, so that both check their code too.
+  # cppcheck, at the version cpp/README.md names, reads the same compile
+  # commands.
   cpp-lint:
     name: C++ format, clang-tidy, and cppcheck
     runs-on: ubuntu-latest
@@ -228,7 +286,7 @@ jobs:
       - name: Configure
         run: |
           conan install . --build=missing
-          cmake --preset conan-release
+          cmake --preset conan-release -DLIBRANET_FUZZERS=ON
 
       - name: clang-tidy
         run: run-clang-tidy.py -p build/Release -quiet
