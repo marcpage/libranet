@@ -51,7 +51,7 @@ TEST(BlockingQueueTest, MoveSemantics) {
     ASSERT_TRUE(opt.has_value());
     EXPECT_EQ(*opt, "hello");
 
-    std::string result = q.pop(); // move out
+    const std::string result = q.pop(); // move out
     EXPECT_EQ(result, "world");
 }
 
@@ -84,7 +84,7 @@ TEST(BlockingQueueTest, CapacityAndTimeouts) {
     EXPECT_TRUE(q.empty());
 
     // Timed pop on empty queue must time out
-    auto empty = q.pop_ms_timeout(empty_pop_timeout);
+    const auto empty = q.pop_ms_timeout(empty_pop_timeout);
     EXPECT_FALSE(empty.has_value());
 }
 
@@ -144,7 +144,7 @@ TEST(BlockingQueueTest, ProducerConsumer) {
     });
 
     // Two consumers
-    auto consumer_fn = [&] {
+    const auto consumer_fn = [&] {
         while (consumed.load(std::memory_order_relaxed) < num_items) {
             auto item = q.pop_ms_timeout(pop_timeout);
             if (item) {

@@ -57,7 +57,7 @@ std::optional<Type> Channel::next(Milliseconds timeout) {
         return std::nullopt;
     }
 
-    auto* typed = dynamic_cast<Message<Type>*>(message->get());
+    const auto* typed = dynamic_cast<Message<Type>*>(message->get());
 
     if (!typed) {
         return std::nullopt; // type mismatch

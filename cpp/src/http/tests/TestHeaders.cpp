@@ -55,9 +55,9 @@ TEST(HeadersTest, EqualityAndSerialization) {
     EXPECT_TRUE(h1 != h2);
 
     // Test serialization output format
-    std::string serialized = h1.to_string();
+    const std::string serialized = h1.to_string();
     // Headers are stored in sorted order due to std::map
-    std::string expected = "Content-Length: 1024\r\nServer: CustomCppServer\r\n\r\n";
+    const std::string expected = "Content-Length: 1024\r\nServer: CustomCppServer\r\n\r\n";
     EXPECT_EQ(serialized, expected);
 }
 
@@ -120,11 +120,11 @@ TEST(HeadersTest, HelperUtilities) {
     // Parse single header line
     std::string key;
     std::string value;
-    bool success = Headers::parse_header_line("Content-Type:   text/html ", key, value);
+    const bool success = Headers::parse_header_line("Content-Type:   text/html ", key, value);
     EXPECT_TRUE(success);
     EXPECT_EQ(key, "Content-Type");
     EXPECT_EQ(value, "text/html");
 
-    bool fail_success = Headers::parse_header_line("InvalidLine", key, value);
+    const bool fail_success = Headers::parse_header_line("InvalidLine", key, value);
     EXPECT_FALSE(fail_success);
 }

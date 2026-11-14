@@ -38,21 +38,21 @@ TEST(ResponseTest, ParseStatusLine) {
     Response res;
 
     // Valid status line with reason phrase
-    bool success = res.parse_status_line("HTTP/1.1 200 OK\r\n");
+    const bool success = res.parse_status_line("HTTP/1.1 200 OK\r\n");
     EXPECT_TRUE(success);
     EXPECT_EQ(res.version(), "HTTP/1.1");
     EXPECT_EQ(res.status_code(), 200);
     EXPECT_EQ(res.reason_phrase(), "OK");
 
     // Valid status line without reason phrase
-    bool success_no_reason = res.parse_status_line("HTTP/1.1 500");
+    const bool success_no_reason = res.parse_status_line("HTTP/1.1 500");
     EXPECT_TRUE(success_no_reason);
     EXPECT_EQ(res.version(), "HTTP/1.1");
     EXPECT_EQ(res.status_code(), 500);
     EXPECT_TRUE(res.reason_phrase().empty());
 
     // Valid status line with extra spacing
-    bool success_spaced = res.parse_status_line("   HTTP/1.1   403   Forbidden   ");
+    const bool success_spaced = res.parse_status_line("   HTTP/1.1   403   Forbidden   ");
     EXPECT_TRUE(success_spaced);
     EXPECT_EQ(res.version(), "HTTP/1.1");
     EXPECT_EQ(res.status_code(), 403);
@@ -97,10 +97,10 @@ TEST(ResponseTest, Serialization) {
     res.set_reason_phrase("Created");
     res.headers().set("Connection", "close");
 
-    std::string serialized = res.to_string();
+    const std::string serialized = res.to_string();
 
     // Status line + headers + blank line + body (empty)
-    std::string expected =
+    const std::string expected =
         "HTTP/1.1 201 Created\r\n"
         "Connection: close\r\n"
         "\r\n";

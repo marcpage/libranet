@@ -128,7 +128,7 @@ inline std::string Url::encode(std::string_view value, EncodeContext context) {
     // RFC 3986 Section 2.3 Unreserved characters
     constexpr std::string_view unreserved = "-_.~";
 
-    bool space_to_plus = (context == EncodeContext::FormUrl);
+    const bool space_to_plus = (context == EncodeContext::FormUrl);
     return encode(value, unreserved, space_to_plus);
 }
 
@@ -160,7 +160,7 @@ inline std::string Url::decode(std::string_view value, bool decode_plus_as_space
 }
 
 inline std::string Url::decode(std::string_view value, EncodeContext context) {
-    bool decode_plus = (context == EncodeContext::FormUrl);
+    const bool decode_plus = (context == EncodeContext::FormUrl);
     return decode(value, decode_plus);
 }
 

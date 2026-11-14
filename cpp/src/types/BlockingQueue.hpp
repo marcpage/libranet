@@ -135,13 +135,13 @@ std::optional<T> BlockingQueue<T>::pop_ms_timeout(Milliseconds timeout) {
 
 template<typename T>
 size_t BlockingQueue<T>::size() const {
-    std::scoped_lock lock(m_mutex);
+    const std::scoped_lock lock(m_mutex);
     return m_queue.size();
 }
 
 template<typename T>
 bool BlockingQueue<T>::empty() const {
-    std::scoped_lock lock(m_mutex);
+    const std::scoped_lock lock(m_mutex);
     return m_queue.empty();
 }
 

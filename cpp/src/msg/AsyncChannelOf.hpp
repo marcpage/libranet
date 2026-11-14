@@ -41,7 +41,7 @@ inline void AsyncChannelOf<Type>::_handle(const IMessage::Ptr &message) {
         return;
     }
 
-    if (auto *typed = dynamic_cast<Message<Type> *>(message.get())) {
+    if (const auto *typed = dynamic_cast<Message<Type> *>(message.get())) {
         m_type_callback(typed->value());
         return;
     }

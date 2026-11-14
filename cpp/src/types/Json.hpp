@@ -691,7 +691,7 @@ inline Json Json::Parser::parse_boolean() {
 }
 
 inline Json Json::Parser::parse_number() {
-    std::size_t start = m_cursor;
+    const std::size_t start = m_cursor;
 
     if (peek() == '-') {
         ++m_cursor;
@@ -726,7 +726,7 @@ inline Json Json::Parser::parse_number() {
         }
     }
 
-    std::string num_str(m_input.substr(start, m_cursor - start));
+    const std::string num_str(m_input.substr(start, m_cursor - start));
 
     if (is_float_num) {
         return Json(std::stod(num_str));
@@ -741,14 +741,14 @@ inline std::string Json::Parser::parse_raw_string() {
     std::string result;
 
     while (m_cursor < m_input.size()) {
-        char character = get();
+        const char character = get();
 
         if (character == '"') {
             return result;
         }
 
         if (character == '\\') {
-            char esc = get();
+            const char esc = get();
 
             switch (esc) {
                 case '"': result += '"'; break;

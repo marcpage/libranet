@@ -12,7 +12,7 @@ using namespace types;
 
 TEST(JsonTest, ConstructorsAndTypes) {
     // Default constructor (null state)
-    Json null_val;
+    const Json null_val;
     EXPECT_TRUE(null_val.is_null());
     EXPECT_FALSE(null_val.is_boolean());
     EXPECT_FALSE(null_val.is_number());
@@ -21,12 +21,12 @@ TEST(JsonTest, ConstructorsAndTypes) {
     EXPECT_FALSE(null_val.is_object());
 
     // Explicit nullptr constructor
-    Json explicit_null(nullptr);
+    const Json explicit_null(nullptr);
     EXPECT_TRUE(explicit_null.is_null());
 
     // Boolean constructors
-    Json b_true(true);
-    Json b_false(false);
+    const Json b_true(true);
+    const Json b_false(false);
     EXPECT_TRUE(b_true.is_boolean());
     EXPECT_TRUE(b_true.boolean());
     EXPECT_FALSE(b_false.boolean());
@@ -35,9 +35,9 @@ TEST(JsonTest, ConstructorsAndTypes) {
     constexpr auto int_value = 42;
     constexpr int64_t int64_value = -9223372036854775807LL;
     constexpr auto double_value = 3.14159;
-    Json int_val(int_value);
-    Json int64_val(int64_value);
-    Json double_val(double_value);
+    const Json int_val(int_value);
+    const Json int64_val(int64_value);
+    const Json double_val(double_value);
 
     EXPECT_TRUE(int_val.is_number());
     EXPECT_TRUE(int64_val.is_number());
@@ -46,9 +46,9 @@ TEST(JsonTest, ConstructorsAndTypes) {
     EXPECT_DOUBLE_EQ(double_val.real(), double_value);
 
     // String constructors (const char* and std::string)
-    Json str_val("Hello, World!");
-    std::string text = "C++17 JSON";
-    Json str_obj_val(text);
+    const Json str_val("Hello, World!");
+    const std::string text = "C++17 JSON";
+    const Json str_obj_val(text);
 
     EXPECT_TRUE(str_val.is_string());
     EXPECT_TRUE(str_obj_val.is_string());
@@ -121,7 +121,7 @@ TEST(JsonTest, SubscriptAndAccess) {
 
 TEST(JsonTest, ExceptionsAndTypeSafety) {
     constexpr auto number = 100;
-    Json num(number);
+    const Json num(number);
 
     // Expect std::domain_error or std::runtime_error when requesting bad conversions
     bool caught_bad_string_cast = false;
@@ -152,14 +152,14 @@ TEST(JsonTest, ExceptionsAndTypeSafety) {
 
 TEST(JsonTest, SerializationAndStreams) {
     constexpr auto user_id = 1001;
-    Json user = {
+    const Json user = {
         {"id", user_id},
         {"active", true},
         {"tags", {"cpp", "json"}},
     };
 
     // Serialized output test
-    std::string json_str = user.dump();
+    const std::string json_str = user.dump();
     EXPECT_FALSE(json_str.empty());
 
     // Stream operator test

@@ -77,7 +77,7 @@ inline void Headers::set(std::string key, std::string value) {
 }
 
 inline std::optional<std::string_view> Headers::get(std::string_view key) const noexcept {
-    auto it = m_headers.find(key);
+    const auto it = m_headers.find(key);
 
     if (it != m_headers.end()) {
         return it->second;
@@ -87,7 +87,7 @@ inline std::optional<std::string_view> Headers::get(std::string_view key) const 
 }
 
 inline std::string_view Headers::get(std::string_view key, std::string_view default_value) const noexcept {
-    auto it = m_headers.find(key);
+    const auto it = m_headers.find(key);
 
     if (it != m_headers.end()) {
         return it->second;
@@ -139,7 +139,7 @@ inline bool operator==(const Headers& left, const Headers& right) noexcept {
     }
 
     // Use our case-insensitive comparator to check keys and values
-    Headers::CaseInsensitiveLess comp;
+    const Headers::CaseInsensitiveLess comp;
 
     // Since std::map is sorted by CaseInsensitiveLess, if two maps have the
     // same size and equal elements according to the comparator, we can iterate
@@ -211,7 +211,7 @@ inline std::string Headers::process_header_line(
         }
 
         std::string updated_value(existing_val.value());
-        std::string_view cleaned_chunk = trim_whitespace(line);
+        const std::string_view cleaned_chunk = trim_whitespace(line);
 
         updated_value.append(" ");
         updated_value.append(cleaned_chunk.data(), cleaned_chunk.size());
@@ -281,7 +281,7 @@ inline std::vector<std::string_view> Headers::split_spaces(std::string_view text
         if (pos == std::string_view::npos) {
             break;
         }
-        auto end = text.find_first_of(" \t", pos);
+        const auto end = text.find_first_of(" \t", pos);
         if (end == std::string_view::npos) {
             fields.push_back(text.substr(pos));
             pos = std::string_view::npos;

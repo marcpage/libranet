@@ -36,14 +36,14 @@ TEST(RequestTest, ParseRequestLine) {
     Request req;
 
     // Valid request line
-    bool success = req.parse_request_line("GET /index.html HTTP/1.1\r\n");
+    const bool success = req.parse_request_line("GET /index.html HTTP/1.1\r\n");
     EXPECT_TRUE(success);
     EXPECT_EQ(req.method(), "GET");
     EXPECT_EQ(req.uri(), "/index.html");
     EXPECT_EQ(req.version(), "HTTP/1.1");
 
     // Valid request line with extra spacing
-    bool success_spaced = req.parse_request_line("   POST   /submit   HTTP/1.1   ");
+    const bool success_spaced = req.parse_request_line("   POST   /submit   HTTP/1.1   ");
     EXPECT_TRUE(success_spaced);
     EXPECT_EQ(req.method(), "POST");
     EXPECT_EQ(req.uri(), "/submit");
@@ -86,10 +86,10 @@ TEST(RequestTest, Serialization) {
     req.set_version("HTTP/1.1");
     req.headers().set("Host", "localhost");
 
-    std::string serialized = req.to_string();
+    const std::string serialized = req.to_string();
 
     // Request line + headers + blank line + body (empty)
-    std::string expected =
+    const std::string expected =
         "GET /test HTTP/1.1\r\n"
         "Host: localhost\r\n"
         "\r\n";

@@ -181,15 +181,8 @@ Checks:
 
   # 2 to clean up (2 in library code, 0 in tests), such as
   # src/msg/Channel.cpp:18: use an LLVM range-based algorithm
-  #     auto it = std::find(channelList.begin(), channelList.end(), this);
+  #     const auto it = std::find(channelList.begin(), channelList.end(),...
   - '-llvm-use-ranges'
-
-  # 161 to clean up (30 in library code, 131 in tests), such as
-  # src/http/Headers.hpp:80: variable 'it' of type 'const_iterator' (aka
-  # '__map_const_iterator<__tree_const_iterator<std::__value_type<std::string,
-  # std::string>, __tr...
-  #     auto it = m_headers.find(key);
-  - '-misc-const-correctness'
 
   # 72 to clean up (43 in library code, 29 in tests), such as
   # src/msg/AsyncChannel.cpp:6: no header providing "std::string" is directly

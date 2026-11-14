@@ -6,16 +6,16 @@ std::map<std::string, std::vector<Channel*>> Channel::m_channels;
 std::mutex Channel::m_channel_lock;
 
 Channel::Channel(const std::string& name) {
-    std::scoped_lock lock(m_channel_lock);
+    const std::scoped_lock lock(m_channel_lock);
 
     m_channels[name].push_back(this);
 }
 
 Channel::~Channel() {
-    std::scoped_lock lock(m_channel_lock);
+    const std::scoped_lock lock(m_channel_lock);
 
     for (auto& [name, channelList] : m_channels) {
-        auto it = std::find(channelList.begin(), channelList.end(), this);
+        const auto it = std::find(channelList.begin(), channelList.end(), this);
 
         if (it != channelList.end()) {
             channelList.erase(it);
@@ -46,8 +46,8 @@ std::optional<IMessage::Ptr> Channel::next_message(Milliseconds timeout) {
 }
 
 void Channel::post_message(const std::string& name, const IMessage::Ptr& message) {
-    std::scoped_lock lock(m_channel_lock);
-    auto it = m_channels.find(name);
+    const std::scoped_lock lock(m_channel_lock);
+    const auto it = m_channels.find(name);
 
     if (it == m_channels.end()) {
         return; // no subscribers

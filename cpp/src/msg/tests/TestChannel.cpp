@@ -34,7 +34,7 @@ TEST(ChannelTest, ConstructionAndBasicOperations) {
     EXPECT_FALSE(ch.empty());
     EXPECT_EQ(ch.size(), 1U);
 
-    auto msg = ch.next_message();
+    const auto msg = ch.next_message();
     EXPECT_TRUE(msg.has_value());
     EXPECT_TRUE(ch.empty());
     EXPECT_EQ(ch.size(), 0U);
@@ -51,25 +51,25 @@ TEST(ChannelTest, TimeoutBehaviour) {
     Channel ch("test.timeout");
 
     // Immediate timeout
-    auto timed_out = ch.next_message(0ms);
+    const auto timed_out = ch.next_message(0ms);
     EXPECT_FALSE(timed_out.has_value());
 
-    auto timed_out_typed = ch.next<int>(0ms);
+    const auto timed_out_typed = ch.next<int>(0ms);
     EXPECT_FALSE(timed_out_typed.has_value());
 
     // Short timeout with no message
     constexpr auto short_timeout = 20ms;
-    auto still_timeout = ch.next_message(short_timeout);
+    const auto still_timeout = ch.next_message(short_timeout);
     EXPECT_FALSE(still_timeout.has_value());
 
     // Post then consume with timeout
     constexpr auto posted_value = 99;
     constexpr auto timeout = 50ms;
     Channel::post("test.timeout", posted_value);
-    auto got = ch.next_message(timeout);
+    const auto got = ch.next_message(timeout);
     EXPECT_TRUE(got.has_value());
 
-    auto typed = ch.next<int>(timeout); // queue is empty again
+    const auto typed = ch.next<int>(timeout); // queue is empty again
     EXPECT_FALSE(typed.has_value());
 }
 
@@ -87,7 +87,7 @@ TEST(ChannelTest, TypeMismatch) {
 
     // Wrong type after another post
     Channel::post("test.types", std::string("not an int"));
-    auto mismatch = ch.next<int>(timeout);
+    const auto mismatch = ch.next<int>(timeout);
     EXPECT_FALSE(mismatch.has_value());
 
     // The message is still consumed by next_message / next
@@ -98,7 +98,7 @@ TEST(ChannelTest, TypeMismatch) {
 TEST(ChannelTest, BroadcastToMultipleSubscribers) {
     Channel a("test.broadcast");
     Channel b("test.broadcast");
-    Channel c("test.other"); // different name – should not receive
+    const Channel c("test.other"); // different name – should not receive
 
     constexpr auto posted_value = 7;
     Channel::post("test.broadcast", posted_value);
@@ -118,7 +118,7 @@ TEST(ChannelTest, BroadcastToMultipleSubscribers) {
 
 TEST(ChannelTest, DestructorRemovesSubscriber) {
     {
-        Channel temporary("test.lifetime");
+        const Channel temporary("test.lifetime");
         Channel::post("test.lifetime", 1);
         EXPECT_EQ(temporary.size(), 1U);
     } // temporary destroyed here
@@ -127,7 +127,7 @@ TEST(ChannelTest, DestructorRemovesSubscriber) {
     Channel::post("test.lifetime", 2);
 
     // A new channel with the same name starts empty
-    Channel fresh("test.lifetime");
+    const Channel fresh("test.lifetime");
     EXPECT_TRUE(fresh.empty());
 }
 
@@ -144,7 +144,7 @@ TEST(ChannelTest, WaitForeverAndConcurrentProducer) {
     });
 
     // This blocks until the producer posts
-    auto value = ch.next<int>(Channel::WaitForever);
+    const auto value = ch.next<int>(Channel::WaitForever);
     EXPECT_TRUE(value.has_value());
     EXPECT_EQ(value, posted_value);
 

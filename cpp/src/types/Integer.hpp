@@ -297,7 +297,7 @@ inline void Integer::divide_modulo_magnitudes(const std::vector<word_t>& numerat
     const auto divisor_size = denominator.size();
 
     // 1. Normalize divisor and remainder
-    auto shift = get_normalization_shift(denominator.back());
+    const auto shift = get_normalization_shift(denominator.back());
     auto normalized_divisor = denominator;
 
     shift_left_magnitude(remainder, shift);
@@ -335,7 +335,7 @@ inline void Integer::shift_left_magnitude(std::vector<word_t>& value, unsigned s
         word_t carry = 0;
 
         for (word_t& word : value) {
-            word_t next = word >> (word_bits - bit_shift);
+            const word_t next = word >> (word_bits - bit_shift);
 
             word = (word << bit_shift) | carry;
             carry = next;
@@ -368,7 +368,7 @@ inline void Integer::shift_right_magnitude(std::vector<word_t>& value, unsigned 
         word_t carry = 0;
 
         for (std::size_t word_index = value.size(); word_index-- > 0;) {
-            word_t next = value[word_index] << (word_bits - bit_shift);
+            const word_t next = value[word_index] << (word_bits - bit_shift);
 
             value[word_index] = (value[word_index] >> bit_shift) | carry;
             carry = next;
@@ -440,7 +440,7 @@ inline Integer::Integer(const std::string& text) {
         auto carry = static_cast<word_t>(digit - '0');
 
         for (word_t& word : m_magnitude) {
-            double_word_t temp =
+            const double_word_t temp =
                 (static_cast<double_word_t>(word) * decimal_base) + carry;
 
             word = static_cast<word_t>(temp);
@@ -728,12 +728,12 @@ inline Integer operator|(const Integer& left, const Integer& right) {
     result.m_magnitude.resize(word_count, 0);
 
     for (std::size_t word_index = 0; word_index < word_count; ++word_index) {
-        auto left_value = word_index < left.m_magnitude.size()
-                              ? left.m_magnitude[word_index]
-                              : static_cast<Integer::word_t>(0);
-        auto right_value = word_index < right.m_magnitude.size()
-                               ? right.m_magnitude[word_index]
-                               : static_cast<Integer::word_t>(0);
+        const auto left_value = word_index < left.m_magnitude.size()
+                                    ? left.m_magnitude[word_index]
+                                    : static_cast<Integer::word_t>(0);
+        const auto right_value = word_index < right.m_magnitude.size()
+                                     ? right.m_magnitude[word_index]
+                                     : static_cast<Integer::word_t>(0);
 
         result.m_magnitude[word_index] = left_value | right_value;
     }
@@ -753,12 +753,12 @@ inline Integer operator^(const Integer& left, const Integer& right) {
     result.m_magnitude.resize(word_count, 0);
 
     for (std::size_t word_index = 0; word_index < word_count; ++word_index) {
-        auto left_value = word_index < left.m_magnitude.size()
-                              ? left.m_magnitude[word_index]
-                              : static_cast<Integer::word_t>(0);
-        auto right_value = word_index < right.m_magnitude.size()
-                               ? right.m_magnitude[word_index]
-                               : static_cast<Integer::word_t>(0);
+        const auto left_value = word_index < left.m_magnitude.size()
+                                    ? left.m_magnitude[word_index]
+                                    : static_cast<Integer::word_t>(0);
+        const auto right_value = word_index < right.m_magnitude.size()
+                                     ? right.m_magnitude[word_index]
+                                     : static_cast<Integer::word_t>(0);
 
         result.m_magnitude[word_index] = left_value ^ right_value;
     }
@@ -823,7 +823,7 @@ inline std::ostream& operator<<(std::ostream& out_stream, const Integer& value) 
         Integer::word_t remainder = 0;
 
         for (auto word_index = temp.size(); word_index-- > 0;) {
-            Integer::double_word_t cur =
+            const Integer::double_word_t cur =
                 (static_cast<Integer::double_word_t>(remainder) << Integer::word_bits) | temp[word_index];
 
             temp[word_index] = static_cast<Integer::word_t>(cur / Integer::decimal_base);
