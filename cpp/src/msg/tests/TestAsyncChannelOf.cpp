@@ -3,13 +3,13 @@
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
-#include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "msg/AsyncChannelOf.hpp"
-#include "msg/Message.hpp"
+#include "msg/Channel.hpp"
 
 using namespace msg;
 using namespace std::chrono_literals;
@@ -43,9 +43,9 @@ TEST(AsyncChannelOfTest, ConstructionAndCallback) {
     std::vector<int> received;
 
     {
-        AsyncChannelOf<int> ch("test.asyncof.basic", [&](int value) {
+        const AsyncChannelOf<int> ch("test.asyncof.basic", [&](int value) {
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                const std::scoped_lock lock(mutex);
                 received.push_back(value);
             }
             condition.notify_one();
@@ -71,9 +71,9 @@ TEST(AsyncChannelOfTest, MultipleMessagesFifoOrder) {
     std::vector<int> received;
 
     {
-        AsyncChannelOf<int> ch("test.asyncof.fifo", [&](int value) {
+        const AsyncChannelOf<int> ch("test.asyncof.fifo", [&](int value) {
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                const std::scoped_lock lock(mutex);
                 received.push_back(value);
             }
             condition.notify_one();
@@ -104,17 +104,17 @@ TEST(AsyncChannelOfTest, BroadcastToMultipleAsyncChannels) {
     std::vector<int> received_b;
 
     {
-        AsyncChannelOf<int> a("test.asyncof.broadcast", [&](int value) {
+        const AsyncChannelOf<int> a("test.asyncof.broadcast", [&](int value) {
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                const std::scoped_lock lock(mutex);
                 received_a.push_back(value);
             }
             condition.notify_one();
         }, nullptr);
 
-        AsyncChannelOf<int> b("test.asyncof.broadcast", [&](int value) {
+        const AsyncChannelOf<int> b("test.asyncof.broadcast", [&](int value) {
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                const std::scoped_lock lock(mutex);
                 received_b.push_back(value);
             }
             condition.notify_one();
@@ -139,9 +139,9 @@ TEST(AsyncChannelOfTest, UnexpectedMessageTypeLogging) {
     std::vector<std::string> logged;
 
     {
-        AsyncChannelOf<int> ch("test.asyncof.unexpected", [](int) {}, [&](std::string msg) {
+        const AsyncChannelOf<int> ch("test.asyncof.unexpected", [](int) {}, [&](std::string msg) {
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                const std::scoped_lock lock(mutex);
                 logged.push_back(std::move(msg));
             }
             condition.notify_one();
@@ -185,7 +185,7 @@ TEST(AsyncChannelOfTest, DestructorStopsWorker) {
     std::atomic<bool> callback_called{false};
 
     {
-        AsyncChannelOf<int> ch("test.asyncof.destructor", [&](int) {
+        const AsyncChannelOf<int> ch("test.asyncof.destructor", [&](int) {
             callback_called = true;
         }, nullptr);
         Channel::post("test.asyncof.destructor", 1);

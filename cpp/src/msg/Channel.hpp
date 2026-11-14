@@ -31,7 +31,7 @@ public:
     template<typename Type>
     [[nodiscard]] std::optional<Type> next(Milliseconds timeout = WaitForever);
 
-    static void post_message(const std::string& name, IMessage::Ptr message);
+    static void post_message(const std::string& name, const IMessage::Ptr& message);
 
     template<typename Type>
     static void post(const std::string& name, Type value);
@@ -57,7 +57,7 @@ std::optional<Type> Channel::next(Milliseconds timeout) {
         return std::nullopt;
     }
 
-    auto* typed = dynamic_cast<Message<Type>*>(message->get());
+    const auto* typed = dynamic_cast<Message<Type>*>(message->get());
 
     if (!typed) {
         return std::nullopt; // type mismatch

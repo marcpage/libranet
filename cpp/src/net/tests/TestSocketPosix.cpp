@@ -1,11 +1,14 @@
 #include <gtest/gtest.h>
-#include <chrono>
+#include <cstddef>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "net/Address.hpp"
+#include "net/ISocket.hpp"
 #include "net/SocketPosix.hpp"
 
 using namespace net;
@@ -93,17 +96,17 @@ TEST(SocketPosixTest, SendAndReceive) {
     connector.join();
 
     const std::string message = "Hello, Modern C++ Sockets!";
-    std::size_t sent = client->send(message);
+    const std::size_t sent = client->send(message);
     EXPECT_EQ(sent, message.size());
 
     // Test receiving into a std::vector<std::byte>
     constexpr std::size_t buffer_bytes = 64;
     std::vector<std::byte> buffer(buffer_bytes);
-    bool success = peer->receive(buffer);
+    const bool success = peer->receive(buffer);
     EXPECT_TRUE(success);
 
     // Convert bytes back to string for assertion
-    std::string received_msg(reinterpret_cast<const char*>(buffer.data()), buffer.size());
+    const std::string received_msg(reinterpret_cast<const char*>(buffer.data()), buffer.size());
     EXPECT_EQ(received_msg, message);
 
     client->close();
@@ -132,7 +135,7 @@ TEST(SocketPosixTest, HelpersSendAllAndReadExact) {
     std::vector<std::byte> exact_bytes = peer->read_exact(payload.size());
     EXPECT_EQ(exact_bytes.size(), payload.size());
 
-    std::string received_payload(reinterpret_cast<const char*>(exact_bytes.data()), exact_bytes.size());
+    const std::string received_payload(reinterpret_cast<const char*>(exact_bytes.data()), exact_bytes.size());
     EXPECT_EQ(received_payload, payload);
 
     client->close();
@@ -158,8 +161,8 @@ TEST(SocketPosixTest, HelperReadLine) {
     // Send HTTP-style lines with CRLF
     client->send_all("GET /index.html HTTP/1.1\r\nHost: localhost\r\n\r\n");
 
-    std::string line1 = peer->read_line('\n');
-    std::string line2 = peer->read_line('\n');
+    const std::string line1 = peer->read_line('\n');
+    const std::string line2 = peer->read_line('\n');
 
     EXPECT_EQ(line1, "GET /index.html HTTP/1.1");
     EXPECT_EQ(line2, "Host: localhost");

@@ -20,20 +20,20 @@ public:
     Query(Query&&) noexcept = default;
     Query& operator=(Query&&) noexcept = default;
 
-    std::optional<std::string_view> get_first(std::string_view key) const;
+    [[nodiscard]] std::optional<std::string_view> get_first(std::string_view key) const;
     void set(std::string_view key, std::string_view value);
 
     std::string& operator[](std::string_view key);
 
-    std::vector<std::string_view> get_all(std::string_view key) const;
+    [[nodiscard]] std::vector<std::string_view> get_all(std::string_view key) const;
     void add(std::string_view key, std::string_view value);
     void remove(std::string_view key);
     void clear() noexcept;
-    bool empty() const noexcept;
+    [[nodiscard]] bool empty() const noexcept;
 
-    std::vector<std::pair<std::string, std::string>> items() const noexcept;
+    [[nodiscard]] std::vector<std::pair<std::string, std::string>> items() const;
 
-    std::string to_string() const;
+    [[nodiscard]] std::string to_string() const;
 
     friend std::istream& operator>>(std::istream& in_stream, Query& query);
     friend std::ostream& operator<<(std::ostream& out_stream, const Query& query);
@@ -53,7 +53,7 @@ inline std::string& Query::operator[](std::string_view key) {
     return m_parameters.back().second;
 }
 
-inline std::vector<std::pair<std::string, std::string>> Query::items() const noexcept {
+inline std::vector<std::pair<std::string, std::string>> Query::items() const {
     return m_parameters;
 }
 
@@ -167,7 +167,7 @@ inline std::string Query::to_string() const {
     for (std::size_t parameter_index = 0; parameter_index < m_parameters.size();
          ++parameter_index) {
         if (parameter_index > 0) {
-            result += "&";
+            result += '&';
         }
 
         result += m_parameters[parameter_index].first;

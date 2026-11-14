@@ -3,11 +3,15 @@
 #include "SocketPosix.hpp"
 
 #include <cerrno>
+#include <cstddef>
 #include <cstring>
+#include <ctime>
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <system_error>
+#include <vector>
 
 #include <netdb.h>
 #include <netinet/in.h>
@@ -17,9 +21,12 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "Address.hpp"
+#include "ISocket.hpp"
+
 namespace {
 
-#if defined(__APPLE__)
+#ifdef __APPLE__
 constexpr int SEND_FLAGS = 0;
 #elif defined(__linux__)
 constexpr int SEND_FLAGS = MSG_NOSIGNAL;
@@ -88,7 +95,7 @@ int create_socket(const addrinfo& info) {
         (void)::setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &enabled, sizeof(enabled));
     }
 
-#if defined(__APPLE__)
+#ifdef __APPLE__
     // Prevent SIGPIPE when writing to a closed peer (macOS / BSD)
     (void)::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof(enabled));
 #endif
@@ -114,11 +121,12 @@ net::Address address_from_sockaddr(const sockaddr* address, socklen_t length) {
         port <= std::numeric_limits<net::Address::Port>::max(),
         "Socket returned an invalid port");
 
-    return net::Address(host, static_cast<net::Address::Port>(port));
+    return {host, static_cast<net::Address::Port>(port)};
 }
 
 enum Direction { DirectionSend,
-                 DirectionReceive };
+                 DirectionReceive,
+};
 
 int set_timeout(int socket_fd, Direction direction, net::ISocket::Milliseconds timeout) {
     const auto direction_flag = DirectionSend == direction ? SO_SNDTIMEO : SO_RCVTIMEO;
@@ -190,7 +198,7 @@ ISocket::Ptr SocketPosix::connect(const Address& address) {
             continue;
         }
 
-        int result;
+        int result = -1;
 
         do {
             result = ::connect(fd, current->ai_addr, current->ai_addrlen);
@@ -212,7 +220,11 @@ SocketPosix::SocketPosix(int socket_fd) noexcept
     : m_socket_fd(socket_fd) {}
 
 SocketPosix::~SocketPosix() {
-    close();
+    // close() throws when ::close fails, which a destructor cannot report.
+    // The descriptor is released either way.
+    if (m_socket_fd >= 0) {
+        (void)::close(m_socket_fd);
+    }
 }
 
 void SocketPosix::listen(int backlog) {
@@ -224,7 +236,7 @@ void SocketPosix::listen(int backlog) {
 ISocket::Ptr SocketPosix::accept() {
     assert_condition<std::logic_error>(is_open(), "Cannot accept on a closed socket");
 
-    int fd;
+    int fd = -1;
 
     do {
         fd = ::accept(m_socket_fd, nullptr, nullptr);
@@ -245,7 +257,7 @@ std::size_t SocketPosix::send(std::string_view data) {
     const std::size_t count = data.size() > static_cast<std::size_t>(max_count)
                                   ? static_cast<std::size_t>(max_count)
                                   : data.size();
-    ssize_t byte_count;
+    ssize_t byte_count = -1;
 
     do {
         byte_count = ::send(m_socket_fd, data.data(), count, SEND_FLAGS);
@@ -267,7 +279,7 @@ bool SocketPosix::receive(std::vector<std::byte>& buffer) {
                            ? static_cast<std::size_t>(max_count)
                            : buffer.size();
 
-    ssize_t byte_count;
+    ssize_t byte_count = -1;
 
     do {
         byte_count = ::recv(m_socket_fd, buffer.data(), count, 0);

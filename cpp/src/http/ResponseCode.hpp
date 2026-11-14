@@ -71,7 +71,7 @@ public:
         InsufficientStorage = 507,
         LoopDetected = 508,
         NotExtended = 510,
-        NetworkAuthenticationRequired = 511
+        NetworkAuthenticationRequired = 511,
     };
 
     // Implicit conversion from Status enum, with optional custom reason phrase
@@ -88,17 +88,17 @@ public:
     ResponseCode& operator=(ResponseCode&&) noexcept = default;
 
     // Core Accessors
-    Status status() const noexcept;
-    std::uint16_t code() const noexcept;
-    std::string_view reason_phrase() const noexcept;
+    [[nodiscard]] Status status() const noexcept;
+    [[nodiscard]] std::uint16_t code() const noexcept;
+    [[nodiscard]] std::string_view reason_phrase() const noexcept;
 
     // Helpers
-    bool is_informational() const noexcept; // 1xx
-    bool is_success() const noexcept;       // 2xx
-    bool is_redirection() const noexcept;   // 3xx
-    bool is_client_error() const noexcept;  // 4xx
-    bool is_server_error() const noexcept;  // 5xx
-    bool is_error() const noexcept;         // 4xx or 5xx
+    [[nodiscard]] bool is_informational() const noexcept; // 1xx
+    [[nodiscard]] bool is_success() const noexcept;       // 2xx
+    [[nodiscard]] bool is_redirection() const noexcept;   // 3xx
+    [[nodiscard]] bool is_client_error() const noexcept;  // 4xx
+    [[nodiscard]] bool is_server_error() const noexcept;  // 5xx
+    [[nodiscard]] bool is_error() const noexcept;         // 4xx or 5xx
 
     static std::string_view default_reason_phrase(Status status) noexcept;
     static std::string_view default_reason_phrase(std::uint16_t code) noexcept;
@@ -140,7 +140,7 @@ inline std::uint16_t ResponseCode::code() const noexcept {
 
 inline std::string_view ResponseCode::reason_phrase() const noexcept {
     if (m_custom_reason.has_value()) {
-        return m_custom_reason.value();
+        return *m_custom_reason;
     }
 
     return default_reason_phrase(m_status);

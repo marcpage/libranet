@@ -31,7 +31,7 @@ Checks:
   - '-abseil-string-find-str-contains'
 
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:230: prefer accept4() to accept() because accept4()
+  # src/net/SocketPosix.cpp:242: prefer accept4() to accept() because accept4()
   # allows SOCK_CLOEXEC
   #     fd = ::accept(m_socket_fd, nullptr, nullptr);
   - '-android-cloexec-accept'
@@ -41,41 +41,11 @@ Checks:
   #     return std::lexicographical_compare(
   - '-boost-use-ranges'
 
-  # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/types/Json.hpp:647: switch has 2 consecutive identical branches
-  #     case 't': return parse_boolean();
-  - '-bugprone-branch-clone'
-
   # 7 to clean up (7 in library code, 0 in tests), such as
   # src/http/Headers.hpp:89: 2 adjacent parameters of 'get' of similar type
   # ('std::string_view') are easily swapped by mistake
   #     inline std::string_view Headers::get(std::string_view key, std::s...
   - '-bugprone-easily-swappable-parameters'
-
-  # 2 to clean up (2 in library code, 0 in tests), such as src/http/Url.hpp:619:
-  # empty catch statements hide issues; to handle exceptions appropriately,
-  # consider re-throwing, handling, or avoiding catch altogether
-  #     } catch (const std::invalid_argument&) {
-  - '-bugprone-empty-catch'
-
-  # 10 to clean up (10 in library code, 0 in tests), such as
-  # src/http/Headers.hpp:241: an exception may be thrown in function
-  # 'trim_whitespace' which should not throw exceptions
-  #     inline std::string_view Headers::trim_whitespace(std::string_view...
-  - '-bugprone-exception-escape'
-
-  # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/types/Integer.hpp:239: either cast from 'word_t' (aka 'unsigned long
-  # long') to 'double_word_t' (aka 'unsigned __int128') is ineffective, or there
-  # is loss of pre...
-  #     const double_word_t max_word = static_cast<double_word_t>(~word_t...
-  - '-bugprone-misplaced-widening-cast'
-
-  # 5 to clean up (5 in library code, 0 in tests), such as
-  # src/types/Integer.hpp:215: use of a signed integer operand with a binary
-  # bitwise operator
-  #     high_word <<= 1;
-  - '-bugprone-signed-bitwise'
 
   # 28 to clean up (0 in library code, 28 in tests), such as
   # src/http/tests/TestHeaders.cpp:26: unchecked access to optional value
@@ -83,12 +53,12 @@ Checks:
   - '-bugprone-unchecked-optional-access'
 
   # 2 to clean up (0 in library code, 2 in tests), such as
-  # src/types/tests/TestBlockingQueue.cpp:44: 's1' used after it was moved
+  # src/types/tests/TestBlockingQueue.cpp:45: 's1' used after it was moved
   #     EXPECT_TRUE(s1.empty()); // moved-from
   - '-bugprone-use-after-move'
 
   # 6 to clean up (6 in library code, 0 in tests), such as
-  # src/net/AddressPosix.cpp:36: do not declare C-style arrays, use 'std::array'
+  # src/net/AddressPosix.cpp:39: do not declare C-style arrays, use 'std::array'
   # instead
   #     char ip_buf[NI_MAXHOST];
   - '-cppcoreguidelines-avoid-c-arrays'
@@ -101,7 +71,7 @@ Checks:
   - '-cppcoreguidelines-avoid-const-or-ref-data-members'
 
   # 4 to clean up (4 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:195: avoid do-while loops
+  # src/net/SocketPosix.cpp:203: avoid do-while loops
   #     do {
   - '-cppcoreguidelines-avoid-do-while'
 
@@ -113,13 +83,8 @@ Checks:
   - '-google-explicit-constructor'
   - '-misc-explicit-constructor'
 
-  # 4 to clean up (4 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:193: variable 'result' is not initialized
-  #     int result;
-  - '-cppcoreguidelines-init-variables'
-
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:139: forwarding reference parameter 'socket_call' is
+  # src/net/SocketPosix.cpp:147: forwarding reference parameter 'socket_call' is
   # never forwarded inside the function body
   #     net::Address query_socket_address(int socket_fd, Func&& socket_call,
   - '-cppcoreguidelines-missing-std-forward'
@@ -132,42 +97,42 @@ Checks:
   - '-misc-non-private-member-variables-in-classes'
 
   # 11 to clean up (11 in library code, 0 in tests), such as
-  # src/net/AddressPosix.cpp:38: do not implicitly decay an array into a
+  # src/net/AddressPosix.cpp:41: do not implicitly decay an array into a
   # pointer; consider using gsl::array_view or an explicit cast instead
   #     ip_buf, sizeof(ip_buf),
   - '-cppcoreguidelines-pro-bounds-array-to-pointer-decay'
 
-  # 125 to clean up (74 in library code, 51 in tests), such as
+  # 115 to clean up (64 in library code, 51 in tests), such as
   # src/http/Headers.hpp:255: possibly unsafe 'operator[]', consider bounds-safe
   # alternatives
   #     return !line.empty() && (line[0] == ' ' || line[0] == '\t');
   - '-cppcoreguidelines-pro-bounds-avoid-unchecked-container-access'
 
   # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/types/Json.hpp:471: do not use array subscript when the index is not an
+  # src/types/Json.hpp:472: do not use array subscript when the index is not an
   # integer constant expression
-  #     out_stream << hex[(character >> nibble_bits) & nibble_mask] << he...
+  #     out_stream << hex[(code >> nibble_bits) & nibble_mask] << hex[cod...
   - '-cppcoreguidelines-pro-bounds-constant-array-index'
 
   # 4 to clean up (2 in library code, 2 in tests), such as
-  # src/net/SocketPosix.cpp:145: do not use reinterpret_cast
+  # src/net/SocketPosix.cpp:153: do not use reinterpret_cast
   #     reinterpret_cast<sockaddr*>(&storage), &length);
   - '-cppcoreguidelines-pro-type-reinterpret-cast'
 
   # 8 to clean up (8 in library code, 0 in tests), such as
-  # src/msg/AsyncChannelOf.hpp:12: class 'AsyncChannelOf' defines a non-default
+  # src/msg/AsyncChannelOf.hpp:13: class 'AsyncChannelOf' defines a non-default
   # destructor but does not define a copy constructor, a copy assignment
   # operator, a move constr...
   #     class AsyncChannelOf : public AsyncChannel {
   - '-cppcoreguidelines-special-member-functions'
 
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:120: enum 'Direction' is unscoped, use 'enum class'
+  # src/net/SocketPosix.cpp:127: enum 'Direction' is unscoped, use 'enum class'
   # instead
   #     enum Direction { DirectionSend,
   - '-cppcoreguidelines-use-enum-class'
 
-  # 109 to clean up (55 in library code, 54 in tests), such as
+  # 117 to clean up (55 in library code, 62 in tests), such as
   # src/http/Headers.hpp:242: calling a function that uses a default argument is
   # disallowed
   #     const auto start = text.find_first_not_of(" \t\r\n");
@@ -185,7 +150,7 @@ Checks:
   - '-fuchsia-overloaded-operator'
 
   # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/msg/Channel.cpp:5: static objects are disallowed; if possible, use a
+  # src/msg/Channel.cpp:15: static objects are disallowed; if possible, use a
   # constexpr constructor instead
   #     std::map<std::string, std::vector<Channel*>> Channel::m_channels;
   - '-fuchsia-statically-constructed-objects'
@@ -202,54 +167,22 @@ Checks:
   #     using namespace http;
   - '-google-build-using-namespace'
 
-  # 6 to clean up (6 in library code, 0 in tests), such as
-  # src/types/Integer.hpp:214: C-style casts are discouraged; use static_cast
-  #     while ((high_word & (word_t(1) << (word_bits - 1))) == 0) {
-  - '-google-readability-casting'
-  - '-modernize-avoid-c-style-cast'
-
   # 7 to clean up (7 in library code, 0 in tests), such as
-  # src/msg/AsyncChannel.cpp:5: anonymous namespace not terminated with a
+  # src/msg/AsyncChannel.cpp:12: anonymous namespace not terminated with a
   # closing comment
   #     }
   - '-google-readability-namespace-comments'
   - '-llvm-namespace-comment'
 
-  # 18 to clean up (12 in library code, 6 in tests), such as
+  # 17 to clean up (11 in library code, 6 in tests), such as
   # src/http/Url.hpp:614: consider replacing 'unsigned long' with 'uint64'
   #     unsigned long p = std::stoul(std::string(str));
   - '-google-runtime-int'
 
   # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/http/Headers.hpp:289: do not use 'else' after 'break'
-  #     } else {
-  - '-llvm-else-after-return'
-  - '-readability-else-after-return'
-
-  # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/types/Json.hpp:524: 'const auto newline' can be declared as 'const auto
-  # *const newline'
-  #     const auto newline = pretty ? "\n" : "";
-  - '-llvm-qualified-auto'
-  - '-readability-qualified-auto'
-
-  # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/msg/Channel.cpp:18: use an LLVM range-based algorithm
-  #     auto it = std::find(channelList.begin(), channelList.end(), this);
+  # src/msg/Channel.cpp:28: use an LLVM range-based algorithm
+  #     const auto it = std::find(channelList.begin(), channelList.end(),...
   - '-llvm-use-ranges'
-
-  # 161 to clean up (30 in library code, 131 in tests), such as
-  # src/http/Headers.hpp:80: variable 'it' of type 'const_iterator' (aka
-  # '__map_const_iterator<__tree_const_iterator<std::__value_type<std::string,
-  # std::string>, __tr...
-  #     auto it = m_headers.find(key);
-  - '-misc-const-correctness'
-
-  # 74 to clean up (45 in library code, 29 in tests), such as
-  # src/msg/AsyncChannel.cpp:4: no header providing "std::string" is directly
-  # included
-  #     void noop(std::string) {}
-  - '-misc-include-cleaner'
 
   # 5 to clean up (5 in library code, 0 in tests), such as
   # src/types/Integer.hpp:697: function 'operator&' is within a recursive call
@@ -258,47 +191,24 @@ Checks:
   - '-misc-no-recursion'
 
   # 7 to clean up (0 in library code, 7 in tests), such as
-  # src/msg/tests/TestAsyncChannel.cpp:25: function 'wait_until' declared
+  # src/msg/tests/TestAsyncChannel.cpp:27: function 'wait_until' declared
   # 'static', move to anonymous namespace instead
   #     static bool wait_until(Predicate predicate, std::chrono::millisec...
   - '-misc-use-anonymous-namespace'
 
-  # 3 to clean up (3 in library code, 0 in tests), such as
-  # src/types/Integer.hpp:339: use range-based for loop instead
-  #     for (std::size_t word_index = 0; word_index < value.size(); ++wor...
-  - '-modernize-loop-convert'
-
-  # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/msg/AsyncChannelOf.hpp:16: pass by value and use std::move
-  #     AsyncChannelOf(const std::string &name, TypeCallback callback,
-  - '-modernize-pass-by-value'
-
-  # 12 to clean up (12 in library code, 0 in tests), such as
-  # src/net/Address.hpp:48: avoid repeating the return type from the
+  # 10 to clean up (10 in library code, 0 in tests), such as
+  # src/types/Json.hpp:669: avoid repeating the return type from the
   # declaration; use a braced initializer list instead
-  #     return Address(std::string(host), port);
+  #     return Json(nullptr);
+  # Its fix is wrong for Json, whose std::initializer_list constructor takes
+  # return {value}; as a one-element array, so Json's returns are left as they
+  # are.
   - '-modernize-return-braced-init-list'
-
-  # 3 to clean up (3 in library code, 0 in tests), such as
-  # src/types/Integer.hpp:239: use auto when initializing with a cast to avoid
-  # duplicating the type name
-  #     const double_word_t max_word = static_cast<double_word_t>(~word_t...
-  - '-modernize-use-auto'
 
   # 11 to clean up (11 in library code, 0 in tests), such as
   # src/msg/AsyncChannel.hpp:29: deleted member function should be public
   #     AsyncChannel(const AsyncChannel&) = delete;
   - '-modernize-use-equals-delete'
-
-  # 75 to clean up (75 in library code, 0 in tests), such as
-  # src/http/Headers.hpp:32: function 'get' should be marked [[nodiscard]]
-  #     std::optional<std::string_view> get(std::string_view key) const n...
-  - '-modernize-use-nodiscard'
-
-  # 16 to clean up (5 in library code, 11 in tests), such as
-  # src/msg/Channel.cpp:9: use 'std::scoped_lock' instead of 'std::lock_guard'
-  #     std::lock_guard lock(m_channel_lock);
-  - '-modernize-use-scoped-lock'
 
   # 3 to clean up (3 in library code, 0 in tests), such as src/http/Url.hpp:22:
   # enum 'EncodeContext' uses a larger base type ('int', size: 4 bytes) than
@@ -306,42 +216,10 @@ Checks:
   #     enum class EncodeContext {
   - '-performance-enum-size'
 
-  # 10 to clean up (9 in library code, 1 in tests), such as
-  # src/http/Query.hpp:170: 'operator+=' called with a string literal consisting
-  # of a single character; consider using the more efficient overload accepting
-  # a character
-  #     result += "&";
-  - '-performance-faster-string-find'
-  - '-performance-prefer-single-char-overloads'
-
-  # 2 to clean up (0 in library code, 2 in tests), such as
-  # src/types/tests/TestBlockingQueue.cpp:186: 'emplace_back' is called inside a
-  # loop; consider pre-allocating the container capacity before the loop
-  #     producers.emplace_back([&, p] {
-  - '-performance-inefficient-vector-operation'
-
-  # 1 to clean up (1 in library code, 0 in tests), such as src/http/Url.hpp:402:
-  # std::move of the const expression has no effect; remove std::move()
-  #     url = std::move(parsed_url.value());
-  - '-performance-move-const-arg'
-
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/AddressPosix.cpp:117: constness of 'ip' prevents automatic move
+  # src/net/AddressPosix.cpp:120: constness of 'ip' prevents automatic move
   #     return ip;
   - '-performance-no-automatic-move'
-
-  # 2 to clean up (2 in library code, 0 in tests), such as src/http/Url.hpp:231:
-  # redundant conversion to 'std::string' (aka 'basic_string<char>') and then
-  # back to '__self_view' (aka 'basic_string_view<char, std::char_t...
-  #     const auto value = m_query.get_first(std::string(key));
-  - '-performance-string-view-conversions'
-
-  # 21 to clean up (14 in library code, 7 in tests), such as
-  # src/http/Headers.hpp:103: the parameter 'key' of type 'std::string' (aka
-  # 'basic_string<char>') is copied for each invocation but only used as a const
-  # reference; co...
-  #     inline void Headers::remove(std::string key) {
-  - '-performance-unnecessary-value-param'
 
   # 17 to clean up (17 in library code, 0 in tests), such as
   # src/http/Headers.hpp:1: avoid 'pragma once' directive; use include guards
@@ -349,26 +227,8 @@ Checks:
   #     #pragma once
   - '-portability-avoid-pragma-once'
 
-  # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/types/Json.hpp:135: parameter 'character' is const-qualified in the
-  # function declaration; const-qualification of parameters only has an effect
-  # in function de...
-  #     static bool is_digit(const char character);
-  - '-readability-avoid-const-params-in-decls'
-
   # 2 to clean up (0 in library code, 2 in tests), such as
-  # src/types/tests/TestBlockingQueue.cpp:205: statement should be inside braces
-  #     for (auto& t : producers) t.join();
-  - '-readability-braces-around-statements'
-
-  # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/http/Request.hpp:165: 'data' should be used for accessing the data
-  # pointer instead of taking the address of the 0-th element
-  #     in_stream.read(&request.m_body[0], static_cast<std::streamsize>(b...
-  - '-readability-container-data-pointer'
-
-  # 2 to clean up (0 in library code, 2 in tests), such as
-  # src/types/tests/TestBlockingQueue.cpp:171: function 'TestBody' has cognitive
+  # src/types/tests/TestBlockingQueue.cpp:172: function 'TestBody' has cognitive
   # complexity of 26 (threshold 25)
   #     TEST(BlockingQueueTest, MultipleProducersConsumers) {
   - '-readability-function-cognitive-complexity'
@@ -379,58 +239,23 @@ Checks:
   #     [](unsigned char c1, unsigned char c2) {
   - '-readability-identifier-length'
 
-  # 17 to clean up (17 in library code, 0 in tests), such as
-  # src/http/Url.hpp:114: implicit conversion 'int' -> 'bool'
-  #     } else if (std::isalnum(character)
-  - '-readability-implicit-bool-conversion'
-
   # 2 to clean up (2 in library code, 0 in tests), such as
   # src/types/Json.hpp:136: function 'types::Json::serialize_array' has a
   # definition with different parameter names
   #     static void serialize_array(const Array& arr, std::ostringstream&...
   - '-readability-inconsistent-declaration-parameter-name'
 
-  # 3 to clean up (2 in library code, 1 in tests), such as
-  # src/types/Integer.hpp:561: multiple declarations in a single statement
-  # reduces readability
-  #     std::vector<word_t> quotient, remainder;
-  - '-readability-isolate-declaration'
-
-  # 3 to clean up (2 in library code, 1 in tests), such as
-  # src/types/Integer.hpp:193: '*' has higher precedence than '+'; add
-  # parentheses to explicitly specify the order of operations
-  #     carry += static_cast<double_word_t>(left[left_index])
-  - '-readability-math-missing-parentheses'
-
-  # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/msg/AsyncChannel.cpp:4: all parameters should be named in a function
-  #     void noop(std::string) {}
-  - '-readability-named-parameter'
-
-  # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/msg/AsyncChannel.cpp:19: redundant empty parameter list in lambda
-  # expression
-  #     m_thread = std::thread([this]() {
-  - '-readability-redundant-lambda-parameter-list'
-
-  # 7 to clean up (3 in library code, 4 in tests), such as
-  # src/http/ResponseCode.hpp:74: enum should have a trailing comma
-  #     NetworkAuthenticationRequired = 511
-  - '-readability-trailing-comma'
-
-  # 3 to clean up (3 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:22: preprocessor condition can be written more
-  # concisely using '#ifdef'
-  #     #if defined(__APPLE__)
-  - '-readability-use-concise-preprocessor-directives'
-
-  # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/types/Integer.hpp:241: use `std::min` instead of `>`
-  #     if (estimated_quotient > max_word) {
-  - '-readability-use-std-min-max'
-
 WarningsAsErrors: '*'
 # Every header that is not a system header. CMake includes Conan's packages
 # as system headers, so their findings are not shown.
 HeaderFilterRegex: '.*'
 FormatStyle: file
+CheckOptions:
+  # misc-include-cleaner learns which header provides a POSIX type or macro
+  # from the system's own private headers (the macOS SDK's sys/_types/...;
+  # on Linux, glibc's bits/... and the kernel's asm/, asm-generic/ and
+  # linux/), which differ between systems. So it checks only C++ and project
+  # includes, and leaves the POSIX ones as written. It also never suggests a
+  # standard library's private headers (libc++'s __chrono/..., libstdc++'s
+  # bits/...).
+  misc-include-cleaner.IgnoreHeaders: '__.*;bits/.*;asm/.*\.h$;asm-generic/.*\.h$;linux/.*\.h$;sys/.*\.h$;net/.*\.h$;netinet/.*\.h$;arpa/.*\.h$;netdb\.h$;unistd\.h$;ifaddrs\.h$'

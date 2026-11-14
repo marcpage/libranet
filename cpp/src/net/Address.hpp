@@ -44,8 +44,8 @@ inline Address Address::parse(std::string_view endpoint) {
         host = host.substr(1, host.size() - 2);
     }
 
-    Port port = static_cast<Port>(std::stoi(std::string(port_str)));
-    return Address(std::string(host), port);
+    const Port port = static_cast<Port>(std::stoi(std::string(port_str)));
+    return {host, port};
 }
 
 inline Address::Address(std::string_view host, Port port)

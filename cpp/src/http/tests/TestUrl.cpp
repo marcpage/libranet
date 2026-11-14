@@ -55,11 +55,11 @@ TEST(UrlTest, UrlParsing) {
     EXPECT_EQ(url.path(), "/path/to/page");
     EXPECT_EQ(url.fragment(), "anchor");
 
-    auto foo_val = url.get_query("foo");
+    const auto foo_val = url.get_query("foo");
     EXPECT_TRUE(foo_val.has_value());
     EXPECT_EQ(foo_val, "bar");
 
-    auto baz_val = url.get_query("baz");
+    const auto baz_val = url.get_query("baz");
     EXPECT_TRUE(baz_val.has_value());
     EXPECT_EQ(baz_val, "123");
 
@@ -133,20 +133,20 @@ TEST(UrlTest, PortValidationAndEffectivePorts) {
 }
 
 TEST(UrlTest, UrlEncodingAndDecoding) {
-    std::string raw = "hello world/test?foo=bar+baz";
+    const std::string raw = "hello world/test?foo=bar+baz";
 
     // 1. UriComponent Context
-    std::string encoded_uri = Url::encode(raw, Url::EncodeContext::UriComponent);
+    const std::string encoded_uri = Url::encode(raw, Url::EncodeContext::UriComponent);
     EXPECT_EQ(encoded_uri, "hello%20world%2Ftest%3Ffoo%3Dbar%2Bbaz");
     EXPECT_EQ(Url::decode(encoded_uri, Url::EncodeContext::UriComponent), raw);
 
     // 2. FormUrl Context
-    std::string encoded_form = Url::encode(raw, Url::EncodeContext::FormUrl);
+    const std::string encoded_form = Url::encode(raw, Url::EncodeContext::FormUrl);
     EXPECT_EQ(encoded_form, "hello+world%2Ftest%3Ffoo%3Dbar%2Bbaz");
     EXPECT_EQ(Url::decode(encoded_form, Url::EncodeContext::FormUrl), raw);
 
     // 3. Custom allowed characters overload test
-    std::string custom_encoded = Url::encode("path/to/resource", "/", false);
+    const std::string custom_encoded = Url::encode("path/to/resource", "/", false);
     EXPECT_EQ(custom_encoded, "path/to/resource");
 }
 
@@ -156,8 +156,10 @@ TEST(UrlTest, TransparentComponentEncoding) {
     url.set_username("john doe");
     url.set_password("p@ss word");
     url.set_fragment("section 3?query=true");
-    url.set_query_parameters({{"search", "modern c++"},
-                              {"tag", "networking"}});
+    url.set_query_parameters({
+        {"search", "modern c++"},
+        {"tag", "networking"},
+    });
 
     // 1. Verify getters return decoded, human-readable values transparently
     EXPECT_EQ(url.path(), "/my folder/sub folder/file.txt");
@@ -170,13 +172,13 @@ TEST(UrlTest, TransparentComponentEncoding) {
     ASSERT_TRUE(search_val.has_value());
     EXPECT_EQ(search_val.value(), "modern c++");
 
-    auto missing_val = url.get_query("nonexistent");
+    const auto missing_val = url.get_query("nonexistent");
     EXPECT_FALSE(missing_val.has_value());
     EXPECT_EQ(missing_val.value_or("default"), "default");
 
     // 3. Verify case-insensitive comparison operators
-    Url url1 = Url::parse("HTTPS://Example.COM:443/path").value();
-    Url url2 = Url::parse("https://example.com:443/path").value();
+    const Url url1 = Url::parse("HTTPS://Example.COM:443/path").value();
+    const Url url2 = Url::parse("https://example.com:443/path").value();
     EXPECT_TRUE(url1 == url2);
     EXPECT_FALSE(url1 < url2);
 }
@@ -205,11 +207,11 @@ TEST(UrlTest, UrlAppend) {
 }
 
 TEST(UrlTest, SerializationAndReconstruction) {
-    std::string original_str = "https://user:pass@example.com:8443/search?q=cpp#top";
+    const std::string original_str = "https://user:pass@example.com:8443/search?q=cpp#top";
     auto parsed = Url::parse(original_str);
     ASSERT_TRUE(parsed.has_value());
 
-    std::string serialized = parsed.value().to_string();
+    const std::string serialized = parsed.value().to_string();
     EXPECT_EQ(serialized, original_str);
 }
 
@@ -230,7 +232,7 @@ TEST(UrlTest, StreamOperatorsAndParsing) {
     EXPECT_EQ(stream_url.host(), "test.org");
     EXPECT_EQ(stream_url.path(), "/index.html");
 
-    auto ref_val = stream_url.get_query("ref");
+    const auto ref_val = stream_url.get_query("ref");
     EXPECT_TRUE(ref_val.has_value());
     EXPECT_EQ(ref_val, "home");
 

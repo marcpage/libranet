@@ -1,9 +1,10 @@
 #include <gtest/gtest.h>
 #include <atomic>
-#include <chrono>
+#include <chrono> // IWYU pragma: keep (the ms literals)
 #include <cstddef>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "types/BlockingQueue.hpp"
@@ -51,7 +52,7 @@ TEST(BlockingQueueTest, MoveSemantics) {
     ASSERT_TRUE(opt.has_value());
     EXPECT_EQ(*opt, "hello");
 
-    std::string result = q.pop(); // move out
+    const std::string result = q.pop(); // move out
     EXPECT_EQ(result, "world");
 }
 
@@ -84,7 +85,7 @@ TEST(BlockingQueueTest, CapacityAndTimeouts) {
     EXPECT_TRUE(q.empty());
 
     // Timed pop on empty queue must time out
-    auto empty = q.pop_ms_timeout(empty_pop_timeout);
+    const auto empty = q.pop_ms_timeout(empty_pop_timeout);
     EXPECT_FALSE(empty.has_value());
 }
 
@@ -144,7 +145,7 @@ TEST(BlockingQueueTest, ProducerConsumer) {
     });
 
     // Two consumers
-    auto consumer_fn = [&] {
+    const auto consumer_fn = [&] {
         while (consumed.load(std::memory_order_relaxed) < num_items) {
             auto item = q.pop_ms_timeout(pop_timeout);
             if (item) {
@@ -182,15 +183,17 @@ TEST(BlockingQueueTest, MultipleProducersConsumers) {
     std::atomic<long long> checksum{0};
 
     std::vector<std::thread> producers;
+    producers.reserve(num_producers);
     for (int p = 0; p < num_producers; ++p) {
         producers.emplace_back([&, p] {
             for (int i = 0; i < items_per_producer; ++i) {
-                q.push(p * items_per_producer + i + 1);
+                q.push((p * items_per_producer) + i + 1);
             }
         });
     }
 
     std::vector<std::thread> consumers;
+    consumers.reserve(num_consumers);
     for (int c = 0; c < num_consumers; ++c) {
         consumers.emplace_back([&] {
             while (consumed.load(std::memory_order_relaxed) < total) {
@@ -202,8 +205,12 @@ TEST(BlockingQueueTest, MultipleProducersConsumers) {
         });
     }
 
-    for (auto& t : producers) t.join();
-    for (auto& t : consumers) t.join();
+    for (auto& t : producers) {
+        t.join();
+    }
+    for (auto& t : consumers) {
+        t.join();
+    }
 
     EXPECT_EQ(consumed.load(), total);
     // Expected sum = total*(total+1)/2

@@ -1,12 +1,19 @@
 #include "AsyncChannel.hpp"
 
+#include <exception>
+#include <stdexcept>
+#include <string>
+
+#include "Channel.hpp"
+#include "IMessage.hpp"
+
 namespace {
-void noop(std::string) {}
+void noop(const std::string& /*unused*/) {}
 }
 
 namespace msg {
 
-AsyncChannel::AsyncChannel(const std::string& name, Callback callback, Logger logger)
+AsyncChannel::AsyncChannel(const std::string& name, const Callback& callback, const Logger& logger)
     : Channel(name)
     , m_logger(nullptr == logger ? noop : logger)
     , m_running(true)
@@ -16,7 +23,7 @@ AsyncChannel::AsyncChannel(const std::string& name, Callback callback, Logger lo
         throw std::invalid_argument("You must pass a callback");
     }
 
-    m_thread = std::thread([this]() {
+    m_thread = std::thread([this] {
         while (m_running) {
             auto message = next_message();
 
@@ -34,7 +41,14 @@ AsyncChannel::AsyncChannel(const std::string& name, Callback callback, Logger lo
 }
 
 AsyncChannel::~AsyncChannel() {
-    stop(); // Ensure thread is stopped before destruction
+    // Ensure thread is stopped before destruction. A worker that cannot be
+    // stopped would outlive this object, so then nothing is safe but to end
+    // the program, as std::thread's destructor would.
+    try {
+        stop();
+    } catch (...) {
+        std::terminate();
+    }
 }
 
 void AsyncChannel::stop() {
@@ -42,11 +56,9 @@ void AsyncChannel::stop() {
         return;
     }
 
-    auto* message = new Message<std::string>("");
-
-    // signal thread to stop and then send a message to wake it up
+    // signal thread to stop and then send an empty message to wake it up
     m_running = false;
-    m_message_queue.push(IMessage::Ptr(message));
+    m_message_queue.push(IMessage::Ptr());
 
     if (m_thread.joinable()) {
         m_thread.join(); // Wait for thread to finish

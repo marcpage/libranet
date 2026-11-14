@@ -28,7 +28,7 @@ public:
         Real,
         String,
         Array,
-        Object
+        Object,
     };
 
     using Array = std::vector<Json>;
@@ -53,46 +53,46 @@ public:
     Json& operator=(const Json&) = default;
     Json& operator=(Json&&) noexcept = default;
 
-    Type type() const;
-    bool is_null() const noexcept;
-    bool is_boolean() const noexcept;
-    bool is_number() const noexcept;
-    bool is_integer() const noexcept;
-    bool is_real() const noexcept;
-    bool is_string() const noexcept;
-    bool is_array() const noexcept;
-    bool is_object() const noexcept;
+    [[nodiscard]] Type type() const;
+    [[nodiscard]] bool is_null() const noexcept;
+    [[nodiscard]] bool is_boolean() const noexcept;
+    [[nodiscard]] bool is_number() const noexcept;
+    [[nodiscard]] bool is_integer() const noexcept;
+    [[nodiscard]] bool is_real() const noexcept;
+    [[nodiscard]] bool is_string() const noexcept;
+    [[nodiscard]] bool is_array() const noexcept;
+    [[nodiscard]] bool is_object() const noexcept;
 
-    bool boolean() const;
-    std::int64_t integer() const;
-    double real() const;
-    const std::string& string() const;
-    const Array& array() const;
-    const Object& object() const;
+    [[nodiscard]] bool boolean() const;
+    [[nodiscard]] std::int64_t integer() const;
+    [[nodiscard]] double real() const;
+    [[nodiscard]] const std::string& string() const;
+    [[nodiscard]] const Array& array() const;
+    [[nodiscard]] const Object& object() const;
 
     Array& array();
     Object& object();
 
-    std::size_t size() const;
-    bool empty() const;
-    bool has(const std::string& key) const;
+    [[nodiscard]] std::size_t size() const;
+    [[nodiscard]] bool empty() const;
+    [[nodiscard]] bool has(const std::string& key) const;
 
     Json& operator[](std::size_t index);
     const Json& operator[](std::size_t index) const;
     Json& operator[](const std::string& key);
     const Json& operator[](const std::string& key) const;
 
-    const Json& at(std::size_t index) const;
+    [[nodiscard]] const Json& at(std::size_t index) const;
     Json& at(std::size_t index);
-    const Json& at(const std::string& key) const;
+    [[nodiscard]] const Json& at(const std::string& key) const;
     Json& at(const std::string& key);
 
-    std::string dump(int indent = -1) const;
+    [[nodiscard]] std::string dump(int indent = -1) const;
 
     static Json parse(std::string_view input);
 
-    friend bool operator==(const Json& left, const Json& right) noexcept;
-    friend bool operator!=(const Json& left, const Json& right) noexcept;
+    friend bool operator==(const Json& left, const Json& right);
+    friend bool operator!=(const Json& left, const Json& right);
     friend std::ostream& operator<<(std::ostream& out_stream, const Json& value);
     friend std::istream& operator>>(std::istream& in_stream, Json& value);
 
@@ -118,7 +118,7 @@ private:
         std::size_t m_cursor = 0;
 
         void skip_whitespace() noexcept;
-        char peek() const noexcept;
+        [[nodiscard]] char peek() const noexcept;
         char get();
         bool consume(char expected) noexcept;
 
@@ -132,7 +132,7 @@ private:
         Json parse_object();
     };
 
-    static bool is_digit(const char character);
+    static bool is_digit(char character);
     static void serialize_array(const Array& arr, std::ostringstream& out_stream, int indent, int current_indent);
     static void serialize_object(const Object& obj, std::ostringstream& out_stream, int indent, int current_indent);
     static void serialize(const Json& json_value, std::ostringstream& out_stream,
@@ -459,16 +459,17 @@ inline void Json::escape_string(const std::string& str, std::ostringstream& out_
             case '\t': out_stream << "\\t"; break;
             default:
                 // Control characters, those below a space, are escaped.
-                constexpr unsigned char first_unescaped = 0x20;
+                constexpr unsigned first_unescaped = 0x20;
+                const unsigned code = static_cast<unsigned char>(character);
 
-                if (static_cast<unsigned char>(character) < first_unescaped) {
+                if (code < first_unescaped) {
                     out_stream << "\\u00";
 
                     const char hex[] = "0123456789abcdef";
-                    constexpr auto nibble_bits = 4;
-                    constexpr auto nibble_mask = 0xF;
+                    constexpr auto nibble_bits = 4U;
+                    constexpr auto nibble_mask = 0xFU;
 
-                    out_stream << hex[(character >> nibble_bits) & nibble_mask] << hex[character & nibble_mask];
+                    out_stream << hex[(code >> nibble_bits) & nibble_mask] << hex[code & nibble_mask];
                 } else {
                     out_stream << character;
                 }
@@ -506,7 +507,7 @@ inline void Json::serialize(const Json& json_value, std::ostringstream& out_stre
 }
 
 inline bool Json::is_digit(const char character) {
-    return std::isdigit(static_cast<unsigned char>(character));
+    return std::isdigit(static_cast<unsigned char>(character)) != 0;
 }
 
 inline void Json::serialize_array(const Array& the_array, std::ostringstream& out_stream,
@@ -518,10 +519,10 @@ inline void Json::serialize_array(const Array& the_array, std::ostringstream& ou
 
     const bool pretty = indent >= 0;
     const auto current = static_cast<std::string::size_type>(current_indent);
-    const auto indented = static_cast<std::string::size_type>(current_indent + indent);
+    const auto indented = current + static_cast<std::string::size_type>(indent);
     const auto indent_str = pretty ? std::string(current, ' ') : std::string();
     const auto next_indent_str = pretty ? std::string(indented, ' ') : std::string();
-    const auto newline = pretty ? "\n" : "";
+    const auto* const newline = pretty ? "\n" : "";
 
     out_stream << "[" << newline;
 
@@ -644,7 +645,7 @@ inline Json Json::Parser::parse_value() {
 
     switch (character) {
         case 'n': return parse_null();
-        case 't': return parse_boolean();
+        case 't':
         case 'f': return parse_boolean();
         case '"': return parse_string_value();
         case '[': return parse_array();
@@ -653,11 +654,10 @@ inline Json Json::Parser::parse_value() {
         default:
             if (is_digit(character)) {
                 return parse_number();
-            } else {
-                throw std::invalid_argument(std::string("Json::parse: unexpected character '")
-                                            + character
-                                            + "'");
             }
+            throw std::invalid_argument(std::string("Json::parse: unexpected character '")
+                                        + character
+                                        + "'");
     }
 }
 
@@ -691,7 +691,7 @@ inline Json Json::Parser::parse_boolean() {
 }
 
 inline Json Json::Parser::parse_number() {
-    std::size_t start = m_cursor;
+    const std::size_t start = m_cursor;
 
     if (peek() == '-') {
         ++m_cursor;
@@ -726,7 +726,7 @@ inline Json Json::Parser::parse_number() {
         }
     }
 
-    std::string num_str(m_input.substr(start, m_cursor - start));
+    const std::string num_str(m_input.substr(start, m_cursor - start));
 
     if (is_float_num) {
         return Json(std::stod(num_str));
@@ -741,14 +741,14 @@ inline std::string Json::Parser::parse_raw_string() {
     std::string result;
 
     while (m_cursor < m_input.size()) {
-        char character = get();
+        const char character = get();
 
         if (character == '"') {
             return result;
         }
 
         if (character == '\\') {
-            char esc = get();
+            const char esc = get();
 
             switch (esc) {
                 case '"': result += '"'; break;
@@ -843,11 +843,11 @@ inline Json Json::Parser::parse_object() {
     return Json(object);
 }
 
-inline bool operator==(const Json& left, const Json& right) noexcept {
+inline bool operator==(const Json& left, const Json& right) {
     return left.m_data == right.m_data;
 }
 
-inline bool operator!=(const Json& left, const Json& right) noexcept {
+inline bool operator!=(const Json& left, const Json& right) {
     return !(left == right);
 }
 

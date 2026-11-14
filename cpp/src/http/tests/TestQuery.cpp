@@ -34,7 +34,7 @@ TEST(QueryTest, ConstructorsAndBasicAccessors) {
 }
 
 TEST(QueryTest, DuplicateKeysAndMultivalueGetters) {
-    Query query = Query::parse("tag=cpp&tag=programming&tag=web&name=alice");
+    const Query query = Query::parse("tag=cpp&tag=programming&tag=web&name=alice");
 
     // Test get_all for duplicate keys
     auto tags = query.get_all("tag");
@@ -79,15 +79,15 @@ TEST(QueryTest, MutationsAndExclusiveSet) {
 
 TEST(QueryTest, StreamOperatorsAndParsing) {
     // Test static parsing with and without leading '?'
-    Query q1 = Query::parse("?foo=bar&baz=123");
+    const Query q1 = Query::parse("?foo=bar&baz=123");
     EXPECT_EQ(q1.get_first("foo"), "bar");
     EXPECT_EQ(q1.get_first("baz"), "123");
 
-    Query q2 = Query::parse("key=value_only");
+    const Query q2 = Query::parse("key=value_only");
     EXPECT_EQ(q2.get_first("key"), "value_only");
 
     // Test serialization output format (to_string)
-    std::string serialized = q1.to_string();
+    const std::string serialized = q1.to_string();
     EXPECT_EQ(serialized, "foo=bar&baz=123");
 
     // Test ostream operator<<

@@ -40,36 +40,36 @@ public:
     Url(Url&&) noexcept = default;
     Url& operator=(Url&&) noexcept = default;
 
-    std::string_view scheme() const noexcept;
-    std::string username() const noexcept;
-    std::string password() const noexcept;
-    std::string_view host() const noexcept;
-    std::optional<uint16_t> port() const noexcept;
-    std::optional<uint16_t> effective_port() const noexcept;
-    std::string path() const;
-    std::string fragment() const noexcept;
+    [[nodiscard]] std::string_view scheme() const noexcept;
+    [[nodiscard]] std::string username() const;
+    [[nodiscard]] std::string password() const;
+    [[nodiscard]] std::string_view host() const noexcept;
+    [[nodiscard]] std::optional<uint16_t> port() const noexcept;
+    [[nodiscard]] std::optional<uint16_t> effective_port() const;
+    [[nodiscard]] std::string path() const;
+    [[nodiscard]] std::string fragment() const;
 
-    const Query& query() const noexcept;
+    [[nodiscard]] const Query& query() const noexcept;
     Query& query() noexcept;
-    std::optional<std::string> get_query(std::string_view key) const;
+    [[nodiscard]] std::optional<std::string> get_query(std::string_view key) const;
     void set_query(std::string_view key, std::string_view value);
-    bool has_query(std::string_view key) const noexcept;
+    [[nodiscard]] bool has_query(std::string_view key) const noexcept;
     void remove_query(std::string_view key);
     void set_query_parameters(
         std::initializer_list<std::pair<std::string_view, std::string_view>> parameters);
 
     void set_scheme(std::string scheme);
-    void set_username(std::string username);
-    void set_password(std::string password);
+    void set_username(const std::string& username);
+    void set_password(const std::string& password);
     void set_host(std::string host);
     void set_port(uint16_t port);
-    void set_path(std::string path);
+    void set_path(const std::string& path);
     void set_query(Query query);
-    void set_fragment(std::string fragment);
+    void set_fragment(const std::string& fragment);
 
     void append(std::string_view relative_url);
 
-    std::string to_string() const;
+    [[nodiscard]] std::string to_string() const;
 
     friend bool operator==(const Url& lhs, const Url& rhs);
     friend bool operator!=(const Url& lhs, const Url& rhs);
@@ -111,7 +111,7 @@ inline std::string Url::encode(std::string_view value, std::string_view allowed_
             } else {
                 escaped << "%20";
             }
-        } else if (std::isalnum(character)
+        } else if (std::isalnum(character) != 0
                    || allowed_chars.find(character) != std::string_view::npos) {
             // Keep character as-is if it's alphanumeric or explicitly allowed
             escaped << character;
@@ -128,7 +128,7 @@ inline std::string Url::encode(std::string_view value, EncodeContext context) {
     // RFC 3986 Section 2.3 Unreserved characters
     constexpr std::string_view unreserved = "-_.~";
 
-    bool space_to_plus = (context == EncodeContext::FormUrl);
+    const bool space_to_plus = (context == EncodeContext::FormUrl);
     return encode(value, unreserved, space_to_plus);
 }
 
@@ -160,7 +160,7 @@ inline std::string Url::decode(std::string_view value, bool decode_plus_as_space
 }
 
 inline std::string Url::decode(std::string_view value, EncodeContext context) {
-    bool decode_plus = (context == EncodeContext::FormUrl);
+    const bool decode_plus = (context == EncodeContext::FormUrl);
     return decode(value, decode_plus);
 }
 
@@ -168,11 +168,11 @@ inline std::string_view Url::scheme() const noexcept {
     return m_scheme;
 }
 
-inline std::string Url::username() const noexcept {
+inline std::string Url::username() const {
     return decode(m_username, EncodeContext::UriComponent);
 }
 
-inline std::string Url::password() const noexcept {
+inline std::string Url::password() const {
     return decode(m_password, EncodeContext::UriComponent);
 }
 
@@ -184,7 +184,7 @@ inline std::optional<std::uint16_t> Url::port() const noexcept {
     return m_port;
 }
 
-inline std::optional<uint16_t> Url::effective_port() const noexcept {
+inline std::optional<uint16_t> Url::effective_port() const {
     const auto explicit_port = port();
 
     if (explicit_port.has_value()) {
@@ -215,7 +215,7 @@ inline std::string Url::path() const {
     return decode(m_path, EncodeContext::UriComponent);
 }
 
-inline std::string Url::fragment() const noexcept {
+inline std::string Url::fragment() const {
     return decode(m_fragment, EncodeContext::UriComponent);
 }
 
@@ -228,7 +228,7 @@ inline Query& Url::query() noexcept {
 }
 
 inline std::optional<std::string> Url::get_query(std::string_view key) const {
-    const auto value = m_query.get_first(std::string(key));
+    const auto value = m_query.get_first(key);
 
     if (!value.has_value()) {
         return std::nullopt;
@@ -264,14 +264,14 @@ inline void Url::set_scheme(std::string scheme) {
     m_scheme = std::move(scheme);
 }
 
-inline void Url::set_username(std::string username) {
+inline void Url::set_username(const std::string& username) {
     constexpr std::string_view userinfo_allowed = "-_.~!$&'()*+,;=";
     constexpr auto not_space_to_plus = false;
 
     m_username = encode(username, userinfo_allowed, not_space_to_plus);
 }
 
-inline void Url::set_password(std::string password) {
+inline void Url::set_password(const std::string& password) {
     constexpr std::string_view userinfo_allowed = "-_.~!$&'()*+,;=";
     constexpr auto not_space_to_plus = false;
 
@@ -291,7 +291,7 @@ inline void Url::set_port(uint16_t port) {
     m_port = port;
 }
 
-inline void Url::set_path(std::string path) {
+inline void Url::set_path(const std::string& path) {
     constexpr std::string_view unreserved_and_slash = "-_.~/";
     constexpr auto not_space_to_plus = false;
 
@@ -302,7 +302,7 @@ inline void Url::set_query(Query query) {
     m_query = std::move(query);
 }
 
-inline void Url::set_fragment(std::string fragment) {
+inline void Url::set_fragment(const std::string& fragment) {
     constexpr std::string_view fragment_allowed = "-_.~!$&'()*+,;=/?";
     constexpr auto not_space_to_plus = false;
 
@@ -353,7 +353,7 @@ inline std::string Url::to_string() const {
             result += ":" + m_password;
         }
 
-        result += "@";
+        result += '@';
     }
 
     const bool is_ipv6 = (m_host.find(':') != std::string::npos);
@@ -365,19 +365,19 @@ inline std::string Url::to_string() const {
     }
 
     if (m_port.has_value()) {
-        result += ":";
+        result += ':';
         result += std::to_string(m_port.value());
     }
 
     result += m_path;
 
     if (!m_query.empty()) {
-        result += "?";
+        result += '?';
         result += m_query.to_string();
     }
 
     if (!m_fragment.empty()) {
-        result += "#";
+        result += '#';
         result += m_fragment;
     }
 
@@ -399,7 +399,7 @@ inline std::istream& operator>>(std::istream& in_stream, Url& url) {
         return in_stream;
     }
 
-    url = std::move(parsed_url.value());
+    url = parsed_url.value();
 
     return in_stream;
 }
@@ -617,9 +617,9 @@ inline std::optional<uint16_t> Url::parse_port(std::string_view str) {
             return static_cast<uint16_t>(p);
         }
     } catch (const std::invalid_argument&) {
-        // Fallthrough on conversion error
+        return std::nullopt; // not a number
     } catch (const std::out_of_range&) {
-        // Fallthrough on conversion error
+        return std::nullopt; // too large for unsigned long
     }
 
     return std::nullopt;

@@ -1,6 +1,12 @@
 #include "ISocket.hpp"
 
+#include <cstddef>
 #include <stdexcept>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "Address.hpp"
 
 #if defined(__linux__) || defined(__APPLE__)
 #include "SocketPosix.hpp"

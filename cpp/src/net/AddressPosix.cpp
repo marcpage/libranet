@@ -6,8 +6,11 @@
 #include <net/if.h>
 #include <netdb.h>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <vector>
 
 #include "Address.hpp"
 

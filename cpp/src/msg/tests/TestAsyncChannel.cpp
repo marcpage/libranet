@@ -6,10 +6,12 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "msg/AsyncChannel.hpp"
-#include "msg/Message.hpp"
+#include "msg/Channel.hpp"
+#include "msg/IMessage.hpp"
 
 using namespace msg;
 using namespace std::chrono_literals;
@@ -43,9 +45,9 @@ TEST(AsyncChannelTest, ConstructionAndCallback) {
     std::vector<std::string> received;
 
     {
-        AsyncChannel ch("test.async.basic", [&](IMessage::Ptr message) {
+        const AsyncChannel ch("test.async.basic", [&](const IMessage::Ptr& message) {
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                const std::scoped_lock lock(mutex);
                 received.push_back(message->to_string());
             }
             condition.notify_one();
@@ -71,9 +73,9 @@ TEST(AsyncChannelTest, MultipleMessagesFifoOrder) {
     std::vector<std::string> received;
 
     {
-        AsyncChannel ch("test.async.fifo", [&](IMessage::Ptr message) {
+        const AsyncChannel ch("test.async.fifo", [&](const IMessage::Ptr& message) {
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                const std::scoped_lock lock(mutex);
                 received.push_back(message->to_string());
             }
             condition.notify_one();
@@ -104,17 +106,17 @@ TEST(AsyncChannelTest, BroadcastToMultipleAsyncChannels) {
     std::vector<int> received_b;
 
     {
-        AsyncChannel a("test.async.broadcast", [&](IMessage::Ptr message) {
+        const AsyncChannel a("test.async.broadcast", [&](const IMessage::Ptr& message) {
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                const std::scoped_lock lock(mutex);
                 received_a.push_back(std::stoi(message->to_string()));
             }
             condition.notify_one();
         });
 
-        AsyncChannel b("test.async.broadcast", [&](IMessage::Ptr message) {
+        const AsyncChannel b("test.async.broadcast", [&](const IMessage::Ptr& message) {
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                const std::scoped_lock lock(mutex);
                 received_b.push_back(std::stoi(message->to_string()));
             }
             condition.notify_one();
@@ -140,19 +142,19 @@ TEST(AsyncChannelTest, CallbackExceptionDoesNotStopProcessing) {
     std::vector<std::string> logged;
 
     {
-        AsyncChannel ch("test.async.exceptions", [&](IMessage::Ptr message) {
+        const AsyncChannel ch("test.async.exceptions", [&](const IMessage::Ptr& message) {
             const std::string value = message->to_string();
             if (value == "1") {
                 throw std::runtime_error("expected test exception");
             }
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                const std::scoped_lock lock(mutex);
                 received.push_back(value);
             }
             condition.notify_one();
         }, [&](std::string message) {
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                const std::scoped_lock lock(mutex);
                 logged.push_back(std::move(message));
             }
             condition.notify_one();
@@ -175,7 +177,7 @@ TEST(AsyncChannelTest, CallbackExceptionDoesNotStopProcessing) {
 TEST(AsyncChannelTest, StopAndIdempotence) {
     std::atomic<int> callback_count{0};
 
-    AsyncChannel ch("test.async.stop", [&](IMessage::Ptr) {
+    AsyncChannel ch("test.async.stop", [&](const IMessage::Ptr&) {
         ++callback_count;
     });
 
@@ -198,7 +200,7 @@ TEST(AsyncChannelTest, DestructorStopsWorker) {
     std::atomic<bool> callback_called{false};
 
     {
-        AsyncChannel ch("test.async.destructor", [&](IMessage::Ptr) {
+        const AsyncChannel ch("test.async.destructor", [&](const IMessage::Ptr&) {
             callback_called = true;
         });
         Channel::post("test.async.destructor", 1);

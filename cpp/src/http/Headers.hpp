@@ -29,17 +29,17 @@ public:
     ~Headers() = default;
 
     void set(std::string key, std::string value);
-    std::optional<std::string_view> get(std::string_view key) const noexcept;
-    std::string_view get(std::string_view key,
-                         std::string_view default_value) const noexcept;
-    bool has(std::string_view key) const noexcept;
-    void remove(std::string key);
+    [[nodiscard]] std::optional<std::string_view> get(std::string_view key) const noexcept;
+    [[nodiscard]] std::string_view get(std::string_view key,
+                                       std::string_view default_value) const noexcept;
+    [[nodiscard]] bool has(std::string_view key) const noexcept;
+    void remove(const std::string& key);
     void clear() noexcept;
 
-    std::size_t size() const noexcept;
-    bool empty() const noexcept;
+    [[nodiscard]] std::size_t size() const noexcept;
+    [[nodiscard]] bool empty() const noexcept;
 
-    std::string to_string() const;
+    [[nodiscard]] std::string to_string() const;
 
     friend bool operator==(const Headers& left, const Headers& right) noexcept;
     friend bool operator!=(const Headers& left, const Headers& right) noexcept;
@@ -48,7 +48,7 @@ public:
     friend std::istream& operator>>(std::istream& in_stream, Headers& headers);
 
     static std::string_view trim_trailing_cr(std::string_view line) noexcept;
-    static std::string_view trim_whitespace(std::string_view text) noexcept;
+    static std::string_view trim_whitespace(std::string_view text);
     static bool is_continuation_line(std::string_view line) noexcept;
     static bool parse_header_line(std::string_view line, std::string& out_key,
                                   std::string& out_value);
@@ -77,7 +77,7 @@ inline void Headers::set(std::string key, std::string value) {
 }
 
 inline std::optional<std::string_view> Headers::get(std::string_view key) const noexcept {
-    auto it = m_headers.find(key);
+    const auto it = m_headers.find(key);
 
     if (it != m_headers.end()) {
         return it->second;
@@ -87,7 +87,7 @@ inline std::optional<std::string_view> Headers::get(std::string_view key) const 
 }
 
 inline std::string_view Headers::get(std::string_view key, std::string_view default_value) const noexcept {
-    auto it = m_headers.find(key);
+    const auto it = m_headers.find(key);
 
     if (it != m_headers.end()) {
         return it->second;
@@ -100,7 +100,7 @@ inline bool Headers::has(std::string_view key) const noexcept {
     return m_headers.find(key) != m_headers.end();
 }
 
-inline void Headers::remove(std::string key) {
+inline void Headers::remove(const std::string& key) {
     m_headers.erase(key);
 }
 
@@ -139,7 +139,7 @@ inline bool operator==(const Headers& left, const Headers& right) noexcept {
     }
 
     // Use our case-insensitive comparator to check keys and values
-    Headers::CaseInsensitiveLess comp;
+    const Headers::CaseInsensitiveLess comp;
 
     // Since std::map is sorted by CaseInsensitiveLess, if two maps have the
     // same size and equal elements according to the comparator, we can iterate
@@ -211,7 +211,7 @@ inline std::string Headers::process_header_line(
         }
 
         std::string updated_value(existing_val.value());
-        std::string_view cleaned_chunk = trim_whitespace(line);
+        const std::string_view cleaned_chunk = trim_whitespace(line);
 
         updated_value.append(" ");
         updated_value.append(cleaned_chunk.data(), cleaned_chunk.size());
@@ -238,7 +238,7 @@ inline std::string_view Headers::trim_trailing_cr(std::string_view line) noexcep
     return line;
 }
 
-inline std::string_view Headers::trim_whitespace(std::string_view text) noexcept {
+inline std::string_view Headers::trim_whitespace(std::string_view text) {
     const auto start = text.find_first_not_of(" \t\r\n");
 
     if (start == std::string_view::npos) {
@@ -281,15 +281,14 @@ inline std::vector<std::string_view> Headers::split_spaces(std::string_view text
         if (pos == std::string_view::npos) {
             break;
         }
-        auto end = text.find_first_of(" \t", pos);
+        const auto end = text.find_first_of(" \t", pos);
         if (end == std::string_view::npos) {
             fields.push_back(text.substr(pos));
             pos = std::string_view::npos;
             break;
-        } else {
-            fields.push_back(text.substr(pos, end - pos));
-            pos = end;
         }
+        fields.push_back(text.substr(pos, end - pos));
+        pos = end;
     }
 
     // If there is remaining text and we need the final catch-all field

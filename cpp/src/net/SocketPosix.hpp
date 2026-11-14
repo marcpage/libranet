@@ -15,9 +15,9 @@ public:
     ISocket::Ptr accept() override;
     std::size_t send(std::string_view data) override;
     bool receive(std::vector<std::byte>& buffer) override;
-    Address local_address() const override;
-    Address remote_address() const override;
-    bool is_open() const noexcept override;
+    [[nodiscard]] Address local_address() const override;
+    [[nodiscard]] Address remote_address() const override;
+    [[nodiscard]] bool is_open() const noexcept override;
     void set_receive_timeout(ISocket::Milliseconds timeout) override;
     void set_send_timeout(ISocket::Milliseconds timeout) override;
     void close() override;
