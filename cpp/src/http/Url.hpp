@@ -137,10 +137,12 @@ inline std::string Url::decode(std::string_view value, bool decode_plus_as_space
     std::string decoded;
     decoded.reserve(value.size());
 
-    for (std::size_t character_index = 0; character_index < value.size();
-         ++character_index) {
+    std::size_t character_index = 0;
+
+    while (character_index < value.size()) {
         if (decode_plus_as_space && value[character_index] == '+') {
             decoded += ' ';
+            ++character_index;
         } else if (value[character_index] == '%' && character_index + 2 < value.size()
                    && std::isxdigit(static_cast<unsigned char>(value[character_index + 1])) != 0
                    && std::isxdigit(static_cast<unsigned char>(value[character_index + 2])) != 0) {
@@ -148,9 +150,10 @@ inline std::string Url::decode(std::string_view value, bool decode_plus_as_space
             const std::string hex_digits(value.substr(character_index + 1, 2));
 
             decoded += static_cast<char>(std::stoi(hex_digits, nullptr, hex_base));
-            character_index += 2;
+            character_index += 3;
         } else {
             decoded += value[character_index];
+            ++character_index;
         }
     }
 
