@@ -45,7 +45,7 @@ TEST(AsyncChannelOfTest, ConstructionAndCallback) {
     {
         AsyncChannelOf<int> ch("test.asyncof.basic", [&](int value) {
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                std::scoped_lock lock(mutex);
                 received.push_back(value);
             }
             condition.notify_one();
@@ -73,7 +73,7 @@ TEST(AsyncChannelOfTest, MultipleMessagesFifoOrder) {
     {
         AsyncChannelOf<int> ch("test.asyncof.fifo", [&](int value) {
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                std::scoped_lock lock(mutex);
                 received.push_back(value);
             }
             condition.notify_one();
@@ -106,7 +106,7 @@ TEST(AsyncChannelOfTest, BroadcastToMultipleAsyncChannels) {
     {
         AsyncChannelOf<int> a("test.asyncof.broadcast", [&](int value) {
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                std::scoped_lock lock(mutex);
                 received_a.push_back(value);
             }
             condition.notify_one();
@@ -114,7 +114,7 @@ TEST(AsyncChannelOfTest, BroadcastToMultipleAsyncChannels) {
 
         AsyncChannelOf<int> b("test.asyncof.broadcast", [&](int value) {
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                std::scoped_lock lock(mutex);
                 received_b.push_back(value);
             }
             condition.notify_one();
@@ -141,7 +141,7 @@ TEST(AsyncChannelOfTest, UnexpectedMessageTypeLogging) {
     {
         AsyncChannelOf<int> ch("test.asyncof.unexpected", [](int) {}, [&](std::string msg) {
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                std::scoped_lock lock(mutex);
                 logged.push_back(std::move(msg));
             }
             condition.notify_one();

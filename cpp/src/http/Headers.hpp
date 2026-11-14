@@ -29,17 +29,17 @@ public:
     ~Headers() = default;
 
     void set(std::string key, std::string value);
-    std::optional<std::string_view> get(std::string_view key) const noexcept;
-    std::string_view get(std::string_view key,
-                         std::string_view default_value) const noexcept;
-    bool has(std::string_view key) const noexcept;
-    void remove(std::string key);
+    [[nodiscard]] std::optional<std::string_view> get(std::string_view key) const noexcept;
+    [[nodiscard]] std::string_view get(std::string_view key,
+                                       std::string_view default_value) const noexcept;
+    [[nodiscard]] bool has(std::string_view key) const noexcept;
+    void remove(const std::string& key);
     void clear() noexcept;
 
-    std::size_t size() const noexcept;
-    bool empty() const noexcept;
+    [[nodiscard]] std::size_t size() const noexcept;
+    [[nodiscard]] bool empty() const noexcept;
 
-    std::string to_string() const;
+    [[nodiscard]] std::string to_string() const;
 
     friend bool operator==(const Headers& left, const Headers& right) noexcept;
     friend bool operator!=(const Headers& left, const Headers& right) noexcept;
@@ -100,7 +100,7 @@ inline bool Headers::has(std::string_view key) const noexcept {
     return m_headers.find(key) != m_headers.end();
 }
 
-inline void Headers::remove(std::string key) {
+inline void Headers::remove(const std::string& key) {
     m_headers.erase(key);
 }
 
@@ -286,10 +286,9 @@ inline std::vector<std::string_view> Headers::split_spaces(std::string_view text
             fields.push_back(text.substr(pos));
             pos = std::string_view::npos;
             break;
-        } else {
-            fields.push_back(text.substr(pos, end - pos));
-            pos = end;
         }
+        fields.push_back(text.substr(pos, end - pos));
+        pos = end;
     }
 
     // If there is remaining text and we need the final catch-all field

@@ -18,7 +18,7 @@ namespace types {
 
 class Integer {
 public:
-#if defined(__SIZEOF_INT128__)
+#ifdef __SIZEOF_INT128__
     using word_t = std::uint64_t;
     __extension__ using double_word_t = unsigned __int128;
 #else
@@ -35,11 +35,11 @@ public:
     Integer& operator=(const Integer&) = default;
     Integer& operator=(Integer&&) noexcept = default;
 
-    bool is_zero() const noexcept;
-    bool is_negative() const noexcept;
-    int sign() const noexcept;
-    std::string to_string() const;
-    std::size_t bit_length() const noexcept;
+    [[nodiscard]] bool is_zero() const noexcept;
+    [[nodiscard]] bool is_negative() const noexcept;
+    [[nodiscard]] int sign() const noexcept;
+    [[nodiscard]] std::string to_string() const;
+    [[nodiscard]] std::size_t bit_length() const noexcept;
 
     Integer operator+() const;
     Integer operator-() const;
@@ -159,7 +159,7 @@ inline void Integer::add_magnitudes(std::vector<word_t>& left,
         carry = static_cast<word_t>(sum >> word_bits);
     }
 
-    if (carry) {
+    if (carry != 0U) {
         left.push_back(carry);
     }
 }
@@ -173,7 +173,7 @@ inline void Integer::subtract_magnitudes(std::vector<word_t>& left,
             static_cast<double_word_t>(left[word_index]) - (word_index < right.size() ? right[word_index] : 0) - borrow;
 
         left[word_index] = static_cast<word_t>(temp);
-        borrow = (temp >> word_bits) ? 1 : 0;
+        borrow = (temp >> word_bits) != 0U ? 1 : 0;
     }
 }
 
@@ -190,8 +190,8 @@ Integer::multiply_magnitudes(const std::vector<word_t>& left,
         double_word_t carry = 0;
 
         for (std::size_t right_index = 0; right_index < right.size(); ++right_index) {
-            carry += static_cast<double_word_t>(left[left_index])
-                         * right[right_index]
+            carry += (static_cast<double_word_t>(left[left_index])
+                      * right[right_index])
                      + result[left_index + right_index];
             result[left_index + right_index] = static_cast<word_t>(carry);
             carry >>= word_bits;
@@ -211,7 +211,7 @@ Integer::multiply_magnitudes(const std::vector<word_t>& left,
 inline unsigned Integer::get_normalization_shift(word_t high_word) noexcept {
     unsigned shift = 0;
 
-    while ((high_word & (word_t(1) << (word_bits - 1))) == 0) {
+    while ((high_word & (static_cast<word_t>(1) << (word_bits - 1))) == 0) {
         high_word <<= 1U;
         ++shift;
     }
@@ -238,9 +238,7 @@ inline Integer::double_word_t Integer::calculate_estimated_quotient(
 
     const auto max_word = static_cast<double_word_t>(std::numeric_limits<word_t>::max());
 
-    if (estimated_quotient > max_word) {
-        estimated_quotient = max_word;
-    }
+    estimated_quotient = std::min(estimated_quotient, max_word);
 
     return estimated_quotient;
 }
@@ -329,21 +327,21 @@ inline void Integer::shift_left_magnitude(std::vector<word_t>& value, unsigned s
     const unsigned word_shift = shift / word_bits;
     const unsigned bit_shift = shift % word_bits;
 
-    if (word_shift) {
+    if (word_shift != 0U) {
         value.insert(value.begin(), word_shift, 0);
     }
 
-    if (bit_shift) {
+    if (bit_shift != 0U) {
         word_t carry = 0;
 
-        for (std::size_t word_index = 0; word_index < value.size(); ++word_index) {
-            word_t next = value[word_index] >> (word_bits - bit_shift);
+        for (word_t& word : value) {
+            word_t next = word >> (word_bits - bit_shift);
 
-            value[word_index] = (value[word_index] << bit_shift) | carry;
+            word = (word << bit_shift) | carry;
             carry = next;
         }
 
-        if (carry) {
+        if (carry != 0U) {
             value.push_back(carry);
         }
     }
@@ -357,7 +355,7 @@ inline void Integer::shift_right_magnitude(std::vector<word_t>& value, unsigned 
     const unsigned word_shift = shift / word_bits;
     const unsigned bit_shift = shift % word_bits;
 
-    if (word_shift) {
+    if (word_shift != 0U) {
         if (word_shift >= value.size()) {
             value.clear();
             return;
@@ -366,7 +364,7 @@ inline void Integer::shift_right_magnitude(std::vector<word_t>& value, unsigned 
         value.erase(value.begin(), value.begin() + word_shift);
     }
 
-    if (bit_shift) {
+    if (bit_shift != 0U) {
         word_t carry = 0;
 
         for (std::size_t word_index = value.size(); word_index-- > 0;) {
@@ -403,7 +401,7 @@ inline Integer::Integer(long long value) {
             }
         }
     } else {
-        unsigned long long unsigned_value = static_cast<unsigned long long>(value);
+        auto unsigned_value = static_cast<unsigned long long>(value);
 
         while (unsigned_value > 0) {
             m_magnitude.push_back(static_cast<word_t>(unsigned_value));
@@ -435,21 +433,21 @@ inline Integer::Integer(const std::string& text) {
     for (auto position = numeric_start; position < text.size(); ++position) {
         const auto digit = text[position];
 
-        if (!std::isdigit(static_cast<unsigned char>(digit))) {
+        if (std::isdigit(static_cast<unsigned char>(digit)) == 0) {
             throw std::invalid_argument("Integer: invalid character");
         }
 
-        word_t carry = static_cast<word_t>(digit - '0');
+        auto carry = static_cast<word_t>(digit - '0');
 
-        for (std::size_t word_index = 0; word_index < m_magnitude.size(); ++word_index) {
+        for (word_t& word : m_magnitude) {
             double_word_t temp =
-                static_cast<double_word_t>(m_magnitude[word_index]) * decimal_base + carry;
+                (static_cast<double_word_t>(word) * decimal_base) + carry;
 
-            m_magnitude[word_index] = static_cast<word_t>(temp);
+            word = static_cast<word_t>(temp);
             carry = static_cast<word_t>(temp >> word_bits);
         }
 
-        if (carry) {
+        if (carry != 0U) {
             m_magnitude.push_back(carry);
         }
     }
@@ -558,7 +556,8 @@ inline Integer& Integer::operator/=(const Integer& right) {
         return *this;
     }
 
-    std::vector<word_t> quotient, remainder;
+    std::vector<word_t> quotient;
+    std::vector<word_t> remainder;
 
     divide_modulo_magnitudes(m_magnitude, right.m_magnitude, quotient, remainder);
     m_magnitude = std::move(quotient);
@@ -576,7 +575,8 @@ inline Integer& Integer::operator%=(const Integer& right) {
         return *this;
     }
 
-    std::vector<word_t> quotient, remainder;
+    std::vector<word_t> quotient;
+    std::vector<word_t> remainder;
 
     divide_modulo_magnitudes(m_magnitude, right.m_magnitude, quotient, remainder);
     m_magnitude = std::move(remainder);
@@ -608,21 +608,21 @@ inline Integer& Integer::operator<<=(std::size_t shift) {
     const auto word_shift = shift / word_bits;
     const auto bit_shift = static_cast<unsigned>(shift % word_bits);
 
-    if (word_shift) {
+    if (word_shift != 0U) {
         m_magnitude.insert(m_magnitude.begin(), word_shift, 0);
     }
 
-    if (bit_shift) {
+    if (bit_shift != 0U) {
         word_t carry = 0;
 
-        for (std::size_t word_index = 0; word_index < m_magnitude.size(); ++word_index) {
-            const auto next = m_magnitude[word_index] >> (word_bits - bit_shift);
+        for (word_t& word : m_magnitude) {
+            const auto next = word >> (word_bits - bit_shift);
 
-            m_magnitude[word_index] = (m_magnitude[word_index] << bit_shift) | carry;
+            word = (word << bit_shift) | carry;
             carry = next;
         }
 
-        if (carry) {
+        if (carry != 0U) {
             m_magnitude.push_back(carry);
         }
     }
@@ -645,14 +645,14 @@ inline Integer& Integer::operator>>=(std::size_t shift) {
         return *this;
     }
 
-    if (word_shift) {
+    if (word_shift != 0U) {
         auto end_it = m_magnitude.begin();
 
         std::advance(end_it, word_shift);
         m_magnitude.erase(m_magnitude.begin(), end_it);
     }
 
-    if (bit_shift) {
+    if (bit_shift != 0U) {
         word_t carry = 0;
 
         for (auto word_index = m_magnitude.size(); word_index-- > 0;) {
@@ -730,10 +730,10 @@ inline Integer operator|(const Integer& left, const Integer& right) {
     for (std::size_t word_index = 0; word_index < word_count; ++word_index) {
         auto left_value = word_index < left.m_magnitude.size()
                               ? left.m_magnitude[word_index]
-                              : Integer::word_t(0);
+                              : static_cast<Integer::word_t>(0);
         auto right_value = word_index < right.m_magnitude.size()
                                ? right.m_magnitude[word_index]
-                               : Integer::word_t(0);
+                               : static_cast<Integer::word_t>(0);
 
         result.m_magnitude[word_index] = left_value | right_value;
     }
@@ -755,10 +755,10 @@ inline Integer operator^(const Integer& left, const Integer& right) {
     for (std::size_t word_index = 0; word_index < word_count; ++word_index) {
         auto left_value = word_index < left.m_magnitude.size()
                               ? left.m_magnitude[word_index]
-                              : Integer::word_t(0);
+                              : static_cast<Integer::word_t>(0);
         auto right_value = word_index < right.m_magnitude.size()
                                ? right.m_magnitude[word_index]
-                               : Integer::word_t(0);
+                               : static_cast<Integer::word_t>(0);
 
         result.m_magnitude[word_index] = left_value ^ right_value;
     }
@@ -890,7 +890,7 @@ inline std::size_t Integer::bit_length() const noexcept {
     auto bits = (m_magnitude.size() - 1) * word_bits;
     auto high = m_magnitude.back();
 
-    while (high) {
+    while (high != 0U) {
         high >>= 1U;
         ++bits;
     }
@@ -898,7 +898,7 @@ inline std::size_t Integer::bit_length() const noexcept {
     return bits;
 }
 
-inline Integer operator""_i(const char* str, std::size_t) {
+inline Integer operator""_i(const char* str, std::size_t /*unused*/) {
     return Integer(str);
 }
 

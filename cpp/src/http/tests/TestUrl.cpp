@@ -156,8 +156,10 @@ TEST(UrlTest, TransparentComponentEncoding) {
     url.set_username("john doe");
     url.set_password("p@ss word");
     url.set_fragment("section 3?query=true");
-    url.set_query_parameters({{"search", "modern c++"},
-                              {"tag", "networking"}});
+    url.set_query_parameters({
+        {"search", "modern c++"},
+        {"tag", "networking"},
+    });
 
     // 1. Verify getters return decoded, human-readable values transparently
     EXPECT_EQ(url.path(), "/my folder/sub folder/file.txt");

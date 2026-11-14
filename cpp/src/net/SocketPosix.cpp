@@ -19,7 +19,7 @@
 
 namespace {
 
-#if defined(__APPLE__)
+#ifdef __APPLE__
 constexpr int SEND_FLAGS = 0;
 #elif defined(__linux__)
 constexpr int SEND_FLAGS = MSG_NOSIGNAL;
@@ -88,7 +88,7 @@ int create_socket(const addrinfo& info) {
         (void)::setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &enabled, sizeof(enabled));
     }
 
-#if defined(__APPLE__)
+#ifdef __APPLE__
     // Prevent SIGPIPE when writing to a closed peer (macOS / BSD)
     (void)::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof(enabled));
 #endif
@@ -114,11 +114,12 @@ net::Address address_from_sockaddr(const sockaddr* address, socklen_t length) {
         port <= std::numeric_limits<net::Address::Port>::max(),
         "Socket returned an invalid port");
 
-    return net::Address(host, static_cast<net::Address::Port>(port));
+    return {host, static_cast<net::Address::Port>(port)};
 }
 
 enum Direction { DirectionSend,
-                 DirectionReceive };
+                 DirectionReceive,
+};
 
 int set_timeout(int socket_fd, Direction direction, net::ISocket::Milliseconds timeout) {
     const auto direction_flag = DirectionSend == direction ? SO_SNDTIMEO : SO_RCVTIMEO;

@@ -75,7 +75,8 @@ TEST(JsonTest, InitializerLists) {
         {"name", "Alice"},
         {"age", age},
         {"is_admin", false},
-        {"scores", {first_score, second_score, third_score}}};
+        {"scores", {first_score, second_score, third_score}},
+    };
 
     EXPECT_TRUE(obj_val.is_object());
     EXPECT_EQ(obj_val.size(), 4U);
@@ -154,7 +155,8 @@ TEST(JsonTest, SerializationAndStreams) {
     Json user = {
         {"id", user_id},
         {"active", true},
-        {"tags", {"cpp", "json"}}};
+        {"tags", {"cpp", "json"}},
+    };
 
     // Serialized output test
     std::string json_str = user.dump();
@@ -169,10 +171,36 @@ TEST(JsonTest, SerializationAndStreams) {
 TEST(JsonTest, NestedComplexStructures) {
     Json root = {
         {"company", "TechCorp"},
-        {"employees", {{{"id", 1}, {"name", "Alice"}, {"skills", {"C++", "Python"}}}, {{"id", 2}, {"name", "Bob"}, {"skills", {"Rust", "Go"}}}}}};
+        {"employees", {{{"id", 1}, {"name", "Alice"}, {"skills", {"C++", "Python"}}}, {{"id", 2}, {"name", "Bob"}, {"skills", {"Rust", "Go"}}}}},
+    };
 
     EXPECT_TRUE(root["employees"].is_array());
     EXPECT_EQ(root["employees"].size(), 2U);
     EXPECT_EQ(root["employees"][0]["name"].string(), "Alice");
     EXPECT_EQ(root["employees"][1]["skills"][0].string(), "Rust");
+}
+
+TEST(JsonTest, ParseValues) {
+    EXPECT_TRUE(Json::parse("null").is_null());
+
+    const Json true_value = Json::parse("true");
+    ASSERT_TRUE(true_value.is_boolean());
+    EXPECT_TRUE(true_value.boolean());
+
+    const Json false_value = Json::parse("false");
+    ASSERT_TRUE(false_value.is_boolean());
+    EXPECT_FALSE(false_value.boolean());
+
+    EXPECT_EQ(Json::parse("-12").integer(), -12);
+    EXPECT_DOUBLE_EQ(Json::parse("2.5").real(), 2.5);
+    EXPECT_EQ(Json::parse("\"text\"").string(), "text");
+
+    const Json array = Json::parse("[1, 2]");
+    ASSERT_TRUE(array.is_array());
+    EXPECT_EQ(array.size(), 2U);
+    EXPECT_EQ(array.at(1).integer(), 2);
+
+    const Json object = Json::parse(R"({"key": "value"})");
+    ASSERT_TRUE(object.is_object());
+    EXPECT_EQ(object.at("key").string(), "value");
 }

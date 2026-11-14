@@ -16,15 +16,15 @@ class Response {
 public:
     Response() = default;
 
-    std::string_view version() const noexcept;
-    ResponseCode code() const noexcept;
-    int status_code() const noexcept;
-    std::string reason_phrase() const;
+    [[nodiscard]] std::string_view version() const noexcept;
+    [[nodiscard]] ResponseCode code() const noexcept;
+    [[nodiscard]] int status_code() const noexcept;
+    [[nodiscard]] std::string reason_phrase() const;
 
-    const Headers& headers() const noexcept;
+    [[nodiscard]] const Headers& headers() const noexcept;
     Headers& headers() noexcept;
 
-    std::string_view body() const noexcept;
+    [[nodiscard]] std::string_view body() const noexcept;
 
     void set_version(std::string version);
     void set_status_code(uint16_t status_code);
@@ -32,7 +32,7 @@ public:
     void set_body(std::string body);
 
     bool parse_status_line(std::string_view line);
-    std::string to_string() const;
+    [[nodiscard]] std::string to_string() const;
 
     friend std::istream& operator>>(std::istream& in_stream, Response& response);
 
@@ -132,11 +132,11 @@ inline std::string Response::to_string() const {
                    + ResponseFormattingOverheadBytes);
 
     result += m_version;
-    result += " ";
+    result += ' ';
     result += std::to_string(m_status.code());
 
     if (!m_status.reason_phrase().empty()) {
-        result += " ";
+        result += ' ';
         result += std::string(m_status.reason_phrase());
     }
 
@@ -182,7 +182,7 @@ inline std::istream& operator>>(std::istream& in_stream, Response& response) {
 
     if (body_length > 0) {
         response.m_body.resize(body_length);
-        in_stream.read(&response.m_body[0], static_cast<std::streamsize>(body_length));
+        in_stream.read(response.m_body.data(), static_cast<std::streamsize>(body_length));
 
         if (static_cast<std::size_t>(in_stream.gcount()) != body_length) {
             in_stream.setstate(std::ios_base::failbit);

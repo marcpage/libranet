@@ -3,12 +3,12 @@
 #include <exception>
 
 namespace {
-void noop(std::string) {}
+void noop(const std::string& /*unused*/) {}
 }
 
 namespace msg {
 
-AsyncChannel::AsyncChannel(const std::string& name, Callback callback, Logger logger)
+AsyncChannel::AsyncChannel(const std::string& name, const Callback& callback, const Logger& logger)
     : Channel(name)
     , m_logger(nullptr == logger ? noop : logger)
     , m_running(true)
@@ -18,7 +18,7 @@ AsyncChannel::AsyncChannel(const std::string& name, Callback callback, Logger lo
         throw std::invalid_argument("You must pass a callback");
     }
 
-    m_thread = std::thread([this]() {
+    m_thread = std::thread([this] {
         while (m_running) {
             auto message = next_message();
 

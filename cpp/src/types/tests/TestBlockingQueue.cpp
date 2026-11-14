@@ -182,15 +182,17 @@ TEST(BlockingQueueTest, MultipleProducersConsumers) {
     std::atomic<long long> checksum{0};
 
     std::vector<std::thread> producers;
+    producers.reserve(num_producers);
     for (int p = 0; p < num_producers; ++p) {
         producers.emplace_back([&, p] {
             for (int i = 0; i < items_per_producer; ++i) {
-                q.push(p * items_per_producer + i + 1);
+                q.push((p * items_per_producer) + i + 1);
             }
         });
     }
 
     std::vector<std::thread> consumers;
+    consumers.reserve(num_consumers);
     for (int c = 0; c < num_consumers; ++c) {
         consumers.emplace_back([&] {
             while (consumed.load(std::memory_order_relaxed) < total) {
@@ -202,8 +204,12 @@ TEST(BlockingQueueTest, MultipleProducersConsumers) {
         });
     }
 
-    for (auto& t : producers) t.join();
-    for (auto& t : consumers) t.join();
+    for (auto& t : producers) {
+        t.join();
+    }
+    for (auto& t : consumers) {
+        t.join();
+    }
 
     EXPECT_EQ(consumed.load(), total);
     // Expected sum = total*(total+1)/2

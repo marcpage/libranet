@@ -15,14 +15,14 @@ class Request {
 public:
     Request() = default;
 
-    std::string_view method() const noexcept;
-    std::string_view uri() const noexcept;
-    std::string_view version() const noexcept;
+    [[nodiscard]] std::string_view method() const noexcept;
+    [[nodiscard]] std::string_view uri() const noexcept;
+    [[nodiscard]] std::string_view version() const noexcept;
 
-    const Headers& headers() const noexcept;
+    [[nodiscard]] const Headers& headers() const noexcept;
     Headers& headers() noexcept;
 
-    std::string_view body() const noexcept;
+    [[nodiscard]] std::string_view body() const noexcept;
 
     void set_method(std::string method);
     void set_uri(std::string uri);
@@ -30,7 +30,7 @@ public:
     void set_body(std::string body);
 
     bool parse_request_line(std::string_view line);
-    std::string to_string() const;
+    [[nodiscard]] std::string to_string() const;
 
     friend std::istream& operator>>(std::istream& in_stream, Request& request);
 
@@ -120,9 +120,9 @@ inline std::string Request::to_string() const {
                    + RequestFormattingOverheadBytes);
 
     result += m_method;
-    result += " ";
+    result += ' ';
     result += m_uri;
-    result += " ";
+    result += ' ';
     result += m_version;
     result += "\r\n";
 
@@ -162,7 +162,7 @@ inline std::istream& operator>>(std::istream& in_stream, Request& request) {
 
         if (body_length > 0) {
             request.m_body.resize(body_length);
-            in_stream.read(&request.m_body[0], static_cast<std::streamsize>(body_length));
+            in_stream.read(request.m_body.data(), static_cast<std::streamsize>(body_length));
 
             if (static_cast<std::size_t>(in_stream.gcount()) != body_length) {
                 in_stream.setstate(std::ios_base::failbit);

@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "AsyncChannel.hpp"
 
@@ -14,19 +15,19 @@ public:
     using TypeCallback = std::function<void(Type)>;
 
     AsyncChannelOf(const std::string &name, TypeCallback callback,
-                   AsyncChannel::Logger logger);
+                   const AsyncChannel::Logger &logger);
     ~AsyncChannelOf();
 private:
     TypeCallback m_type_callback;
 
-    void _handle(IMessage::Ptr message);
+    void _handle(const IMessage::Ptr &message);
 };
 
 template<typename Type>
 AsyncChannelOf<Type>::AsyncChannelOf(const std::string &name, TypeCallback callback,
-                                     AsyncChannel::Logger logger)
-    : AsyncChannel(name, [this](IMessage::Ptr message) { _handle(message); }, logger)
-    , m_type_callback(callback) {}
+                                     const AsyncChannel::Logger &logger)
+    : AsyncChannel(name, [this](const IMessage::Ptr &message) { _handle(message); }, logger)
+    , m_type_callback(std::move(callback)) {}
 
 template<typename Type>
 AsyncChannelOf<Type>::~AsyncChannelOf() {
@@ -34,7 +35,7 @@ AsyncChannelOf<Type>::~AsyncChannelOf() {
 }
 
 template<typename Type>
-inline void AsyncChannelOf<Type>::_handle(IMessage::Ptr message) {
+inline void AsyncChannelOf<Type>::_handle(const IMessage::Ptr &message) {
     if (nullptr == message) {
         m_logger("We got a null message");
         return;

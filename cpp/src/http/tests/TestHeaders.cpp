@@ -118,7 +118,8 @@ TEST(HeadersTest, HelperUtilities) {
     EXPECT_FALSE(Headers::is_continuation_line("Normal-Header: value"));
 
     // Parse single header line
-    std::string key, value;
+    std::string key;
+    std::string value;
     bool success = Headers::parse_header_line("Content-Type:   text/html ", key, value);
     EXPECT_TRUE(success);
     EXPECT_EQ(key, "Content-Type");

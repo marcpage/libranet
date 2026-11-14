@@ -97,5 +97,5 @@ TEST(MessageTest, EdgeCases) {
     // Negative zero-ish (for floating point)
     Message<double> neg_zero(-0.0);
     // std::to_string(-0.0) is typically "-0.000000"
-    EXPECT_NE(neg_zero.to_string().find("0"), std::string::npos);
+    EXPECT_NE(neg_zero.to_string().find('0'), std::string::npos);
 }
