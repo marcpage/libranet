@@ -44,8 +44,9 @@ For a debug build, pass `-s build_type=Debug` to `conan build`, and use the
 `conan-debug` preset. The build goes in `build/Release/` or `build/Debug/`,
 and `conan install` writes `CMakeUserPresets.json` here; git ignores both.
 
-CI builds the node and its tests on Ubuntu and macOS, runs the tests, and
-measures how much of the code they run; see [Coverage](#coverage).
+CI builds the node and its tests on Ubuntu and macOS, for Debug and for
+Release, runs the Debug build's tests, and measures how much of the code
+they run; see [Coverage](#coverage).
 
 ---
 

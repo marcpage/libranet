@@ -83,9 +83,10 @@ jobs:
         run: uv run libranet --config examples/libranet.yaml --check-config
 
   # The C++ implementation, run from its own directory. It is built for
-  # Debug, instrumented for coverage, and its tests are run. gcovr reads its
-  # settings, and the floor below which the job fails, from cpp/gcovr.cfg.
-  # The program itself is built but not run: it is to be a server.
+  # Debug, instrumented for coverage, and for Release; the Debug build's
+  # tests are run. gcovr reads its settings, and the floor below which the
+  # job fails, from cpp/gcovr.cfg. The program itself is built but not run:
+  # it is to be a server.
   cpp:
     name: C++ build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -113,11 +114,18 @@ jobs:
       - name: Conan profile
         run: conan profile detect --exist-ok
 
-      - name: Build
+      - name: Build for Debug, with coverage
         run: |
           conan install . -s build_type=Debug --build=missing
           cmake --preset conan-debug -DLIBRANET_COVERAGE=ON
           cmake --build --preset conan-debug
+
+      # Some warnings, such as GCC's -Wnull-dereference, need the optimizer.
+      - name: Build for Release
+        run: |
+          conan install . --build=missing
+          cmake --preset conan-release
+          cmake --build --preset conan-release
 
       - name: Test
         run: ctest --preset conan-debug --output-on-failure
