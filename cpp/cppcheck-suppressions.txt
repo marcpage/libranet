@@ -100,9 +100,3 @@ unusedScopedObject
 # Consider using std::transform algorithm instead of a raw loop.
 #     character = static_cast<char>(std::tolower(static_cast<unsigned char>(c...
 useStlAlgorithm
-
-# 11 to clean up (0 in library code, 11 in tests), such as
-# src/msg/tests/TestAsyncChannel.cpp:51: The scope of the variable 'received'
-# can be reduced.
-#     std::vector<std::string> received;
-variableScope

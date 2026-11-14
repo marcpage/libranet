@@ -48,9 +48,10 @@ bool wait_until(Predicate predicate, std::chrono::milliseconds timeout = handlin
 TEST(AsyncChannelTest, ConstructionAndCallback) {
     std::mutex mutex;
     std::condition_variable condition;
-    std::vector<std::string> received;
 
     {
+        std::vector<std::string> received;
+
         const AsyncChannel channel("test.async.basic", [&](const IMessage::Ptr& message) {
             {
                 const std::scoped_lock lock(mutex);
@@ -76,9 +77,10 @@ TEST(AsyncChannelTest, ConstructionAndCallback) {
 TEST(AsyncChannelTest, MultipleMessagesFifoOrder) {
     std::mutex mutex;
     std::condition_variable condition;
-    std::vector<std::string> received;
 
     {
+        std::vector<std::string> received;
+
         const AsyncChannel channel("test.async.fifo", [&](const IMessage::Ptr& message) {
             {
                 const std::scoped_lock lock(mutex);
@@ -108,10 +110,11 @@ TEST(AsyncChannelTest, MultipleMessagesFifoOrder) {
 TEST(AsyncChannelTest, BroadcastToMultipleAsyncChannels) {
     std::mutex mutex;
     std::condition_variable condition;
-    std::vector<int> received_a;
-    std::vector<int> received_b;
 
     {
+        std::vector<int> received_a;
+        std::vector<int> received_b;
+
         const AsyncChannel channel_a("test.async.broadcast", [&](const IMessage::Ptr& message) {
             {
                 const std::scoped_lock lock(mutex);
@@ -144,10 +147,11 @@ TEST(AsyncChannelTest, BroadcastToMultipleAsyncChannels) {
 TEST(AsyncChannelTest, CallbackExceptionDoesNotStopProcessing) {
     std::mutex mutex;
     std::condition_variable condition;
-    std::vector<std::string> received;
-    std::vector<std::string> logged;
 
     {
+        std::vector<std::string> received;
+        std::vector<std::string> logged;
+
         const AsyncChannel channel("test.async.exceptions", [&](const IMessage::Ptr& message) {
             const std::string value = message->to_string();
             if (value == "1") {

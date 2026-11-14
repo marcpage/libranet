@@ -45,9 +45,10 @@ bool wait_until(Predicate predicate, std::chrono::milliseconds timeout = handlin
 TEST(AsyncChannelOfTest, ConstructionAndCallback) {
     std::mutex mutex;
     std::condition_variable condition;
-    std::vector<int> received;
 
     {
+        std::vector<int> received;
+
         const AsyncChannelOf<int> channel("test.asyncof.basic", [&](int value) {
             {
                 const std::scoped_lock lock(mutex);
@@ -73,9 +74,10 @@ TEST(AsyncChannelOfTest, ConstructionAndCallback) {
 TEST(AsyncChannelOfTest, MultipleMessagesFifoOrder) {
     std::mutex mutex;
     std::condition_variable condition;
-    std::vector<int> received;
 
     {
+        std::vector<int> received;
+
         const AsyncChannelOf<int> channel("test.asyncof.fifo", [&](int value) {
             {
                 const std::scoped_lock lock(mutex);
@@ -105,10 +107,11 @@ TEST(AsyncChannelOfTest, MultipleMessagesFifoOrder) {
 TEST(AsyncChannelOfTest, BroadcastToMultipleAsyncChannels) {
     std::mutex mutex;
     std::condition_variable condition;
-    std::vector<int> received_a;
-    std::vector<int> received_b;
 
     {
+        std::vector<int> received_a;
+        std::vector<int> received_b;
+
         const AsyncChannelOf<int> channel_a("test.asyncof.broadcast", [&](int value) {
             {
                 const std::scoped_lock lock(mutex);
@@ -141,9 +144,10 @@ TEST(AsyncChannelOfTest, BroadcastToMultipleAsyncChannels) {
 TEST(AsyncChannelOfTest, UnexpectedMessageTypeLogging) {
     std::mutex mutex;
     std::condition_variable condition;
-    std::vector<std::string> logged;
 
     {
+        std::vector<std::string> logged;
+
         const AsyncChannelOf<int> channel("test.asyncof.unexpected", [](int) {}, [&](std::string msg) {
             {
                 const std::scoped_lock lock(mutex);
