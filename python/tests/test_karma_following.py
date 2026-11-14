@@ -50,22 +50,26 @@ MINIMUM_BITS = 8
 BOUNDS = BlockBounds(most_bytes=4_000, room_bytes=3_900, transaction_bits=0)
 
 
-def apart(hex_id: str, targets: Iterable[DropTarget]) -> bool:
-    """Whether ``hex_id`` shares fewer than :data:`MINIMUM_BITS` with each of ``targets``."""
-    return all(matching_bits(target.hex, hex_id) < MINIMUM_BITS for target in targets)
+def apart(hex_id: str, targets: Iterable[DropTarget], bits: int = MINIMUM_BITS) -> bool:
+    """Whether ``hex_id`` shares fewer than ``bits`` with each of ``targets``."""
+    return all(matching_bits(target.hex, hex_id) < bits for target in targets)
 
 
 def names_apart(validation_id: ContentId) -> bool:
     """Whether the targets of the generation after ``validation_id`` are apart, as roots' are.
 
     They are apart from both roots', and from each other's, or what is placed at one is found
-    at the other too, so that one run in 256 fails a test here.
+    at the other too, so that one run in 256 fails a test here. They share fewer than
+    ``MINIMUM_BITS - 1`` with roots', too: a drop sharing exactly as many bits with its target
+    as the target shares with a root's shares one more with that root's, so that no drop
+    sharing ``MINIMUM_BITS - 1``, too few to be found, could be placed apart from roots', and
+    one run in 128 searched for one without end.
     """
     after = GenerationTargets.after(validation_id)
     roots = (ROOT.transaction, ROOT.validation)
     return (
-        apart(after.transaction.hex, roots)
-        and apart(after.validation.hex, roots)
+        apart(after.transaction.hex, roots, MINIMUM_BITS - 1)
+        and apart(after.validation.hex, roots, MINIMUM_BITS - 1)
         and apart(after.transaction.hex, [after.validation])
     )
 
@@ -86,12 +90,19 @@ def placed(
 
     Raises:
         AssertionError: ``target`` shares :data:`MINIMUM_BITS` or more with
-            another root target, so no drop at it is apart from that one.
+            another root target, so no drop at it is apart from that one,
+            or ``bits`` is one fewer and ``target`` shares as many with
+            another root target, so no drop sharing ``bits`` with it is.
     """
     others = [root for root in (ROOT.transaction, ROOT.validation) if root != target]
 
     if not apart(target.hex, others):
         raise AssertionError(f"No drop at {target.hex} is apart from the other root targets")
+
+    if bits == MINIMUM_BITS - 1 and not apart(target.hex, others, bits):
+        raise AssertionError(
+            f"No drop sharing {bits} bits with {target.hex} is apart from the other root targets"
+        )
 
     for nonce in count():
         data = content + b"\x00" + str(nonce).encode("ascii")
