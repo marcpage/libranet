@@ -7,9 +7,9 @@ target_link_libraries(libranet_types INTERFACE Threads::Threads)
 
 if(BUILD_TESTING)
     add_executable(types_tests
-        TestBlockingQueue.cpp
-        TestInteger.cpp
-        TestJson.cpp)
+        tests/TestBlockingQueue.cpp
+        tests/TestInteger.cpp
+        tests/TestJson.cpp)
     target_link_libraries(types_tests PRIVATE libranet::types GTest::gtest_main)
     gtest_discover_tests(types_tests)
 endif()

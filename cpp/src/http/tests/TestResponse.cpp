@@ -1,13 +1,15 @@
 #include <gtest/gtest.h>
 #include <sstream>
-#include <string>
 #include <stdexcept>
+#include <string>
 
-#include "Response.hpp"
+#include "http/Response.hpp"
 
 using namespace http;
 
 TEST(ResponseTest, ConstructorsAndAccessors) {
+    constexpr auto not_found_code = 404;
+
     // Default constructor state (HTTP/1.1 200 OK)
     Response res;
     EXPECT_EQ(res.version(), "HTTP/1.1");
@@ -18,12 +20,12 @@ TEST(ResponseTest, ConstructorsAndAccessors) {
 
     // Setters and getters
     res.set_version("HTTP/1.0");
-    res.set_status_code(404);
+    res.set_status_code(not_found_code);
     res.set_reason_phrase("Not Found");
     res.set_body("Resource missing");
 
     EXPECT_EQ(res.version(), "HTTP/1.0");
-    EXPECT_EQ(res.status_code(), 404);
+    EXPECT_EQ(res.status_code(), not_found_code);
     EXPECT_EQ(res.reason_phrase(), "Not Found");
     EXPECT_EQ(res.body(), "Resource missing");
 
@@ -87,9 +89,11 @@ TEST(ResponseTest, StreamParsingAndBody) {
 }
 
 TEST(ResponseTest, Serialization) {
+    constexpr auto created_code = 201;
+
     Response res;
     res.set_version("HTTP/1.1");
-    res.set_status_code(201);
+    res.set_status_code(created_code);
     res.set_reason_phrase("Created");
     res.headers().set("Connection", "close");
 

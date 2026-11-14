@@ -1,8 +1,9 @@
 #include <gtest/gtest.h>
 #include <sstream>
-#include <string>
 #include <stdexcept>
-#include "Headers.hpp"
+#include <string>
+
+#include "http/Headers.hpp"
 
 using namespace http;
 

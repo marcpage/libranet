@@ -43,7 +43,7 @@ if(BUILD_TESTING)
     include(GoogleTest)
 endif()
 
-# One library per directory under src/, each with its tests beside it.
+# One library per directory under src/, each with its tests in its tests/.
 # Headers are included from src/, as in "types/BlockingQueue.hpp".
 add_subdirectory(src/types)
 add_subdirectory(src/http)

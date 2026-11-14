@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
+#include <cstddef>
 #include <sstream>
-#include <string>
 #include <stdexcept>
-#include "Integer.hpp"
+#include <string>
+
+#include "types/Integer.hpp"
 
 using namespace types;
 
@@ -16,11 +18,13 @@ TEST(IntegerTest, ConstructorsAndExceptions) {
     EXPECT_FALSE(static_cast<bool>(a));
 
     // Numeric constructors
-    Integer b(42LL);
+    constexpr auto positive_value = 42LL;
+    constexpr auto negative_value = -42LL;
+    Integer b(positive_value);
     EXPECT_EQ(b.to_string(), "42");
     EXPECT_EQ(b.sign(), 1);
 
-    Integer c(-42LL);
+    Integer c(negative_value);
     EXPECT_EQ(c.to_string(), "-42");
     EXPECT_TRUE(c.is_negative());
     EXPECT_EQ(c.sign(), -1);
@@ -38,7 +42,8 @@ TEST(IntegerTest, ConstructorsAndExceptions) {
 }
 
 TEST(IntegerTest, UnaryAndIncrement) {
-    Integer x(10);
+    constexpr auto start = 10;
+    Integer x(start);
 
     // Unary plus and minus[cite: 1]
     EXPECT_EQ((+x).to_string(), "10");
@@ -69,11 +74,15 @@ TEST(IntegerTest, UnaryAndIncrement) {
 
 TEST(IntegerTest, ArithmeticAndDivisions) {
     // Compound assignments[cite: 1]
-    Integer val(100);
-    val += Integer(50);
+    constexpr auto start = 100;
+    constexpr auto addend = 50;
+    constexpr auto subtrahend = 30;
+    constexpr auto modulus = 40;
+    Integer val(start);
+    val += Integer(addend);
     EXPECT_EQ(val.to_string(), "150");
 
-    val -= Integer(30);
+    val -= Integer(subtrahend);
     EXPECT_EQ(val.to_string(), "120");
 
     val *= Integer(3);
@@ -82,34 +91,39 @@ TEST(IntegerTest, ArithmeticAndDivisions) {
     val /= Integer(4);
     EXPECT_EQ(val.to_string(), "90");
 
-    val %= Integer(40);
+    val %= Integer(modulus);
     EXPECT_EQ(val.to_string(), "10");
 
     // Division by zero exception[cite: 1]
-    EXPECT_THROW((void)(Integer(5) / Integer(0)), std::domain_error);
-    EXPECT_THROW((void)(Integer(5) % Integer(0)), std::domain_error);
+    constexpr auto dividend = 5;
+    EXPECT_THROW((void)(Integer(dividend) / Integer(0)), std::domain_error);
+    EXPECT_THROW((void)(Integer(dividend) % Integer(0)), std::domain_error);
 }
 
 TEST(IntegerTest, BitwiseAndShifts) {
-    Integer a(12); // 1100 in binary
-    Integer b(10); // 1010 in binary
+    constexpr auto left_value = 12;  // 1100 in binary
+    constexpr auto right_value = 10; // 1010 in binary
+    Integer a(left_value);
+    Integer b(right_value);
 
     EXPECT_EQ((a & b).to_string(), "8");  // 1000
     EXPECT_EQ((a | b).to_string(), "14"); // 1110
     EXPECT_EQ((a ^ b).to_string(), "6");  // 0110
 
     // Shifts[cite: 1]
+    constexpr std::size_t shift_bits = 64; // Test cross-word shift boundary
     Integer shift_val(1);
-    shift_val <<= 64; // Test cross-word shift boundary
+    shift_val <<= shift_bits;
     EXPECT_EQ(shift_val.bit_length(), 65U);
 
-    shift_val >>= 64;
+    shift_val >>= shift_bits;
     EXPECT_EQ(shift_val.to_string(), "1");
 }
 
 TEST(IntegerTest, StreamsAndLiterals) {
     // Stream Output[cite: 1]
-    Integer test_out(987654321987654321LL);
+    constexpr auto output_value = 987654321987654321LL;
+    Integer test_out(output_value);
     std::ostringstream oss;
     oss << test_out;
     EXPECT_EQ(oss.str(), "987654321987654321");
@@ -132,8 +146,9 @@ TEST(IntegerTest, StreamsAndLiterals) {
 
 TEST(IntegerTest, LargeScaleStress) {
     // Compute a pseudo-factorial or large growth
+    constexpr int last_factor = 30;
     Integer accumulator(1);
-    for (int i = 1; i <= 30; ++i) {
+    for (int i = 1; i <= last_factor; ++i) {
         accumulator *= Integer(i);
     }
     // 30! = 265252859812191058636308480000000

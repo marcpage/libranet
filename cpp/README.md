@@ -51,7 +51,7 @@ CI builds the node, runs its tests, and runs it, on Ubuntu and macOS.
 ## Layout
 
 The code is in libraries, one for each directory under [`src/`](src/), with
-each library's tests beside its code:
+each library's tests in a `tests/` directory within it:
 
 | Directory | Library | What it holds |
 | ------------------------- | ---------------- | ------------------------------------------------------------- |
@@ -72,8 +72,9 @@ the build.
 ## Testing
 
 The tests use [GoogleTest](https://google.github.io/googletest/), which
-Conan provides. Each library's `Test*.cpp` files build into one test program
-for that library, such as `types_tests`, and `conan build` runs them all.
+Conan provides. Each library's `tests/Test*.cpp` files build into one test
+program for that library, such as `types_tests`, and `conan build` runs them
+all.
 To run them again after a build, from this directory:
 
 ```bash
@@ -95,7 +96,9 @@ To build without the tests, configure with `-DBUILD_TESTING=OFF`.
 
 clang-format keeps the code in one layout, set in
 [`.clang-format`](.clang-format): the WebKit style, adjusted to change as
-little as it can of the code as first written, for now. clang-tidy checks
+little as it can of the code as first written, for now. It also sorts each
+block of includes into the order clang-tidy's `llvm-include-order` check
+wants, so formatting a file clears that check. clang-tidy checks
 the code with every check it has, less those [`.clang-tidy`](.clang-tidy)
 turns off: a few that cannot apply here, and those the code does not yet
 meet, each with how many places need cleaning up and one of them. Every

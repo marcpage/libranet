@@ -2,11 +2,13 @@
 #include <sstream>
 #include <string>
 
-#include "Url.hpp"
+#include "http/Url.hpp"
 
 using namespace http;
 
 TEST(UrlTest, ConstructorsAndBasicAccessors) {
+    constexpr auto port = 8080;
+
     // Default constructor (empty state)
     Url url;
     EXPECT_TRUE(url.scheme().empty());
@@ -21,7 +23,7 @@ TEST(UrlTest, ConstructorsAndBasicAccessors) {
     // Basic setters and accessors
     url.set_scheme("https");
     url.set_host("example.com");
-    url.set_port(8080);
+    url.set_port(port);
     url.set_path("/api/v1/resource");
     url.set_username("admin");
     url.set_password("secret");
@@ -29,9 +31,9 @@ TEST(UrlTest, ConstructorsAndBasicAccessors) {
 
     EXPECT_EQ(url.scheme(), "https");
     EXPECT_EQ(url.host(), "example.com");
-    EXPECT_EQ(url.port(), 8080);
+    EXPECT_EQ(url.port(), port);
     EXPECT_TRUE(url.port().has_value());
-    EXPECT_EQ(url.port(), 8080);
+    EXPECT_EQ(url.port(), port);
     EXPECT_EQ(url.path(), "/api/v1/resource");
     EXPECT_EQ(url.username(), "admin");
     EXPECT_EQ(url.password(), "secret");
@@ -92,10 +94,11 @@ TEST(UrlTest, PortValidationAndEffectivePorts) {
     EXPECT_FALSE(invalid_port_url->port().has_value());
 
     // 4. Programmatic port number setter
+    constexpr auto https_port = 443;
     Url url;
-    url.set_port(443);
+    url.set_port(https_port);
     EXPECT_TRUE(url.port().has_value());
-    EXPECT_EQ(url.port(), 443);
+    EXPECT_EQ(url.port(), https_port);
 
     // 5. Effective port fallback resolution based on scheme
     Url http_url;

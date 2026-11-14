@@ -2,7 +2,7 @@
 #include <sstream>
 #include <string>
 
-#include "Query.hpp"
+#include "http/Query.hpp"
 
 using namespace http;
 

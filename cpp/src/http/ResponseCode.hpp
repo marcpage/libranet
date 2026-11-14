@@ -112,6 +112,14 @@ public:
     friend std::ostream& operator<<(std::ostream& os, const ResponseCode& sc);
 
 private:
+    // Each class of codes runs up to the start of the next.
+    static constexpr std::uint16_t informational_start = 100;
+    static constexpr std::uint16_t success_start = 200;
+    static constexpr std::uint16_t redirection_start = 300;
+    static constexpr std::uint16_t client_error_start = 400;
+    static constexpr std::uint16_t server_error_start = 500;
+    static constexpr std::uint16_t server_error_end = 600;
+
     Status m_status = Status::OK;
     std::optional<std::string> m_custom_reason;
 };
@@ -141,31 +149,31 @@ inline std::string_view ResponseCode::reason_phrase() const noexcept {
 inline bool ResponseCode::is_informational() const noexcept {
     const auto c = code();
 
-    return c >= 100 && c < 200;
+    return c >= informational_start && c < success_start;
 }
 
 inline bool ResponseCode::is_success() const noexcept {
     const auto c = code();
 
-    return c >= 200 && c < 300;
+    return c >= success_start && c < redirection_start;
 }
 
 inline bool ResponseCode::is_redirection() const noexcept {
     const auto c = code();
 
-    return c >= 300 && c < 400;
+    return c >= redirection_start && c < client_error_start;
 }
 
 inline bool ResponseCode::is_client_error() const noexcept {
     const auto c = code();
 
-    return c >= 400 && c < 500;
+    return c >= client_error_start && c < server_error_start;
 }
 
 inline bool ResponseCode::is_server_error() const noexcept {
     const auto c = code();
 
-    return c >= 500 && c < 600;
+    return c >= server_error_start && c < server_error_end;
 }
 
 inline bool ResponseCode::is_error() const noexcept {

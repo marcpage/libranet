@@ -8,8 +8,8 @@ target_include_directories(libranet_net PUBLIC ${PROJECT_SOURCE_DIR}/src)
 
 if(BUILD_TESTING)
     add_executable(net_tests
-        TestAddress.cpp
-        TestSocketPosix.cpp)
+        tests/TestAddress.cpp
+        tests/TestSocketPosix.cpp)
     target_link_libraries(net_tests PRIVATE libranet::net GTest::gtest_main)
     gtest_discover_tests(net_tests)
 endif()

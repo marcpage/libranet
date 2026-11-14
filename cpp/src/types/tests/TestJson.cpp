@@ -1,10 +1,12 @@
 #include <gtest/gtest.h>
+#include <cstddef>
 #include <sstream>
-#include <string>
-#include <vector>
-#include <unordered_map>
 #include <stdexcept>
-#include "Json.hpp"
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "types/Json.hpp"
 
 using namespace types;
 
@@ -30,15 +32,18 @@ TEST(JsonTest, ConstructorsAndTypes) {
     EXPECT_FALSE(b_false.boolean());
 
     // Numeric constructors (integers and floating point)
-    Json int_val(42);
-    Json int64_val(int64_t{-9223372036854775807LL});
-    Json double_val(3.14159);
+    constexpr auto int_value = 42;
+    constexpr int64_t int64_value = -9223372036854775807LL;
+    constexpr auto double_value = 3.14159;
+    Json int_val(int_value);
+    Json int64_val(int64_value);
+    Json double_val(double_value);
 
     EXPECT_TRUE(int_val.is_number());
     EXPECT_TRUE(int64_val.is_number());
     EXPECT_TRUE(double_val.is_number());
-    EXPECT_EQ(int_val.integer(), 42);
-    EXPECT_DOUBLE_EQ(double_val.real(), 3.14159);
+    EXPECT_EQ(int_val.integer(), int_value);
+    EXPECT_DOUBLE_EQ(double_val.real(), double_value);
 
     // String constructors (const char* and std::string)
     Json str_val("Hello, World!");
@@ -52,25 +57,30 @@ TEST(JsonTest, ConstructorsAndTypes) {
 }
 
 TEST(JsonTest, InitializerLists) {
-    Json arr_val = {1, "two", 3.0, true, nullptr};
+    constexpr auto real_value = 3.0;
+    Json arr_val = {1, "two", real_value, true, nullptr};
     EXPECT_TRUE(arr_val.is_array());
     EXPECT_EQ(arr_val.size(), 5U);
     EXPECT_EQ(arr_val[0].integer(), 1);
     EXPECT_EQ(arr_val[1].string(), "two");
-    EXPECT_DOUBLE_EQ(arr_val[2].real(), 3.0);
+    EXPECT_DOUBLE_EQ(arr_val[2].real(), real_value);
     EXPECT_TRUE(arr_val[3].boolean());
     EXPECT_TRUE(arr_val[4].is_null());
 
+    constexpr auto age = 30;
+    constexpr auto first_score = 95;
+    constexpr auto second_score = 88;
+    constexpr auto third_score = 100;
     Json obj_val = {
         {"name", "Alice"},
-        {"age", 30},
+        {"age", age},
         {"is_admin", false},
-        {"scores", {95, 88, 100}}};
+        {"scores", {first_score, second_score, third_score}}};
 
     EXPECT_TRUE(obj_val.is_object());
     EXPECT_EQ(obj_val.size(), 4U);
     EXPECT_EQ(obj_val["name"].string(), "Alice");
-    EXPECT_EQ(obj_val["age"].integer(), 30);
+    EXPECT_EQ(obj_val["age"].integer(), age);
     EXPECT_FALSE(obj_val["is_admin"].boolean());
     EXPECT_TRUE(obj_val["scores"].is_array());
     EXPECT_EQ(obj_val["scores"].size(), 3U);
@@ -78,33 +88,39 @@ TEST(JsonTest, InitializerLists) {
 
 TEST(JsonTest, SubscriptAndAccess) {
     // Object access and implicit object creation
+    constexpr auto level = 5;
     Json doc;
     doc["user"] = "Bob";
     doc["active"] = true;
-    doc["details"] = {{"role", "developer"}, {"level", 5}};
+    doc["details"] = {{"role", "developer"}, {"level", level}};
 
     EXPECT_TRUE(doc.is_object());
     EXPECT_EQ(doc["user"].string(), "Bob");
     EXPECT_EQ(doc["details"]["role"].string(), "developer");
-    EXPECT_EQ(doc["details"]["level"].integer(), 5);
+    EXPECT_EQ(doc["details"]["level"].integer(), level);
 
     // Array indexing
-    Json arr = Json::Array({10, 20, 30});
+    constexpr auto first_value = 10;
+    constexpr auto second_value = 20;
+    constexpr auto third_value = 30;
+    Json arr = Json::Array({first_value, second_value, third_value});
     EXPECT_TRUE(arr.is_array());
-    EXPECT_EQ(arr[0].integer(), 10);
-    EXPECT_EQ(arr[1].integer(), 20);
-    EXPECT_EQ(arr[2].integer(), 30);
+    EXPECT_EQ(arr[0].integer(), first_value);
+    EXPECT_EQ(arr[1].integer(), second_value);
+    EXPECT_EQ(arr[2].integer(), third_value);
 
     // Mutating elements via indexing
-    arr[1] = 25;
-    EXPECT_EQ(arr[1].integer(), 25);
+    constexpr auto replacement_value = 25;
+    arr[1] = replacement_value;
+    EXPECT_EQ(arr[1].integer(), replacement_value);
 
     doc["user"] = "Charlie";
     EXPECT_EQ(doc["user"].string(), "Charlie");
 }
 
 TEST(JsonTest, ExceptionsAndTypeSafety) {
-    Json num(100);
+    constexpr auto number = 100;
+    Json num(number);
 
     // Expect std::domain_error or std::runtime_error when requesting bad conversions
     bool caught_bad_string_cast = false;
@@ -129,12 +145,14 @@ TEST(JsonTest, ExceptionsAndTypeSafety) {
 
     // Out-of-bounds array access check
     Json arr = {1, 2, 3};
-    EXPECT_THROW((void)arr.at(10), std::out_of_range);
+    constexpr std::size_t out_of_range_index = 10;
+    EXPECT_THROW((void)arr.at(out_of_range_index), std::out_of_range);
 }
 
 TEST(JsonTest, SerializationAndStreams) {
+    constexpr auto user_id = 1001;
     Json user = {
-        {"id", 1001},
+        {"id", user_id},
         {"active", true},
         {"tags", {"cpp", "json"}}};
 
