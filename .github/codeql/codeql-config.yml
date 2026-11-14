@@ -1,0 +1,8 @@
+# CodeQL's settings, beyond what the workflow names. CodeQL checks the code
+# the node runs, not its tests: tests do on purpose much of what CodeQL warns
+# against, such as making a weak key to see it refused. The tests are
+# checked by the linters instead. This leaves out the Python tests; CodeQL
+# sees only the C++ it watches being built, and the workflow builds the C++
+# without its tests.
+paths-ignore:
+  - python/tests

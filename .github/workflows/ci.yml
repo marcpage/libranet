@@ -304,9 +304,11 @@ jobs:
   # CodeQL, GitHub's code scanning, on each language in the repository, with
   # its fullest standard set of queries. Its alerts go to the repository's
   # Security tab, and to a CodeQL check on each pull request, and this job
-  # fails on any of them. C++ is analysed as it is built, so what the build
-  # needs is set up before CodeQL starts watching; the other languages are
-  # read as they are.
+  # fails on any of them. It checks the code, not the tests; see
+  # .github/codeql/codeql-config.yml. C++ is analysed as it is built, so it
+  # is configured before CodeQL starts watching, and built without its
+  # tests, which leaves nothing for Conan to provide. The other languages
+  # are read as they are.
   codeql:
     name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
@@ -331,34 +333,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - if: matrix.build-mode == 'manual'
-        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
-        with:
-          enable-cache: false
-
-      - name: Install Conan and Ninja
-        if: matrix.build-mode == 'manual'
-        run: |
-          uv tool install "conan>=2,<3"
-          uv tool install ninja
-          uv tool dir --bin >> "$GITHUB_PATH"
-
       - name: Configure
         if: matrix.build-mode == 'manual'
-        run: |
-          conan profile detect --exist-ok
-          conan install . --build=missing
-          cmake --preset conan-release
+        run: cmake -S . -B build/codeql -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
 
       - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           queries: security-and-quality
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: Build
         if: matrix.build-mode == 'manual'
-        run: cmake --build --preset conan-release
+        run: cmake --build build/codeql
 
       - uses: github/codeql-action/analyze@v4
         with:
@@ -366,21 +354,29 @@ jobs:
           output: ${{ runner.temp }}/codeql-results
 
       # The analysis reports alerts but does not fail on them, so this step
-      # does: it marks each alert where it is, as an error, and fails the
-      # job if there are any.
+      # does: it lists each alert with its file and line, marks it there as
+      # an error, and fails the job if there are any. The log shows a mark
+      # as its message alone, so the list comes first.
       - name: Fail on CodeQL alerts
         run: |
-          filter='
-            def data: gsub("%"; "%25") | gsub("\r"; "%0D") | gsub("\n"; "%0A");
-            def property: data | gsub(":"; "%3A") | gsub(","; "%2C");
+          alerts='
             .runs[].results[]
             | select((.suppressions // []) | length == 0)
             | (.locations[0].physicalLocation // {}) as $where
-            | "::error file=\($where.artifactLocation.uri // "" | property),"
-              + "line=\($where.region.startLine // 1),"
-              + "title=CodeQL \(.ruleId | property)::\(.message.text | data)"'
-          jq -r "$filter" "$RUNNER_TEMP"/codeql-results/*.sarif > "$RUNNER_TEMP/codeql-alerts.txt"
+            | {file: ($where.artifactLocation.uri // ""),
+               line: ($where.region.startLine // 1),
+               rule: .ruleId,
+               message: .message.text}'
+          list='"\(.file):\(.line): \(.rule): \(.message | gsub("\n"; " "))"'
+          marks='
+            def data: gsub("%"; "%25") | gsub("\r"; "%0D") | gsub("\n"; "%0A");
+            def property: data | gsub(":"; "%3A") | gsub(","; "%2C");
+            "::error file=\(.file | property),line=\(.line),"
+            + "title=CodeQL \(.rule | property)::\(.message | data)"'
+          sarif=("$RUNNER_TEMP"/codeql-results/*.sarif)
+          jq -r "$alerts | $list" "${sarif[@]}" | sort > "$RUNNER_TEMP/codeql-alerts.txt"
           cat "$RUNNER_TEMP/codeql-alerts.txt"
+          jq -r "$alerts | $marks" "${sarif[@]}"
           count=$(wc -l < "$RUNNER_TEMP/codeql-alerts.txt")
           echo "CodeQL alerts: $count"
           test "$count" -eq 0

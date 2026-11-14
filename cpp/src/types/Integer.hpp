@@ -388,32 +388,19 @@ inline Integer::Integer(long long value) {
         return;
     }
 
-    if (value < 0) {
-        // Careful with LLONG_MIN
-        unsigned long long unsigned_value = static_cast<unsigned long long>(-(value + 1))
-                                            + 1;
-        m_negative = true;
+    m_negative = value < 0;
 
-        while (unsigned_value > 0) {
+    // Careful with LLONG_MIN
+    auto unsigned_value = m_negative ? static_cast<unsigned long long>(-(value + 1)) + 1
+                                     : static_cast<unsigned long long>(value);
+
+    // The value is not 0, so it has at least one word, and more only when a
+    // word is narrower than the value.
+    m_magnitude.push_back(static_cast<word_t>(unsigned_value));
+
+    if constexpr (word_bits < std::numeric_limits<decltype(unsigned_value)>::digits) {
+        for (unsigned_value >>= word_bits; unsigned_value > 0; unsigned_value >>= word_bits) {
             m_magnitude.push_back(static_cast<word_t>(unsigned_value));
-
-            if constexpr (word_bits < std::numeric_limits<decltype(unsigned_value)>::digits) {
-                unsigned_value >>= word_bits;
-            } else {
-                break;
-            }
-        }
-    } else {
-        auto unsigned_value = static_cast<unsigned long long>(value);
-
-        while (unsigned_value > 0) {
-            m_magnitude.push_back(static_cast<word_t>(unsigned_value));
-
-            if constexpr (word_bits < std::numeric_limits<decltype(unsigned_value)>::digits) {
-                unsigned_value >>= word_bits;
-            } else {
-                break;
-            }
         }
     }
 

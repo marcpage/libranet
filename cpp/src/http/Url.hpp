@@ -136,8 +136,13 @@ inline std::string Url::decode(std::string_view value, bool decode_plus_as_space
     std::string decoded;
     decoded.reserve(value.size());
 
-    for (std::size_t character_index = 0; character_index < value.size();
-         ++character_index) {
+    // A "%" and the two hex digits after it are one character.
+    constexpr std::size_t escape_length = 3;
+    std::size_t character_index = 0;
+
+    while (character_index < value.size()) {
+        std::size_t length = 1;
+
         if (decode_plus_as_space && value[character_index] == '+') {
             decoded += ' ';
         } else if (value[character_index] == '%' && character_index + 2 < value.size()) {
@@ -147,13 +152,15 @@ inline std::string Url::decode(std::string_view value, bool decode_plus_as_space
 
             if (hex_stream >> std::hex >> hex_value) {
                 decoded += static_cast<char>(hex_value);
-                character_index += 2;
+                length = escape_length;
             } else {
                 decoded += value[character_index];
             }
         } else {
             decoded += value[character_index];
         }
+
+        character_index += length;
     }
 
     return decoded;
