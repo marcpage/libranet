@@ -24,10 +24,10 @@ AlignOperands: Align
 AlignTrailingComments: true
 BreakBeforeBinaryOperators: NonAssignment
 DerivePointerAlignment: true
-AllowShortLoopsOnASingleLine: true
+AllowShortLoopsOnASingleLine: false
 AllowShortCaseLabelsOnASingleLine: true
 IndentCaseLabels: true
 PackConstructorInitializers: CurrentLine
-LambdaBodyIndentation: OuterScope
+LambdaBodyIndentation: InnerScope
 EmptyLineBeforeAccessModifier: Leave
 MaxEmptyLinesToKeep: 2
