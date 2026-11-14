@@ -10,6 +10,7 @@ if(BUILD_TESTING)
         tests/TestQuery.cpp
         tests/TestRequest.cpp
         tests/TestResponse.cpp
+        tests/TestResponseCode.cpp
         tests/TestUrl.cpp)
     target_link_libraries(http_tests PRIVATE libranet::http GTest::gtest_main)
     gtest_discover_tests(http_tests)

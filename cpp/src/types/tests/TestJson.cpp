@@ -55,6 +55,20 @@ TEST(JsonTest, ConstructorsAndTypes) {
     EXPECT_EQ(str_obj_val.string(), "C++17 JSON");
 }
 
+TEST(JsonTest, TypeOfEachValue) {
+    constexpr auto int_value = 42;
+    constexpr auto double_value = 3.14159;
+
+    EXPECT_EQ(Json().type(), Json::Type::Null);
+    EXPECT_EQ(Json(nullptr).type(), Json::Type::Null);
+    EXPECT_EQ(Json(true).type(), Json::Type::Boolean);
+    EXPECT_EQ(Json(int_value).type(), Json::Type::Integer);
+    EXPECT_EQ(Json(double_value).type(), Json::Type::Real);
+    EXPECT_EQ(Json("text").type(), Json::Type::String);
+    EXPECT_EQ(Json(Json::Array{}).type(), Json::Type::Array);
+    EXPECT_EQ(Json(Json::Object{}).type(), Json::Type::Object);
+}
+
 TEST(JsonTest, InitializerLists) {
     constexpr auto real_value = 3.0;
     Json arr_val = {1, "two", real_value, true, nullptr};
