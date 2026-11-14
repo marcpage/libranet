@@ -25,10 +25,10 @@ Channel::~Channel() {
     const std::scoped_lock lock(m_channel_lock);
 
     for (auto& [name, channelList] : m_channels) {
-        const auto it = std::find(channelList.begin(), channelList.end(), this);
+        const auto position = std::find(channelList.begin(), channelList.end(), this);
 
-        if (it != channelList.end()) {
-            channelList.erase(it);
+        if (position != channelList.end()) {
+            channelList.erase(position);
 
             if (channelList.empty()) {
                 m_channels.erase(name);
@@ -57,13 +57,13 @@ std::optional<IMessage::Ptr> Channel::next_message(Milliseconds timeout) {
 
 void Channel::post_message(const std::string& name, const IMessage::Ptr& message) {
     const std::scoped_lock lock(m_channel_lock);
-    const auto it = m_channels.find(name);
+    const auto entry = m_channels.find(name);
 
-    if (it == m_channels.end()) {
+    if (entry == m_channels.end()) {
         return; // no subscribers
     }
 
-    for (Channel* channel : it->second) {
+    for (Channel* channel : entry->second) {
         channel->m_message_queue.push(message);
     }
 }

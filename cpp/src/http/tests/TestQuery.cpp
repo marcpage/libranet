@@ -84,20 +84,20 @@ TEST(QueryTest, MutationsAndExclusiveSet) {
 
 TEST(QueryTest, StreamOperatorsAndParsing) {
     // Test static parsing with and without leading '?'
-    const Query q1 = Query::parse("?foo=bar&baz=123");
-    EXPECT_EQ(q1.get_first("foo"), "bar");
-    EXPECT_EQ(q1.get_first("baz"), "123");
+    const Query query = Query::parse("?foo=bar&baz=123");
+    EXPECT_EQ(query.get_first("foo"), "bar");
+    EXPECT_EQ(query.get_first("baz"), "123");
 
-    const Query q2 = Query::parse("key=value_only");
-    EXPECT_EQ(q2.get_first("key"), "value_only");
+    const Query query_without_mark = Query::parse("key=value_only");
+    EXPECT_EQ(query_without_mark.get_first("key"), "value_only");
 
     // Test serialization output format (to_string)
-    const std::string serialized = q1.to_string();
+    const std::string serialized = query.to_string();
     EXPECT_EQ(serialized, "foo=bar&baz=123");
 
     // Test ostream operator<<
     std::ostringstream oss;
-    oss << q1;
+    oss << query;
     EXPECT_EQ(oss.str(), "foo=bar&baz=123");
 
     // Test istream operator>>

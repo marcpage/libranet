@@ -43,9 +43,9 @@ private:
 };
 
 inline std::string& Query::operator[](std::string_view key) {
-    for (auto& [k, v] : m_parameters) {
-        if (k == key) {
-            return v;
+    for (auto& [name, value] : m_parameters) {
+        if (name == key) {
+            return value;
         }
     }
 
@@ -60,9 +60,9 @@ inline std::vector<std::pair<std::string, std::string>> Query::items() const {
 inline std::vector<std::string_view> Query::get_all(std::string_view key) const {
     std::vector<std::string_view> values;
 
-    for (const auto& [k, v] : m_parameters) {
-        if (k == key) {
-            values.push_back(v);
+    for (const auto& [name, value] : m_parameters) {
+        if (name == key) {
+            values.push_back(value);
         }
     }
 
@@ -70,9 +70,9 @@ inline std::vector<std::string_view> Query::get_all(std::string_view key) const 
 }
 
 inline std::optional<std::string_view> Query::get_first(std::string_view key) const {
-    for (const auto& [k, v] : m_parameters) {
-        if (k == key) {
-            return v;
+    for (const auto& [name, value] : m_parameters) {
+        if (name == key) {
+            return value;
         }
     }
 

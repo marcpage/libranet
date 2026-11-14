@@ -18,48 +18,48 @@ using namespace std::chrono_literals;
 // NOLINTBEGIN(bugprone-unchecked-optional-access)
 
 TEST(BlockingQueueTest, BasicOperations) {
-    BlockingQueue<int> q; // unbounded by default
-    EXPECT_TRUE(q.empty());
-    EXPECT_EQ(q.size(), 0U);
+    BlockingQueue<int> queue; // unbounded by default
+    EXPECT_TRUE(queue.empty());
+    EXPECT_EQ(queue.size(), 0U);
 
     constexpr auto first_value = 10;
     constexpr auto second_value = 20;
     constexpr auto third_value = 30;
-    q.push(first_value);
-    q.push(second_value);
-    q.push(third_value);
+    queue.push(first_value);
+    queue.push(second_value);
+    queue.push(third_value);
 
-    EXPECT_FALSE(q.empty());
-    EXPECT_EQ(q.size(), 3U);
+    EXPECT_FALSE(queue.empty());
+    EXPECT_EQ(queue.size(), 3U);
 
-    EXPECT_EQ(q.pop(), first_value);
-    EXPECT_EQ(q.pop(), second_value);
-    EXPECT_EQ(q.size(), 1U);
-    EXPECT_EQ(q.pop(), third_value);
+    EXPECT_EQ(queue.pop(), first_value);
+    EXPECT_EQ(queue.pop(), second_value);
+    EXPECT_EQ(queue.size(), 1U);
+    EXPECT_EQ(queue.pop(), third_value);
 
-    EXPECT_TRUE(q.empty());
-    EXPECT_EQ(q.size(), 0U);
+    EXPECT_TRUE(queue.empty());
+    EXPECT_EQ(queue.size(), 0U);
 }
 
 // This test reads strings after moving them, to see that push() emptied them.
 // NOLINTBEGIN(bugprone-use-after-move)
 TEST(BlockingQueueTest, MoveSemantics) {
     constexpr auto timeout = 10ms;
-    BlockingQueue<std::string> q;
+    BlockingQueue<std::string> queue;
 
-    std::string s1 = "hello";
-    q.push(std::move(s1));
-    EXPECT_TRUE(s1.empty()); // moved-from
+    std::string first_text = "hello";
+    queue.push(std::move(first_text));
+    EXPECT_TRUE(first_text.empty()); // moved-from
 
-    std::string s2 = "world";
-    EXPECT_TRUE(q.push_ms_timeout(std::move(s2), timeout));
-    EXPECT_TRUE(s2.empty());
+    std::string second_text = "world";
+    EXPECT_TRUE(queue.push_ms_timeout(std::move(second_text), timeout));
+    EXPECT_TRUE(second_text.empty());
 
-    auto opt = q.pop_ms_timeout(timeout);
+    auto opt = queue.pop_ms_timeout(timeout);
     ASSERT_TRUE(opt.has_value());
     EXPECT_EQ(*opt, "hello");
 
-    const std::string result = q.pop(); // move out
+    const std::string result = queue.pop(); // move out
     EXPECT_EQ(result, "world");
 }
 // NOLINTEND(bugprone-use-after-move)
@@ -68,59 +68,59 @@ TEST(BlockingQueueTest, CapacityAndTimeouts) {
     constexpr auto timeout = 5ms;
     constexpr auto full_push_timeout = 20ms;
     constexpr auto empty_pop_timeout = 25ms;
-    BlockingQueue<int> q(2); // capacity 2
+    BlockingQueue<int> queue(2); // capacity 2
 
-    EXPECT_TRUE(q.push_ms_timeout(1, timeout));
-    EXPECT_TRUE(q.push_ms_timeout(2, timeout));
+    EXPECT_TRUE(queue.push_ms_timeout(1, timeout));
+    EXPECT_TRUE(queue.push_ms_timeout(2, timeout));
 
     // Queue is full → timed push must fail
-    EXPECT_FALSE(q.push_ms_timeout(3, full_push_timeout));
-    EXPECT_EQ(q.size(), 2U);
+    EXPECT_FALSE(queue.push_ms_timeout(3, full_push_timeout));
+    EXPECT_EQ(queue.size(), 2U);
 
     // Timed pop succeeds
-    auto v = q.pop_ms_timeout(timeout);
-    ASSERT_TRUE(v.has_value());
-    EXPECT_EQ(*v, 1);
-    EXPECT_EQ(q.size(), 1U);
+    auto item = queue.pop_ms_timeout(timeout);
+    ASSERT_TRUE(item.has_value());
+    EXPECT_EQ(*item, 1);
+    EXPECT_EQ(queue.size(), 1U);
 
     // Now there is room again
-    EXPECT_TRUE(q.push_ms_timeout(3, timeout));
-    EXPECT_EQ(q.size(), 2U);
+    EXPECT_TRUE(queue.push_ms_timeout(3, timeout));
+    EXPECT_EQ(queue.size(), 2U);
 
     // Empty the queue
-    EXPECT_EQ(q.pop(), 2);
-    EXPECT_EQ(q.pop(), 3);
-    EXPECT_TRUE(q.empty());
+    EXPECT_EQ(queue.pop(), 2);
+    EXPECT_EQ(queue.pop(), 3);
+    EXPECT_TRUE(queue.empty());
 
     // Timed pop on empty queue must time out
-    const auto empty = q.pop_ms_timeout(empty_pop_timeout);
+    const auto empty = queue.pop_ms_timeout(empty_pop_timeout);
     EXPECT_FALSE(empty.has_value());
 }
 
 TEST(BlockingQueueTest, UnboundedConstant) {
-    BlockingQueue<int> q1(BlockingQueue<int>::Unbounded);
-    BlockingQueue<int> q2; // same as Unbounded
+    BlockingQueue<int> unbounded_queue(BlockingQueue<int>::Unbounded);
+    BlockingQueue<int> default_queue; // same as Unbounded
     constexpr int item_count = 1000;
 
     for (int i = 0; i < item_count; ++i) {
-        q1.push(i);
-        q2.push(i);
+        unbounded_queue.push(i);
+        default_queue.push(i);
     }
-    EXPECT_EQ(q1.size(), static_cast<std::size_t>(item_count));
-    EXPECT_EQ(q2.size(), static_cast<std::size_t>(item_count));
+    EXPECT_EQ(unbounded_queue.size(), static_cast<std::size_t>(item_count));
+    EXPECT_EQ(default_queue.size(), static_cast<std::size_t>(item_count));
 }
 
 TEST(BlockingQueueTest, BlockingBehavior) {
-    BlockingQueue<int> q(1);
+    BlockingQueue<int> queue(1);
     constexpr auto first_value = 42;
     constexpr auto blocked_value = 99;
     constexpr auto block_wait = 30ms;
 
-    q.push(first_value);
+    queue.push(first_value);
 
     std::atomic<bool> pushed{false};
     std::thread blocker([&] {
-        q.push(blocked_value); // must block until space available
+        queue.push(blocked_value); // must block until space available
         pushed = true;
     });
 
@@ -128,17 +128,17 @@ TEST(BlockingQueueTest, BlockingBehavior) {
     std::this_thread::sleep_for(block_wait);
     EXPECT_FALSE(pushed.load());
 
-    EXPECT_EQ(q.pop(), first_value); // frees the slot
+    EXPECT_EQ(queue.pop(), first_value); // frees the slot
     blocker.join();
     EXPECT_TRUE(pushed.load());
-    EXPECT_EQ(q.pop(), blocked_value);
+    EXPECT_EQ(queue.pop(), blocked_value);
 }
 
 TEST(BlockingQueueTest, ProducerConsumer) {
     constexpr int num_items = 10'000;
     constexpr std::size_t capacity = 100; // modest
     constexpr auto pop_timeout = 50ms;
-    BlockingQueue<int> q(capacity);
+    BlockingQueue<int> queue(capacity);
 
     std::atomic<int> produced{0};
     std::atomic<int> consumed{0};
@@ -147,7 +147,7 @@ TEST(BlockingQueueTest, ProducerConsumer) {
     // Producer
     std::thread producer([&] {
         for (int i = 1; i <= num_items; ++i) {
-            q.push(i);
+            queue.push(i);
             produced.fetch_add(1, std::memory_order_relaxed);
         }
     });
@@ -155,7 +155,7 @@ TEST(BlockingQueueTest, ProducerConsumer) {
     // Two consumers
     const auto consumer_fn = [&] {
         while (consumed.load(std::memory_order_relaxed) < num_items) {
-            auto item = q.pop_ms_timeout(pop_timeout);
+            auto item = queue.pop_ms_timeout(pop_timeout);
             if (item) {
                 sum.fetch_add(*item, std::memory_order_relaxed);
                 consumed.fetch_add(1, std::memory_order_relaxed);
@@ -163,18 +163,18 @@ TEST(BlockingQueueTest, ProducerConsumer) {
         }
     };
 
-    std::thread c1(consumer_fn);
-    std::thread c2(consumer_fn);
+    std::thread first_consumer(consumer_fn);
+    std::thread second_consumer(consumer_fn);
 
     producer.join();
-    c1.join();
-    c2.join();
+    first_consumer.join();
+    second_consumer.join();
 
     EXPECT_EQ(produced.load(), num_items);
     EXPECT_EQ(consumed.load(), num_items);
     // Sum of 1..N = N*(N+1)/2
     EXPECT_EQ(sum.load(), static_cast<long long>(num_items) * (num_items + 1) / 2);
-    EXPECT_TRUE(q.empty());
+    EXPECT_TRUE(queue.empty());
 }
 
 // This test's threads and nested loops, and gtest's assertion macros, which
@@ -188,45 +188,45 @@ TEST(BlockingQueueTest, MultipleProducersConsumers) {
     constexpr std::size_t capacity = 50;
     constexpr auto pop_timeout = 100ms;
 
-    BlockingQueue<int> q(capacity);
+    BlockingQueue<int> queue(capacity);
 
     std::atomic<int> consumed{0};
     std::atomic<long long> checksum{0};
 
     std::vector<std::thread> producers;
     producers.reserve(num_producers);
-    for (int p = 0; p < num_producers; ++p) {
-        producers.emplace_back([&, p] {
+    for (int producer_index = 0; producer_index < num_producers; ++producer_index) {
+        producers.emplace_back([&, producer_index] {
             for (int i = 0; i < items_per_producer; ++i) {
-                q.push((p * items_per_producer) + i + 1);
+                queue.push((producer_index * items_per_producer) + i + 1);
             }
         });
     }
 
     std::vector<std::thread> consumers;
     consumers.reserve(num_consumers);
-    for (int c = 0; c < num_consumers; ++c) {
+    for (int consumer_index = 0; consumer_index < num_consumers; ++consumer_index) {
         consumers.emplace_back([&] {
             while (consumed.load(std::memory_order_relaxed) < total) {
-                if (auto v = q.pop_ms_timeout(pop_timeout)) {
-                    checksum.fetch_add(*v, std::memory_order_relaxed);
+                if (auto item = queue.pop_ms_timeout(pop_timeout)) {
+                    checksum.fetch_add(*item, std::memory_order_relaxed);
                     consumed.fetch_add(1, std::memory_order_relaxed);
                 }
             }
         });
     }
 
-    for (auto& t : producers) {
-        t.join();
+    for (auto& producer : producers) {
+        producer.join();
     }
-    for (auto& t : consumers) {
-        t.join();
+    for (auto& consumer : consumers) {
+        consumer.join();
     }
 
     EXPECT_EQ(consumed.load(), total);
     // Expected sum = total*(total+1)/2
     EXPECT_EQ(checksum.load(), static_cast<long long>(total) * (total + 1) / 2);
-    EXPECT_TRUE(q.empty());
+    EXPECT_TRUE(queue.empty());
 }
 // NOLINTEND(readability-function-cognitive-complexity)
 

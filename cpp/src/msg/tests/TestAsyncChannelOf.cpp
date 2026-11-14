@@ -48,7 +48,7 @@ TEST(AsyncChannelOfTest, ConstructionAndCallback) {
     std::vector<int> received;
 
     {
-        const AsyncChannelOf<int> ch("test.asyncof.basic", [&](int value) {
+        const AsyncChannelOf<int> channel("test.asyncof.basic", [&](int value) {
             {
                 const std::scoped_lock lock(mutex);
                 received.push_back(value);
@@ -56,7 +56,7 @@ TEST(AsyncChannelOfTest, ConstructionAndCallback) {
             condition.notify_one();
         }, nullptr);
 
-        EXPECT_TRUE(ch.empty());
+        EXPECT_TRUE(channel.empty());
 
         constexpr auto posted_value = 42;
         Channel::post("test.asyncof.basic", posted_value);
@@ -76,7 +76,7 @@ TEST(AsyncChannelOfTest, MultipleMessagesFifoOrder) {
     std::vector<int> received;
 
     {
-        const AsyncChannelOf<int> ch("test.asyncof.fifo", [&](int value) {
+        const AsyncChannelOf<int> channel("test.asyncof.fifo", [&](int value) {
             {
                 const std::scoped_lock lock(mutex);
                 received.push_back(value);
@@ -109,7 +109,7 @@ TEST(AsyncChannelOfTest, BroadcastToMultipleAsyncChannels) {
     std::vector<int> received_b;
 
     {
-        const AsyncChannelOf<int> a("test.asyncof.broadcast", [&](int value) {
+        const AsyncChannelOf<int> channel_a("test.asyncof.broadcast", [&](int value) {
             {
                 const std::scoped_lock lock(mutex);
                 received_a.push_back(value);
@@ -117,7 +117,7 @@ TEST(AsyncChannelOfTest, BroadcastToMultipleAsyncChannels) {
             condition.notify_one();
         }, nullptr);
 
-        const AsyncChannelOf<int> b("test.asyncof.broadcast", [&](int value) {
+        const AsyncChannelOf<int> channel_b("test.asyncof.broadcast", [&](int value) {
             {
                 const std::scoped_lock lock(mutex);
                 received_b.push_back(value);
@@ -144,7 +144,7 @@ TEST(AsyncChannelOfTest, UnexpectedMessageTypeLogging) {
     std::vector<std::string> logged;
 
     {
-        const AsyncChannelOf<int> ch("test.asyncof.unexpected", [](int) {}, [&](std::string msg) {
+        const AsyncChannelOf<int> channel("test.asyncof.unexpected", [](int) {}, [&](std::string msg) {
             {
                 const std::scoped_lock lock(mutex);
                 logged.push_back(std::move(msg));
@@ -167,7 +167,7 @@ TEST(AsyncChannelOfTest, UnexpectedMessageTypeLogging) {
 TEST(AsyncChannelOfTest, StopAndIdempotence) {
     std::atomic<int> callback_count{0};
 
-    AsyncChannelOf<int> ch("test.asyncof.stop", [&](int) {
+    AsyncChannelOf<int> channel("test.asyncof.stop", [&](int) {
         ++callback_count;
     }, nullptr);
 
@@ -177,8 +177,8 @@ TEST(AsyncChannelOfTest, StopAndIdempotence) {
     });
     EXPECT_TRUE(delivered);
 
-    ch.stop();
-    ch.stop();
+    channel.stop();
+    channel.stop();
 
     Channel::post("test.asyncof.stop", 2);
     constexpr auto delivery_wait = 20ms;
@@ -190,7 +190,7 @@ TEST(AsyncChannelOfTest, DestructorStopsWorker) {
     std::atomic<bool> callback_called{false};
 
     {
-        const AsyncChannelOf<int> ch("test.asyncof.destructor", [&](int) {
+        const AsyncChannelOf<int> channel("test.asyncof.destructor", [&](int) {
             callback_called = true;
         }, nullptr);
         Channel::post("test.asyncof.destructor", 1);

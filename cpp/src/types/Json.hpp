@@ -394,13 +394,13 @@ inline Json& Json::operator[](const std::string& key) {
 
 inline const Json& Json::operator[](const std::string& key) const {
     const auto& obj = object();
-    const auto it = obj.find(key);
+    const auto member = obj.find(key);
 
-    if (it == obj.end()) {
+    if (member == obj.end()) {
         throw std::out_of_range("Json: key not found: " + key);
     }
 
-    return it->second;
+    return member->second;
 }
 
 inline const Json& Json::at(std::size_t index) const {
@@ -425,13 +425,13 @@ inline const Json& Json::at(const std::string& key) const {
     }
 
     const auto& obj = object();
-    const auto it = obj.find(key);
+    const auto member = obj.find(key);
 
-    if (it == obj.end()) {
+    if (member == obj.end()) {
         throw std::out_of_range("Json: key not found");
     }
 
-    return it->second;
+    return member->second;
 }
 
 inline Json& Json::at(const std::string& key) {
@@ -440,13 +440,13 @@ inline Json& Json::at(const std::string& key) {
     }
 
     auto& obj = object();
-    const auto it = obj.find(key);
+    const auto member = obj.find(key);
 
-    if (it == obj.end()) {
+    if (member == obj.end()) {
         throw std::out_of_range("Json: key not found");
     }
 
-    return it->second;
+    return member->second;
 }
 
 inline void Json::escape_string(const std::string& str, std::ostringstream& out_stream) {

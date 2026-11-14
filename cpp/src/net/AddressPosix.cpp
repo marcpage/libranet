@@ -36,9 +36,9 @@ namespace {
     return res;
 }
 
-[[nodiscard]] std::string get_numeric_ip(const addrinfo* p) {
+[[nodiscard]] std::string get_numeric_ip(const addrinfo* info) {
     std::array<char, NI_MAXHOST> ip_buf{};
-    const int error = getnameinfo(p->ai_addr, p->ai_addrlen,
+    const int error = getnameinfo(info->ai_addr, info->ai_addrlen,
                                   ip_buf.data(), static_cast<socklen_t>(ip_buf.size()),
                                   nullptr, 0, NI_NUMERICHOST);
     if (error == 0) {
@@ -48,10 +48,10 @@ namespace {
     return {};
 }
 
-[[nodiscard]] std::string get_reverse_dns_name(const addrinfo* p,
+[[nodiscard]] std::string get_reverse_dns_name(const addrinfo* info,
                                                const std::string& numeric_ip) {
     std::array<char, NI_MAXHOST> host_buf{};
-    const int error = getnameinfo(p->ai_addr, p->ai_addrlen,
+    const int error = getnameinfo(info->ai_addr, info->ai_addrlen,
                                   host_buf.data(), static_cast<socklen_t>(host_buf.size()),
                                   nullptr, 0, 0);
     if (error == 0) {
@@ -123,11 +123,11 @@ std::vector<std::string> Address::resolve() const {
     std::vector<std::string> results;
     addrinfo* res = fetch_address_info(m_host, m_port);
 
-    for (const addrinfo* p = res; p != nullptr; p = p->ai_next) {
-        const auto ip = get_numeric_ip(p);
+    for (const addrinfo* entry = res; entry != nullptr; entry = entry->ai_next) {
+        const auto numeric_ip = get_numeric_ip(entry);
 
-        add_unique(ip, results);
-        add_unique(get_reverse_dns_name(p, ip), results);
+        add_unique(numeric_ip, results);
+        add_unique(get_reverse_dns_name(entry, numeric_ip), results);
     }
 
     freeaddrinfo(res);

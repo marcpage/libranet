@@ -66,8 +66,8 @@ inline bool Headers::CaseInsensitiveLess::operator()(std::string_view lhs,
     return std::lexicographical_compare(
         lhs.begin(), lhs.end(),
         rhs.begin(), rhs.end(),
-        [](unsigned char c1, unsigned char c2) {
-        return std::tolower(c1) < std::tolower(c2);
+        [](unsigned char left_char, unsigned char right_char) {
+        return std::tolower(left_char) < std::tolower(right_char);
     });
 }
 
@@ -77,20 +77,20 @@ inline void Headers::set(std::string key, std::string value) {
 }
 
 inline std::optional<std::string_view> Headers::get(std::string_view key) const noexcept {
-    const auto it = m_headers.find(key);
+    const auto header = m_headers.find(key);
 
-    if (it != m_headers.end()) {
-        return it->second;
+    if (header != m_headers.end()) {
+        return header->second;
     }
 
     return std::nullopt;
 }
 
 inline std::string_view Headers::get(std::string_view key, std::string_view default_value) const noexcept {
-    const auto it = m_headers.find(key);
+    const auto header = m_headers.find(key);
 
-    if (it != m_headers.end()) {
-        return it->second;
+    if (header != m_headers.end()) {
+        return header->second;
     }
 
     return default_value;

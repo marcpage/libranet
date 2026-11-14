@@ -33,7 +33,7 @@ Checks:
   # 1 to clean up (1 in library code, 0 in tests), such as
   # src/net/SocketPosix.cpp:243: prefer accept4() to accept() because accept4()
   # allows SOCK_CLOEXEC
-  #     fd = ::accept(m_socket_fd, nullptr, nullptr);
+  #     accepted_fd = ::accept(m_socket_fd, nullptr, nullptr);
   - '-android-cloexec-accept'
 
   # 4 to clean up (4 in library code, 0 in tests), such as
@@ -126,12 +126,12 @@ Checks:
 
   # 17 to clean up (11 in library code, 6 in tests), such as
   # src/http/Url.hpp:614: consider replacing 'unsigned long' with 'uint64'
-  #     unsigned long p = std::stoul(std::string(str));
+  #     unsigned long port_number = std::stoul(std::string(str));
   - '-google-runtime-int'
 
   # 2 to clean up (2 in library code, 0 in tests), such as
   # src/msg/Channel.cpp:28: use an LLVM range-based algorithm
-  #     const auto it = std::find(channelList.begin(), channelList.end(),...
+  #     const auto position = std::find(channelList.begin(), channelList....
   - '-llvm-use-ranges'
 
   # 5 to clean up (5 in library code, 0 in tests), such as
@@ -165,12 +165,6 @@ Checks:
   # instead
   #     #pragma once
   - '-portability-avoid-pragma-once'
-
-  # 105 to clean up (42 in library code, 63 in tests), such as
-  # src/http/Headers.hpp:69: parameter name 'c1' is too short, expected at least
-  # 3 characters
-  #     [](unsigned char c1, unsigned char c2) {
-  - '-readability-identifier-length'
 
 WarningsAsErrors: '*'
 # Every header that is not a system header. CMake includes Conan's packages

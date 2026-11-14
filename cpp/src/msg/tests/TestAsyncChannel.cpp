@@ -51,7 +51,7 @@ TEST(AsyncChannelTest, ConstructionAndCallback) {
     std::vector<std::string> received;
 
     {
-        const AsyncChannel ch("test.async.basic", [&](const IMessage::Ptr& message) {
+        const AsyncChannel channel("test.async.basic", [&](const IMessage::Ptr& message) {
             {
                 const std::scoped_lock lock(mutex);
                 received.push_back(message->to_string());
@@ -59,7 +59,7 @@ TEST(AsyncChannelTest, ConstructionAndCallback) {
             condition.notify_one();
         });
 
-        EXPECT_TRUE(ch.empty());
+        EXPECT_TRUE(channel.empty());
 
         constexpr auto posted_value = 42;
         Channel::post("test.async.basic", posted_value);
@@ -79,7 +79,7 @@ TEST(AsyncChannelTest, MultipleMessagesFifoOrder) {
     std::vector<std::string> received;
 
     {
-        const AsyncChannel ch("test.async.fifo", [&](const IMessage::Ptr& message) {
+        const AsyncChannel channel("test.async.fifo", [&](const IMessage::Ptr& message) {
             {
                 const std::scoped_lock lock(mutex);
                 received.push_back(message->to_string());
@@ -112,7 +112,7 @@ TEST(AsyncChannelTest, BroadcastToMultipleAsyncChannels) {
     std::vector<int> received_b;
 
     {
-        const AsyncChannel a("test.async.broadcast", [&](const IMessage::Ptr& message) {
+        const AsyncChannel channel_a("test.async.broadcast", [&](const IMessage::Ptr& message) {
             {
                 const std::scoped_lock lock(mutex);
                 received_a.push_back(std::stoi(message->to_string()));
@@ -120,7 +120,7 @@ TEST(AsyncChannelTest, BroadcastToMultipleAsyncChannels) {
             condition.notify_one();
         });
 
-        const AsyncChannel b("test.async.broadcast", [&](const IMessage::Ptr& message) {
+        const AsyncChannel channel_b("test.async.broadcast", [&](const IMessage::Ptr& message) {
             {
                 const std::scoped_lock lock(mutex);
                 received_b.push_back(std::stoi(message->to_string()));
@@ -148,7 +148,7 @@ TEST(AsyncChannelTest, CallbackExceptionDoesNotStopProcessing) {
     std::vector<std::string> logged;
 
     {
-        const AsyncChannel ch("test.async.exceptions", [&](const IMessage::Ptr& message) {
+        const AsyncChannel channel("test.async.exceptions", [&](const IMessage::Ptr& message) {
             const std::string value = message->to_string();
             if (value == "1") {
                 throw std::runtime_error("expected test exception");
@@ -183,7 +183,7 @@ TEST(AsyncChannelTest, CallbackExceptionDoesNotStopProcessing) {
 TEST(AsyncChannelTest, StopAndIdempotence) {
     std::atomic<int> callback_count{0};
 
-    AsyncChannel ch("test.async.stop", [&](const IMessage::Ptr&) {
+    AsyncChannel channel("test.async.stop", [&](const IMessage::Ptr&) {
         ++callback_count;
     });
 
@@ -193,8 +193,8 @@ TEST(AsyncChannelTest, StopAndIdempotence) {
     });
     EXPECT_TRUE(delivered);
 
-    ch.stop();
-    ch.stop();
+    channel.stop();
+    channel.stop();
 
     Channel::post("test.async.stop", 2);
     constexpr auto delivery_wait = 20ms;
@@ -206,7 +206,7 @@ TEST(AsyncChannelTest, DestructorStopsWorker) {
     std::atomic<bool> callback_called{false};
 
     {
-        const AsyncChannel ch("test.async.destructor", [&](const IMessage::Ptr&) {
+        const AsyncChannel channel("test.async.destructor", [&](const IMessage::Ptr&) {
             callback_called = true;
         });
         Channel::post("test.async.destructor", 1);

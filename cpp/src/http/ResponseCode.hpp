@@ -110,7 +110,7 @@ public:
     friend bool operator==(const ResponseCode& lhs, Status rhs) noexcept;
     friend bool operator!=(const ResponseCode& lhs, Status rhs) noexcept;
 
-    friend std::ostream& operator<<(std::ostream& os, const ResponseCode& sc);
+    friend std::ostream& operator<<(std::ostream& out_stream, const ResponseCode& response_code);
 
 private:
     // Each class of codes runs up to the start of the next.
@@ -148,33 +148,33 @@ inline std::string_view ResponseCode::reason_phrase() const noexcept {
 }
 
 inline bool ResponseCode::is_informational() const noexcept {
-    const auto c = code();
+    const auto number = code();
 
-    return c >= informational_start && c < success_start;
+    return number >= informational_start && number < success_start;
 }
 
 inline bool ResponseCode::is_success() const noexcept {
-    const auto c = code();
+    const auto number = code();
 
-    return c >= success_start && c < redirection_start;
+    return number >= success_start && number < redirection_start;
 }
 
 inline bool ResponseCode::is_redirection() const noexcept {
-    const auto c = code();
+    const auto number = code();
 
-    return c >= redirection_start && c < client_error_start;
+    return number >= redirection_start && number < client_error_start;
 }
 
 inline bool ResponseCode::is_client_error() const noexcept {
-    const auto c = code();
+    const auto number = code();
 
-    return c >= client_error_start && c < server_error_start;
+    return number >= client_error_start && number < server_error_start;
 }
 
 inline bool ResponseCode::is_server_error() const noexcept {
-    const auto c = code();
+    const auto number = code();
 
-    return c >= server_error_start && c < server_error_end;
+    return number >= server_error_start && number < server_error_end;
 }
 
 inline bool ResponseCode::is_error() const noexcept {
@@ -269,8 +269,8 @@ inline bool operator!=(const ResponseCode& lhs, ResponseCode::Status rhs) noexce
     return !(lhs == rhs);
 }
 
-inline std::ostream& operator<<(std::ostream& os, const ResponseCode& sc) {
-    return os << sc.code() << " " << sc.reason_phrase();
+inline std::ostream& operator<<(std::ostream& out_stream, const ResponseCode& response_code) {
+    return out_stream << response_code.code() << " " << response_code.reason_phrase();
 }
 
 } // namespace http

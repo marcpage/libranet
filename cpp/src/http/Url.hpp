@@ -611,10 +611,10 @@ inline std::optional<uint16_t> Url::parse_port(std::string_view str) {
     }
 
     try {
-        unsigned long p = std::stoul(std::string(str));
+        unsigned long port_number = std::stoul(std::string(str));
 
-        if (p <= MaxPortNumber) {
-            return static_cast<uint16_t>(p);
+        if (port_number <= MaxPortNumber) {
+            return static_cast<uint16_t>(port_number);
         }
     } catch (const std::invalid_argument&) {
         return std::nullopt; // not a number
