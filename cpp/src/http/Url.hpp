@@ -58,14 +58,14 @@ public:
     void set_query_parameters(
         std::initializer_list<std::pair<std::string_view, std::string_view>> parameters);
 
-    void set_scheme(std::string scheme);
-    void set_username(const std::string& username);
-    void set_password(const std::string& password);
-    void set_host(std::string host);
-    void set_port(uint16_t port);
-    void set_path(const std::string& path);
-    void set_query(Query query);
-    void set_fragment(const std::string& fragment);
+    void set_scheme(std::string new_scheme);
+    void set_username(const std::string& new_username);
+    void set_password(const std::string& new_password);
+    void set_host(std::string new_host);
+    void set_port(uint16_t new_port);
+    void set_path(const std::string& new_path);
+    void set_query(Query new_query);
+    void set_fragment(const std::string& new_fragment);
 
     void append(std::string_view relative_url);
 
@@ -260,53 +260,53 @@ inline void Url::remove_query(std::string_view key) {
     m_query.remove(encoded_key);
 }
 
-inline void Url::set_scheme(std::string scheme) {
-    m_scheme = std::move(scheme);
+inline void Url::set_scheme(std::string new_scheme) {
+    m_scheme = std::move(new_scheme);
 }
 
-inline void Url::set_username(const std::string& username) {
+inline void Url::set_username(const std::string& new_username) {
     constexpr std::string_view userinfo_allowed = "-_.~!$&'()*+,;=";
     constexpr auto not_space_to_plus = false;
 
-    m_username = encode(username, userinfo_allowed, not_space_to_plus);
+    m_username = encode(new_username, userinfo_allowed, not_space_to_plus);
 }
 
-inline void Url::set_password(const std::string& password) {
+inline void Url::set_password(const std::string& new_password) {
     constexpr std::string_view userinfo_allowed = "-_.~!$&'()*+,;=";
     constexpr auto not_space_to_plus = false;
 
-    m_password = encode(password, userinfo_allowed, not_space_to_plus);
+    m_password = encode(new_password, userinfo_allowed, not_space_to_plus);
 }
 
-inline void Url::set_host(std::string host) {
-    if (host.size() >= 2 && host.front() == '[' && host.back() == ']') {
-        host.erase(0, 1);
-        host.pop_back();
+inline void Url::set_host(std::string new_host) {
+    if (new_host.size() >= 2 && new_host.front() == '[' && new_host.back() == ']') {
+        new_host.erase(0, 1);
+        new_host.pop_back();
     }
 
-    m_host = std::move(host);
+    m_host = std::move(new_host);
 }
 
-inline void Url::set_port(uint16_t port) {
-    m_port = port;
+inline void Url::set_port(uint16_t new_port) {
+    m_port = new_port;
 }
 
-inline void Url::set_path(const std::string& path) {
+inline void Url::set_path(const std::string& new_path) {
     constexpr std::string_view unreserved_and_slash = "-_.~/";
     constexpr auto not_space_to_plus = false;
 
-    m_path = encode(path, unreserved_and_slash, not_space_to_plus);
+    m_path = encode(new_path, unreserved_and_slash, not_space_to_plus);
 }
 
-inline void Url::set_query(Query query) {
-    m_query = std::move(query);
+inline void Url::set_query(Query new_query) {
+    m_query = std::move(new_query);
 }
 
-inline void Url::set_fragment(const std::string& fragment) {
+inline void Url::set_fragment(const std::string& new_fragment) {
     constexpr std::string_view fragment_allowed = "-_.~!$&'()*+,;=/?";
     constexpr auto not_space_to_plus = false;
 
-    m_fragment = encode(fragment, fragment_allowed, not_space_to_plus);
+    m_fragment = encode(new_fragment, fragment_allowed, not_space_to_plus);
 }
 
 inline std::optional<Url> Url::parse(std::string_view url_string) {

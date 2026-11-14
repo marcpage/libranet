@@ -782,16 +782,16 @@ inline Json Json::Parser::parse_string_value() {
 inline Json Json::Parser::parse_array() {
     get(); // consume '['
 
-    Array array;
+    Array elements;
 
     skip_whitespace();
 
     if (consume(']')) {
-        return Json(array);
+        return Json(elements);
     }
 
     while (true) {
-        array.push_back(parse_value());
+        elements.push_back(parse_value());
         skip_whitespace();
 
         if (consume(']')) {
@@ -803,18 +803,18 @@ inline Json Json::Parser::parse_array() {
         }
     }
 
-    return Json(array);
+    return Json(elements);
 }
 
 inline Json Json::Parser::parse_object() {
     get(); // consume '{'
 
-    Object object;
+    Object members;
 
     skip_whitespace();
 
     if (consume('}')) {
-        return Json(object);
+        return Json(members);
     }
 
     while (true) {
@@ -832,7 +832,7 @@ inline Json Json::Parser::parse_object() {
             throw std::invalid_argument("Json::parse: expected ':' after key in object");
         }
 
-        object[key] = parse_value();
+        members[key] = parse_value();
         skip_whitespace();
 
         if (consume('}')) {
@@ -844,7 +844,7 @@ inline Json Json::Parser::parse_object() {
         }
     }
 
-    return Json(object);
+    return Json(members);
 }
 
 inline bool operator==(const Json& left, const Json& right) {

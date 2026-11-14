@@ -72,11 +72,6 @@ returnByReference
 # Mistaken: each Json constructor copies or moves its argument into the Json.
 returnDanglingLifetime
 
-# 19 to clean up (19 in library code, 0 in tests), such as
-# src/http/Request.hpp:71: Argument 'method' shadows outer function
-#     inline void Request::set_method(std::string method) {
-shadowFunction
-
 # 1 to clean up (1 in library code, 0 in tests), such as src/net/Address.hpp:28:
 # Member variable 'Address::m_port' has no initializer.
 #     Port m_port;

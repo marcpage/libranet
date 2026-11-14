@@ -24,10 +24,10 @@ public:
 
     [[nodiscard]] std::string_view body() const noexcept;
 
-    void set_method(std::string method);
-    void set_uri(std::string uri);
-    void set_version(std::string version);
-    void set_body(std::string body);
+    void set_method(std::string new_method);
+    void set_uri(std::string new_uri);
+    void set_version(std::string new_version);
+    void set_body(std::string new_body);
 
     bool parse_request_line(std::string_view line);
     [[nodiscard]] std::string to_string() const;
@@ -68,20 +68,20 @@ inline std::string_view Request::body() const noexcept {
     return m_body;
 }
 
-inline void Request::set_method(std::string method) {
-    m_method = std::move(method);
+inline void Request::set_method(std::string new_method) {
+    m_method = std::move(new_method);
 }
 
-inline void Request::set_uri(std::string uri) {
-    m_uri = std::move(uri);
+inline void Request::set_uri(std::string new_uri) {
+    m_uri = std::move(new_uri);
 }
 
-inline void Request::set_version(std::string version) {
-    m_version = std::move(version);
+inline void Request::set_version(std::string new_version) {
+    m_version = std::move(new_version);
 }
 
-inline void Request::set_body(std::string body) {
-    m_body = std::move(body);
+inline void Request::set_body(std::string new_body) {
+    m_body = std::move(new_body);
 }
 
 inline bool Request::parse_request_line(std::string_view line) {

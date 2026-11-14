@@ -26,10 +26,10 @@ public:
 
     [[nodiscard]] std::string_view body() const noexcept;
 
-    void set_version(std::string version);
-    void set_status_code(uint16_t status_code);
-    void set_reason_phrase(std::string reason_phrase);
-    void set_body(std::string body);
+    void set_version(std::string new_version);
+    void set_status_code(uint16_t new_status_code);
+    void set_reason_phrase(std::string new_reason_phrase);
+    void set_body(std::string new_body);
 
     bool parse_status_line(std::string_view line);
     [[nodiscard]] std::string to_string() const;
@@ -67,20 +67,20 @@ inline std::string_view Response::body() const noexcept {
     return m_body;
 }
 
-inline void Response::set_version(std::string version) {
-    m_version = std::move(version);
+inline void Response::set_version(std::string new_version) {
+    m_version = std::move(new_version);
 }
 
-inline void Response::set_status_code(uint16_t status_code) {
-    m_status = ResponseCode(status_code);
+inline void Response::set_status_code(uint16_t new_status_code) {
+    m_status = ResponseCode(new_status_code);
 }
 
-inline void Response::set_reason_phrase(std::string reason_phrase) {
-    m_status = ResponseCode(m_status.code(), reason_phrase);
+inline void Response::set_reason_phrase(std::string new_reason_phrase) {
+    m_status = ResponseCode(m_status.code(), new_reason_phrase);
 }
 
-inline void Response::set_body(std::string body) {
-    m_body = std::move(body);
+inline void Response::set_body(std::string new_body) {
+    m_body = std::move(new_body);
 }
 
 inline bool Response::parse_status_line(std::string_view line) {
@@ -103,17 +103,17 @@ inline bool Response::parse_status_line(std::string_view line) {
         return false;
     }
 
-    int code = 0;
+    int parsed_code = 0;
 
     try {
-        code = std::stoi(std::string(fields[1]));
+        parsed_code = std::stoi(std::string(fields[1]));
     } catch (const std::invalid_argument&) {
         return false;
     } catch (const std::out_of_range&) {
         return false;
     }
 
-    const auto code_value = static_cast<uint16_t>(code);
+    const auto code_value = static_cast<uint16_t>(parsed_code);
 
     m_version = std::string(fields[0]);
     m_status = ResponseCode(code_value, (fields.size() == 3)
