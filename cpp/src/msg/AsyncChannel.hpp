@@ -32,4 +32,4 @@ private:
     AsyncChannel& operator=(AsyncChannel&&) = delete;
 };
 
-} // msg
+} // namespace msg

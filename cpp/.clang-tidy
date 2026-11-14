@@ -31,9 +31,9 @@ Checks:
   - '-abseil-string-find-str-contains'
 
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:242: prefer accept4() to accept() because accept4()
+  # src/net/SocketPosix.cpp:243: prefer accept4() to accept() because accept4()
   # allows SOCK_CLOEXEC
-  #     fd = ::accept(m_socket_fd, nullptr, nullptr);
+  #     accepted_fd = ::accept(m_socket_fd, nullptr, nullptr);
   - '-android-cloexec-accept'
 
   # 4 to clean up (4 in library code, 0 in tests), such as
@@ -47,13 +47,6 @@ Checks:
   #     inline std::string_view Headers::get(std::string_view key, std::s...
   - '-bugprone-easily-swappable-parameters'
 
-  # 6 to clean up (6 in library code, 0 in tests), such as
-  # src/net/AddressPosix.cpp:39: do not declare C-style arrays, use 'std::array'
-  # instead
-  #     char ip_buf[NI_MAXHOST];
-  - '-cppcoreguidelines-avoid-c-arrays'
-  - '-modernize-avoid-c-arrays'
-
   # 1 to clean up (1 in library code, 0 in tests), such as
   # src/types/BlockingQueue.hpp:50: member 'm_capacity' of type 'const size_t'
   # (aka 'const unsigned long') is const qualified
@@ -61,20 +54,12 @@ Checks:
   - '-cppcoreguidelines-avoid-const-or-ref-data-members'
 
   # 4 to clean up (4 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:203: avoid do-while loops
+  # src/net/SocketPosix.cpp:204: avoid do-while loops
   #     do {
   - '-cppcoreguidelines-avoid-do-while'
 
-  # 12 to clean up (12 in library code, 0 in tests), such as
-  # src/http/ResponseCode.hpp:78: constructors that are callable with a single
-  # argument must be marked explicit to avoid unintentional implicit conversions
-  #     ResponseCode(Status status, std::optional<std::string> custom_rea...
-  - '-cppcoreguidelines-explicit-constructor'
-  - '-google-explicit-constructor'
-  - '-misc-explicit-constructor'
-
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:147: forwarding reference parameter 'socket_call' is
+  # src/net/SocketPosix.cpp:148: forwarding reference parameter 'socket_call' is
   # never forwarded inside the function body
   #     net::Address query_socket_address(int socket_fd, Func&& socket_call,
   - '-cppcoreguidelines-missing-std-forward'
@@ -86,26 +71,14 @@ Checks:
   - '-cppcoreguidelines-non-private-member-variables-in-classes'
   - '-misc-non-private-member-variables-in-classes'
 
-  # 11 to clean up (11 in library code, 0 in tests), such as
-  # src/net/AddressPosix.cpp:41: do not implicitly decay an array into a
-  # pointer; consider using gsl::array_view or an explicit cast instead
-  #     ip_buf, sizeof(ip_buf),
-  - '-cppcoreguidelines-pro-bounds-array-to-pointer-decay'
-
-  # 115 to clean up (64 in library code, 51 in tests), such as
+  # 117 to clean up (66 in library code, 51 in tests), such as
   # src/http/Headers.hpp:255: possibly unsafe 'operator[]', consider bounds-safe
   # alternatives
   #     return !line.empty() && (line[0] == ' ' || line[0] == '\t');
   - '-cppcoreguidelines-pro-bounds-avoid-unchecked-container-access'
 
-  # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/types/Json.hpp:472: do not use array subscript when the index is not an
-  # integer constant expression
-  #     out_stream << hex[(code >> nibble_bits) & nibble_mask] << hex[cod...
-  - '-cppcoreguidelines-pro-bounds-constant-array-index'
-
   # 4 to clean up (2 in library code, 2 in tests), such as
-  # src/net/SocketPosix.cpp:153: do not use reinterpret_cast
+  # src/net/SocketPosix.cpp:154: do not use reinterpret_cast
   #     reinterpret_cast<sockaddr*>(&storage), &length);
   - '-cppcoreguidelines-pro-type-reinterpret-cast'
 
@@ -117,7 +90,7 @@ Checks:
   - '-cppcoreguidelines-special-member-functions'
 
   # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:127: enum 'Direction' is unscoped, use 'enum class'
+  # src/net/SocketPosix.cpp:128: enum 'Direction' is unscoped, use 'enum class'
   # instead
   #     enum Direction { DirectionSend,
   - '-cppcoreguidelines-use-enum-class'
@@ -129,7 +102,7 @@ Checks:
   - '-fuchsia-default-arguments-calls'
 
   # 13 to clean up (11 in library code, 2 in tests), such as
-  # src/http/ResponseCode.hpp:78: declaring a parameter with a default argument
+  # src/http/ResponseCode.hpp:79: declaring a parameter with a default argument
   # is disallowed
   #     ResponseCode(Status status, std::optional<std::string> custom_rea...
   - '-fuchsia-default-arguments-declarations'
@@ -146,36 +119,29 @@ Checks:
   - '-fuchsia-statically-constructed-objects'
 
   # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/types/Json.hpp:204: a trailing return type is disallowed for this
+  # src/types/Json.hpp:208: a trailing return type is disallowed for this
   # function declaration
   #     return std::visit([](auto&& value) -> Type {
   - '-fuchsia-trailing-return'
 
-  # 7 to clean up (7 in library code, 0 in tests), such as
-  # src/msg/AsyncChannel.cpp:12: anonymous namespace not terminated with a
-  # closing comment
-  #     }
-  - '-google-readability-namespace-comments'
-  - '-llvm-namespace-comment'
-
   # 17 to clean up (11 in library code, 6 in tests), such as
   # src/http/Url.hpp:614: consider replacing 'unsigned long' with 'uint64'
-  #     unsigned long p = std::stoul(std::string(str));
+  #     unsigned long port_number = std::stoul(std::string(str));
   - '-google-runtime-int'
 
   # 2 to clean up (2 in library code, 0 in tests), such as
   # src/msg/Channel.cpp:28: use an LLVM range-based algorithm
-  #     const auto it = std::find(channelList.begin(), channelList.end(),...
+  #     const auto position = std::find(channelList.begin(), channelList....
   - '-llvm-use-ranges'
 
   # 5 to clean up (5 in library code, 0 in tests), such as
-  # src/types/Integer.hpp:697: function 'operator&' is within a recursive call
+  # src/types/Integer.hpp:700: function 'operator&' is within a recursive call
   # chain
   #     inline Integer operator&(const Integer& left, const Integer& righ...
   - '-misc-no-recursion'
 
   # 10 to clean up (10 in library code, 0 in tests), such as
-  # src/types/Json.hpp:669: avoid repeating the return type from the
+  # src/types/Json.hpp:673: avoid repeating the return type from the
   # declaration; use a braced initializer list instead
   #     return Json(nullptr);
   # Its fix is wrong for Json, whose std::initializer_list constructor takes
@@ -194,28 +160,11 @@ Checks:
   #     enum class EncodeContext {
   - '-performance-enum-size'
 
-  # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/AddressPosix.cpp:120: constness of 'ip' prevents automatic move
-  #     return ip;
-  - '-performance-no-automatic-move'
-
   # 17 to clean up (17 in library code, 0 in tests), such as
   # src/http/Headers.hpp:1: avoid 'pragma once' directive; use include guards
   # instead
   #     #pragma once
   - '-portability-avoid-pragma-once'
-
-  # 106 to clean up (43 in library code, 63 in tests), such as
-  # src/http/Headers.hpp:69: parameter name 'c1' is too short, expected at least
-  # 3 characters
-  #     [](unsigned char c1, unsigned char c2) {
-  - '-readability-identifier-length'
-
-  # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/types/Json.hpp:136: function 'types::Json::serialize_array' has a
-  # definition with different parameter names
-  #     static void serialize_array(const Array& arr, std::ostringstream&...
-  - '-readability-inconsistent-declaration-parameter-name'
 
 WarningsAsErrors: '*'
 # Every header that is not a system header. CMake includes Conan's packages

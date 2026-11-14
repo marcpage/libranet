@@ -9,7 +9,7 @@
 
 namespace {
 void noop(const std::string& /*unused*/) {}
-}
+} // namespace
 
 namespace msg {
 
@@ -65,4 +65,4 @@ void AsyncChannel::stop() {
     }
 }
 
-} // msg
+} // namespace msg

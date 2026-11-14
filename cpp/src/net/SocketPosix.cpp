@@ -2,6 +2,7 @@
 
 #include "SocketPosix.hpp"
 
+#include <array>
 #include <cerrno>
 #include <cstddef>
 #include <cstring>
@@ -76,9 +77,9 @@ AddrInfoPtr resolve_address(const net::Address& address, int flags, int socket_t
 }
 
 int create_socket(const addrinfo& info) {
-    const auto fd = ::socket(info.ai_family, info.ai_socktype, info.ai_protocol);
+    const auto socket_fd = ::socket(info.ai_family, info.ai_socktype, info.ai_protocol);
 
-    if (fd < 0) {
+    if (socket_fd < 0) {
         return -1;
     }
 
@@ -86,42 +87,42 @@ int create_socket(const addrinfo& info) {
 
     if (info.ai_socktype == SOCK_STREAM) {
         // Allow quick restart of a listening server after it has closed
-        (void)::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled));
+        (void)::setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled));
 
         // Disable Nagle's algorithm (common for request/response and low-latency use)
-        (void)::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &enabled, sizeof(enabled));
+        (void)::setsockopt(socket_fd, IPPROTO_TCP, TCP_NODELAY, &enabled, sizeof(enabled));
 
         // Detect dead peers on long-lived connections
-        (void)::setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &enabled, sizeof(enabled));
+        (void)::setsockopt(socket_fd, SOL_SOCKET, SO_KEEPALIVE, &enabled, sizeof(enabled));
     }
 
 #ifdef __APPLE__
     // Prevent SIGPIPE when writing to a closed peer (macOS / BSD)
-    (void)::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof(enabled));
+    (void)::setsockopt(socket_fd, SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof(enabled));
 #endif
 
-    return fd;
+    return socket_fd;
 }
 
 net::Address address_from_sockaddr(const sockaddr* address, socklen_t length) {
-    char host[NI_MAXHOST]{};
-    char service[NI_MAXSERV]{};
+    std::array<char, NI_MAXHOST> host{};
+    std::array<char, NI_MAXSERV> service{};
 
     const auto error = ::getnameinfo(address, length,
-                                     host, sizeof(host),
-                                     service, sizeof(service),
+                                     host.data(), static_cast<socklen_t>(host.size()),
+                                     service.data(), static_cast<socklen_t>(service.size()),
                                      NI_NUMERICHOST | NI_NUMERICSERV);
 
     assert_condition<std::runtime_error>(
         error == 0, std::string("getnameinfo: ") + ::gai_strerror(error));
 
-    const auto port = std::stoul(service);
+    const auto port = std::stoul(service.data());
 
     assert_condition<std::runtime_error>(
         port <= std::numeric_limits<net::Address::Port>::max(),
         "Socket returned an invalid port");
 
-    return {host, static_cast<net::Address::Port>(port)};
+    return {host.data(), static_cast<net::Address::Port>(port)};
 }
 
 enum Direction { DirectionSend,
@@ -130,17 +131,17 @@ enum Direction { DirectionSend,
 
 int set_timeout(int socket_fd, Direction direction, net::ISocket::Milliseconds timeout) {
     const auto direction_flag = DirectionSend == direction ? SO_SNDTIMEO : SO_RCVTIMEO;
-    timeval tv{};
+    timeval timeout_value{};
 
     if (timeout.count() > 0) {
         constexpr auto milliseconds_per_second = 1000;
         constexpr auto microseconds_per_millisecond = 1000;
 
-        tv.tv_sec = static_cast<time_t>(timeout.count() / milliseconds_per_second);
-        tv.tv_usec = static_cast<suseconds_t>((timeout.count() % milliseconds_per_second) * microseconds_per_millisecond);
+        timeout_value.tv_sec = static_cast<time_t>(timeout.count() / milliseconds_per_second);
+        timeout_value.tv_usec = static_cast<suseconds_t>((timeout.count() % milliseconds_per_second) * microseconds_per_millisecond);
     }
 
-    return ::setsockopt(socket_fd, SOL_SOCKET, direction_flag, &tv, sizeof(tv));
+    return ::setsockopt(socket_fd, SOL_SOCKET, direction_flag, &timeout_value, sizeof(timeout_value));
 }
 
 template<typename Func>
@@ -167,19 +168,19 @@ ISocket::Ptr SocketPosix::bind(const Address& address) {
     for (const auto* current = addresses.get();
          current != nullptr;
          current = current->ai_next) {
-        const auto fd = create_socket(*current);
+        const auto socket_fd = create_socket(*current);
 
-        if (fd < 0) {
+        if (socket_fd < 0) {
             last_error = errno;
             continue;
         }
 
-        if (::bind(fd, current->ai_addr, current->ai_addrlen) == 0) {
-            return std::unique_ptr<SocketPosix>(new SocketPosix(fd));
+        if (::bind(socket_fd, current->ai_addr, current->ai_addrlen) == 0) {
+            return std::unique_ptr<SocketPosix>(new SocketPosix(socket_fd));
         }
 
         last_error = errno;
-        (void)::close(fd);
+        (void)::close(socket_fd);
     }
 
     assert_socket(false, "bind", last_error);
@@ -191,9 +192,9 @@ ISocket::Ptr SocketPosix::connect(const Address& address) {
     int last_error = ECONNREFUSED;
 
     for (const addrinfo* current = addresses.get(); current != nullptr; current = current->ai_next) {
-        const auto fd = create_socket(*current);
+        const auto socket_fd = create_socket(*current);
 
-        if (fd < 0) {
+        if (socket_fd < 0) {
             last_error = errno;
             continue;
         }
@@ -201,15 +202,15 @@ ISocket::Ptr SocketPosix::connect(const Address& address) {
         int result = -1;
 
         do {
-            result = ::connect(fd, current->ai_addr, current->ai_addrlen);
+            result = ::connect(socket_fd, current->ai_addr, current->ai_addrlen);
         } while (result < 0 && errno == EINTR);
 
         if (result == 0) {
-            return std::unique_ptr<SocketPosix>(new SocketPosix(fd));
+            return std::unique_ptr<SocketPosix>(new SocketPosix(socket_fd));
         }
 
         last_error = errno;
-        (void)::close(fd);
+        (void)::close(socket_fd);
     }
 
     assert_socket(false, "connect", last_error);
@@ -236,14 +237,14 @@ void SocketPosix::listen(int backlog) {
 ISocket::Ptr SocketPosix::accept() {
     assert_condition<std::logic_error>(is_open(), "Cannot accept on a closed socket");
 
-    int fd = -1;
+    int accepted_fd = -1;
 
     do {
-        fd = ::accept(m_socket_fd, nullptr, nullptr);
-    } while (fd < 0 && errno == EINTR);
+        accepted_fd = ::accept(m_socket_fd, nullptr, nullptr);
+    } while (accepted_fd < 0 && errno == EINTR);
 
-    assert_socket(fd >= 0, "accept");
-    return std::unique_ptr<ISocket>(new SocketPosix(fd));
+    assert_socket(accepted_fd >= 0, "accept");
+    return std::unique_ptr<ISocket>(new SocketPosix(accepted_fd));
 }
 
 std::size_t SocketPosix::send(std::string_view data) {
@@ -333,12 +334,12 @@ void SocketPosix::close() {
         return; // calling close twice is safe
     }
 
-    const auto fd = m_socket_fd;
+    const auto socket_fd = m_socket_fd;
 
     m_socket_fd = -1;
     // Do not retry close() after EINTR: on Linux the descriptor is released.
 
-    assert_socket(::close(fd) == 0 || errno == EINTR, "close");
+    assert_socket(::close(socket_fd) == 0 || errno == EINTR, "close");
 }
 
 } // namespace net

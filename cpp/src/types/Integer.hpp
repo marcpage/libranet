@@ -28,6 +28,9 @@ public:
     static constexpr unsigned word_bits = std::numeric_limits<word_t>::digits;
 
     Integer() = default;
+    // Integer converts implicitly from the built-in integers, as they convert
+    // to each other.
+    // NOLINTNEXTLINE(*-explicit-constructor)
     Integer(long long value);
     explicit Integer(const std::string& text);
     Integer(const Integer&) = default;

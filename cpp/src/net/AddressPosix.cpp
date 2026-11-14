@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <arpa/inet.h>
+#include <array>
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <netdb.h>
@@ -35,26 +36,26 @@ namespace {
     return res;
 }
 
-[[nodiscard]] std::string get_numeric_ip(const addrinfo* p) {
-    char ip_buf[NI_MAXHOST];
-    const int error = getnameinfo(p->ai_addr, p->ai_addrlen,
-                                  ip_buf, sizeof(ip_buf),
+[[nodiscard]] std::string get_numeric_ip(const addrinfo* info) {
+    std::array<char, NI_MAXHOST> ip_buf{};
+    const int error = getnameinfo(info->ai_addr, info->ai_addrlen,
+                                  ip_buf.data(), static_cast<socklen_t>(ip_buf.size()),
                                   nullptr, 0, NI_NUMERICHOST);
     if (error == 0) {
-        return ip_buf;
+        return ip_buf.data();
     }
 
     return {};
 }
 
-[[nodiscard]] std::string get_reverse_dns_name(const addrinfo* p,
+[[nodiscard]] std::string get_reverse_dns_name(const addrinfo* info,
                                                const std::string& numeric_ip) {
-    char host_buf[NI_MAXHOST];
-    const int error = getnameinfo(p->ai_addr, p->ai_addrlen,
-                                  host_buf, sizeof(host_buf),
+    std::array<char, NI_MAXHOST> host_buf{};
+    const int error = getnameinfo(info->ai_addr, info->ai_addrlen,
+                                  host_buf.data(), static_cast<socklen_t>(host_buf.size()),
                                   nullptr, 0, 0);
     if (error == 0) {
-        std::string dns_name = host_buf;
+        std::string dns_name = host_buf.data();
 
         if (!dns_name.empty() && dns_name != numeric_ip) {
             return dns_name;
@@ -95,32 +96,26 @@ void add_unique(std::string_view value, std::vector<std::string>& results) {
         return {};
     }
 
-    char host[NI_MAXHOST];
+    std::array<char, NI_MAXHOST> host{};
     const socklen_t len = get_sockaddr_len(family);
 
-    const int error = getnameinfo(ifa->ifa_addr, len, host, sizeof(host),
+    const int error = getnameinfo(ifa->ifa_addr, len, host.data(), static_cast<socklen_t>(host.size()),
                                   nullptr, 0, NI_NUMERICHOST);
     if (error != 0) {
         return {};
     }
 
     if (family != AF_INET6) {
-        return host;
+        return host.data();
     }
-
-    const std::string ip = host;
 
     // Strip IPv6 interface scope IDs (e.g., "%en0")
-    const auto pos = ip.find('%');
+    const std::string_view address = host.data();
 
-    if (pos != std::string::npos) {
-        return ip.substr(0, pos);
-    }
-
-    return ip;
+    return std::string(address.substr(0, address.find('%')));
 }
 
-} // anonymous
+} // namespace
 
 namespace net {
 
@@ -128,11 +123,11 @@ std::vector<std::string> Address::resolve() const {
     std::vector<std::string> results;
     addrinfo* res = fetch_address_info(m_host, m_port);
 
-    for (const addrinfo* p = res; p != nullptr; p = p->ai_next) {
-        const auto ip = get_numeric_ip(p);
+    for (const addrinfo* entry = res; entry != nullptr; entry = entry->ai_next) {
+        const auto numeric_ip = get_numeric_ip(entry);
 
-        add_unique(ip, results);
-        add_unique(get_reverse_dns_name(p, ip), results);
+        add_unique(numeric_ip, results);
+        add_unique(get_reverse_dns_name(entry, numeric_ip), results);
     }
 
     freeaddrinfo(res);
@@ -156,6 +151,6 @@ std::vector<std::string> Address::get_local_addresses() {
 }
 
 
-} // net
+} // namespace net
 
 #endif // __linux__ || __APPLE__

@@ -35,6 +35,9 @@ public:
     using Object = std::map<std::string, Json>;
 
     Json() noexcept;
+    // Json converts implicitly from each kind of value it holds, so that
+    // initializer lists such as {{"age", 30}, {"tags", {"a", "b"}}} work.
+    // NOLINTBEGIN(*-explicit-constructor)
     Json(std::nullptr_t) noexcept;
     Json(bool value) noexcept;
     Json(int value) noexcept;
@@ -46,6 +49,7 @@ public:
     explicit Json(std::string_view value);
     Json(Array value);
     Json(Object value);
+    // NOLINTEND(*-explicit-constructor)
     Json(std::initializer_list<Json> arguments);
 
     Json(const Json&) = default;
@@ -133,8 +137,8 @@ private:
     };
 
     static bool is_digit(char character);
-    static void serialize_array(const Array& arr, std::ostringstream& out_stream, int indent, int current_indent);
-    static void serialize_object(const Object& obj, std::ostringstream& out_stream, int indent, int current_indent);
+    static void serialize_array(const Array& the_array, std::ostringstream& out_stream, int indent, int current_indent);
+    static void serialize_object(const Object& the_object, std::ostringstream& out_stream, int indent, int current_indent);
     static void serialize(const Json& json_value, std::ostringstream& out_stream,
                           int indent, int current_indent);
     static void escape_string(const std::string& str, std::ostringstream& out_stream);
@@ -390,13 +394,13 @@ inline Json& Json::operator[](const std::string& key) {
 
 inline const Json& Json::operator[](const std::string& key) const {
     const auto& obj = object();
-    const auto it = obj.find(key);
+    const auto member = obj.find(key);
 
-    if (it == obj.end()) {
+    if (member == obj.end()) {
         throw std::out_of_range("Json: key not found: " + key);
     }
 
-    return it->second;
+    return member->second;
 }
 
 inline const Json& Json::at(std::size_t index) const {
@@ -421,13 +425,13 @@ inline const Json& Json::at(const std::string& key) const {
     }
 
     const auto& obj = object();
-    const auto it = obj.find(key);
+    const auto member = obj.find(key);
 
-    if (it == obj.end()) {
+    if (member == obj.end()) {
         throw std::out_of_range("Json: key not found");
     }
 
-    return it->second;
+    return member->second;
 }
 
 inline Json& Json::at(const std::string& key) {
@@ -436,13 +440,13 @@ inline Json& Json::at(const std::string& key) {
     }
 
     auto& obj = object();
-    const auto it = obj.find(key);
+    const auto member = obj.find(key);
 
-    if (it == obj.end()) {
+    if (member == obj.end()) {
         throw std::out_of_range("Json: key not found");
     }
 
-    return it->second;
+    return member->second;
 }
 
 inline void Json::escape_string(const std::string& str, std::ostringstream& out_stream) {
@@ -465,7 +469,7 @@ inline void Json::escape_string(const std::string& str, std::ostringstream& out_
                 if (code < first_unescaped) {
                     out_stream << "\\u00";
 
-                    const char hex[] = "0123456789abcdef";
+                    constexpr std::string_view hex = "0123456789abcdef";
                     constexpr auto nibble_bits = 4U;
                     constexpr auto nibble_mask = 0xFU;
 

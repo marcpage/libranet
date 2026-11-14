@@ -72,20 +72,20 @@ std::string ISocket::read_line(char delimiter) {
             break; // EOF reached
         }
 
-        const auto ch = static_cast<char>(byte_buffer[0]);
+        const auto character = static_cast<char>(byte_buffer[0]);
 
-        if (ch == delimiter) {
+        if (character == delimiter) {
             break;
         }
 
-        if (ch == '\r') {
+        if (character == '\r') {
             continue;
         }
 
-        line.push_back(ch);
+        line.push_back(character);
     }
 
     return line;
 }
 
-} // net
+} // namespace net

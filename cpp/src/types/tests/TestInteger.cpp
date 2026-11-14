@@ -11,31 +11,31 @@ using types::operator""_i;
 
 TEST(IntegerTest, ConstructorsAndExceptions) {
     // Default constructor (zero state)
-    const Integer a;
-    EXPECT_TRUE(a.is_zero());
-    EXPECT_EQ(a.to_string(), "0");
-    EXPECT_FALSE(a.is_negative());
-    EXPECT_EQ(a.sign(), 0);
-    EXPECT_FALSE(static_cast<bool>(a));
+    const Integer zero;
+    EXPECT_TRUE(zero.is_zero());
+    EXPECT_EQ(zero.to_string(), "0");
+    EXPECT_FALSE(zero.is_negative());
+    EXPECT_EQ(zero.sign(), 0);
+    EXPECT_FALSE(static_cast<bool>(zero));
 
     // Numeric constructors
     constexpr auto positive_value = 42LL;
     constexpr auto negative_value = -42LL;
-    const Integer b(positive_value);
-    EXPECT_EQ(b.to_string(), "42");
-    EXPECT_EQ(b.sign(), 1);
+    const Integer positive(positive_value);
+    EXPECT_EQ(positive.to_string(), "42");
+    EXPECT_EQ(positive.sign(), 1);
 
-    const Integer c(negative_value);
-    EXPECT_EQ(c.to_string(), "-42");
-    EXPECT_TRUE(c.is_negative());
-    EXPECT_EQ(c.sign(), -1);
+    const Integer negative(negative_value);
+    EXPECT_EQ(negative.to_string(), "-42");
+    EXPECT_TRUE(negative.is_negative());
+    EXPECT_EQ(negative.sign(), -1);
 
     // String parsing & normalization
-    const Integer d("+000123");
-    EXPECT_EQ(d.to_string(), "123");
+    const Integer padded("+000123");
+    EXPECT_EQ(padded.to_string(), "123");
 
-    const Integer e("-0");
-    EXPECT_TRUE(e.is_zero()); // Zero should never be negative
+    const Integer negative_zero("-0");
+    EXPECT_TRUE(negative_zero.is_zero()); // Zero should never be negative
 
     // Invalid string exceptions
     EXPECT_THROW((void)Integer(""), std::invalid_argument);
@@ -44,29 +44,29 @@ TEST(IntegerTest, ConstructorsAndExceptions) {
 
 TEST(IntegerTest, UnaryAndIncrement) {
     constexpr auto start = 10;
-    Integer x(start);
+    Integer number(start);
 
     // Unary plus and minus[cite: 1]
-    EXPECT_EQ((+x).to_string(), "10");
-    EXPECT_EQ((-x).to_string(), "-10");
+    EXPECT_EQ((+number).to_string(), "10");
+    EXPECT_EQ((-number).to_string(), "-10");
 
     // Increment operators[cite: 1]
-    const Integer pre_inc = ++x;
+    const Integer pre_inc = ++number;
     EXPECT_EQ(pre_inc.to_string(), "11");
-    EXPECT_EQ(x.to_string(), "11");
+    EXPECT_EQ(number.to_string(), "11");
 
-    const Integer post_inc = x++;
+    const Integer post_inc = number++;
     EXPECT_EQ(post_inc.to_string(), "11");
-    EXPECT_EQ(x.to_string(), "12");
+    EXPECT_EQ(number.to_string(), "12");
 
     // Decrement operators[cite: 1]
-    const Integer pre_dec = --x;
+    const Integer pre_dec = --number;
     EXPECT_EQ(pre_dec.to_string(), "11");
-    EXPECT_EQ(x.to_string(), "11");
+    EXPECT_EQ(number.to_string(), "11");
 
-    const Integer post_dec = x--;
+    const Integer post_dec = number--;
     EXPECT_EQ(post_dec.to_string(), "11");
-    EXPECT_EQ(x.to_string(), "10");
+    EXPECT_EQ(number.to_string(), "10");
 
     // Bitwise NOT (~x == -x - 1)[cite: 1]
     const Integer not_val = ~Integer(0);
@@ -104,12 +104,12 @@ TEST(IntegerTest, ArithmeticAndDivisions) {
 TEST(IntegerTest, BitwiseAndShifts) {
     constexpr auto left_value = 12;  // 1100 in binary
     constexpr auto right_value = 10; // 1010 in binary
-    const Integer a(left_value);
-    const Integer b(right_value);
+    const Integer left(left_value);
+    const Integer right(right_value);
 
-    EXPECT_EQ((a & b).to_string(), "8");  // 1000
-    EXPECT_EQ((a | b).to_string(), "14"); // 1110
-    EXPECT_EQ((a ^ b).to_string(), "6");  // 0110
+    EXPECT_EQ((left & right).to_string(), "8");  // 1000
+    EXPECT_EQ((left | right).to_string(), "14"); // 1110
+    EXPECT_EQ((left ^ right).to_string(), "6");  // 0110
 
     // Shifts[cite: 1]
     constexpr std::size_t shift_bits = 64; // Test cross-word shift boundary

@@ -12,29 +12,29 @@ using msg::Message;
 TEST(MessageTest, ConstructionAndValue) {
     // Arithmetic types
     constexpr auto int_value = 42;
-    const Message<int> mi(int_value);
-    EXPECT_EQ(mi.value(), int_value);
-    EXPECT_EQ(mi.to_string(), "42");
+    const Message<int> int_message(int_value);
+    EXPECT_EQ(int_message.value(), int_value);
+    EXPECT_EQ(int_message.to_string(), "42");
 
     constexpr auto long_long_value = -9876543210LL;
-    const Message<long long> mll(long_long_value);
-    EXPECT_EQ(mll.value(), long_long_value);
-    EXPECT_EQ(mll.to_string(), "-9876543210");
+    const Message<long long> long_long_message(long_long_value);
+    EXPECT_EQ(long_long_message.value(), long_long_value);
+    EXPECT_EQ(long_long_message.to_string(), "-9876543210");
 
     constexpr auto double_value = 3.14159;
-    const Message<double> md(double_value);
-    EXPECT_DOUBLE_EQ(md.value(), double_value);
+    const Message<double> double_message(double_value);
+    EXPECT_DOUBLE_EQ(double_message.value(), double_value);
     // std::to_string precision can vary slightly; just check it starts correctly
-    EXPECT_EQ(md.to_string().find("3.14"), 0U);
+    EXPECT_EQ(double_message.to_string().find("3.14"), 0U);
 
     // String-like types
-    const Message<std::string> ms(std::string("hello"));
-    EXPECT_EQ(ms.value(), "hello");
-    EXPECT_EQ(ms.to_string(), "hello");
+    const Message<std::string> string_message(std::string("hello"));
+    EXPECT_EQ(string_message.value(), "hello");
+    EXPECT_EQ(string_message.to_string(), "hello");
 
-    const Message<const char*> mcp("world");
-    EXPECT_STREQ(mcp.value(), "world");
-    EXPECT_EQ(mcp.to_string(), "world");
+    const Message<const char*> char_pointer_message("world");
+    EXPECT_STREQ(char_pointer_message.value(), "world");
+    EXPECT_EQ(char_pointer_message.to_string(), "world");
 
     // Move construction
     std::string original = "move-me";
@@ -45,21 +45,21 @@ TEST(MessageTest, ConstructionAndValue) {
 
 TEST(MessageTest, ToStringDispatch) {
     // is_constructible_v path
-    const Message<std::string> ms("constructible");
-    EXPECT_EQ(ms.to_string(), "constructible");
+    const Message<std::string> string_message("constructible");
+    EXPECT_EQ(string_message.to_string(), "constructible");
 
     // is_arithmetic_v path
     constexpr auto int_value = 12345;
-    const Message<int> mi(int_value);
-    EXPECT_EQ(mi.to_string(), "12345");
+    const Message<int> int_message(int_value);
+    EXPECT_EQ(int_message.to_string(), "12345");
 
     constexpr auto unsigned_long_value = 999UL;
-    const Message<unsigned long> mul(unsigned_long_value);
-    EXPECT_EQ(mul.to_string(), "999");
+    const Message<unsigned long> unsigned_long_message(unsigned_long_value);
+    EXPECT_EQ(unsigned_long_message.to_string(), "999");
 
-    const Message<bool> mb(true);
+    const Message<bool> bool_message(true);
     // std::to_string(true) == "1"
-    EXPECT_EQ(mb.to_string(), "1");
+    EXPECT_EQ(bool_message.to_string(), "1");
 }
 
 TEST(MessageTest, Polymorphism) {

@@ -49,4 +49,4 @@ inline void AsyncChannelOf<Type>::_handle(const IMessage::Ptr &message) {
     m_logger("Message was of unexpected type:" + message->to_string());
 }
 
-} // msg
+} // namespace msg

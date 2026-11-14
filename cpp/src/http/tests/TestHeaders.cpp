@@ -46,21 +46,21 @@ TEST(HeadersTest, ConstructorsAndBasicAccessors) {
 }
 
 TEST(HeadersTest, EqualityAndSerialization) {
-    Headers h1;
-    h1.set("Server", "CustomCppServer");
-    h1.set("Content-Length", "1024");
+    Headers headers;
+    headers.set("Server", "CustomCppServer");
+    headers.set("Content-Length", "1024");
 
-    Headers h2;
-    h2.set("content-length", "1024"); // Key storage order / capitalization difference check if map handles it
-    h2.set("server", "CustomCppServer");
+    Headers recased_headers;
+    recased_headers.set("content-length", "1024"); // Key storage order / capitalization difference check if map handles it
+    recased_headers.set("server", "CustomCppServer");
 
-    EXPECT_TRUE(h1 == h2);
+    EXPECT_TRUE(headers == recased_headers);
 
-    h2.set("X-Extra", "foo");
-    EXPECT_TRUE(h1 != h2);
+    recased_headers.set("X-Extra", "foo");
+    EXPECT_TRUE(headers != recased_headers);
 
     // Test serialization output format
-    const std::string serialized = h1.to_string();
+    const std::string serialized = headers.to_string();
     // Headers are stored in sorted order due to std::map
     const std::string expected = "Content-Length: 1024\r\nServer: CustomCppServer\r\n\r\n";
     EXPECT_EQ(serialized, expected);
