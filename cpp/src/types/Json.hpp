@@ -35,6 +35,9 @@ public:
     using Object = std::map<std::string, Json>;
 
     Json() noexcept;
+    // Json converts implicitly from each kind of value it holds, so that
+    // initializer lists such as {{"age", 30}, {"tags", {"a", "b"}}} work.
+    // NOLINTBEGIN(*-explicit-constructor)
     Json(std::nullptr_t) noexcept;
     Json(bool value) noexcept;
     Json(int value) noexcept;
@@ -46,6 +49,7 @@ public:
     explicit Json(std::string_view value);
     Json(Array value);
     Json(Object value);
+    // NOLINTEND(*-explicit-constructor)
     Json(std::initializer_list<Json> arguments);
 
     Json(const Json&) = default;

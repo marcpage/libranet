@@ -58,14 +58,6 @@ Checks:
   #     do {
   - '-cppcoreguidelines-avoid-do-while'
 
-  # 12 to clean up (12 in library code, 0 in tests), such as
-  # src/http/ResponseCode.hpp:78: constructors that are callable with a single
-  # argument must be marked explicit to avoid unintentional implicit conversions
-  #     ResponseCode(Status status, std::optional<std::string> custom_rea...
-  - '-cppcoreguidelines-explicit-constructor'
-  - '-google-explicit-constructor'
-  - '-misc-explicit-constructor'
-
   # 1 to clean up (1 in library code, 0 in tests), such as
   # src/net/SocketPosix.cpp:148: forwarding reference parameter 'socket_call' is
   # never forwarded inside the function body
@@ -110,7 +102,7 @@ Checks:
   - '-fuchsia-default-arguments-calls'
 
   # 13 to clean up (11 in library code, 2 in tests), such as
-  # src/http/ResponseCode.hpp:78: declaring a parameter with a default argument
+  # src/http/ResponseCode.hpp:79: declaring a parameter with a default argument
   # is disallowed
   #     ResponseCode(Status status, std::optional<std::string> custom_rea...
   - '-fuchsia-default-arguments-declarations'
@@ -127,7 +119,7 @@ Checks:
   - '-fuchsia-statically-constructed-objects'
 
   # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/types/Json.hpp:204: a trailing return type is disallowed for this
+  # src/types/Json.hpp:208: a trailing return type is disallowed for this
   # function declaration
   #     return std::visit([](auto&& value) -> Type {
   - '-fuchsia-trailing-return'
@@ -143,13 +135,13 @@ Checks:
   - '-llvm-use-ranges'
 
   # 5 to clean up (5 in library code, 0 in tests), such as
-  # src/types/Integer.hpp:697: function 'operator&' is within a recursive call
+  # src/types/Integer.hpp:700: function 'operator&' is within a recursive call
   # chain
   #     inline Integer operator&(const Integer& left, const Integer& righ...
   - '-misc-no-recursion'
 
   # 10 to clean up (10 in library code, 0 in tests), such as
-  # src/types/Json.hpp:669: avoid repeating the return type from the
+  # src/types/Json.hpp:673: avoid repeating the return type from the
   # declaration; use a braced initializer list instead
   #     return Json(nullptr);
   # Its fix is wrong for Json, whose std::initializer_list constructor takes
