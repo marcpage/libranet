@@ -89,6 +89,15 @@ TEST(AddressTest, ParsingExceptions) {
     EXPECT_THROW((void)Address::parse(""), std::invalid_argument);
 }
 
+TEST(AddressTest, PortOutOfRange) {
+    // Too large for a port, too large for an int, and negative: none wrap
+    // around to some other port.
+    EXPECT_THROW((void)Address::parse("127.0.0.1:65536"), std::invalid_argument);
+    EXPECT_THROW((void)Address::parse("127.0.0.1:99999999999"), std::invalid_argument);
+    EXPECT_THROW((void)Address::parse("127.0.0.1:-1"), std::invalid_argument);
+    EXPECT_EQ(Address::parse("127.0.0.1:65535").port(), 65535);
+}
+
 TEST(AddressTest, Resolve) {
     // 1. Resolve loopback address
     const Address addr1("127.0.0.1", http_port);

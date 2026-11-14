@@ -48,7 +48,7 @@ the test suite on Ubuntu and macOS against Python 3.11 and 3.14. It also
 verifies that [`examples/libranet.yaml`](examples/libranet.yaml) still
 loads. [CodeQL](https://codeql.github.com/), GitHub's code scanning, checks
 the code as well; its alerts are in the repository's Security tab, and in a
-CodeQL check on each pull request.
+CodeQL check on each pull request, and CI fails on any of them.
 
 The layout is one package per module area under
 [`src/libranet/`](src/libranet/), with a matching

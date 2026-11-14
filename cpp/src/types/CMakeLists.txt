@@ -13,3 +13,8 @@ if(BUILD_TESTING)
     target_link_libraries(types_tests PRIVATE libranet::types GTest::gtest_main)
     gtest_discover_tests(types_tests)
 endif()
+
+if(LIBRANET_FUZZERS)
+    libranet_add_fuzzer(json_fuzzer fuzz/FuzzJson.cpp libranet::types)
+    libranet_add_fuzzer(integer_fuzzer fuzz/FuzzInteger.cpp libranet::types)
+endif()

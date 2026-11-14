@@ -160,16 +160,7 @@ inline std::istream& operator>>(std::istream& in_stream, Request& request) {
             return in_stream;
         }
 
-        if (body_length > 0) {
-            request.m_body.resize(body_length);
-            in_stream.read(request.m_body.data(), static_cast<std::streamsize>(body_length));
-
-            if (static_cast<std::size_t>(in_stream.gcount()) != body_length) {
-                in_stream.setstate(std::ios_base::failbit);
-            }
-        } else {
-            request.m_body.clear();
-        }
+        Headers::read_body(in_stream, body_length, request.m_body);
     } else {
         request.m_body.clear();
     }

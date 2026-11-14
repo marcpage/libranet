@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <cstddef>
 #include <sstream>
 #include <string>
 
@@ -76,6 +77,38 @@ TEST(RequestTest, StreamParsingAndBody) {
     EXPECT_EQ(req.headers().get("host"), "api.example.com");
     EXPECT_EQ(req.headers().get("content-length"), "15");
     EXPECT_EQ(req.body(), "{\"key\":\"value\"}");
+}
+
+TEST(RequestTest, ContentLengthBeyondStream) {
+    // A length far past what arrives fails the stream, without first taking
+    // that much memory.
+    std::istringstream iss(
+        "POST /upload HTTP/1.1\r\n"
+        "Content-Length: 99999999999\r\n"
+        "\r\n"
+        "partial");
+
+    Request req;
+    iss >> req;
+
+    EXPECT_TRUE(iss.fail());
+    EXPECT_EQ(req.body(), "partial");
+}
+
+TEST(RequestTest, BodyLongerThanOnePiece) {
+    constexpr std::size_t body_bytes = 100000;
+    const std::string body(body_bytes, 'x');
+    std::istringstream iss(
+        std::string("POST /upload HTTP/1.1\r\n")
+        + "Content-Length: " + std::to_string(body_bytes) + "\r\n"
+        + "\r\n"
+        + body);
+
+    Request req;
+    iss >> req;
+
+    EXPECT_FALSE(iss.fail());
+    EXPECT_EQ(req.body(), body);
 }
 
 TEST(RequestTest, Serialization) {

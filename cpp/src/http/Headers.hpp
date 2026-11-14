@@ -56,6 +56,7 @@ public:
                                            const std::string& last_key, Headers& headers);
     static std::vector<std::string_view> split_spaces(
         std::string_view text, std::size_t max_fields);
+    static void read_body(std::istream& in_stream, std::size_t length, std::string& body);
 
 private:
     std::map<std::string, std::string, CaseInsensitiveLess> m_headers;
@@ -300,5 +301,28 @@ inline std::vector<std::string_view> Headers::split_spaces(std::string_view text
     }
 
     return fields;
+}
+
+// Reads a body of length bytes a piece at a time, so that a Content-Length
+// larger than what the stream holds takes no more memory than the stream
+// holds. Fails the stream if it ends first, leaving what it had in body.
+inline void Headers::read_body(std::istream& in_stream, std::size_t length, std::string& body) {
+    constexpr std::size_t piece_bytes = 65536;
+    std::string piece(std::min(piece_bytes, length), '\0');
+
+    body.clear();
+
+    while (body.size() < length) {
+        const std::size_t wanted = std::min(piece.size(), length - body.size());
+        in_stream.read(piece.data(), static_cast<std::streamsize>(wanted));
+
+        const auto received = static_cast<std::size_t>(in_stream.gcount());
+        body.append(piece, 0, received);
+
+        if (received != wanted) {
+            in_stream.setstate(std::ios_base::failbit);
+            return;
+        }
+    }
 }
 } // namespace http
