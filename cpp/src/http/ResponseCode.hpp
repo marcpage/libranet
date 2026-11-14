@@ -128,7 +128,11 @@ private:
 inline ResponseCode::ResponseCode(Status status, std::optional<std::string> custom_reason)
     : m_status(status), m_custom_reason(std::move(custom_reason)) {}
 
+// A code that Status does not name is kept as it is: HTTP allows any
+// three-digit code, and one not known is taken by its class (RFC 9110,
+// section 15), as the helpers do.
 inline ResponseCode::ResponseCode(std::uint16_t code, std::optional<std::string> custom_reason)
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     : m_status(static_cast<Status>(code)), m_custom_reason(std::move(custom_reason)) {}
 
 inline ResponseCode::Status ResponseCode::status() const noexcept {

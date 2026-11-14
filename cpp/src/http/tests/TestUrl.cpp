@@ -188,6 +188,28 @@ TEST(UrlTest, TransparentComponentEncoding) {
     EXPECT_FALSE(url1 < url2);
 }
 
+TEST(UrlTest, HasAndRemoveQuery) {
+    Url url;
+    url.set_query_parameters({
+        {"search", "modern c++"},
+        {"my tag", "networking"},
+    });
+
+    // Keys are given as they read, and encoded to match the query's.
+    EXPECT_TRUE(url.has_query("search"));
+    EXPECT_TRUE(url.has_query("my tag"));
+    EXPECT_FALSE(url.has_query("nonexistent"));
+
+    url.remove_query("my tag");
+    EXPECT_FALSE(url.has_query("my tag"));
+    EXPECT_TRUE(url.has_query("search"));
+
+    // Removing a key that is not there changes nothing.
+    url.remove_query("nonexistent");
+    EXPECT_TRUE(url.has_query("search"));
+    EXPECT_EQ(url.get_query("search").value_or(""), "modern c++");
+}
+
 TEST(UrlTest, UrlAppend) {
     auto base = Url::parse("https://example.com/api/v1/posts");
     ASSERT_TRUE(base.has_value());

@@ -78,12 +78,6 @@ returnDanglingLifetime
 # Mistaken: Address's constructor sets m_port.
 uninitMemberVarNoCtor
 
-# 7 to clean up (7 in library code, 0 in tests), such as
-# src/http/ResponseCode.hpp:150: The function 'is_informational' is never used.
-#     inline bool ResponseCode::is_informational() const noexcept {
-# Functions nothing calls yet, not even a test.
-unusedFunction
-
 # 1 to clean up (0 in library code, 1 in tests), such as
 # src/msg/tests/TestAsyncChannel.cpp:220: Instance of 'msg::AsyncChannel' object
 # is destroyed immediately.
