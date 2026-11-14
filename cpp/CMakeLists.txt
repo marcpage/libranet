@@ -42,8 +42,8 @@ if(LIBRANET_COVERAGE)
 endif()
 
 # Sanitizers: configure a Debug build with LIBRANET_SANITIZERS set to what
-# -fsanitize= takes, such as "address,undefined" or "thread,undefined", and
-# run the tests. A finding fails the test it is in: AddressSanitizer and,
+# -fsanitize= takes, such as "address,undefined" or "thread", and run the
+# tests. A finding fails the test it is in: AddressSanitizer and,
 # with -fno-sanitize-recover, UndefinedBehaviorSanitizer stop at the first,
 # and ThreadSanitizer exits with an error status.
 set(LIBRANET_SANITIZERS "" CACHE STRING

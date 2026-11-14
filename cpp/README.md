@@ -159,7 +159,7 @@ ThreadSanitizer cannot share one:
 | Build | Finds |
 | ----- | ----- |
 | `address,undefined` | Reading or writing outside a buffer, use after free or after a variable's scope ends, double free; leaks, on Linux only; and undefined behavior, such as signed overflow, shifts out of range, and misaligned or null pointers |
-| `thread,undefined` | Data races, locks taken in orders that can deadlock, and undefined behavior |
+| `thread` | Data races, and locks taken in orders that can deadlock |
 
 From this directory, each in a directory of its own beside the Debug
 build, whose Conan files it uses:
@@ -174,7 +174,7 @@ ASAN_OPTIONS=detect_stack_use_after_return=1 \
   ctest --test-dir build/address --output-on-failure
 cmake -S . -B build/thread -G Ninja -DCMAKE_BUILD_TYPE=Debug \
   --toolchain "$PWD/build/Debug/generators/conan_toolchain.cmake" \
-  -DLIBRANET_SANITIZERS=thread,undefined
+  -DLIBRANET_SANITIZERS=thread
 cmake --build build/thread
 ctest --test-dir build/thread --output-on-failure
 ```
@@ -184,6 +184,12 @@ to a function's local variable used after the function returns. The build
 stops a test at the first undefined behavior, as AddressSanitizer does at
 its first finding; ThreadSanitizer reports every race it sees, then fails
 the test.
+
+UndefinedBehaviorSanitizer runs with AddressSanitizer, not with
+ThreadSanitizer. With GCC, its checks of an object's type probe memory
+through a pipe it opens and closes, and ThreadSanitizer sees the pipe
+opened but not closed. When another thread's pipe gets the same file
+descriptors, ThreadSanitizer reports a race in a test that has none.
 
 CI runs both builds' tests on Ubuntu, with GCC, and on macOS, with Apple's
 Clang. Others are left out:

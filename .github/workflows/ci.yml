@@ -128,9 +128,11 @@ jobs:
           cmake --build --preset conan-release
 
       # AddressSanitizer and ThreadSanitizer cannot share a build, so each
-      # has one of its own, with UndefinedBehaviorSanitizer. On Linux,
-      # AddressSanitizer finds leaks too. Both use the Debug build's Conan
-      # files.
+      # has one of its own. UndefinedBehaviorSanitizer runs with
+      # AddressSanitizer only: GCC's checks of an object's type probe memory
+      # through pipes that ThreadSanitizer sees opened but not closed, and
+      # reports as races between threads. On Linux, AddressSanitizer finds
+      # leaks too. Both use the Debug build's Conan files.
       - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           cmake -S . -B build/address -G Ninja -DCMAKE_BUILD_TYPE=Debug \
@@ -138,19 +140,19 @@ jobs:
             -DLIBRANET_SANITIZERS=address,undefined
           cmake --build build/address
 
-      - name: Build with ThreadSanitizer and UndefinedBehaviorSanitizer
+      - name: Build with ThreadSanitizer
         run: |
           cmake -S . -B build/thread -G Ninja -DCMAKE_BUILD_TYPE=Debug \
             --toolchain "$PWD/build/Debug/generators/conan_toolchain.cmake" \
-            -DLIBRANET_SANITIZERS=thread,undefined
+            -DLIBRANET_SANITIZERS=thread
           cmake --build build/thread
 
       - name: Test
         run: ctest --preset conan-debug --output-on-failure
 
-      # The sanitizers in older compilers, such as Ubuntu's GCC 13, can fail
-      # as a program starts when Linux spreads memory over 32 bits of random
-      # addresses, as Ubuntu 24.04 does. 28 bits was the default before.
+      # Some sanitizer runtimes fail as a program starts when Linux spreads
+      # memory over 32 bits of random addresses, as recent Ubuntu does. 28
+      # bits was the default before.
       - name: Address randomization the sanitizers can run with
         if: runner.os == 'Linux'
         run: sudo sysctl vm.mmap_rnd_bits=28
@@ -161,9 +163,7 @@ jobs:
           UBSAN_OPTIONS: print_stacktrace=1
         run: ctest --test-dir build/address --output-on-failure
 
-      - name: Test with ThreadSanitizer and UndefinedBehaviorSanitizer
-        env:
-          UBSAN_OPTIONS: print_stacktrace=1
+      - name: Test with ThreadSanitizer
         run: ctest --test-dir build/thread --output-on-failure
 
       # gcov must match the compiler: GCC's on Ubuntu, LLVM's for Apple's
