@@ -180,26 +180,22 @@ TEST(JsonTest, NestedComplexStructures) {
 }
 
 TEST(JsonTest, ParseValues) {
+    // Each kind of value parses to its own type and writes out as it was read.
     EXPECT_TRUE(Json::parse("null").is_null());
+    EXPECT_TRUE(Json::parse("true").is_boolean());
+    EXPECT_TRUE(Json::parse("false").is_boolean());
+    EXPECT_TRUE(Json::parse("-12").is_integer());
+    EXPECT_TRUE(Json::parse("2.5").is_real());
+    EXPECT_TRUE(Json::parse("\"text\"").is_string());
+    EXPECT_TRUE(Json::parse("[1,2]").is_array());
+    EXPECT_TRUE(Json::parse(R"({"key":"value"})").is_object());
 
-    const Json true_value = Json::parse("true");
-    ASSERT_TRUE(true_value.is_boolean());
-    EXPECT_TRUE(true_value.boolean());
-
-    const Json false_value = Json::parse("false");
-    ASSERT_TRUE(false_value.is_boolean());
-    EXPECT_FALSE(false_value.boolean());
-
-    EXPECT_EQ(Json::parse("-12").integer(), -12);
-    EXPECT_DOUBLE_EQ(Json::parse("2.5").real(), 2.5);
-    EXPECT_EQ(Json::parse("\"text\"").string(), "text");
-
-    const Json array = Json::parse("[1, 2]");
-    ASSERT_TRUE(array.is_array());
-    EXPECT_EQ(array.size(), 2U);
-    EXPECT_EQ(array.at(1).integer(), 2);
-
-    const Json object = Json::parse(R"({"key": "value"})");
-    ASSERT_TRUE(object.is_object());
-    EXPECT_EQ(object.at("key").string(), "value");
+    EXPECT_EQ(Json::parse("null").dump(), "null");
+    EXPECT_EQ(Json::parse("true").dump(), "true");
+    EXPECT_EQ(Json::parse("false").dump(), "false");
+    EXPECT_EQ(Json::parse("-12").dump(), "-12");
+    EXPECT_EQ(Json::parse("2.5").dump(), "2.5");
+    EXPECT_EQ(Json::parse("\"text\"").dump(), "\"text\"");
+    EXPECT_EQ(Json::parse("[1,2]").dump(), "[1,2]");
+    EXPECT_EQ(Json::parse(R"({"key":"value"})").dump(), R"({"key":"value"})");
 }

@@ -132,7 +132,7 @@ Checks:
   #     enum Direction { DirectionSend,
   - '-cppcoreguidelines-use-enum-class'
 
-  # 109 to clean up (55 in library code, 54 in tests), such as
+  # 117 to clean up (55 in library code, 62 in tests), such as
   # src/http/Headers.hpp:242: calling a function that uses a default argument is
   # disallowed
   #     const auto start = text.find_first_not_of(" \t\r\n");

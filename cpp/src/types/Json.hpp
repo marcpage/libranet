@@ -91,8 +91,8 @@ public:
 
     static Json parse(std::string_view input);
 
-    friend bool operator==(const Json& left, const Json& right) noexcept;
-    friend bool operator!=(const Json& left, const Json& right) noexcept;
+    friend bool operator==(const Json& left, const Json& right);
+    friend bool operator!=(const Json& left, const Json& right);
     friend std::ostream& operator<<(std::ostream& out_stream, const Json& value);
     friend std::istream& operator>>(std::istream& in_stream, Json& value);
 
@@ -843,11 +843,11 @@ inline Json Json::Parser::parse_object() {
     return Json(object);
 }
 
-inline bool operator==(const Json& left, const Json& right) noexcept {
+inline bool operator==(const Json& left, const Json& right) {
     return left.m_data == right.m_data;
 }
 
-inline bool operator!=(const Json& left, const Json& right) noexcept {
+inline bool operator!=(const Json& left, const Json& right) {
     return !(left == right);
 }
 
