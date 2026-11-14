@@ -28,6 +28,6 @@ AllowShortLoopsOnASingleLine: false
 AllowShortCaseLabelsOnASingleLine: true
 IndentCaseLabels: true
 PackConstructorInitializers: CurrentLine
-LambdaBodyIndentation: InnerScope
+LambdaBodyIndentation: OuterScope
 EmptyLineBeforeAccessModifier: Leave
 MaxEmptyLinesToKeep: 2
