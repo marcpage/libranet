@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cctype>
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
@@ -136,23 +137,23 @@ inline std::string Url::decode(std::string_view value, bool decode_plus_as_space
     std::string decoded;
     decoded.reserve(value.size());
 
-    for (std::size_t character_index = 0; character_index < value.size();
-         ++character_index) {
+    std::size_t character_index = 0;
+
+    while (character_index < value.size()) {
         if (decode_plus_as_space && value[character_index] == '+') {
             decoded += ' ';
-        } else if (value[character_index] == '%' && character_index + 2 < value.size()) {
-            int hex_value = 0;
-            std::istringstream hex_stream(std::string(
-                value.substr(character_index + 1, 2)));
+            ++character_index;
+        } else if (value[character_index] == '%' && character_index + 2 < value.size()
+                   && std::isxdigit(static_cast<unsigned char>(value[character_index + 1])) != 0
+                   && std::isxdigit(static_cast<unsigned char>(value[character_index + 2])) != 0) {
+            constexpr int hex_base = 16;
+            const std::string hex_digits(value.substr(character_index + 1, 2));
 
-            if (hex_stream >> std::hex >> hex_value) {
-                decoded += static_cast<char>(hex_value);
-                character_index += 2;
-            } else {
-                decoded += value[character_index];
-            }
+            decoded += static_cast<char>(std::stoi(hex_digits, nullptr, hex_base));
+            character_index += 3;
         } else {
             decoded += value[character_index];
+            ++character_index;
         }
     }
 

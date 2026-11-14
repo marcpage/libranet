@@ -155,6 +155,26 @@ TEST(UrlTest, UrlEncodingAndDecoding) {
     EXPECT_EQ(custom_encoded, "path/to/resource");
 }
 
+TEST(UrlTest, DecodeOnlyAcceptsTwoHexDigits) {
+    // Valid escapes decode, in either case
+    EXPECT_EQ(Url::decode("%2F%2f%41", false), "//A");
+    EXPECT_EQ(Url::decode("a%41", false), "aA");
+
+    // A '%' not followed by two hex digits is kept as-is
+    EXPECT_EQ(Url::decode("%Ax", false), "%Ax");
+    EXPECT_EQ(Url::decode("%A/b", false), "%A/b");
+    EXPECT_EQ(Url::decode("%4G", false), "%4G");
+    EXPECT_EQ(Url::decode("%G4", false), "%G4");
+    EXPECT_EQ(Url::decode("% A", false), "% A");
+    EXPECT_EQ(Url::decode("%-1", false), "%-1");
+    EXPECT_EQ(Url::decode("%+1", false), "%+1");
+    EXPECT_EQ(Url::decode("%A", false), "%A");
+    EXPECT_EQ(Url::decode("%", false), "%");
+
+    // The digits after a rejected '%' are not consumed
+    EXPECT_EQ(Url::decode("%%41", false), "%A");
+}
+
 TEST(UrlTest, TransparentComponentEncoding) {
     Url url;
     url.set_path("/my folder/sub folder/file.txt");
