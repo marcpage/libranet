@@ -1,7 +1,9 @@
 #pragma once
 
 #include "Base64.hpp"
+#include <algorithm>
 #include <cstddef>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -20,7 +22,6 @@ public:
     [[nodiscard]] static std::string wrap(std::string_view label, std::string_view der_string);
     [[nodiscard]] static Unwrapped unwrap(std::string_view pem_string);
 
-private:
     Pem() = delete;
     ~Pem() = delete;
     Pem(const Pem&) = delete;
@@ -35,7 +36,7 @@ inline std::string Pem::wrap(std::string_view label, const std::vector<std::byte
     const auto base64_encoded = Base64::encode(der_bytes);
     std::string wrapped_pem;
 
-    wrapped_pem.reserve(label.size() * 2 + base64_encoded.size() + approximate_overhead);
+    wrapped_pem.reserve((label.size() * 2) + base64_encoded.size() + approximate_overhead);
     wrapped_pem.append("-----BEGIN ");
     wrapped_pem.append(label);
     wrapped_pem.append("-----\n");
@@ -66,10 +67,8 @@ inline std::string Pem::wrap(std::string_view label, const std::vector<std::byte
 inline std::string Pem::wrap(std::string_view label, std::string_view der_string) {
     std::vector<std::byte> bytes(der_string.size());
 
-    for (std::size_t index = 0; index < der_string.size(); ++index) {
-        bytes[index] = static_cast<std::byte>(der_string[index]);
-    }
-
+    std::transform(der_string.begin(), der_string.end(), bytes.begin(),
+                   [](char character) { return static_cast<std::byte>(character); });
     return wrap(label, bytes);
 }
 
@@ -106,11 +105,10 @@ inline Pem::Unwrapped Pem::unwrap(std::string_view pem_string) {
 
     cleaned_base64.reserve(base64_content.size());
 
-    for (char character : base64_content) {
-        if (character != ' ' && character != '\t' && character != '\r' && character != '\n') {
-            cleaned_base64.push_back(character);
-        }
-    }
+    std::copy_if(base64_content.begin(), base64_content.end(), std::back_inserter(cleaned_base64),
+                 [](char character) {
+        return character != ' ' && character != '\t' && character != '\r' && character != '\n';
+    });
 
     return Unwrapped{std::move(label), Base64::decode(cleaned_base64)};
 }

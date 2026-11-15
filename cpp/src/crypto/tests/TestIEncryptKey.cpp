@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <cstddef>
 #include <memory>
 #include <stdexcept>
@@ -38,6 +39,9 @@ constexpr auto ctr_128_ciphertext =
 constexpr auto ctr_wrapping_plaintext = "Counter wraps past the top of the block.";
 constexpr auto ctr_192_wrapping_ciphertext =
     "bb5761ba71afe28f512cf61159bb82eaa836d568ba6beaa6f1c03344698a3fed3448f9a47af2848d";
+constexpr auto ctr_carrying_plaintext = "The low half wraps; the high half counts on.";
+constexpr auto ctr_256_carrying_ciphertext =
+    "0dc7407d4e09771090186b39cad904c4d2cf6ef52cb7c0229d9f6bec7a1cfdcf5d2a67a4488c7464eab176f0";
 
 // Makes the AES a test runs on.
 using MakeAes = IEncryptKey::Ptr (*)(const IEncryptKey::Data& key, AesMode mode,
@@ -112,6 +116,26 @@ TEST_P(IEncryptKeyTest, AesCbcBadPadding) {
     EXPECT_THROW(static_cast<void>(aes->decrypt(ciphertext, {})), std::runtime_error);
 }
 
+TEST_P(IEncryptKeyTest, AesCbcPaddingChecked) {
+    // Blocks encrypted without padding, then decrypted with it: only those
+    // that end in n bytes of n, for n from 1 to 16, are padded plaintext.
+    const IEncryptKey::Data key(aes_256_key_size, std::byte{0x42});
+    const auto unpadded = GetParam()(key, AesMode::Cbc, AesPadding::None);
+    const auto padded = GetParam()(key, AesMode::Cbc, AesPadding::Pkcs7);
+    const auto decrypt = [&](const std::string& block) {
+        return padded->decrypt(unpadded->encrypt(block, {}), {});
+    };
+
+    EXPECT_EQ(decrypt(std::string("fourteen bytes") + "\x02\x02"), "fourteen bytes");
+    EXPECT_EQ(decrypt(std::string(aes_block_size, '\x10')), "");
+    EXPECT_THROW(static_cast<void>(decrypt(std::string("fourteen bytes") + "\x01\x02")),
+                 std::runtime_error);
+    EXPECT_THROW(static_cast<void>(decrypt(std::string("fifteen bytes..") + '\0')),
+                 std::runtime_error);
+    EXPECT_THROW(static_cast<void>(decrypt(std::string("fifteen bytes..") + "\x11")),
+                 std::runtime_error);
+}
+
 TEST_P(IEncryptKeyTest, AesCtrNoPaddingRoundtrip) {
     const IEncryptKey::Data key(aes_128_key_size, std::byte{0x77});
     const IEncryptKey::InitializationVector initialization_vector(aes_block_size, std::byte{0x55});
@@ -132,6 +156,32 @@ TEST_P(IEncryptKeyTest, AesCtrCounterWraps) {
 
     EXPECT_EQ(fixtures::hex(ciphertext), ctr_192_wrapping_ciphertext);
     EXPECT_EQ(aes->decrypt(ciphertext, initialization_vector), ctr_wrapping_plaintext);
+}
+
+TEST_P(IEncryptKeyTest, AesCtrCarriesIntoHighHalf) {
+    // The low 8 bytes of the counter start at their highest value, and the
+    // high 8 at 1, so the second block's counter is 2 in the high 8 bytes
+    // and 0 in the low.
+    constexpr auto high_half_end = 7;
+    const IEncryptKey::Data key(aes_256_key_size, std::byte{0x03});
+    IEncryptKey::InitializationVector initialization_vector(aes_block_size, std::byte{0xFF});
+
+    std::fill(initialization_vector.begin(), initialization_vector.begin() + high_half_end,
+              std::byte{0x00});
+    initialization_vector.at(high_half_end) = std::byte{0x01};
+
+    const auto aes = GetParam()(key, AesMode::Ctr, AesPadding::None);
+    const auto ciphertext = aes->encrypt(ctr_carrying_plaintext, initialization_vector);
+
+    EXPECT_EQ(fixtures::hex(ciphertext), ctr_256_carrying_ciphertext);
+    EXPECT_EQ(aes->decrypt(ciphertext, initialization_vector), ctr_carrying_plaintext);
+}
+
+TEST_P(IEncryptKeyTest, AesCbcEmptyCiphertext) {
+    const IEncryptKey::Data key(aes_256_key_size, std::byte{0x42});
+    const auto aes = GetParam()(key, AesMode::Cbc, AesPadding::Pkcs7);
+
+    EXPECT_THROW(static_cast<void>(aes->decrypt({}, {})), std::runtime_error);
 }
 
 INSTANTIATE_TEST_SUITE_P(Factory, IEncryptKeyTest, testing::Values(&IEncryptKey::Aes));

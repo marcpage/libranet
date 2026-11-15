@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <stdexcept>
 #include <string>
@@ -14,7 +15,6 @@ public:
     [[nodiscard]] static std::string encode(std::string_view data);
     [[nodiscard]] static std::vector<std::byte> decode(std::string_view encoded_string);
 
-private:
     Base64() = delete;
     ~Base64() = delete;
     Base64(const Base64&) = delete;
@@ -22,7 +22,19 @@ private:
     Base64(Base64&&) = delete;
     Base64& operator=(Base64&&) = delete;
 
+private:
     static constexpr std::string_view characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    // Each group of 3 bytes is written as 4 characters of 6 bits each.
+    static constexpr std::size_t bits_per_byte = 8;
+    static constexpr std::size_t bits_per_character = 6;
+    static constexpr std::size_t bytes_per_group = 3;
+    static constexpr std::size_t characters_per_group = 4;
+    static constexpr unsigned int byte_mask = 0xFFU;
+    static constexpr unsigned int character_mask = 0x3FU;
+    static constexpr char padding = '=';
+    // What get_character_value() gives for padding.
+    static constexpr int padding_value = -1;
 
     [[nodiscard]] static int get_character_value(char character);
 };
@@ -32,26 +44,29 @@ inline std::string Base64::encode(const std::vector<std::byte>& data) {
     // Only its low bits are read, so it may wrap around: unsigned, where
     // shifting a signed int past its top bit is undefined.
     unsigned int accumulator = 0;
-    int bit_balance = -6;
+    // How many of the accumulator's low bits are yet to be written.
+    std::size_t pending_bits = 0;
 
-    encoded_result.reserve(((data.size() + 2) / 3) * 4);
+    encoded_result.reserve(((data.size() + bytes_per_group - 1) / bytes_per_group)
+                           * characters_per_group);
 
-    for (auto byte_item : data) {
-        accumulator = (accumulator << 8) + static_cast<unsigned char>(byte_item);
-        bit_balance += 8;
+    for (const auto byte_item : data) {
+        accumulator = (accumulator << bits_per_byte) | std::to_integer<unsigned int>(byte_item);
+        pending_bits += bits_per_byte;
 
-        while (bit_balance >= 0) {
-            encoded_result.push_back(characters[(accumulator >> bit_balance) & 0x3F]);
-            bit_balance -= 6;
+        while (pending_bits >= bits_per_character) {
+            pending_bits -= bits_per_character;
+            encoded_result.push_back(characters.at((accumulator >> pending_bits) & character_mask));
         }
     }
 
-    if (bit_balance > -6) {
-        encoded_result.push_back(characters[((accumulator << 8) >> (bit_balance + 8)) & 0x3F]);
+    if (pending_bits > 0) {
+        encoded_result.push_back(
+            characters.at((accumulator << (bits_per_character - pending_bits)) & character_mask));
     }
 
-    while (encoded_result.size() % 4 != 0) {
-        encoded_result.push_back('=');
+    while (encoded_result.size() % characters_per_group != 0) {
+        encoded_result.push_back(padding);
     }
 
     return encoded_result;
@@ -60,16 +75,14 @@ inline std::string Base64::encode(const std::vector<std::byte>& data) {
 inline std::string Base64::encode(std::string_view data) {
     std::vector<std::byte> bytes(data.size());
 
-    for (std::size_t index = 0; index < data.size(); ++index) {
-        bytes[index] = static_cast<std::byte>(data[index]);
-    }
-
+    std::transform(data.begin(), data.end(), bytes.begin(),
+                   [](char character) { return static_cast<std::byte>(character); });
     return encode(bytes);
 }
 
 inline int Base64::get_character_value(char character) {
-    if (character == '=') {
-        return -1; // Represents padding
+    if (character == padding) {
+        return padding_value;
     }
 
     const auto found_position = characters.find(character);
@@ -82,37 +95,42 @@ inline int Base64::get_character_value(char character) {
 }
 
 inline std::vector<std::byte> Base64::decode(std::string_view encoded_string) {
-    if (encoded_string.size() % 4 != 0) {
+    if (encoded_string.size() % characters_per_group != 0) {
         throw std::invalid_argument("Invalid Base64 string length.");
     }
 
     std::vector<std::byte> decoded_bytes;
 
-    decoded_bytes.reserve((encoded_string.size() / 4) * 3);
+    decoded_bytes.reserve((encoded_string.size() / characters_per_group) * bytes_per_group);
 
     // Process input four characters at a time
-    for (std::size_t index = 0; index < encoded_string.size(); index += 4) {
-        int value_first = get_character_value(encoded_string[index]);
-        int value_second = get_character_value(encoded_string[index + 1]);
-        int value_third = get_character_value(encoded_string[index + 2]);
-        int value_fourth = get_character_value(encoded_string[index + 3]);
+    for (std::size_t index = 0; index < encoded_string.size(); index += characters_per_group) {
+        const auto group = encoded_string.substr(index, characters_per_group);
+        // The group's 6-bit values, combined into a 24-bit block, with
+        // padding as zeros.
+        unsigned int triple = 0;
 
-        if (value_first == -1 || value_second == -1) {
-            throw std::invalid_argument("Invalid Base64 padding position.");
+        for (std::size_t position = 0; position < characters_per_group; ++position) {
+            const auto value = get_character_value(group.at(position));
+
+            // The first two characters of a group are never padding.
+            if (value == padding_value && position < 2) {
+                throw std::invalid_argument("Invalid Base64 padding position.");
+            }
+
+            triple = (triple << bits_per_character)
+                     | (value == padding_value ? 0U : static_cast<unsigned int>(value));
         }
-
-        // Combine the 6-bit values into a 24-bit integer block
-        int triple = (value_first << 18) + (value_second << 12) + ((value_third != -1 ? value_third : 0) << 6) + (value_fourth != -1 ? value_fourth : 0);
 
         // Extract the decoded bytes based on padding presence
-        decoded_bytes.push_back(static_cast<std::byte>((triple >> 16) & 0xFF));
+        decoded_bytes.push_back(static_cast<std::byte>((triple >> (2 * bits_per_byte)) & byte_mask));
 
-        if (encoded_string[index + 2] != '=') {
-            decoded_bytes.push_back(static_cast<std::byte>((triple >> 8) & 0xFF));
+        if (group.at(2) != padding) {
+            decoded_bytes.push_back(static_cast<std::byte>((triple >> bits_per_byte) & byte_mask));
         }
 
-        if (encoded_string[index + 3] != '=') {
-            decoded_bytes.push_back(static_cast<std::byte>(triple & 0xFF));
+        if (group.at(3) != padding) {
+            decoded_bytes.push_back(static_cast<std::byte>(triple & byte_mask));
         }
     }
 

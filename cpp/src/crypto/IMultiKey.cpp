@@ -1,5 +1,8 @@
 #include "IMultiKey.hpp"
 
+#include <cstddef>
+#include <string_view>
+
 #if __APPLE__
 #include "RsaMacos.hpp"
 using RsaType = crypto::RsaMacos;

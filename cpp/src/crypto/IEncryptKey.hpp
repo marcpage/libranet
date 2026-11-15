@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -13,10 +14,14 @@ public:
     using Ptr = std::unique_ptr<IEncryptKey>;
     using Data = std::vector<std::byte>;
     using InitializationVector = std::vector<std::byte>;
-    enum class AesMode { Cbc,
-                         Ctr };
-    enum class AesPadding { Pkcs7,
-                            None };
+    enum class AesMode : std::uint8_t {
+        Cbc,
+        Ctr,
+    };
+    enum class AesPadding : std::uint8_t {
+        Pkcs7,
+        None,
+    };
 
     static Ptr Aes(const Data& raw_key, AesMode mode, AesPadding padding);
 

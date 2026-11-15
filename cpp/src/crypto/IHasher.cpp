@@ -1,5 +1,7 @@
 #include "IHasher.hpp"
 
+#include <memory>
+
 #if __APPLE__
 #include "Sha256Macos.hpp"
 using Sha256Type = crypto::Sha256Macos;
@@ -14,4 +16,4 @@ IHasher::Ptr IHasher::Sha256() {
     return std::make_unique<Sha256Type>();
 }
 
-} // crypto
+} // namespace crypto

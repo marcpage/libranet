@@ -1,6 +1,7 @@
 #include "ISignKey.hpp"
 #include "Ed25519OpenSsl.hpp"
-#include <stdexcept>
+#include <exception>
+#include <string_view>
 
 using Ed25519Key = crypto::Ed25519OpenSsl;
 

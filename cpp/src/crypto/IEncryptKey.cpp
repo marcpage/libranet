@@ -1,5 +1,7 @@
 #include "IEncryptKey.hpp"
 
+#include <memory>
+
 #if __APPLE__
 #include "AesMacos.hpp"
 using AesType = crypto::AesMacos;
