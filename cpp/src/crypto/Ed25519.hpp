@@ -37,6 +37,8 @@ public:
 
     Ed25519();
     Ed25519(Key key, bool has_private);
+    Ed25519(const Ed25519&) = delete;
+    Ed25519& operator=(const Ed25519&) = delete;
     Ed25519(Ed25519&&) noexcept = default;
     Ed25519& operator=(Ed25519&&) noexcept = default;
     ~Ed25519() override = default;
@@ -50,9 +52,6 @@ private:
 
     Key m_key;
     bool m_has_private;
-
-    Ed25519(const Ed25519&) = delete;
-    Ed25519& operator=(const Ed25519&) = delete;
 
     [[nodiscard]] static Key generate();
     [[nodiscard]] static Key read_der(const Data& der, bool is_private);
@@ -104,6 +103,7 @@ inline Ed25519::Key Ed25519::generate() {
 inline Ed25519::Key Ed25519::read_der(const Data& der, bool is_private) {
     const auto* const start = OpenSslBytes::of(der);
     const auto* next = start;
+    // NOLINTNEXTLINE(google-runtime-int): long, as the d2i functions take it
     const auto length = static_cast<long>(der.size());
     Key key(is_private ? d2i_AutoPrivateKey(nullptr, &next, length)
                        : d2i_PUBKEY(nullptr, &next, length));

@@ -9,7 +9,7 @@
 using crypto::Base64;
 
 TEST(Base64Test, EncodeString) {
-    EXPECT_EQ(Base64::encode(std::string("Hello, World!")), "SGVsbG8sIFdvcmxkIQ==");
+    EXPECT_EQ(Base64::encode("Hello, World!"), "SGVsbG8sIFdvcmxkIQ==");
 }
 
 TEST(Base64Test, EncodeBytes) {
@@ -24,7 +24,7 @@ TEST(Base64Test, DecodeValid) {
 
     decoded_string.reserve(decoded.size());
 
-    for (auto byte_item : decoded) {
+    for (const auto byte_item : decoded) {
         decoded_string.push_back(static_cast<char>(byte_item));
     }
 

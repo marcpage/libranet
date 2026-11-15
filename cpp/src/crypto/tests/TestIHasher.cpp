@@ -46,7 +46,7 @@ TEST(IHasherTest, Reset) {
     const auto hasher = IHasher::Sha256();
 
     hasher->update("garbage data");
-    hasher->reset();
+    (*hasher).reset();
 
     // After reset, hashing "abc" should yield the correct "abc" hash, not corrupted state
     hasher->update("abc");

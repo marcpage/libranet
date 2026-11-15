@@ -43,11 +43,11 @@ TEST(IMultiKeyTest, RsaEncryptionAndDecryption) {
     const auto encryptor = multi_key->RsaOaepSha256();
     const std::string plaintext = "Confidential Payload";
     // RSA-OAEP ignores initialization vectors, pass empty vector
-    const IEncryptKey::InitializationVector iv;
-    const auto ciphertext = encryptor->encrypt(plaintext, iv);
+    const IEncryptKey::InitializationVector initialization_vector;
+    const auto ciphertext = encryptor->encrypt(plaintext, initialization_vector);
 
     EXPECT_FALSE(ciphertext.empty());
-    EXPECT_EQ(encryptor->decrypt(ciphertext, iv), plaintext);
+    EXPECT_EQ(encryptor->decrypt(ciphertext, initialization_vector), plaintext);
 }
 
 TEST(IMultiKeyTest, PemRoundtrip) {

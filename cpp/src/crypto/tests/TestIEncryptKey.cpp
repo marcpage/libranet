@@ -37,20 +37,20 @@ TEST(IEncryptKeyTest, AesKeyValidation) {
 
 TEST(IEncryptKeyTest, AesCbcPkcs7Roundtrip) {
     const IEncryptKey::Data key(aes_256_key_size, std::byte{0x42});
-    const IEncryptKey::InitializationVector iv(aes_block_size, std::byte{0x13});
+    const IEncryptKey::InitializationVector initialization_vector(aes_block_size, std::byte{0x13});
     const auto aes = IEncryptKey::Aes(key, IEncryptKey::AesMode::Cbc, IEncryptKey::AesPadding::Pkcs7);
     const std::string plaintext = "Hello, Libranet cryptographic library!";
-    const auto ciphertext = aes->encrypt(plaintext, iv);
+    const auto ciphertext = aes->encrypt(plaintext, initialization_vector);
 
-    EXPECT_EQ(aes->decrypt(ciphertext, iv), plaintext);
+    EXPECT_EQ(aes->decrypt(ciphertext, initialization_vector), plaintext);
 }
 
 TEST(IEncryptKeyTest, AesCtrNoPaddingRoundtrip) {
     const IEncryptKey::Data key(aes_128_key_size, std::byte{0x77});
-    const IEncryptKey::InitializationVector iv(aes_block_size, std::byte{0x55});
+    const IEncryptKey::InitializationVector initialization_vector(aes_block_size, std::byte{0x55});
     const auto aes = IEncryptKey::Aes(key, IEncryptKey::AesMode::Ctr, IEncryptKey::AesPadding::None);
     const std::string plaintext = "Stream cipher test payload using CTR mode.";
-    const auto ciphertext = aes->encrypt(plaintext, iv);
+    const auto ciphertext = aes->encrypt(plaintext, initialization_vector);
 
-    EXPECT_EQ(aes->decrypt(ciphertext, iv), plaintext);
+    EXPECT_EQ(aes->decrypt(ciphertext, initialization_vector), plaintext);
 }
