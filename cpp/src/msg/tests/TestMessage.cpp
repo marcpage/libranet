@@ -9,6 +9,11 @@
 using msg::IMessage;
 using msg::Message;
 
+// These tests name the built-in integer types, long and long long among
+// them: a Message keeps its value's exact type, and callers post those types,
+// such as std::size_t, an unsigned long. Fixed-width types would leave
+// untested whichever of long and long long std::int64_t is not.
+
 TEST(MessageTest, ConstructionAndValue) {
     // Arithmetic types
     constexpr auto int_value = 42;
@@ -17,6 +22,7 @@ TEST(MessageTest, ConstructionAndValue) {
     EXPECT_EQ(int_message.to_string(), "42");
 
     constexpr auto long_long_value = -9876543210LL;
+    // NOLINTNEXTLINE(google-runtime-int)
     const Message<long long> long_long_message(long_long_value);
     EXPECT_EQ(long_long_message.value(), long_long_value);
     EXPECT_EQ(long_long_message.to_string(), "-9876543210");
@@ -54,6 +60,7 @@ TEST(MessageTest, ToStringDispatch) {
     EXPECT_EQ(int_message.to_string(), "12345");
 
     constexpr auto unsigned_long_value = 999UL;
+    // NOLINTNEXTLINE(google-runtime-int)
     const Message<unsigned long> unsigned_long_message(unsigned_long_value);
     EXPECT_EQ(unsigned_long_message.to_string(), "999");
 
@@ -71,6 +78,7 @@ TEST(MessageTest, Polymorphism) {
     EXPECT_EQ(msg2->to_string(), "polymorphic");
 
     constexpr auto long_value = -100L;
+    // NOLINTNEXTLINE(google-runtime-int)
     std::unique_ptr<IMessage> msg3 = std::make_unique<Message<long>>(long_value);
     EXPECT_EQ(msg3->to_string(), "-100");
 
@@ -93,6 +101,7 @@ TEST(MessageTest, EdgeCases) {
 
     // Large number
     constexpr auto largest = 9223372036854775807LL; // LLONG_MAX
+    // NOLINTNEXTLINE(google-runtime-int)
     const Message<long long> big(largest);
     EXPECT_EQ(big.to_string(), "9223372036854775807");
 

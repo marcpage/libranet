@@ -31,7 +31,7 @@ public:
     // Integer converts implicitly from the built-in integers, as they convert
     // to each other.
     // NOLINTNEXTLINE(*-explicit-constructor)
-    Integer(long long value);
+    Integer(std::int64_t value);
     explicit Integer(const std::string& text);
     Integer(const Integer&) = default;
     Integer(Integer&&) noexcept = default;
@@ -90,8 +90,8 @@ private:
     static_assert(sizeof(double_word_t) >= 2 * sizeof(word_t)
                       || (sizeof(double_word_t) > sizeof(word_t) && sizeof(word_t) >= sizeof(std::uint64_t)),
                   "double_word_t must be wide enough to hold product/sum carries between words.");
-    static_assert(sizeof(double_word_t) >= sizeof(unsigned long long),
-                  "double_word_t must be at least as large as unsigned long long for safe conversions.");
+    static_assert(sizeof(double_word_t) >= sizeof(std::uint64_t),
+                  "double_word_t must be at least as large as std::uint64_t for safe conversions.");
 
     void normalize();
     static int compare_magnitudes(const std::vector<word_t>& left,
@@ -383,15 +383,15 @@ inline void Integer::shift_right_magnitude(std::vector<word_t>& value, unsigned 
     }
 }
 
-inline Integer::Integer(long long value) {
+inline Integer::Integer(std::int64_t value) {
     if (0 == value) {
         return;
     }
 
     if (value < 0) {
         // Careful with LLONG_MIN
-        unsigned long long unsigned_value = static_cast<unsigned long long>(-(value + 1))
-                                            + 1;
+        std::uint64_t unsigned_value = static_cast<std::uint64_t>(-(value + 1))
+                                       + 1;
         m_negative = true;
 
         while (unsigned_value > 0) {
@@ -404,7 +404,7 @@ inline Integer::Integer(long long value) {
             }
         }
     } else {
-        auto unsigned_value = static_cast<unsigned long long>(value);
+        auto unsigned_value = static_cast<std::uint64_t>(value);
 
         while (unsigned_value > 0) {
             m_magnitude.push_back(static_cast<word_t>(unsigned_value));

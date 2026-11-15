@@ -37,7 +37,10 @@ public:
     Json() noexcept;
     // Json converts implicitly from each kind of value it holds, so that
     // initializer lists such as {{"age", 30}, {"tags", {"a", "b"}}} work.
-    // NOLINTBEGIN(*-explicit-constructor)
+    // It takes long and long long by name: std::int64_t is long on Linux and
+    // long long on macOS, so with only std::int64_t, a value of the other type
+    // would match no constructor exactly, and be ambiguous.
+    // NOLINTBEGIN(*-explicit-constructor,google-runtime-int)
     Json(std::nullptr_t) noexcept;
     Json(bool value) noexcept;
     Json(int value) noexcept;
@@ -49,7 +52,7 @@ public:
     explicit Json(std::string_view value);
     Json(Array value);
     Json(Object value);
-    // NOLINTEND(*-explicit-constructor)
+    // NOLINTEND(*-explicit-constructor,google-runtime-int)
     Json(std::initializer_list<Json> arguments);
 
     Json(const Json&) = default;
@@ -161,11 +164,13 @@ inline Json::Json(bool value) noexcept
 inline Json::Json(int value) noexcept
     : m_data(static_cast<std::int64_t>(value)) {}
 
+// NOLINTBEGIN(google-runtime-int): long and long long by name, as declared
 inline Json::Json(long value) noexcept
     : m_data(static_cast<std::int64_t>(value)) {}
 
 inline Json::Json(long long value) noexcept
     : m_data(static_cast<std::int64_t>(value)) {}
+// NOLINTEND(google-runtime-int)
 
 inline Json::Json(double value) noexcept
     : m_data(value) {}
