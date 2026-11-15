@@ -325,7 +325,7 @@ checked too. It runs clang-tidy and cppcheck on what CMake writes. The other
 C++ jobs build and run the tests.
 
 CI also runs [CodeQL](https://codeql.github.com/), GitHub's code scanning,
-on the C++ code as it builds it, and on the rest of the repository. Its
+on the C++ code, without building it, and on the rest of the repository. Its
 alerts are in the repository's Security tab, and in a CodeQL check on each
 pull request.
 
