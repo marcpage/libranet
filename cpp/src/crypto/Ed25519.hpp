@@ -1,23 +1,29 @@
 #pragma once
 
-#include <vector>
+#include <cstddef>
+#include <memory>
+#include <stdexcept>
 #include <string>
 #include <string_view>
-#include <stdexcept>
-#include <memory>
-#include <cstring>
+#include <utility>
+
+#include <openssl/err.h>
+#include <openssl/evp.h>
+#include <openssl/x509.h>
 
 #include "ISignKey.hpp"
+#include "OpenSsl.hpp"
 #include "Pem.hpp"
-
-extern "C" {
-#include "monocypher.h"
-}
 
 namespace crypto {
 
+// An Ed25519 key, built on OpenSSL. Its PEM forms are the standard ones,
+// which the Python node reads and writes too: SubjectPublicKeyInfo for the
+// public key, and PKCS #8 for the private key.
 class Ed25519 : public ISignKey {
 public:
+    using Key = OpenSslObject<EVP_PKEY, EVP_PKEY_free>;
+
     [[nodiscard]] static ISignKey::Ptr create();
     [[nodiscard]] static ISignKey::Ptr from_pem(std::string_view pem);
 
@@ -30,20 +36,27 @@ public:
     [[nodiscard]] bool has_private_key() const noexcept override;
 
     Ed25519();
-    Ed25519(const Data& secret_key_bytes, const Data& public_key);
-    explicit Ed25519(const Data& public_key);
+    Ed25519(Key key, bool has_private);
     Ed25519(Ed25519&&) noexcept = default;
     Ed25519& operator=(Ed25519&&) noexcept = default;
-    ~Ed25519() override;
+    ~Ed25519() override = default;
 
 private:
-    uint8_t m_secret_key[64]{0}; // Monocypher EdDSA secret key holds 64 bytes (seed + public key bundled)
-    uint8_t m_public_key[32];
+    using MessageContext = OpenSslObject<EVP_MD_CTX, EVP_MD_CTX_free>;
+    using DerEncoder = int (*)(const EVP_PKEY*, unsigned char**);
+
+    // An Ed25519 signature's size, in bytes.
+    static constexpr std::size_t signature_size = 64;
+
+    Key m_key;
     bool m_has_private;
 
     Ed25519(const Ed25519&) = delete;
     Ed25519& operator=(const Ed25519&) = delete;
 
+    [[nodiscard]] static Key generate();
+    [[nodiscard]] static Key read_der(const Data& der, bool is_private);
+    [[nodiscard]] Data der(DerEncoder encode) const;
 };
 
 inline ISignKey::Ptr Ed25519::create() {
@@ -53,79 +66,76 @@ inline ISignKey::Ptr Ed25519::create() {
 inline ISignKey::Ptr Ed25519::from_pem(std::string_view pem) {
     auto [label, der_bytes] = Pem::unwrap(pem);
 
-    if (label == "PRIVATE KEY" || label == "Ed25519 PRIVATE KEY") {
-        Data secret_bytes;
-        uint8_t pub[32];
-        uint8_t sec[64];
-
-        if (der_bytes.size() == 32) {
-            uint8_t seed[32];
-            std::memcpy(seed, der_bytes.data(), 32);
-            crypto_eddsa_key_pair(sec, pub, seed);
-            secret_bytes = Data(64);
-            std::memcpy(secret_bytes.data(), sec, 64);
-        } else if (der_bytes.size() == 64) {
-            secret_bytes = der_bytes;
-            std::memcpy(sec, secret_bytes.data(), 64);
-            std::memcpy(pub, sec + 32, 32);
-        } else if (der_bytes.size() > 64) {
-            secret_bytes = Data(der_bytes.end() - 64, der_bytes.end());
-            std::memcpy(sec, secret_bytes.data(), 64);
-            std::memcpy(pub, sec + 32, 32);
-        } else {
-            throw std::invalid_argument("Invalid Ed25519 private key DER byte length.");
-        }
-
-        Data pub_data(32);
-
-        std::memcpy(pub_data.data(), pub, 32);
-        return std::make_unique<Ed25519>(secret_bytes, pub_data);
+    if (label == "PRIVATE KEY") {
+        return std::make_unique<Ed25519>(read_der(der_bytes, true), true);
     }
-    else if (label == "PUBLIC KEY" || label == "Ed25519 PUBLIC KEY") {
-        Data pub_key;
 
-        if (der_bytes.size() == 32) {
-            pub_key = der_bytes;
-        } else if (der_bytes.size() == 44) { // PKIX format prefix offset
-            pub_key = Data(der_bytes.end() - 32, der_bytes.end());
-        } else {
-            throw std::invalid_argument("Invalid Ed25519 public key DER byte length.");
-        }
-
-        return std::make_unique<Ed25519>(pub_key);
+    if (label == "PUBLIC KEY") {
+        return std::make_unique<Ed25519>(read_der(der_bytes, false), false);
     }
 
     throw std::invalid_argument("Unsupported or unrecognized PEM label: " + label);
 }
 
-inline Ed25519::Ed25519() : m_has_private(true) {
-    uint8_t seed[32];
-    arc4random_buf(seed, sizeof(seed));
-    crypto_eddsa_key_pair(m_secret_key, m_public_key, seed);
-    crypto_wipe(seed, sizeof(seed));
+inline Ed25519::Ed25519() : Ed25519(generate(), true) {}
+
+inline Ed25519::Ed25519(Key key, bool has_private)
+    : m_key(std::move(key)), m_has_private(has_private) {
+    if (!m_key || EVP_PKEY_is_a(m_key.get(), "ED25519") != 1) {
+        throw std::invalid_argument("Not an Ed25519 key.");
+    }
 }
 
-inline Ed25519::Ed25519(const Data& secret_key_bytes, const Data& public_key) : m_has_private(true) {
-    if (secret_key_bytes.size() != 64 || public_key.size() != 32) {
-        throw std::invalid_argument("Invalid Ed25519 key component sizes.");
+inline Ed25519::Key Ed25519::generate() {
+    const OpenSslObject<EVP_PKEY_CTX, EVP_PKEY_CTX_free> context(
+        EVP_PKEY_CTX_new_from_name(nullptr, "ED25519", nullptr));
+    EVP_PKEY* key = nullptr;
+
+    if (!context || EVP_PKEY_keygen_init(context.get()) != 1
+        || EVP_PKEY_generate(context.get(), &key) != 1) {
+        throw OpenSslError("Failed to generate an Ed25519 key");
     }
 
-    std::memcpy(m_secret_key, secret_key_bytes.data(), 64);
-    std::memcpy(m_public_key, public_key.data(), 32);
+    return Key(key);
 }
 
-inline Ed25519::Ed25519(const Data& public_key) : m_has_private(false) {
-    if (public_key.size() != 32) {
-        throw std::invalid_argument("Ed25519 public key must be exactly 32 bytes.");
+// A key from its DER encoding: PKCS #8 for a private key, and
+// SubjectPublicKeyInfo for a public key. Bytes after the key are refused.
+inline Ed25519::Key Ed25519::read_der(const Data& der, bool is_private) {
+    const auto* const start = OpenSslBytes::of(der);
+    const auto* next = start;
+    const auto length = static_cast<long>(der.size());
+    Key key(is_private ? d2i_AutoPrivateKey(nullptr, &next, length)
+                       : d2i_PUBKEY(nullptr, &next, length));
+
+    if (!key) {
+        ERR_clear_error();
+        throw std::invalid_argument(is_private ? "Not a PKCS #8 private key."
+                                               : "Not a SubjectPublicKeyInfo public key.");
     }
 
-    std::memcpy(m_public_key, public_key.data(), 32);
+    if (static_cast<std::size_t>(next - start) != der.size()) {
+        throw std::invalid_argument("Bytes after the key in its PEM.");
+    }
+
+    return key;
 }
 
-inline Ed25519::~Ed25519() {
-    if (m_has_private) {
-        crypto_wipe(m_secret_key, sizeof(m_secret_key));
+inline ISignKey::Data Ed25519::der(DerEncoder encode) const {
+    const auto length = encode(m_key.get(), nullptr);
+
+    if (length <= 0) {
+        throw OpenSslError("Failed to encode an Ed25519 key");
     }
+
+    Data bytes(static_cast<std::size_t>(length));
+    auto* next = OpenSslBytes::of(bytes);
+
+    if (encode(m_key.get(), &next) != length) {
+        throw OpenSslError("Failed to encode an Ed25519 key");
+    }
+
+    return bytes;
 }
 
 inline ISignKey::Data Ed25519::sign(std::string_view data) const {
@@ -133,38 +143,44 @@ inline ISignKey::Data Ed25519::sign(std::string_view data) const {
         throw std::runtime_error("Cannot sign: Ed25519 instance contains public key only.");
     }
 
-    Data signature(64);
+    const MessageContext context(EVP_MD_CTX_new());
+    Data signature(signature_size);
+    auto length = signature.size();
 
-    crypto_eddsa_sign(
-        reinterpret_cast<uint8_t*>(signature.data()),
-        m_secret_key,
-        reinterpret_cast<const uint8_t*>(data.data()),
-        data.size()
-    );
+    if (!context
+        || EVP_DigestSignInit(context.get(), nullptr, nullptr, nullptr, m_key.get()) != 1
+        || EVP_DigestSign(context.get(), OpenSslBytes::of(signature), &length,
+                          OpenSslBytes::of(data), data.size())
+            != 1) {
+        throw OpenSslError("Failed to sign with an Ed25519 key");
+    }
 
+    signature.resize(length);
     return signature;
 }
 
 inline bool Ed25519::verify(std::string_view data, const Data& signature) const {
-    if (signature.size() != 64) {
+    if (signature.size() != signature_size) {
         return false;
     }
 
-    int result = crypto_eddsa_check(
-        reinterpret_cast<const uint8_t*>(signature.data()),
-        m_public_key,
-        reinterpret_cast<const uint8_t*>(data.data()),
-        data.size()
-    );
+    const MessageContext context(EVP_MD_CTX_new());
 
-    return (result == 0);
+    if (!context
+        || EVP_DigestVerifyInit(context.get(), nullptr, nullptr, nullptr, m_key.get()) != 1) {
+        throw OpenSslError("Failed to start verifying with an Ed25519 key");
+    }
+
+    const auto result = EVP_DigestVerify(context.get(), OpenSslBytes::of(signature),
+                                         signature.size(), OpenSslBytes::of(data), data.size());
+
+    // A signature that does not match leaves an error in OpenSSL's queue.
+    ERR_clear_error();
+    return result == 1;
 }
 
 inline std::string Ed25519::public_pem() const {
-    std::vector<std::byte> bytes(32);
-
-    std::memcpy(bytes.data(), m_public_key, 32);
-    return Pem::wrap("PUBLIC KEY", bytes);
+    return Pem::wrap("PUBLIC KEY", der(i2d_PUBKEY));
 }
 
 inline std::string Ed25519::private_pem() const {
@@ -172,10 +188,9 @@ inline std::string Ed25519::private_pem() const {
         throw std::runtime_error("No private key available.");
     }
 
-    std::vector<std::byte> bytes(64);
-
-    std::memcpy(bytes.data(), m_secret_key, 64);
-    return Pem::wrap("PRIVATE KEY", bytes);
+    // A key with no older form of its own, as Ed25519 has none, is written
+    // in PKCS #8.
+    return Pem::wrap("PRIVATE KEY", der(i2d_PrivateKey));
 }
 
 inline std::string Ed25519::id() const {
