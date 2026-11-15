@@ -150,7 +150,8 @@ jobs:
 
       # libFuzzer comes with LLVM's Clang, which Ubuntu has, and not with
       # Apple's, so only Ubuntu fuzzes. The fuzzers build without the tests,
-      # so they need nothing from Conan.
+      # but the crypto library needs OpenSSL 3.2 or newer, for Argon2id, which
+      # is newer than Ubuntu's: it comes from the Debug build's Conan files.
       - name: Build fuzzers
         if: runner.os == 'Linux'
         env:
@@ -158,6 +159,7 @@ jobs:
           CXX: clang++
         run: |
           cmake -S . -B build/fuzz -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            --toolchain "$PWD/build/Debug/generators/conan_toolchain.cmake" \
             -DBUILD_TESTING=OFF -DLIBRANET_FUZZERS=ON \
             -DLIBRANET_SANITIZERS=address,undefined
           cmake --build build/fuzz
