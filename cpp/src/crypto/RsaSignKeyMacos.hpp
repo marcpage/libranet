@@ -124,7 +124,7 @@ inline bool RsaSignKeyMacos::has_private_key() const noexcept {
 inline ISignKey::Ptr RsaSignKeyMacos::from_pem(std::string_view pem) {
     auto [private_key, public_key] = RsaPemMacos::from_pem(pem);
 
-    return std::make_unique<RsaSignKeyMacos>(private_key.release(), public_key.release());
+    return std::make_unique<RsaSignKeyMacos>(private_key.get(), public_key.get());
 }
 
 } // namespace crypto
