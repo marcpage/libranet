@@ -198,7 +198,7 @@ inline Json::Json(std::initializer_list<Json> arguments) {
     for (const auto& elem : arguments) {
         if (!elem.is_array()
             || elem.array().size() != 2
-            || !elem.array()[0].is_string()) {
+            || !elem.array().at(0).is_string()) {
             m_data = Array(arguments.begin(), arguments.end());
             return;
         }
@@ -208,7 +208,7 @@ inline Json::Json(std::initializer_list<Json> arguments) {
 
     for (const auto& elem : arguments) {
         const auto& pair_arr = elem.array();
-        obj.emplace(pair_arr[0].string(), pair_arr[1]);
+        obj.emplace(pair_arr.at(0).string(), pair_arr.at(1));
     }
 
     m_data = std::move(obj);
@@ -381,7 +381,7 @@ inline Json& Json::operator[](std::size_t index) {
         arr.resize(index + 1);
     }
 
-    return arr[index];
+    return arr.at(index);
 }
 
 inline const Json& Json::operator[](std::size_t index) const {
@@ -391,7 +391,7 @@ inline const Json& Json::operator[](std::size_t index) const {
         throw std::out_of_range("Json: array index out of bounds");
     }
 
-    return arr[index];
+    return arr.at(index);
 }
 
 inline Json& Json::operator[](const std::string& key) {
@@ -483,7 +483,7 @@ inline void Json::escape_string(const std::string& str, std::ostringstream& out_
                     constexpr auto nibble_bits = 4U;
                     constexpr auto nibble_mask = 0xFU;
 
-                    out_stream << hex[(code >> nibble_bits) & nibble_mask] << hex[code & nibble_mask];
+                    out_stream << hex.at((code >> nibble_bits) & nibble_mask) << hex.at(code & nibble_mask);
                 } else {
                     out_stream << character;
                 }
@@ -542,7 +542,7 @@ inline void Json::serialize_array(const Array& the_array, std::ostringstream& ou
 
     for (std::size_t arg_index = 0; arg_index < the_array.size(); ++arg_index) {
         out_stream << next_indent_str;
-        serialize(the_array[arg_index], out_stream, indent, current_indent + indent);
+        serialize(the_array.at(arg_index), out_stream, indent, current_indent + indent);
 
         if (arg_index + 1 < the_array.size()) {
             out_stream << ",";
@@ -604,6 +604,9 @@ inline Json::Parser::Parser(std::string_view input) noexcept
 
 inline void Json::Parser::skip_whitespace() noexcept {
     while (m_cursor < m_input.size()) {
+        // Within bounds, as the loop checks; at() could only end the
+        // program, from a function that cannot throw.
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         const auto character = m_input[m_cursor];
 
         if (character != ' '
@@ -618,6 +621,9 @@ inline void Json::Parser::skip_whitespace() noexcept {
 }
 
 inline char Json::Parser::peek() const noexcept {
+    // Within bounds, as checked; at() could only end the program, from a
+    // function that cannot throw.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return m_cursor < m_input.size() ? m_input[m_cursor] : '\0';
 }
 
@@ -626,7 +632,7 @@ inline char Json::Parser::get() {
         throw std::invalid_argument("Json::parse: unexpected end of input");
     }
 
-    return m_input[m_cursor++];
+    return m_input.at(m_cursor++);
 }
 
 inline bool Json::Parser::consume(char expected) noexcept {

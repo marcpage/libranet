@@ -130,6 +130,11 @@ inline void Integer::normalize() {
     }
 }
 
+// The word arithmetic indexes words with operator[], unchecked: each index
+// is bounded by its loop, and the inner loops of multiplication and division
+// would pay for a check on every word. In the tests, the Debug builds'
+// standard library checks and the sanitizers catch an index out of range.
+// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 inline int Integer::compare_magnitudes(const std::vector<word_t>& left,
                                        const std::vector<word_t>& right) noexcept {
     if (left.size() != right.size()) {
@@ -382,6 +387,7 @@ inline void Integer::shift_right_magnitude(std::vector<word_t>& value, unsigned 
         value.pop_back();
     }
 }
+// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 
 inline Integer::Integer(std::int64_t value) {
     if (0 == value) {
@@ -425,16 +431,16 @@ inline Integer::Integer(const std::string& text) {
         throw std::invalid_argument("Integer: empty string");
     }
 
-    m_negative = text[0] == '-';
+    m_negative = text.at(0) == '-';
 
-    const std::size_t numeric_start = m_negative || text[0] == '+' ? 1 : 0;
+    const std::size_t numeric_start = m_negative || text.at(0) == '+' ? 1 : 0;
 
     if (numeric_start == text.size()) {
         throw std::invalid_argument("Integer: no digits");
     }
 
     for (auto position = numeric_start; position < text.size(); ++position) {
-        const auto digit = text[position];
+        const auto digit = text.at(position);
 
         if (std::isdigit(static_cast<unsigned char>(digit)) == 0) {
             throw std::invalid_argument("Integer: invalid character");
@@ -634,6 +640,8 @@ inline Integer& Integer::operator<<=(std::size_t shift) {
     return *this;
 }
 
+// Word arithmetic, unchecked as above.
+// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 inline Integer& Integer::operator>>=(std::size_t shift) {
     if (is_zero() || shift == 0) {
         return *this;
@@ -769,6 +777,7 @@ inline Integer operator^(const Integer& left, const Integer& right) {
     result.normalize();
     return result;
 }
+// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 
 inline Integer operator<<(Integer left, std::size_t shift) {
     left <<= shift;
@@ -810,6 +819,8 @@ inline bool operator>=(const Integer& left, const Integer& right) noexcept {
     return !(left < right);
 }
 
+// Word arithmetic, unchecked as above.
+// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 inline std::ostream& operator<<(std::ostream& out_stream, const Integer& value) {
     if (value.is_zero()) {
         return out_stream << '0';
@@ -843,6 +854,7 @@ inline std::ostream& operator<<(std::ostream& out_stream, const Integer& value) 
     std::reverse(digits.begin(), digits.end());
     return out_stream << digits;
 }
+// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 
 inline std::istream& operator>>(std::istream& in_stream, Integer& value) {
     std::string text;

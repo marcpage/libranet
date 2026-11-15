@@ -144,19 +144,19 @@ inline std::string Url::decode(std::string_view value, bool decode_plus_as_space
     std::size_t character_index = 0;
 
     while (character_index < value.size()) {
-        if (decode_plus_as_space && value[character_index] == '+') {
+        if (decode_plus_as_space && value.at(character_index) == '+') {
             decoded += ' ';
             ++character_index;
-        } else if (value[character_index] == '%' && character_index + 2 < value.size()
-                   && std::isxdigit(static_cast<unsigned char>(value[character_index + 1])) != 0
-                   && std::isxdigit(static_cast<unsigned char>(value[character_index + 2])) != 0) {
+        } else if (value.at(character_index) == '%' && character_index + 2 < value.size()
+                   && std::isxdigit(static_cast<unsigned char>(value.at(character_index + 1))) != 0
+                   && std::isxdigit(static_cast<unsigned char>(value.at(character_index + 2))) != 0) {
             constexpr int hex_base = 16;
             const std::string hex_digits(value.substr(character_index + 1, 2));
 
             decoded += static_cast<char>(std::stoi(hex_digits, nullptr, hex_base));
             character_index += 3;
         } else {
-            decoded += value[character_index];
+            decoded += value.at(character_index);
             ++character_index;
         }
     }

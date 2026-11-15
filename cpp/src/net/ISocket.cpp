@@ -72,7 +72,7 @@ std::string ISocket::read_line(char delimiter) {
             break; // EOF reached
         }
 
-        const auto character = static_cast<char>(byte_buffer[0]);
+        const auto character = static_cast<char>(byte_buffer.at(0));
 
         if (character == delimiter) {
             break;

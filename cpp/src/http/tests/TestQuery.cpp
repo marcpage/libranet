@@ -44,9 +44,9 @@ TEST(QueryTest, DuplicateKeysAndMultivalueGetters) {
     // Test get_all for duplicate keys
     auto tags = query.get_all("tag");
     ASSERT_EQ(tags.size(), 3U);
-    EXPECT_EQ(tags[0], "cpp");
-    EXPECT_EQ(tags[1], "programming");
-    EXPECT_EQ(tags[2], "web");
+    EXPECT_EQ(tags.at(0), "cpp");
+    EXPECT_EQ(tags.at(1), "programming");
+    EXPECT_EQ(tags.at(2), "web");
 
     // Test get_first returns the first occurrence
     auto first_tag = query.get_first("tag");
