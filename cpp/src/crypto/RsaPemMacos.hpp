@@ -11,6 +11,7 @@
 
 #include "CFObject.hpp"
 #include "Pem.hpp"
+#include "RsaDer.hpp"
 
 namespace crypto {
 
@@ -57,7 +58,8 @@ inline std::string RsaPemMacos::public_pem(SecKeyRef public_key) {
     const std::vector<std::byte> bytes(reinterpret_cast<const std::byte*>(ptr),
                                        reinterpret_cast<const std::byte*>(ptr) + length);
 
-    return Pem::wrap("PUBLIC KEY", bytes);
+    // Apple gives an RSA key in PKCS #1, which "PUBLIC KEY" does not name.
+    return Pem::wrap("PUBLIC KEY", RsaDer::spki_from_pkcs1(bytes));
 }
 
 inline std::string RsaPemMacos::private_pem(SecKeyRef private_key) {
@@ -79,13 +81,20 @@ inline std::string RsaPemMacos::private_pem(SecKeyRef private_key) {
     const std::vector<std::byte> bytes(reinterpret_cast<const std::byte*>(ptr),
                                        reinterpret_cast<const std::byte*>(ptr) + length);
 
-    return Pem::wrap("PRIVATE KEY", bytes);
+    // Apple gives an RSA key in PKCS #1, which "PRIVATE KEY" does not name.
+    return Pem::wrap("PRIVATE KEY", RsaDer::pkcs8_from_pkcs1(bytes));
 }
 
 inline RsaPemMacos::KeyPair RsaPemMacos::from_pem(std::string_view pem) {
     auto [label, der_bytes] = Pem::unwrap(pem);
     auto [is_private, is_public] = validate_and_classify_pem_label(label);
-    CFObject<CFDataRef> data_ref = create_cf_data(der_bytes);
+    // Apple reads an RSA key only in PKCS #1, which "RSA PUBLIC KEY" and
+    // "RSA PRIVATE KEY" name, so it is first taken out of the forms that
+    // "PUBLIC KEY" and "PRIVATE KEY" name.
+    const auto pkcs1 = label == "PUBLIC KEY"    ? RsaDer::pkcs1_from_spki(der_bytes)
+                       : label == "PRIVATE KEY" ? RsaDer::pkcs1_from_pkcs8(der_bytes)
+                                                : der_bytes;
+    CFObject<CFDataRef> data_ref = create_cf_data(pkcs1);
     CFObject<SecKeyRef> created_key = create_sec_key_from_data(data_ref, is_private);
     CFObject<SecKeyRef> private_key;
     CFObject<SecKeyRef> public_key;

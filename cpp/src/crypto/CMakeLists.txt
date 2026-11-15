@@ -26,10 +26,15 @@ if(BUILD_TESTING)
         tests/TestIMultiKey.cpp
         tests/TestIPasswordHasher.cpp
         tests/TestISignKey.cpp
-        tests/TestPem.cpp)
+        tests/TestPem.cpp
+        tests/TestRsaDer.cpp)
     target_link_libraries(crypto_tests PRIVATE libranet::crypto GTest::gtest_main)
     # The tests that run on each implementation take functions that make
     # it, whose addresses would change from build to build in the tests'
     # names: they are numbered instead.
     gtest_discover_tests(crypto_tests NO_PRETTY_VALUES)
+endif()
+
+if(LIBRANET_FUZZERS)
+    libranet_add_fuzzer(rsa_der_fuzzer fuzz/FuzzRsaDer.cpp libranet::crypto)
 endif()

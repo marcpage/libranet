@@ -132,6 +132,41 @@ TEST_P(IMultiKeyTest, InvalidPem) {
                  std::exception);
 }
 
+// Each RSA writes the forms the Python node writes, byte for byte, and reads
+// them back.
+TEST_P(IMultiKeyTest, ReadsAndWritesPythonForms) {
+    const auto from_pkcs1 = GetParam().from_pem(fixtures::rsa_pkcs1_private_pem);
+    const auto from_pkcs8 = GetParam().from_pem(fixtures::rsa_pkcs8_private_pem);
+    const auto from_spki = GetParam().from_pem(fixtures::rsa_spki_public_pem);
+    const auto signature = fixtures::bytes(fixtures::rsa_pss_signature);
+    const auto ciphertext = fixtures::bytes(fixtures::rsa_oaep_ciphertext);
+
+    EXPECT_EQ(from_pkcs1->private_pem(), fixtures::rsa_pkcs8_private_pem);
+    EXPECT_EQ(from_pkcs1->public_pem(), fixtures::rsa_spki_public_pem);
+    EXPECT_EQ(from_pkcs8->private_pem(), fixtures::rsa_pkcs8_private_pem);
+    EXPECT_EQ(from_pkcs8->public_pem(), fixtures::rsa_spki_public_pem);
+    EXPECT_EQ(from_spki->public_pem(), fixtures::rsa_spki_public_pem);
+    EXPECT_TRUE(from_spki->RsaPssSha256()->verify(fixtures::rsa_message, signature));
+    EXPECT_EQ(from_pkcs8->RsaOaepSha256()->decrypt(ciphertext, {}), fixtures::rsa_oaep_plaintext);
+}
+
+TEST_P(IMultiKeyTest, RefusesOtherKeys) {
+    // An Ed25519 key, from RFC 8032.
+    EXPECT_THROW(static_cast<void>(GetParam().from_pem(
+                     "-----BEGIN PUBLIC KEY-----\n"
+                     "MCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=\n"
+                     "-----END PUBLIC KEY-----\n")),
+                 std::invalid_argument);
+    // A public key in PKCS #1 labeled as one in SubjectPublicKeyInfo.
+    EXPECT_THROW(static_cast<void>(GetParam().from_pem(
+                     "-----BEGIN PUBLIC KEY-----\n"
+                     "MIGJAoGBALv4749Q4HM+vxN+Qv1XxGfFV+VfX8Igz1rRV997Hm68DNTXYjvLbxq4\n"
+                     "2z8RCov92ZBo0YCGkDTeMXwvy1X23NWoNGO5PDv7OyPJ9SzkeyA+zBzurkm9y5aJ\n"
+                     "h52r3os5R7ekQr3Kgcm4GyqOUWR01hGXWJMjGK6Cebju/MfbD2ihAgMBAAE=\n"
+                     "-----END PUBLIC KEY-----\n")),
+                 std::invalid_argument);
+}
+
 INSTANTIATE_TEST_SUITE_P(Factory, IMultiKeyTest,
                          testing::Values(Rsa{&IMultiKey::Rsa, &IMultiKey::from_pem}));
 #if __APPLE__
@@ -139,36 +174,7 @@ INSTANTIATE_TEST_SUITE_P(OpenSsl, IMultiKeyTest,
                          testing::Values(Rsa{&RsaOpenSsl::for_bit_size, &RsaOpenSsl::from_pem}));
 #endif
 
-// OpenSSL's RSA writes the forms the Python node writes, byte for byte, and
-// reads them back.
-TEST(RsaOpenSslTest, ReadsAndWritesPythonForms) {
-    const auto from_pkcs1 = RsaOpenSsl::from_pem(fixtures::rsa_pkcs1_private_pem);
-    const auto from_pkcs8 = RsaOpenSsl::from_pem(fixtures::rsa_pkcs8_private_pem);
-    const auto from_spki = RsaOpenSsl::from_pem(fixtures::rsa_spki_public_pem);
-    const auto signature = fixtures::bytes(fixtures::rsa_pss_signature);
-
-    EXPECT_EQ(from_pkcs1->private_pem(), fixtures::rsa_pkcs8_private_pem);
-    EXPECT_EQ(from_pkcs1->public_pem(), fixtures::rsa_spki_public_pem);
-    EXPECT_EQ(from_pkcs8->private_pem(), fixtures::rsa_pkcs8_private_pem);
-    EXPECT_EQ(from_spki->public_pem(), fixtures::rsa_spki_public_pem);
-    EXPECT_TRUE(from_spki->RsaPssSha256()->verify(fixtures::rsa_message, signature));
-}
-
-TEST(RsaOpenSslTest, RefusesOtherKeys) {
-    // An Ed25519 key, from RFC 8032.
-    EXPECT_THROW(static_cast<void>(RsaOpenSsl::from_pem(
-                     "-----BEGIN PUBLIC KEY-----\n"
-                     "MCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=\n"
-                     "-----END PUBLIC KEY-----\n")),
-                 std::invalid_argument);
-    // A public key in PKCS #1 labeled as one in SubjectPublicKeyInfo.
-    EXPECT_THROW(static_cast<void>(RsaOpenSsl::from_pem(
-                     "-----BEGIN PUBLIC KEY-----\n"
-                     "MIGJAoGBALv4749Q4HM+vxN+Qv1XxGfFV+VfX8Igz1rRV997Hm68DNTXYjvLbxq4\n"
-                     "2z8RCov92ZBo0YCGkDTeMXwvy1X23NWoNGO5PDv7OyPJ9SzkeyA+zBzurkm9y5aJ\n"
-                     "h52r3os5R7ekQr3Kgcm4GyqOUWR01hGXWJMjGK6Cebju/MfbD2ihAgMBAAE=\n"
-                     "-----END PUBLIC KEY-----\n")),
-                 std::invalid_argument);
+TEST(RsaOpenSslTest, RefusesKeySizeOutOfRange) {
     EXPECT_THROW(static_cast<void>(RsaOpenSsl::for_bit_size(std::size_t{1} << 40U)),
                  std::invalid_argument);
 }
@@ -188,5 +194,25 @@ TEST(RsaInteropTest, AppleAndOpenSslAgree) {
               plaintext);
     EXPECT_EQ(apple->RsaOaepSha256()->decrypt(open_ssl->RsaOaepSha256()->encrypt(plaintext, {}), {}),
               plaintext);
+}
+
+// What each writes in PEM, the other reads as the same key.
+TEST(RsaInteropTest, AppleAndOpenSslReadEachOthersPem) {
+    const auto apple = crypto::RsaMacos::for_bit_size(rsa_key_bits);
+    const auto open_ssl = RsaOpenSsl::for_bit_size(rsa_key_bits);
+    const auto apple_from_open_ssl = crypto::RsaMacos::from_pem(open_ssl->private_pem());
+    const auto open_ssl_from_apple = RsaOpenSsl::from_pem(apple->private_pem());
+    const std::string message = fixtures::rsa_message;
+
+    EXPECT_EQ(apple_from_open_ssl->private_pem(), open_ssl->private_pem());
+    EXPECT_EQ(apple_from_open_ssl->public_pem(), open_ssl->public_pem());
+    EXPECT_EQ(open_ssl_from_apple->private_pem(), apple->private_pem());
+    EXPECT_EQ(open_ssl_from_apple->public_pem(), apple->public_pem());
+    EXPECT_TRUE(RsaOpenSsl::from_pem(apple->public_pem())
+                    ->RsaPssSha256()
+                    ->verify(message, apple->RsaPssSha256()->sign(message)));
+    EXPECT_TRUE(crypto::RsaMacos::from_pem(open_ssl->public_pem())
+                    ->RsaPssSha256()
+                    ->verify(message, open_ssl->RsaPssSha256()->sign(message)));
 }
 #endif
