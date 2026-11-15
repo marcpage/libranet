@@ -1115,7 +1115,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         # The request line sets the command and path together, so a path is
         # never echoed for a request that failed to parse before it.
         if self.command:
-            self.send_header(REQUEST_PATH_HEADER, self.path)
+            safe_path = self.path.replace("\r", "").replace("\n", "")
+            self.send_header(REQUEST_PATH_HEADER, safe_path)
 
         length_bytes = len(response.body) if stream is None else stream.length_bytes
 

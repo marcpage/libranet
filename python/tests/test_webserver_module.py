@@ -846,7 +846,10 @@ def test_bind_failure_propagates_so_the_supervisor_restarts(tmp_path: Path) -> N
 
 
 def test_a_config_port_set_and_taken_stops_the_module(tmp_path: Path) -> None:
-    port = _free_port()
+    # Not among the ports connections are made from, as the module's check
+    # that /config's port is in use is: one could otherwise take the main
+    # port, which the module never listens on, before it is found free (#733).
+    port = _port_with_room(0)
 
     with socket() as occupied:
         occupied.bind(("127.0.0.1", 0))
@@ -864,10 +867,14 @@ def test_a_config_port_set_and_taken_stops_the_module(tmp_path: Path) -> None:
 
 
 def test_a_chaos_port_set_and_taken_stops_the_module_releasing_config_s(tmp_path: Path) -> None:
-    port = _free_port()
+    # Not among the ports connections are made from, as the module's check
+    # that the Chaos port is in use is: one could otherwise take the main
+    # port, which the module never listens on, before it is found free (#733).
+    # The Chaos port taken is not one /config may take, which none may be.
+    port = _port_with_room(1, CHAOS_PORT_OFFSET)
 
     with socket() as occupied:
-        occupied.bind(("127.0.0.1", 0))
+        occupied.bind(("127.0.0.1", port + CHAOS_PORT_OFFSET))
         occupied.listen()
         taken = int(occupied.getsockname()[1])
         config = _config(tmp_path, port, chaos_port=taken)

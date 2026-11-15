@@ -41,12 +41,6 @@ Checks:
 
   # Not yet met by the code.
 
-  # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:243: prefer accept4() to accept() because accept4()
-  # allows SOCK_CLOEXEC
-  #     accepted_fd = ::accept(m_socket_fd, nullptr, nullptr);
-  - '-android-cloexec-accept'
-
   # 7 to clean up (7 in library code, 0 in tests), such as
   # src/http/Headers.hpp:89: 2 adjacent parameters of 'get' of similar type
   # ('std::string_view') are easily swapped by mistake
@@ -125,7 +119,7 @@ CheckOptions:
   # includes, and leaves the POSIX ones as written. It also never suggests a
   # standard library's private headers (libc++'s __chrono/..., libstdc++'s
   # bits/...).
-  misc-include-cleaner.IgnoreHeaders: '__.*;bits/.*;asm/.*\.h$;asm-generic/.*\.h$;linux/.*\.h$;sys/.*\.h$;net/.*\.h$;netinet/.*\.h$;arpa/.*\.h$;netdb\.h$;unistd\.h$;ifaddrs\.h$'
+  misc-include-cleaner.IgnoreHeaders: '__.*;bits/.*;asm/.*\.h$;asm-generic/.*\.h$;linux/.*\.h$;sys/.*\.h$;net/.*\.h$;netinet/.*\.h$;arpa/.*\.h$;netdb\.h$;unistd\.h$;ifaddrs\.h$;fcntl\.h$'
   # Json's operator[] checks its own bounds: on a Json that is not const, it
   # grows the array or adds the member, and on a const Json it throws, as
   # at() does. Like std::map's, which the check leaves out by default, it is
