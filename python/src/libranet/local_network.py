@@ -692,12 +692,10 @@ def parse_args(argv: Sequence[str] | None = None) -> Namespace:
         parser.error("--base-port leaves no room for that many ports")
 
     try:
-        host = ip_address(args.host)
+        args.host = str(ip_address(args.host))
 
     except ValueError:
         parser.error(f"--host must be an IP address, got {args.host!r}")
-
-    args.host = str(host)
 
     if args.max_storage_bytes is not None and args.max_storage_bytes < 0:
         parser.error("--max-storage-bytes must not be negative")
