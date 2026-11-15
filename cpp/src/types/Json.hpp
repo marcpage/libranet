@@ -25,7 +25,7 @@ namespace types {
 
 class Json {
 public:
-    enum class Type {
+    enum class Type : std::uint8_t {
         Null,
         Boolean,
         Integer,

@@ -47,40 +47,10 @@ Checks:
   #     inline std::string_view Headers::get(std::string_view key, std::s...
   - '-bugprone-easily-swappable-parameters'
 
-  # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/types/BlockingQueue.hpp:50: member 'm_capacity' of type 'const size_t'
-  # (aka 'const unsigned long') is const qualified
-  #     const size_t m_capacity;
-  - '-cppcoreguidelines-avoid-const-or-ref-data-members'
-
   # 4 to clean up (4 in library code, 0 in tests), such as
   # src/net/SocketPosix.cpp:204: avoid do-while loops
   #     do {
   - '-cppcoreguidelines-avoid-do-while'
-
-  # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:148: forwarding reference parameter 'socket_call' is
-  # never forwarded inside the function body
-  #     net::Address query_socket_address(int socket_fd, Func&& socket_call,
-  - '-cppcoreguidelines-missing-std-forward'
-
-  # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/msg/AsyncChannel.hpp:22: member variable 'm_logger' has protected
-  # visibility
-  #     Logger m_logger; // for errors when running asynchronously
-  - '-cppcoreguidelines-non-private-member-variables-in-classes'
-  - '-misc-non-private-member-variables-in-classes'
-
-  # 4 to clean up (2 in library code, 2 in tests), such as
-  # src/net/SocketPosix.cpp:154: do not use reinterpret_cast
-  #     reinterpret_cast<sockaddr*>(&storage), &length);
-  - '-cppcoreguidelines-pro-type-reinterpret-cast'
-
-  # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:128: enum 'Direction' is unscoped, use 'enum class'
-  # instead
-  #     enum Direction { DirectionSend,
-  - '-cppcoreguidelines-use-enum-class'
 
   # 2 to clean up (2 in library code, 0 in tests), such as
   # src/msg/Channel.cpp:15: static objects are disallowed; if possible, use a
@@ -99,12 +69,6 @@ Checks:
   # chain
   #     inline Integer operator&(const Integer& left, const Integer& righ...
   - '-misc-no-recursion'
-
-  # 3 to clean up (3 in library code, 0 in tests), such as src/http/Url.hpp:22:
-  # enum 'EncodeContext' uses a larger base type ('int', size: 4 bytes) than
-  # necessary for its value set, consider using 'std::uint8_t' (1 by...
-  #     enum class EncodeContext {
-  - '-performance-enum-size'
 
 WarningsAsErrors: '*'
 # Every header that is not a system header. CMake includes Conan's packages

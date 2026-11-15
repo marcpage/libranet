@@ -5,6 +5,7 @@
 #include <array>
 #include <cerrno>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <ctime>
 #include <limits>
@@ -129,12 +130,13 @@ net::Address address_from_sockaddr(const sockaddr* address, socklen_t length) {
     return {host.data(), static_cast<net::Address::Port>(port)};
 }
 
-enum Direction { DirectionSend,
-                 DirectionReceive,
+enum class Direction : std::uint8_t {
+    Send,
+    Receive,
 };
 
 int set_timeout(int socket_fd, Direction direction, net::ISocket::Milliseconds timeout) {
-    const auto direction_flag = DirectionSend == direction ? SO_SNDTIMEO : SO_RCVTIMEO;
+    const auto direction_flag = direction == Direction::Send ? SO_SNDTIMEO : SO_RCVTIMEO;
     timeval timeout_value{};
 
     if (timeout.count() > 0) {
@@ -149,16 +151,20 @@ int set_timeout(int socket_fd, Direction direction, net::ISocket::Milliseconds t
 }
 
 template<typename Func>
-net::Address query_socket_address(int socket_fd, Func&& socket_call,
+net::Address query_socket_address(int socket_fd, Func socket_call,
                                   const char* operation_name) {
     sockaddr_storage storage{};
     socklen_t length = sizeof(storage);
 
+    // The POSIX socket calls take a sockaddr*, and a sockaddr_storage is
+    // made to be passed as one.
+    // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
     const auto result = socket_call(socket_fd,
                                     reinterpret_cast<sockaddr*>(&storage), &length);
 
     assert_socket(result == 0, operation_name);
     return address_from_sockaddr(reinterpret_cast<const sockaddr*>(&storage), length);
+    // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
 }
 
 } // namespace
@@ -333,7 +339,7 @@ void SocketPosix::set_receive_timeout(ISocket::Milliseconds timeout) {
                                        "Cannot set timeout on a closed socket");
     assert_condition<std::invalid_argument>(timeout.count() >= 0,
                                             "timeout cannot be negative");
-    assert_socket(::set_timeout(m_socket_fd, DirectionReceive, timeout) == 0,
+    assert_socket(::set_timeout(m_socket_fd, Direction::Receive, timeout) == 0,
                   "setsockopt(SO_RCVTIMEO)");
 }
 
@@ -342,7 +348,7 @@ void SocketPosix::set_send_timeout(ISocket::Milliseconds timeout) {
                                        "Cannot set timeout on a closed socket");
     assert_condition<std::invalid_argument>(timeout.count() >= 0,
                                             "timeout cannot be negative");
-    assert_socket(::set_timeout(m_socket_fd, DirectionSend, timeout) == 0,
+    assert_socket(::set_timeout(m_socket_fd, Direction::Send, timeout) == 0,
                   "setsockopt(SO_SNDTIMEO)");
 }
 

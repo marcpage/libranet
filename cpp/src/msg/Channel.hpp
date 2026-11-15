@@ -41,6 +41,8 @@ public:
     static void post(const std::string& name, Type value);
 
 protected:
+    // AsyncChannel's worker takes messages from it, and is woken through it.
+    // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes,misc-non-private-member-variables-in-classes)
     types::BlockingQueue<IMessage::Ptr> m_message_queue;
 
 private:
