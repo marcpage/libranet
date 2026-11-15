@@ -612,7 +612,7 @@ inline std::optional<uint16_t> Url::parse_port(std::string_view str) {
     }
 
     try {
-        unsigned long port_number = std::stoul(std::string(str));
+        const auto port_number = std::stoul(std::string(str));
 
         if (port_number <= MaxPortNumber) {
             return static_cast<uint16_t>(port_number);

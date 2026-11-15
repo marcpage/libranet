@@ -2,6 +2,7 @@
 #include <atomic>
 #include <chrono> // IWYU pragma: keep (the ms literals)
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <thread>
 #include <utility>
@@ -142,7 +143,7 @@ TEST(BlockingQueueTest, ProducerConsumer) {
 
     std::atomic<int> produced{0};
     std::atomic<int> consumed{0};
-    std::atomic<long long> sum{0};
+    std::atomic<std::int64_t> sum{0};
 
     // Producer
     std::thread producer([&] {
@@ -173,7 +174,7 @@ TEST(BlockingQueueTest, ProducerConsumer) {
     EXPECT_EQ(produced.load(), num_items);
     EXPECT_EQ(consumed.load(), num_items);
     // Sum of 1..N = N*(N+1)/2
-    EXPECT_EQ(sum.load(), static_cast<long long>(num_items) * (num_items + 1) / 2);
+    EXPECT_EQ(sum.load(), static_cast<std::int64_t>(num_items) * (num_items + 1) / 2);
     EXPECT_TRUE(queue.empty());
 }
 
@@ -191,7 +192,7 @@ TEST(BlockingQueueTest, MultipleProducersConsumers) {
     BlockingQueue<int> queue(capacity);
 
     std::atomic<int> consumed{0};
-    std::atomic<long long> checksum{0};
+    std::atomic<std::int64_t> checksum{0};
 
     std::vector<std::thread> producers;
     producers.reserve(num_producers);
@@ -225,7 +226,7 @@ TEST(BlockingQueueTest, MultipleProducersConsumers) {
 
     EXPECT_EQ(consumed.load(), total);
     // Expected sum = total*(total+1)/2
-    EXPECT_EQ(checksum.load(), static_cast<long long>(total) * (total + 1) / 2);
+    EXPECT_EQ(checksum.load(), static_cast<std::int64_t>(total) * (total + 1) / 2);
     EXPECT_TRUE(queue.empty());
 }
 // NOLINTEND(readability-function-cognitive-complexity)
