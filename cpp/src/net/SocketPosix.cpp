@@ -264,6 +264,9 @@ ISocket::Ptr SocketPosix::accept() {
     assert_socket(accepted_fd >= 0, "accept");
 
 #ifdef __APPLE__
+    // fcntl() is the POSIX call that sets close-on-exec, and it takes
+    // variable arguments; there is no other form.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg)
     (void)::fcntl(accepted_fd, F_SETFD, FD_CLOEXEC);
 #endif
 
