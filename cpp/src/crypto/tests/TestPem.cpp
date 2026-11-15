@@ -33,7 +33,7 @@ TEST(PemTest, WrapLineWrapping) {
     EXPECT_EQ(pem,
               "-----BEGIN PRIVATE KEY-----\n"
               "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFB\n"
-              "QUFBQUFBQUFBQUFBQUFBQUFBQQ==\n"
+              "QUFBQUFBQUFBQUFBQUFBQQ==\n"
               "-----END PRIVATE KEY-----\n");
 }
 

@@ -11,6 +11,11 @@ class LibranetConan(ConanFile):
     settings: tuple[str, ...] = ("os", "compiler", "build_type", "arch")
     generators: str = "CMakeDeps"
 
+    def requirements(self) -> None:
+        """OpenSSL, for the crypto library, which builds only on macOS so far."""
+        if self.settings.os == "Macos":
+            self.requires("openssl/3.5.9")
+
     def build_requirements(self) -> None:
         """GoogleTest, which only the tests use."""
         self.test_requires("gtest/1.18.0")
