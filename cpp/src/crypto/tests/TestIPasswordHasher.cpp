@@ -52,6 +52,8 @@ TEST(IPasswordHasherTest, UniqueSalts) {
     const std::string hash2 = hasher->hash_password(password);
 
     // Hashes must be unique due to cryptographically secure random salting
+    // Mistaken: each hash_password() call makes a salt of its own.
+    // cppcheck-suppress knownConditionTrueFalse
     EXPECT_NE(hash1, hash2);
     EXPECT_TRUE(hasher->verify_password(password, hash1));
     EXPECT_TRUE(hasher->verify_password(password, hash2));

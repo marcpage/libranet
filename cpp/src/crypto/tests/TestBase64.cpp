@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <cstddef>
 #include <stdexcept>
 #include <string>
@@ -20,13 +21,10 @@ TEST(Base64Test, EncodeBytes) {
 
 TEST(Base64Test, DecodeValid) {
     const std::vector<std::byte> decoded = Base64::decode("SGVsbG8sIFdvcmxkIQ==");
-    std::string decoded_string;
+    std::string decoded_string(decoded.size(), '\0');
 
-    decoded_string.reserve(decoded.size());
-
-    for (const auto byte_item : decoded) {
-        decoded_string.push_back(static_cast<char>(byte_item));
-    }
+    std::transform(decoded.begin(), decoded.end(), decoded_string.begin(),
+                   [](std::byte byte_item) { return static_cast<char>(byte_item); });
 
     EXPECT_EQ(decoded_string, "Hello, World!");
 }

@@ -177,11 +177,12 @@ inline OpenSslKey OpenSslDer::read_key(const std::vector<std::byte>& der, KeyRea
     return key;
 }
 
-// NOLINTNEXTLINE(google-runtime-int)
+// NOLINTBEGIN(google-runtime-int)
 inline EVP_PKEY* OpenSslDer::d2i_rsa_public_key(EVP_PKEY** key, const unsigned char** next,
                                                 long length) {
     return d2i_PublicKey(EVP_PKEY_RSA, key, next, length);
 }
+// NOLINTEND(google-runtime-int)
 
 inline OpenSslError::OpenSslError(std::string_view what)
     : std::runtime_error(describe(what)) {}

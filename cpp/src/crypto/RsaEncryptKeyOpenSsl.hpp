@@ -38,7 +38,7 @@ private:
     OpenSslKey m_key;
     bool m_has_private;
 
-    [[nodiscard]] KeyContext context() const;
+    [[nodiscard]] KeyContext make_context() const;
     static void use_oaep(EVP_PKEY_CTX* context);
 };
 
@@ -46,8 +46,8 @@ inline RsaEncryptKeyOpenSsl::RsaEncryptKeyOpenSsl(OpenSslKey key, bool has_priva
     : m_key(std::move(key)), m_has_private(has_private) {}
 
 inline IEncryptKey::Data RsaEncryptKeyOpenSsl::encrypt(
-    std::string_view plaintext, const InitializationVector& /*vector*/) const {
-    const auto context = this->context();
+    std::string_view plaintext, [[maybe_unused]] const InitializationVector& vector) const {
+    const auto context = make_context();
 
     if (EVP_PKEY_encrypt_init(context.get()) <= 0) {
         throw OpenSslError("Failed to start RSA OAEP encryption");
@@ -76,12 +76,12 @@ inline IEncryptKey::Data RsaEncryptKeyOpenSsl::encrypt(
 }
 
 inline std::string RsaEncryptKeyOpenSsl::decrypt(const Data& ciphertext,
-                                                 const InitializationVector& /*vector*/) const {
+                                                 [[maybe_unused]] const InitializationVector& vector) const {
     if (!m_has_private) {
         throw std::runtime_error("RSA private key required for decryption.");
     }
 
-    const auto context = this->context();
+    const auto context = make_context();
 
     if (EVP_PKEY_decrypt_init(context.get()) <= 0) {
         throw OpenSslError("Failed to start RSA OAEP decryption");
@@ -109,7 +109,7 @@ inline std::string RsaEncryptKeyOpenSsl::decrypt(const Data& ciphertext,
     return plaintext;
 }
 
-inline RsaEncryptKeyOpenSsl::KeyContext RsaEncryptKeyOpenSsl::context() const {
+inline RsaEncryptKeyOpenSsl::KeyContext RsaEncryptKeyOpenSsl::make_context() const {
     KeyContext context(EVP_PKEY_CTX_new_from_pkey(nullptr, m_key.get(), nullptr));
 
     if (!context) {
