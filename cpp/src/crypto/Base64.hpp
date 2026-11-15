@@ -29,7 +29,9 @@ private:
 
 inline std::string Base64::encode(const std::vector<std::byte>& data) {
     std::string encoded_result;
-    int accumulator = 0;
+    // Only its low bits are read, so it may wrap around: unsigned, where
+    // shifting a signed int past its top bit is undefined.
+    unsigned int accumulator = 0;
     int bit_balance = -6;
 
     encoded_result.reserve(((data.size() + 2) / 3) * 4);
