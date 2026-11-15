@@ -146,7 +146,7 @@ TEST(SocketPosixTest, HelpersSendAllAndReadExact) {
     const std::string payload = "BinaryPayloadData12345";
     client->send_all(payload);
 
-    std::vector<std::byte> exact_bytes = peer->read_exact(payload.size());
+    const std::vector<std::byte> exact_bytes = peer->read_exact(payload.size());
     EXPECT_EQ(exact_bytes.size(), payload.size());
 
     const std::string received_payload = as_text(exact_bytes);
