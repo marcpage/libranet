@@ -83,7 +83,7 @@ TEST(MessageTest, Polymorphism) {
     EXPECT_EQ(msg3->to_string(), "-100");
 
     // Value access still requires the concrete type
-    auto* concrete = dynamic_cast<Message<int>*>(msg1.get());
+    const auto* concrete = dynamic_cast<const Message<int>*>(msg1.get());
     ASSERT_NE(concrete, nullptr);
     EXPECT_EQ(concrete->value(), int_value);
 }

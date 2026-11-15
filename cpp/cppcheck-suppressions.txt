@@ -28,12 +28,6 @@ checkersReport
 # emptied them.
 accessMoved
 
-# 1 to clean up (0 in library code, 1 in tests), such as
-# src/msg/tests/TestMessage.cpp:78: Variable 'concrete' can be declared as
-# pointer to const
-#     auto* concrete = dynamic_cast<Message<int>*>(msg1.get());
-constVariablePointer
-
 # 4 to clean up (4 in library code, 0 in tests), such as
 # src/net/SocketPosix.cpp:164: The class 'SocketPosix' defines member function
 # with name 'bind' also defined in its parent class 'ISocket'.
@@ -60,11 +54,6 @@ noConstructor
 #     ResponseCode(Status status, std::optional<std::string> custom_reason = ...
 # On purpose: a Status converts to a ResponseCode, as for clang-tidy.
 noExplicitConstructor
-
-# 1 to clean up (1 in library code, 0 in tests), such as src/http/Query.hpp:34:
-# Function 'items()' should return member 'm_parameters' by const reference.
-#     [[nodiscard]] std::vector<std::pair<std::string, std::string>> items() ...
-returnByReference
 
 # 5 to clean up (5 in library code, 0 in tests), such as src/types/Json.hpp:779:
 # Returning object that will be invalid when returning.

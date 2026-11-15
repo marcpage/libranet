@@ -31,7 +31,7 @@ public:
     void clear() noexcept;
     [[nodiscard]] bool empty() const noexcept;
 
-    [[nodiscard]] std::vector<std::pair<std::string, std::string>> items() const;
+    [[nodiscard]] const std::vector<std::pair<std::string, std::string>>& items() const;
 
     [[nodiscard]] std::string to_string() const;
 
@@ -53,7 +53,7 @@ inline std::string& Query::operator[](std::string_view key) {
     return m_parameters.back().second;
 }
 
-inline std::vector<std::pair<std::string, std::string>> Query::items() const {
+inline const std::vector<std::pair<std::string, std::string>>& Query::items() const {
     return m_parameters;
 }
 
