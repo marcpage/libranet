@@ -13,6 +13,8 @@ public:
     ~SocketPosix() override;
     SocketPosix(const SocketPosix&) = delete;
     SocketPosix& operator=(const SocketPosix&) = delete;
+    SocketPosix(SocketPosix&&) = delete;
+    SocketPosix& operator=(SocketPosix&&) = delete;
 
     void listen(int backlog) override;
     ISocket::Ptr accept() override;

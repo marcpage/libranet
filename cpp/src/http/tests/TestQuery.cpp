@@ -110,4 +110,11 @@ TEST(QueryTest, StreamOperatorsAndParsing) {
     EXPECT_EQ(parsed_stream_query.get_first("beta"), "two");
 }
 
+TEST(QueryTest, EmptyNameIsKept) {
+    // A parameter with no name and no value keeps its '=', or it would be lost.
+    const Query query = Query::parse("=&=");
+    EXPECT_EQ(query.to_string(), "=&=");
+    EXPECT_EQ(Query::parse("?" + query.to_string()).to_string(), "=&=");
+}
+
 // NOLINTEND(bugprone-unchecked-optional-access)

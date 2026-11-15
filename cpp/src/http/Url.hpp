@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <iomanip>
@@ -340,6 +341,12 @@ inline std::optional<Url> Url::parse(std::string_view url_string) {
 
     parse_authority(authority, url.m_username, url.m_password, url.m_host, url.m_port);
 
+    // Only the brackets around an IPv6 address: in a host they would be
+    // written as if they were those.
+    if (url.m_host.find_first_of("[]") != std::string::npos) {
+        return std::nullopt;
+    }
+
     return url;
 }
 
@@ -351,7 +358,7 @@ inline std::string Url::to_string() const {
         result += "://";
     }
 
-    if (!m_username.empty()) {
+    if (!m_username.empty() || !m_password.empty()) {
         result += m_username;
 
         if (!m_password.empty()) {
@@ -427,7 +434,9 @@ inline void Url::extract_query(std::string_view& url_string, Query& query) {
     const auto query_pos = url_string.find('?');
 
     if (query_pos != std::string_view::npos) {
-        query = Query::parse(url_string.substr(query_pos + 1));
+        // With its '?', which Query::parse drops, so that a query that
+        // itself starts with '?' keeps it.
+        query = Query::parse(url_string.substr(query_pos));
         url_string = url_string.substr(0, query_pos);
     }
 }
@@ -435,7 +444,8 @@ inline void Url::extract_query(std::string_view& url_string, Query& query) {
 inline void Url::extract_scheme(std::string_view& url_string, std::string& scheme) {
     const auto scheme_end = url_string.find("://");
 
-    if (scheme_end != std::string_view::npos) {
+    // A "://" after the first '/' is in the path, and names no scheme.
+    if (scheme_end != std::string_view::npos && scheme_end < url_string.find('/')) {
         scheme = std::string(url_string.substr(0, scheme_end));
         url_string.remove_prefix(scheme_end + 3);
     }
@@ -545,9 +555,9 @@ inline void Url::append(std::string_view relative_url) {
 inline std::string Url::to_lower_copy(std::string_view str) {
     std::string result(str);
 
-    for (auto& character : result) {
-        character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
-    }
+    std::transform(result.begin(), result.end(), result.begin(), [](char character) {
+        return static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+    });
 
     return result;
 }

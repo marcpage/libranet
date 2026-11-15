@@ -3,10 +3,12 @@
 // stream, or, for a header line, with std::runtime_error or
 // std::invalid_argument; anything else it does with an input, such as
 // crash, hang, or throw something else, is a fault. A request it reads is
-// written back out.
+// written back out as text it reads back as the same request.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -20,13 +22,22 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     http::Request request;
 
     try {
-        if (stream >> request) {
-            static_cast<void>(request.to_string());
+        if (!(stream >> request)) {
+            return 0;
         }
     } catch (const std::runtime_error&) {
         return 0;
     } catch (const std::invalid_argument&) {
         return 0;
+    }
+
+    const std::string text = request.to_string();
+    std::istringstream text_stream(text);
+    http::Request reread;
+
+    if (!(text_stream >> reread) || reread.to_string() != text) {
+        std::cerr << "Request did not read back what it wrote: " << text << '\n';
+        std::abort();
     }
 
     return 0;

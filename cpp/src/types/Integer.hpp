@@ -37,6 +37,7 @@ public:
     Integer(Integer&&) noexcept = default;
     Integer& operator=(const Integer&) = default;
     Integer& operator=(Integer&&) noexcept = default;
+    ~Integer() = default;
 
     [[nodiscard]] bool is_zero() const noexcept;
     [[nodiscard]] bool is_negative() const noexcept;

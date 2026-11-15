@@ -84,8 +84,3 @@ uninitMemberVarNoCtor
 #     EXPECT_THROW(AsyncChannel("test.async.null", nullptr), std::invalid_arg...
 # On purpose: EXPECT_THROW constructs one to see it throw.
 unusedScopedObject
-
-# 1 to clean up (1 in library code, 0 in tests), such as src/http/Url.hpp:544:
-# Consider using std::transform algorithm instead of a raw loop.
-#     character = static_cast<char>(std::tolower(static_cast<unsigned char>(c...
-useStlAlgorithm
