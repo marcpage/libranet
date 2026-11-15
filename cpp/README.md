@@ -231,6 +231,7 @@ cannot read:
 | `request_fuzzer` | reading a `Request` | a failed stream, or as `Headers` does |
 | `response_fuzzer` | reading a `Response` | a failed stream, or as `Headers` does |
 | `address_fuzzer` | `Address::parse` | `std::invalid_argument` |
+| `rsa_der_fuzzer` | `RsaDer::pkcs1_from_spki` and `pkcs1_from_pkcs8` | `std::invalid_argument` |
 
 Anything else a parser does with an input is a fault: crashing, hanging,
 leaking, a finding of AddressSanitizer or UndefinedBehaviorSanitizer, a
