@@ -1,0 +1,28 @@
+#include <stdexcept>
+#include "ISignKey.hpp"
+#include "RsaSignKeyMacos.hpp"
+#include "Ed25519.hpp"
+
+using Ed25519Key = crypto::Ed25519;
+
+#if __APPLE__
+    using RsaSignKey = crypto::RsaSignKeyMacos;
+#else
+    #error "Not implemented"
+#endif
+
+namespace crypto {
+
+ISignKey::Ptr ISignKey::Ed25519() {
+    return Ed25519Key::create();
+}
+
+ISignKey::Ptr ISignKey::from_pem(std::string_view pem) {
+    try {
+        return RsaSignKey::from_pem(pem);
+    } catch(const std::exception&) {
+        return Ed25519Key::from_pem(pem);
+    }
+}
+
+} // namespace crypto
