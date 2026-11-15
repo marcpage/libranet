@@ -7,10 +7,11 @@
 
 namespace crypto {
 
-template <typename CFType>
+template<typename CFType>
 class CFObject {
 public:
-    enum class Policy { Retain, TakeOwnership };
+    enum class Policy { Retain,
+                        TakeOwnership };
 
     constexpr CFObject() noexcept;
     explicit CFObject(CFType object, Policy policy) noexcept;
@@ -32,31 +33,31 @@ private:
     CFType m_object;
 };
 
-template <typename CFType>
+template<typename CFType>
 inline constexpr CFObject<CFType>::CFObject() noexcept : m_object(nullptr) {}
 
-template <typename CFType>
+template<typename CFType>
 inline CFObject<CFType>::CFObject(CFType object, Policy policy) noexcept
-        : m_object(object) {
+    : m_object(object) {
     if (nullptr != m_object && policy == Policy::Retain) {
         CFRetain(m_object);
     }
 }
 
-template <typename CFType>
+template<typename CFType>
 inline CFObject<CFType>::~CFObject() {
     reset(nullptr, Policy::TakeOwnership);
 }
 
-template <typename CFType>
+template<typename CFType>
 inline CFObject<CFType>::CFObject(const CFObject& other) noexcept
-        : m_object(other.m_object) {
+    : m_object(other.m_object) {
     if (nullptr != m_object) {
         CFRetain(m_object);
     }
 }
 
-template <typename CFType>
+template<typename CFType>
 inline CFObject<CFType>& CFObject<CFType>::operator=(const CFObject& other) noexcept {
     if (this != &other) {
         reset(other.m_object, Policy::Retain);
@@ -65,12 +66,12 @@ inline CFObject<CFType>& CFObject<CFType>::operator=(const CFObject& other) noex
     return *this;
 }
 
-template <typename CFType>
+template<typename CFType>
 inline CFObject<CFType>::CFObject(CFObject&& other) noexcept : m_object(other.m_object) {
     other.m_object = nullptr;
 }
 
-template <typename CFType>
+template<typename CFType>
 inline CFObject<CFType>& CFObject<CFType>::operator=(CFObject&& other) noexcept {
     if (this != &other) {
         reset(other.m_object, Policy::TakeOwnership);
@@ -80,23 +81,23 @@ inline CFObject<CFType>& CFObject<CFType>::operator=(CFObject&& other) noexcept 
     return *this;
 }
 
-template <typename CFType>
+template<typename CFType>
 inline CFObject<CFType>::operator CFType() const noexcept {
     return m_object;
 }
 
-template <typename CFType>
+template<typename CFType>
 inline CFType CFObject<CFType>::get() const noexcept {
     return m_object;
 }
 
-template <typename CFType>
+template<typename CFType>
 inline CFType* CFObject<CFType>::put() noexcept {
     reset(nullptr, Policy::TakeOwnership); // Clean up any existing resource first
     return &m_object;
 }
 
-template <typename CFType>
+template<typename CFType>
 inline CFType CFObject<CFType>::release() noexcept {
     CFType temp = m_object;
 
@@ -104,7 +105,7 @@ inline CFType CFObject<CFType>::release() noexcept {
     return temp;
 }
 
-template <typename CFType>
+template<typename CFType>
 inline void CFObject<CFType>::reset(CFType new_object, Policy policy) noexcept {
     if (nullptr != new_object && policy == Policy::Retain) {
         CFRetain(new_object);
@@ -117,7 +118,7 @@ inline void CFObject<CFType>::reset(CFType new_object, Policy policy) noexcept {
     m_object = new_object;
 }
 
-template <typename CFType>
+template<typename CFType>
 inline CFObject<CFType>::operator bool() const noexcept {
     return m_object != nullptr;
 }

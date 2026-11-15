@@ -10,15 +10,13 @@ IPasswordHasher::Ptr IPasswordHasher::Argon2id(
     uint32_t iterations,
     uint32_t parallelism,
     std::size_t salt_length,
-    std::size_t hash_length
-) {
+    std::size_t hash_length) {
     return std::make_unique<Argon2idType>(
         memory_cost_kib,
         iterations,
         parallelism,
         salt_length,
-        hash_length
-    );
+        hash_length);
 }
 
 } // namespace crypto

@@ -1,10 +1,10 @@
 #pragma once
 
+#include <cstddef>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
-#include <stdexcept>
-#include <cstddef>
 
 namespace crypto {
 
@@ -92,9 +92,9 @@ inline std::vector<std::byte> Base64::decode(std::string_view encoded_string) {
 
     // Process input four characters at a time
     for (std::size_t index = 0; index < encoded_string.size(); index += 4) {
-        int value_first  = get_character_value(encoded_string[index]);
+        int value_first = get_character_value(encoded_string[index]);
         int value_second = get_character_value(encoded_string[index + 1]);
-        int value_third  = get_character_value(encoded_string[index + 2]);
+        int value_third = get_character_value(encoded_string[index + 2]);
         int value_fourth = get_character_value(encoded_string[index + 3]);
 
         if (value_first == -1 || value_second == -1) {
@@ -102,10 +102,7 @@ inline std::vector<std::byte> Base64::decode(std::string_view encoded_string) {
         }
 
         // Combine the 6-bit values into a 24-bit integer block
-        int triple = (value_first << 18) +
-                     (value_second << 12) +
-                     ((value_third != -1 ? value_third : 0) << 6) +
-                     (value_fourth != -1 ? value_fourth : 0);
+        int triple = (value_first << 18) + (value_second << 12) + ((value_third != -1 ? value_third : 0) << 6) + (value_fourth != -1 ? value_fourth : 0);
 
         // Extract the decoded bytes based on padding presence
         decoded_bytes.push_back(static_cast<std::byte>((triple >> 16) & 0xFF));

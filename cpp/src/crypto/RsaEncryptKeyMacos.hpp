@@ -2,16 +2,16 @@
 
 #if __APPLE__
 
-#include <vector>
-#include <string>
-#include <string_view>
-#include <stdexcept>
-#include <memory>
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <vector>
 
-#include "IEncryptKey.hpp"
 #include "CFObject.hpp"
+#include "IEncryptKey.hpp"
 
 namespace crypto {
 
@@ -44,9 +44,9 @@ inline IEncryptKey::Data RsaEncryptKeyMacos::encrypt(std::string_view plaintext,
         throw std::runtime_error("RSA public key required for encryption.");
     }
     CFObject<CFDataRef> input_data(CFDataCreate(kCFAllocatorDefault,
-                                        reinterpret_cast<const UInt8*>(plaintext.data()),
-                                        static_cast<CFIndex>(plaintext.size()))
-                                    , CFObject<CFDataRef>::Policy::TakeOwnership);
+                                                reinterpret_cast<const UInt8*>(plaintext.data()),
+                                                static_cast<CFIndex>(plaintext.size())),
+                                   CFObject<CFDataRef>::Policy::TakeOwnership);
 
     if (!input_data) {
         throw std::runtime_error("Failed to create CFData for encryption.");
@@ -54,9 +54,9 @@ inline IEncryptKey::Data RsaEncryptKeyMacos::encrypt(std::string_view plaintext,
 
     CFObject<CFErrorRef> error;
     CFObject<CFDataRef> cipher_data(SecKeyCreateEncryptedData(m_public_key,
-                                                  kSecKeyAlgorithmRSAEncryptionOAEPSHA256,
-                                                  input_data,
-                                                  error.put()),
+                                                              kSecKeyAlgorithmRSAEncryptionOAEPSHA256,
+                                                              input_data,
+                                                              error.put()),
                                     CFObject<CFDataRef>::Policy::TakeOwnership);
 
     if (!cipher_data) {
@@ -77,8 +77,8 @@ inline std::string RsaEncryptKeyMacos::decrypt(const Data& ciphertext, const Ini
     }
 
     CFObject<CFDataRef> cipher_data(CFDataCreate(kCFAllocatorDefault,
-                                     reinterpret_cast<const UInt8*>(ciphertext.data()),
-                                     static_cast<CFIndex>(ciphertext.size())),
+                                                 reinterpret_cast<const UInt8*>(ciphertext.data()),
+                                                 static_cast<CFIndex>(ciphertext.size())),
                                     CFObject<CFDataRef>::Policy::TakeOwnership);
 
     if (!cipher_data) {
@@ -87,10 +87,10 @@ inline std::string RsaEncryptKeyMacos::decrypt(const Data& ciphertext, const Ini
 
     CFObject<CFErrorRef> error;
     CFObject<CFDataRef> plain_data(SecKeyCreateDecryptedData(m_private_key,
-                                                 kSecKeyAlgorithmRSAEncryptionOAEPSHA256,
-                                                 cipher_data,
-                                                 error.put()),
-                                    CFObject<CFDataRef>::Policy::TakeOwnership);
+                                                             kSecKeyAlgorithmRSAEncryptionOAEPSHA256,
+                                                             cipher_data,
+                                                             error.put()),
+                                   CFObject<CFDataRef>::Policy::TakeOwnership);
 
     if (!plain_data) {
         throw std::runtime_error("RSA OAEP decryption failed.");

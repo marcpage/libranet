@@ -2,16 +2,16 @@
 
 #if __APPLE__
 
-#include <vector>
-#include <string>
-#include <string_view>
-#include <stdexcept>
-#include <memory>
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <vector>
 
-#include "ISignKey.hpp"
 #include "CFObject.hpp"
+#include "ISignKey.hpp"
 #include "RsaPemMacos.hpp"
 
 namespace crypto {
@@ -51,9 +51,9 @@ inline ISignKey::Data RsaSignKeyMacos::sign(std::string_view data) const {
     }
 
     CFObject<CFDataRef> input_data(CFDataCreate(kCFAllocatorDefault,
-                                        reinterpret_cast<const UInt8*>(data.data()),
-                                        static_cast<CFIndex>(data.size())),
-                                    CFObject<CFDataRef>::Policy::TakeOwnership);
+                                                reinterpret_cast<const UInt8*>(data.data()),
+                                                static_cast<CFIndex>(data.size())),
+                                   CFObject<CFDataRef>::Policy::TakeOwnership);
 
     if (!input_data) {
         throw std::runtime_error("Failed to create CFData for signing.");
@@ -61,10 +61,10 @@ inline ISignKey::Data RsaSignKeyMacos::sign(std::string_view data) const {
 
     CFObject<CFErrorRef> error;
     CFObject<CFDataRef> sig_data(SecKeyCreateSignature(m_private_key,
-                                               kSecKeyAlgorithmRSASignatureMessagePSSSHA256,
-                                               input_data,
-                                               error.put()),
-                                CFObject<CFDataRef>::Policy::TakeOwnership);
+                                                       kSecKeyAlgorithmRSASignatureMessagePSSSHA256,
+                                                       input_data,
+                                                       error.put()),
+                                 CFObject<CFDataRef>::Policy::TakeOwnership);
 
     if (!sig_data) {
         throw std::runtime_error("RSA PSS signature creation failed.");
@@ -83,13 +83,13 @@ inline bool RsaSignKeyMacos::verify(std::string_view data, const Data& signature
     }
 
     CFObject<CFDataRef> input_data(CFDataCreate(kCFAllocatorDefault,
-                                        reinterpret_cast<const UInt8*>(data.data()),
-                                        static_cast<CFIndex>(data.size())),
-                                    CFObject<CFDataRef>::Policy::TakeOwnership);
+                                                reinterpret_cast<const UInt8*>(data.data()),
+                                                static_cast<CFIndex>(data.size())),
+                                   CFObject<CFDataRef>::Policy::TakeOwnership);
     CFObject<CFDataRef> sig_data(CFDataCreate(kCFAllocatorDefault,
-                                        reinterpret_cast<const UInt8*>(signature.data()),
-                                        static_cast<CFIndex>(signature.size())),
-                                    CFObject<CFDataRef>::Policy::TakeOwnership);
+                                              reinterpret_cast<const UInt8*>(signature.data()),
+                                              static_cast<CFIndex>(signature.size())),
+                                 CFObject<CFDataRef>::Policy::TakeOwnership);
 
     if (!input_data || !sig_data) {
         return false;

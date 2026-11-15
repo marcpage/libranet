@@ -2,9 +2,9 @@
 #include "Sha256Macos.hpp"
 
 #if __APPLE__
-    using Sha256Type = crypto::Sha256Macos;
+using Sha256Type = crypto::Sha256Macos;
 #else
-    #error "Not Implemented"
+#error "Not Implemented"
 #endif
 
 namespace crypto {

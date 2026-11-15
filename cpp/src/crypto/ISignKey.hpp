@@ -18,7 +18,7 @@ public:
 
     [[nodiscard]] virtual Data sign(std::string_view data) const = 0;
     [[nodiscard]] virtual bool verify(std::string_view data,
-                                                        const Data& signature) const = 0;
+                                      const Data& signature) const = 0;
 
     [[nodiscard]] virtual std::string public_pem() const = 0;
     [[nodiscard]] virtual std::string private_pem() const = 0;

@@ -4,8 +4,8 @@
 
 #include "IHasher.hpp"
 #include <CommonCrypto/CommonDigest.h>
-#include <stdexcept>
 #include <cstring>
+#include <stdexcept>
 
 namespace crypto {
 

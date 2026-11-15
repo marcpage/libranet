@@ -2,9 +2,9 @@
 #include "AesMacos.hpp"
 
 #if __APPLE__
-    using AesType = crypto::AesMacos;
+using AesType = crypto::AesMacos;
 #else
-    #error "Not implemented"
+#error "Not implemented"
 #endif
 
 namespace crypto {

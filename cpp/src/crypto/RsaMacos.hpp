@@ -51,10 +51,10 @@ private:
 
 inline IMultiKey::Ptr RsaMacos::for_bit_size(std::size_t key_bits) {
     CFObject<CFNumberRef> key_size_ref(
-                    CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt64Type, &key_bits),
-                CFObject<CFNumberRef>::Policy::TakeOwnership);
-    const void* keys[] = { kSecAttrKeyType, kSecAttrKeySizeInBits };
-    const void* values[] = { kSecAttrKeyTypeRSA, key_size_ref };
+        CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt64Type, &key_bits),
+        CFObject<CFNumberRef>::Policy::TakeOwnership);
+    const void* keys[] = {kSecAttrKeyType, kSecAttrKeySizeInBits};
+    const void* values[] = {kSecAttrKeyTypeRSA, key_size_ref};
     CFObject<CFDictionaryRef> parameters(
         CFDictionaryCreate(
             kCFAllocatorDefault,
@@ -62,16 +62,13 @@ inline IMultiKey::Ptr RsaMacos::for_bit_size(std::size_t key_bits) {
             values,
             2,
             &kCFTypeDictionaryKeyCallBacks,
-            &kCFTypeDictionaryValueCallBacks
-        ),
-        CFObject<CFDictionaryRef>::Policy::TakeOwnership
-    );
+            &kCFTypeDictionaryValueCallBacks),
+        CFObject<CFDictionaryRef>::Policy::TakeOwnership);
 
     CFObject<CFErrorRef> error;
     CFObject<SecKeyRef> private_key(
         SecKeyCreateRandomKey(parameters, error.put()),
-        CFObject<SecKeyRef>::Policy::TakeOwnership
-    );
+        CFObject<SecKeyRef>::Policy::TakeOwnership);
 
     if (!private_key) {
         throw std::runtime_error("Failed to generate RSA key pair on macOS.");
@@ -80,8 +77,7 @@ inline IMultiKey::Ptr RsaMacos::for_bit_size(std::size_t key_bits) {
     // Automatically derive the public counterpart from the generated private key
     CFObject<SecKeyRef> public_key(
         SecKeyCopyPublicKey(private_key),
-        CFObject<SecKeyRef>::Policy::TakeOwnership
-    );
+        CFObject<SecKeyRef>::Policy::TakeOwnership);
 
     if (!public_key) {
         throw std::runtime_error("Failed to derive public key from generated RSA private key.");

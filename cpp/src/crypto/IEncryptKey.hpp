@@ -13,15 +13,17 @@ public:
     using Ptr = std::unique_ptr<IEncryptKey>;
     using Data = std::vector<std::byte>;
     using InitializationVector = std::vector<std::byte>;
-    enum class AesMode { Cbc, Ctr };
-    enum class AesPadding { Pkcs7, None };
+    enum class AesMode { Cbc,
+                         Ctr };
+    enum class AesPadding { Pkcs7,
+                            None };
 
     static Ptr Aes(const Data& raw_key, AesMode mode, AesPadding padding);
 
     [[nodiscard]] virtual Data encrypt(std::string_view plaintext,
-                                            const InitializationVector& vector) const = 0;
+                                       const InitializationVector& vector) const = 0;
     [[nodiscard]] virtual std::string decrypt(const Data& ciphertext,
-                                            const InitializationVector& vector) const = 0;
+                                              const InitializationVector& vector) const = 0;
 
     virtual ~IEncryptKey() = default;
     IEncryptKey(const IEncryptKey&) = delete;

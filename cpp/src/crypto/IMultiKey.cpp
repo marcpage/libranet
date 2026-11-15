@@ -2,9 +2,9 @@
 #include "RsaMacos.hpp"
 
 #if __APPLE__
-    using RsaType = crypto::RsaMacos;
+using RsaType = crypto::RsaMacos;
 #else
-    #error "Not implemented for this platform"
+#error "Not implemented for this platform"
 #endif
 
 namespace crypto {

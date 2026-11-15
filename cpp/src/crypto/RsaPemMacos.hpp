@@ -36,7 +36,7 @@ private:
     static std::pair<bool, bool> validate_and_classify_pem_label(std::string_view label);
     static CFObject<CFDataRef> create_cf_data(const std::vector<std::byte>& der_bytes);
     static CFObject<SecKeyRef> create_sec_key_from_data(CFDataRef data_ref,
-                                                                        bool is_private);
+                                                        bool is_private);
 };
 
 inline std::string RsaPemMacos::public_pem(SecKeyRef public_key) {
@@ -55,7 +55,7 @@ inline std::string RsaPemMacos::public_pem(SecKeyRef public_key) {
     const auto* ptr = CFDataGetBytePtr(data);
     const auto length = CFDataGetLength(data);
     const std::vector<std::byte> bytes(reinterpret_cast<const std::byte*>(ptr),
-                                  reinterpret_cast<const std::byte*>(ptr) + length);
+                                       reinterpret_cast<const std::byte*>(ptr) + length);
 
     return Pem::wrap("PUBLIC KEY", bytes);
 }
@@ -71,13 +71,13 @@ inline std::string RsaPemMacos::private_pem(SecKeyRef private_key) {
 
     if (!data) {
         throw std::runtime_error(
-                                "Failed to copy external representation of private key.");
+            "Failed to copy external representation of private key.");
     }
 
     const auto* ptr = CFDataGetBytePtr(data);
     const auto length = CFDataGetLength(data);
     const std::vector<std::byte> bytes(reinterpret_cast<const std::byte*>(ptr),
-                                  reinterpret_cast<const std::byte*>(ptr) + length);
+                                       reinterpret_cast<const std::byte*>(ptr) + length);
 
     return Pem::wrap("PRIVATE KEY", bytes);
 }
@@ -93,7 +93,7 @@ inline RsaPemMacos::KeyPair RsaPemMacos::from_pem(std::string_view pem) {
     if (is_private) {
         private_key = std::move(created_key);
         public_key.reset(SecKeyCopyPublicKey(private_key),
-                                            CFObject<SecKeyRef>::Policy::TakeOwnership);
+                         CFObject<SecKeyRef>::Policy::TakeOwnership);
     } else {
         public_key = created_key;
     }
@@ -102,24 +102,24 @@ inline RsaPemMacos::KeyPair RsaPemMacos::from_pem(std::string_view pem) {
 }
 
 inline std::pair<bool, bool> RsaPemMacos::validate_and_classify_pem_label(
-                                                                std::string_view label) {
+    std::string_view label) {
     bool is_private = (label == "PRIVATE KEY" || label == "RSA PRIVATE KEY");
     bool is_public = (label == "PUBLIC KEY" || label == "RSA PUBLIC KEY");
 
     if (!is_private && !is_public) {
         throw std::invalid_argument("Unsupported or unrecognized PEM label: "
-                                        + std::string(label));
+                                    + std::string(label));
     }
 
     return {is_private, is_public};
 }
 
 inline CFObject<CFDataRef> RsaPemMacos::create_cf_data(
-                                                const std::vector<std::byte>& der_bytes) {
+    const std::vector<std::byte>& der_bytes) {
     CFObject<CFDataRef> data_ref(CFDataCreate(kCFAllocatorDefault,
-                                         reinterpret_cast<const UInt8*>(der_bytes.data()),
-                                         static_cast<CFIndex>(der_bytes.size())),
-                                CFObject<CFDataRef>::Policy::TakeOwnership);
+                                              reinterpret_cast<const UInt8*>(der_bytes.data()),
+                                              static_cast<CFIndex>(der_bytes.size())),
+                                 CFObject<CFDataRef>::Policy::TakeOwnership);
 
     if (!data_ref) {
         throw std::runtime_error("Failed to create CFData from PEM DER bytes.");
@@ -129,24 +129,23 @@ inline CFObject<CFDataRef> RsaPemMacos::create_cf_data(
 }
 
 inline CFObject<SecKeyRef> RsaPemMacos::create_sec_key_from_data(CFDataRef data_ref,
-                                                                        bool is_private) {
+                                                                 bool is_private) {
     CFTypeRef key_class = is_private ? kSecAttrKeyClassPrivate : kSecAttrKeyClassPublic;
-    const void* keys[] = { kSecAttrKeyType, kSecAttrKeyClass };
-    const void* values[] = { kSecAttrKeyTypeRSA, key_class };
+    const void* keys[] = {kSecAttrKeyType, kSecAttrKeyClass};
+    const void* values[] = {kSecAttrKeyTypeRSA, key_class};
 
     CFObject<CFDictionaryRef> attributes(CFDictionaryCreate(
-                                                kCFAllocatorDefault,
-                                                keys,
-                                                values,
-                                                2,
-                                                &kCFTypeDictionaryKeyCallBacks,
-                                                &kCFTypeDictionaryValueCallBacks
-                                            ),
-                                        CFObject<CFDictionaryRef>::Policy::TakeOwnership);
+                                             kCFAllocatorDefault,
+                                             keys,
+                                             values,
+                                             2,
+                                             &kCFTypeDictionaryKeyCallBacks,
+                                             &kCFTypeDictionaryValueCallBacks),
+                                         CFObject<CFDictionaryRef>::Policy::TakeOwnership);
 
     CFObject<CFErrorRef> error;
     CFObject<SecKeyRef> created_key(SecKeyCreateWithData(data_ref,
-                                                                attributes, error.put()),
+                                                         attributes, error.put()),
                                     CFObject<SecKeyRef>::Policy::TakeOwnership);
 
     if (!created_key) {
@@ -154,7 +153,7 @@ inline CFObject<SecKeyRef> RsaPemMacos::create_sec_key_from_data(CFDataRef data_
 
         if (error) {
             CFObject<CFStringRef> desc(CFErrorCopyDescription(error),
-                                        CFObject<CFStringRef>::Policy::TakeOwnership);
+                                       CFObject<CFStringRef>::Policy::TakeOwnership);
 
             if (desc) {
                 char buf[256];
@@ -175,4 +174,3 @@ inline CFObject<SecKeyRef> RsaPemMacos::create_sec_key_from_data(CFDataRef data_
 } // crypto
 
 #endif // __APPLE__
-

@@ -1,11 +1,11 @@
 #pragma once
 
+#include "Base64.hpp"
+#include <cstddef>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
-#include <stdexcept>
-#include <cstddef>
-#include "Base64.hpp"
 
 namespace crypto {
 
@@ -87,7 +87,7 @@ inline Pem::Unwrapped Pem::unwrap(std::string_view pem_string) {
     const auto label_end = pem_string.find(suffix, label_start);
 
     if (label_end == std::string_view::npos) {
-    	throw std::invalid_argument("Malformed PEM BEGIN header.");
+        throw std::invalid_argument("Malformed PEM BEGIN header.");
     }
 
     std::string label(pem_string.substr(label_start, label_end - label_start));
@@ -96,7 +96,7 @@ inline Pem::Unwrapped Pem::unwrap(std::string_view pem_string) {
 
     if (end_position == std::string_view::npos) {
         throw std::invalid_argument("PEM string missing matching END footer for label: "
-                                        + label);
+                                    + label);
     }
 
     const auto content_start = label_end + suffix.size();

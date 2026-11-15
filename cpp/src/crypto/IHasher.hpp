@@ -17,8 +17,8 @@ public:
 
     virtual void update(std::string_view data) = 0;
     virtual void update(const Data& data) = 0;
-    [[nodiscard]] virtual Data digest(const Data& data=Data()) = 0;
-    [[nodiscard]] virtual std::string hex_digest(const Data& data=Data());
+    [[nodiscard]] virtual Data digest(const Data& data = Data()) = 0;
+    [[nodiscard]] virtual std::string hex_digest(const Data& data = Data());
     [[nodiscard]] virtual std::size_t digest_size() const noexcept = 0;
     [[nodiscard]] virtual std::size_t block_size() const noexcept = 0;
     [[nodiscard]] virtual Ptr clone() const = 0;

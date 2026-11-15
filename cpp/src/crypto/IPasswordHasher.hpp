@@ -17,8 +17,7 @@ public:
         uint32_t iterations,
         uint32_t parallelism,
         std::size_t salt_length,
-        std::size_t hash_length
-    );
+        std::size_t hash_length);
 
     [[nodiscard]] virtual std::string hash_password(std::string_view password) const = 0;
     [[nodiscard]] virtual bool verify_password(std::string_view password, std::string_view hash) const = 0;
