@@ -4,7 +4,6 @@
 #include <string>
 
 #include "crypto/IHasher.hpp"
-#include "crypto/Sha256OpenSsl.hpp"
 
 using crypto::IHasher;
 
@@ -21,6 +20,8 @@ constexpr auto abc_digest = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb41
 using MakeHasher = IHasher::Ptr (*)();
 
 #if __APPLE__
+#include "crypto/Sha256OpenSsl.hpp"
+
 IHasher::Ptr make_open_ssl() {
     return std::make_unique<crypto::Sha256OpenSsl>();
 }

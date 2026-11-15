@@ -5,7 +5,6 @@
 #include <string>
 
 #include "Fixtures.hpp"
-#include "crypto/AesOpenSsl.hpp"
 #include "crypto/IEncryptKey.hpp"
 
 using crypto::IEncryptKey;
@@ -45,6 +44,8 @@ using MakeAes = IEncryptKey::Ptr (*)(const IEncryptKey::Data& key, AesMode mode,
                                      AesPadding padding);
 
 #if __APPLE__
+#include "crypto/AesOpenSsl.hpp"
+
 IEncryptKey::Ptr make_open_ssl(const IEncryptKey::Data& key, AesMode mode, AesPadding padding) {
     return std::make_unique<crypto::AesOpenSsl>(key, mode, padding);
 }

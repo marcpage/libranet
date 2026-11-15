@@ -1,7 +1,7 @@
 #include "IMultiKey.hpp"
-#include "RsaMacos.hpp"
 
 #if __APPLE__
+#include "RsaMacos.hpp"
 using RsaType = crypto::RsaMacos;
 #else
 #include "RsaOpenSsl.hpp"

@@ -1,7 +1,7 @@
 #include "IEncryptKey.hpp"
-#include "AesMacos.hpp"
 
 #if __APPLE__
+#include "AesMacos.hpp"
 using AesType = crypto::AesMacos;
 #else
 #include "AesOpenSsl.hpp"

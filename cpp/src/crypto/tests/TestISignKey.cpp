@@ -7,7 +7,6 @@
 
 #include "Fixtures.hpp"
 #include "crypto/ISignKey.hpp"
-#include "crypto/RsaSignKeyOpenSsl.hpp"
 
 using crypto::ISignKey;
 
@@ -147,6 +146,8 @@ TEST_P(RsaSignKeyTest, ReadsPythonKey) {
 
 INSTANTIATE_TEST_SUITE_P(Factory, RsaSignKeyTest, testing::Values(&ISignKey::from_pem));
 #if __APPLE__
+#include "crypto/RsaSignKeyOpenSsl.hpp"
+
 INSTANTIATE_TEST_SUITE_P(OpenSsl, RsaSignKeyTest,
                          testing::Values(&crypto::RsaSignKeyOpenSsl::from_pem));
 #endif

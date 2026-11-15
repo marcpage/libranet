@@ -1,7 +1,7 @@
 #include "IHasher.hpp"
-#include "Sha256Macos.hpp"
 
 #if __APPLE__
+#include "Sha256Macos.hpp"
 using Sha256Type = crypto::Sha256Macos;
 #else
 #include "Sha256OpenSsl.hpp"

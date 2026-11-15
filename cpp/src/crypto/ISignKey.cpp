@@ -1,11 +1,11 @@
 #include "ISignKey.hpp"
 #include "Ed25519OpenSsl.hpp"
-#include "RsaSignKeyMacos.hpp"
 #include <stdexcept>
 
 using Ed25519Key = crypto::Ed25519OpenSsl;
 
 #if __APPLE__
+#include "RsaSignKeyMacos.hpp"
 using RsaSignKey = crypto::RsaSignKeyMacos;
 #else
 #include "RsaSignKeyOpenSsl.hpp"
