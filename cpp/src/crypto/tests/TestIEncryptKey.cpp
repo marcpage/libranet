@@ -116,6 +116,8 @@ TEST_P(IEncryptKeyTest, AesCbcBadPadding) {
     EXPECT_THROW(static_cast<void>(aes->decrypt(ciphertext, {})), std::runtime_error);
 }
 
+// Each EXPECT_THROW counts toward the complexity, as branches would.
+// NOLINTBEGIN(readability-function-cognitive-complexity)
 TEST_P(IEncryptKeyTest, AesCbcPaddingChecked) {
     // Blocks encrypted without padding, then decrypted with it: only those
     // that end in n bytes of n, for n from 1 to 16, are padded plaintext.
@@ -135,6 +137,7 @@ TEST_P(IEncryptKeyTest, AesCbcPaddingChecked) {
     EXPECT_THROW(static_cast<void>(decrypt(std::string("fifteen bytes..") + "\x11")),
                  std::runtime_error);
 }
+// NOLINTEND(readability-function-cognitive-complexity)
 
 TEST_P(IEncryptKeyTest, AesCtrNoPaddingRoundtrip) {
     const IEncryptKey::Data key(aes_128_key_size, std::byte{0x77});
@@ -163,8 +166,9 @@ TEST_P(IEncryptKeyTest, AesCtrCarriesIntoHighHalf) {
     // high 8 at 1, so the second block's counter is 2 in the high 8 bytes
     // and 0 in the low.
     constexpr auto high_half_end = 7;
+    constexpr auto highest_byte = std::byte{0xFF};
     const IEncryptKey::Data key(aes_256_key_size, std::byte{0x03});
-    IEncryptKey::InitializationVector initialization_vector(aes_block_size, std::byte{0xFF});
+    IEncryptKey::InitializationVector initialization_vector(aes_block_size, highest_byte);
 
     std::fill(initialization_vector.begin(), initialization_vector.begin() + high_half_end,
               std::byte{0x00});

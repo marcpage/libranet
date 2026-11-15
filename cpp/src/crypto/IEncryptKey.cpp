@@ -12,8 +12,8 @@ using AesType = crypto::AesOpenSsl;
 
 namespace crypto {
 
-IEncryptKey::Ptr IEncryptKey::Aes(const Data& key, AesMode mode, AesPadding padding) {
-    return std::make_unique<AesType>(key, mode, padding);
+IEncryptKey::Ptr IEncryptKey::Aes(const Data& raw_key, AesMode mode, AesPadding padding) {
+    return std::make_unique<AesType>(raw_key, mode, padding);
 }
 
 } // namespace crypto
