@@ -28,5 +28,8 @@ if(BUILD_TESTING)
         tests/TestISignKey.cpp
         tests/TestPem.cpp)
     target_link_libraries(crypto_tests PRIVATE libranet::crypto GTest::gtest_main)
-    gtest_discover_tests(crypto_tests)
+    # The tests that run on each implementation take functions that make
+    # it, whose addresses would change from build to build in the tests'
+    # names: they are numbered instead.
+    gtest_discover_tests(crypto_tests NO_PRETTY_VALUES)
 endif()
