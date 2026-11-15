@@ -70,7 +70,7 @@ TEST(AsyncChannelTest, ConstructionAndCallback) {
             return received.size() == 1;
         });
         ASSERT_TRUE(delivered);
-        EXPECT_EQ(received[0], "42");
+        EXPECT_EQ(received.at(0), "42");
     }
 }
 
@@ -101,9 +101,9 @@ TEST(AsyncChannelTest, MultipleMessagesFifoOrder) {
             return received.size() == 3;
         });
         ASSERT_TRUE(delivered);
-        EXPECT_EQ(received[0], "10");
-        EXPECT_EQ(received[1], "20");
-        EXPECT_EQ(received[2], "30");
+        EXPECT_EQ(received.at(0), "10");
+        EXPECT_EQ(received.at(1), "20");
+        EXPECT_EQ(received.at(2), "30");
     }
 }
 
@@ -139,8 +139,8 @@ TEST(AsyncChannelTest, BroadcastToMultipleAsyncChannels) {
             return received_a.size() == 1 && received_b.size() == 1;
         });
         ASSERT_TRUE(delivered);
-        EXPECT_EQ(received_a[0], posted_value);
-        EXPECT_EQ(received_b[0], posted_value);
+        EXPECT_EQ(received_a.at(0), posted_value);
+        EXPECT_EQ(received_b.at(0), posted_value);
     }
 }
 
@@ -179,7 +179,7 @@ TEST(AsyncChannelTest, CallbackExceptionDoesNotStopProcessing) {
         });
         ASSERT_TRUE(processed);
         EXPECT_EQ(received.size(), 1U);
-        EXPECT_EQ(received[0], "2");
+        EXPECT_EQ(received.at(0), "2");
         EXPECT_EQ(logged.size(), 1U);
     }
 }

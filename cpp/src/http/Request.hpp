@@ -104,9 +104,9 @@ inline bool Request::parse_request_line(std::string_view line) {
         return false;
     }
 
-    m_method = std::string(fields[0]);
-    m_uri = std::string(fields[1]);
-    m_version = std::string(fields[2]);
+    m_method = std::string(fields.at(0));
+    m_uri = std::string(fields.at(1));
+    m_version = std::string(fields.at(2));
     return true;
 }
 

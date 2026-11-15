@@ -71,12 +71,6 @@ Checks:
   - '-cppcoreguidelines-non-private-member-variables-in-classes'
   - '-misc-non-private-member-variables-in-classes'
 
-  # 117 to clean up (66 in library code, 51 in tests), such as
-  # src/http/Headers.hpp:255: possibly unsafe 'operator[]', consider bounds-safe
-  # alternatives
-  #     return !line.empty() && (line[0] == ' ' || line[0] == '\t');
-  - '-cppcoreguidelines-pro-bounds-avoid-unchecked-container-access'
-
   # 4 to clean up (2 in library code, 2 in tests), such as
   # src/net/SocketPosix.cpp:154: do not use reinterpret_cast
   #     reinterpret_cast<sockaddr*>(&storage), &length);
@@ -169,4 +163,9 @@ CheckOptions:
   # includes, and leaves the POSIX ones as written. It also never suggests a
   # standard library's private headers (libc++'s __chrono/..., libstdc++'s
   # bits/...).
+  # Json's operator[] checks its own bounds: on a Json that is not const, it
+  # grows the array or adds the member, and on a const Json it throws, as
+  # at() does. Like std::map's, which the check leaves out by default, it is
+  # no unchecked access.
+  cppcoreguidelines-pro-bounds-avoid-unchecked-container-access.ExcludeClasses: '::std::map;::std::unordered_map;::std::flat_map;::types::Json'
   misc-include-cleaner.IgnoreHeaders: '__.*;bits/.*;asm/.*\.h$;asm-generic/.*\.h$;linux/.*\.h$;sys/.*\.h$;net/.*\.h$;netinet/.*\.h$;arpa/.*\.h$;netdb\.h$;unistd\.h$;ifaddrs\.h$'

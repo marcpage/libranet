@@ -106,7 +106,7 @@ inline bool Response::parse_status_line(std::string_view line) {
     int parsed_code = 0;
 
     try {
-        parsed_code = std::stoi(std::string(fields[1]));
+        parsed_code = std::stoi(std::string(fields.at(1)));
     } catch (const std::invalid_argument&) {
         return false;
     } catch (const std::out_of_range&) {
@@ -115,9 +115,9 @@ inline bool Response::parse_status_line(std::string_view line) {
 
     const auto code_value = static_cast<uint16_t>(parsed_code);
 
-    m_version = std::string(fields[0]);
+    m_version = std::string(fields.at(0));
     m_status = ResponseCode(code_value, (fields.size() == 3)
-                                            ? std::string(fields[2])
+                                            ? std::string(fields.at(2))
                                             : std::string());
     return true;
 }

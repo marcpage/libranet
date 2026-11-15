@@ -253,7 +253,7 @@ inline std::string_view Headers::trim_whitespace(std::string_view text) {
 }
 
 inline bool Headers::is_continuation_line(std::string_view line) noexcept {
-    return !line.empty() && (line[0] == ' ' || line[0] == '\t');
+    return !line.empty() && (line.front() == ' ' || line.front() == '\t');
 }
 
 inline bool Headers::parse_header_line(std::string_view line, std::string& out_key, std::string& out_value) {

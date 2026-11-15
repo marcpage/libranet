@@ -67,7 +67,7 @@ TEST(AsyncChannelOfTest, ConstructionAndCallback) {
             return received.size() == 1;
         });
         ASSERT_TRUE(delivered);
-        EXPECT_EQ(received[0], posted_value);
+        EXPECT_EQ(received.at(0), posted_value);
     }
 }
 
@@ -98,9 +98,9 @@ TEST(AsyncChannelOfTest, MultipleMessagesFifoOrder) {
             return received.size() == 3;
         });
         ASSERT_TRUE(delivered);
-        EXPECT_EQ(received[0], first_value);
-        EXPECT_EQ(received[1], second_value);
-        EXPECT_EQ(received[2], third_value);
+        EXPECT_EQ(received.at(0), first_value);
+        EXPECT_EQ(received.at(1), second_value);
+        EXPECT_EQ(received.at(2), third_value);
     }
 }
 
@@ -136,8 +136,8 @@ TEST(AsyncChannelOfTest, BroadcastToMultipleAsyncChannels) {
             return received_a.size() == 1 && received_b.size() == 1;
         });
         ASSERT_TRUE(delivered);
-        EXPECT_EQ(received_a[0], posted_value);
-        EXPECT_EQ(received_b[0], posted_value);
+        EXPECT_EQ(received_a.at(0), posted_value);
+        EXPECT_EQ(received_b.at(0), posted_value);
     }
 }
 
@@ -164,7 +164,7 @@ TEST(AsyncChannelOfTest, UnexpectedMessageTypeLogging) {
             return !logged.empty();
         });
         ASSERT_TRUE(logged_ok);
-        EXPECT_NE(logged[0].find("Message was of unexpected type"), std::string::npos);
+        EXPECT_NE(logged.at(0).find("Message was of unexpected type"), std::string::npos);
     }
 }
 

@@ -170,10 +170,10 @@ inline std::string Query::to_string() const {
             result += '&';
         }
 
-        result += m_parameters[parameter_index].first;
+        result += m_parameters.at(parameter_index).first;
 
-        if (!m_parameters[parameter_index].second.empty()) {
-            result += "=" + m_parameters[parameter_index].second;
+        if (!m_parameters.at(parameter_index).second.empty()) {
+            result += "=" + m_parameters.at(parameter_index).second;
         }
     }
     return result;
