@@ -1,7 +1,7 @@
 # Libranet in C++
 
 A reference node of [Libranet](../README.md), written in C++17. It is only
-begun: four libraries, their tests, and a program that prints a greeting.
+begun: five libraries, their tests, and a program that prints a greeting.
 What every node must do is in the specifications, in
 [`docs/specs/`](../docs/specs/).
 
@@ -63,6 +63,7 @@ parsers in `fuzz/`:
 | [`src/http/`](src/http/) | `libranet::http` | Parsing and generating HTTP: URLs, queries, headers, requests, and responses |
 | [`src/msg/`](src/msg/) | `libranet::msg` | Messages, and the channels that carry them; uses `types` |
 | [`src/net/`](src/net/) | `libranet::net` | Addresses and sockets, on POSIX systems |
+| [`src/crypto/`](src/crypto/) | `libranet::crypto` | Hashing, encrypting, and signing: SHA-256, AES, and RSA with Apple's frameworks, and Ed25519 and Argon2id with OpenSSL; macOS only so far |
 
 Headers are included from `src/`, as in
 `#include "types/BlockingQueue.hpp"`. Each directory's `CMakeLists.txt`
@@ -239,7 +240,8 @@ anything but its own error.
 libFuzzer comes with LLVM's Clang, but not with Apple's. On macOS, install
 LLVM with `brew install llvm` and build with its Clang; on Linux, use
 `clang` and `clang++`. The fuzzers build without the tests, so they need
-nothing from Conan. From this directory:
+nothing from Conan. On macOS, the crypto library still needs OpenSSL, and
+CMake finds Homebrew's, from `brew install openssl`. From this directory:
 
 ```bash
 CC=/opt/homebrew/opt/llvm/bin/clang CXX=/opt/homebrew/opt/llvm/bin/clang++ \
