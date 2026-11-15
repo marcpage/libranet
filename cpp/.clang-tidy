@@ -30,12 +30,6 @@ Checks:
   #     || allowed_chars.find(character) != std::string_view::npos) {
   - '-abseil-string-find-str-contains'
 
-  # 1 to clean up (1 in library code, 0 in tests), such as
-  # src/net/SocketPosix.cpp:243: prefer accept4() to accept() because accept4()
-  # allows SOCK_CLOEXEC
-  #     accepted_fd = ::accept(m_socket_fd, nullptr, nullptr);
-  - '-android-cloexec-accept'
-
   # 4 to clean up (4 in library code, 0 in tests), such as
   # src/http/Headers.hpp:66: use a boost version of this algorithm
   #     return std::lexicographical_compare(
@@ -168,4 +162,4 @@ CheckOptions:
   # at() does. Like std::map's, which the check leaves out by default, it is
   # no unchecked access.
   cppcoreguidelines-pro-bounds-avoid-unchecked-container-access.ExcludeClasses: '::std::map;::std::unordered_map;::std::flat_map;::types::Json'
-  misc-include-cleaner.IgnoreHeaders: '__.*;bits/.*;asm/.*\.h$;asm-generic/.*\.h$;linux/.*\.h$;sys/.*\.h$;net/.*\.h$;netinet/.*\.h$;arpa/.*\.h$;netdb\.h$;unistd\.h$;ifaddrs\.h$'
+  misc-include-cleaner.IgnoreHeaders: '__.*;bits/.*;asm/.*\.h$;asm-generic/.*\.h$;linux/.*\.h$;sys/.*\.h$;net/.*\.h$;netinet/.*\.h$;arpa/.*\.h$;netdb\.h$;unistd\.h$;ifaddrs\.h$;fcntl\.h$'
