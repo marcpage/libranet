@@ -28,21 +28,21 @@ namespace crypto {
 // such as $argon2id$v=19$m=65536,t=3,p=4$<salt>$<hash>, with the salt and
 // the hash in Base64 without padding. A hash is checked with the costs it
 // was made with, which it names.
-class Argon2id : public IPasswordHasher {
+class Argon2idOpenSsl : public IPasswordHasher {
 public:
-    Argon2id(
+    Argon2idOpenSsl(
         uint32_t memory_cost_kib,
         uint32_t iterations,
         uint32_t parallelism,
         std::size_t salt_length,
         std::size_t hash_length);
 
-    ~Argon2id() override = default;
+    ~Argon2idOpenSsl() override = default;
 
-    Argon2id(const Argon2id&) = delete;
-    Argon2id& operator=(const Argon2id&) = delete;
-    Argon2id(Argon2id&&) noexcept = default;
-    Argon2id& operator=(Argon2id&&) noexcept = default;
+    Argon2idOpenSsl(const Argon2idOpenSsl&) = delete;
+    Argon2idOpenSsl& operator=(const Argon2idOpenSsl&) = delete;
+    Argon2idOpenSsl(Argon2idOpenSsl&&) noexcept = default;
+    Argon2idOpenSsl& operator=(Argon2idOpenSsl&&) noexcept = default;
 
     [[nodiscard]] std::string hash_password(std::string_view password) const override;
     [[nodiscard]] bool verify_password(std::string_view password, std::string_view hash) const override;
@@ -92,7 +92,7 @@ private:
                                      std::size_t hash_length);
 };
 
-inline Argon2id::Argon2id(
+inline Argon2idOpenSsl::Argon2idOpenSsl(
     uint32_t memory_cost_kib,
     uint32_t iterations,
     uint32_t parallelism,
@@ -104,7 +104,7 @@ inline Argon2id::Argon2id(
     , salt_length_(salt_length)
     , hash_length_(hash_length) {}
 
-inline std::string Argon2id::hash_password(std::string_view password) const {
+inline std::string Argon2idOpenSsl::hash_password(std::string_view password) const {
     Parameters parameters{memory_cost_kib_, iterations_, parallelism_, Data(salt_length_)};
 
     if (RAND_bytes(OpenSslBytes::of(parameters.salt), static_cast<int>(parameters.salt.size()))
@@ -117,14 +117,14 @@ inline std::string Argon2id::hash_password(std::string_view password) const {
     return PhcString(std::move(parameters), std::move(hash)).str();
 }
 
-inline bool Argon2id::verify_password(std::string_view password, std::string_view hash) const {
+inline bool Argon2idOpenSsl::verify_password(std::string_view password, std::string_view hash) const {
     const auto encoded = PhcString::parse(hash);
 
     return encoded && encoded->matches(password);
 }
 
-inline Argon2id::Data Argon2id::derive(std::string_view password, const Parameters& parameters,
-                                       std::size_t hash_length) {
+inline Argon2idOpenSsl::Data Argon2idOpenSsl::derive(std::string_view password, const Parameters& parameters,
+                                                     std::size_t hash_length) {
     const OpenSslObject<EVP_KDF, EVP_KDF_free> kdf(EVP_KDF_fetch(nullptr, "ARGON2ID", nullptr));
 
     if (!kdf) {
@@ -167,10 +167,10 @@ inline Argon2id::Data Argon2id::derive(std::string_view password, const Paramete
     return derived;
 }
 
-inline Argon2id::PhcString::PhcString(Parameters parameters, Data hash)
+inline Argon2idOpenSsl::PhcString::PhcString(Parameters parameters, Data hash)
     : m_parameters(std::move(parameters)), m_hash(std::move(hash)) {}
 
-inline std::optional<Argon2id::PhcString> Argon2id::PhcString::parse(std::string_view text) {
+inline std::optional<Argon2idOpenSsl::PhcString> Argon2idOpenSsl::PhcString::parse(std::string_view text) {
     Parameters parameters{};
 
     if (!skip(text, prefix) || !read_number(text, parameters.memory_cost_kib)
@@ -197,7 +197,7 @@ inline std::optional<Argon2id::PhcString> Argon2id::PhcString::parse(std::string
     return PhcString(std::move(parameters), std::move(*hash));
 }
 
-inline std::string Argon2id::PhcString::str() const {
+inline std::string Argon2idOpenSsl::PhcString::str() const {
     return std::string(prefix) + std::to_string(m_parameters.memory_cost_kib)
            + ",t=" + std::to_string(m_parameters.iterations)
            + ",p=" + std::to_string(m_parameters.parallelism)
@@ -205,7 +205,7 @@ inline std::string Argon2id::PhcString::str() const {
 }
 
 // Whether password makes this hash, compared in constant time.
-inline bool Argon2id::PhcString::matches(std::string_view password) const {
+inline bool Argon2idOpenSsl::PhcString::matches(std::string_view password) const {
     Data computed;
 
     try {
@@ -219,7 +219,7 @@ inline bool Argon2id::PhcString::matches(std::string_view password) const {
 }
 
 // Moves past expected at the start of text, if it is there.
-inline bool Argon2id::PhcString::skip(std::string_view& text, std::string_view expected) {
+inline bool Argon2idOpenSsl::PhcString::skip(std::string_view& text, std::string_view expected) {
     if (text.substr(0, expected.size()) != expected) {
         return false;
     }
@@ -230,7 +230,7 @@ inline bool Argon2id::PhcString::skip(std::string_view& text, std::string_view e
 
 // Reads the decimal digits at the start of text, and moves past them. There
 // must be at least one, and the number they make must fit in 32 bits.
-inline bool Argon2id::PhcString::read_number(std::string_view& text, uint32_t& number) {
+inline bool Argon2idOpenSsl::PhcString::read_number(std::string_view& text, uint32_t& number) {
     constexpr uint64_t base = 10;
     uint64_t value = 0;
     std::size_t digits = 0;
@@ -259,7 +259,7 @@ inline bool Argon2id::PhcString::read_number(std::string_view& text, uint32_t& n
 }
 
 // Base64 without padding, as PHC strings have it.
-inline std::optional<Argon2id::Data> Argon2id::PhcString::read_base64(std::string_view text) {
+inline std::optional<Argon2idOpenSsl::Data> Argon2idOpenSsl::PhcString::read_base64(std::string_view text) {
     constexpr std::size_t group_size = 4;
 
     if (text.empty() || text.find('=') != std::string_view::npos
@@ -278,7 +278,7 @@ inline std::optional<Argon2id::Data> Argon2id::PhcString::read_base64(std::strin
     }
 }
 
-inline std::string Argon2id::PhcString::base64(const Data& data) {
+inline std::string Argon2idOpenSsl::PhcString::base64(const Data& data) {
     auto text = Base64::encode(data);
 
     text.erase(text.find_last_not_of('=') + 1);

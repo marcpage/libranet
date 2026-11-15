@@ -1,7 +1,7 @@
 #include "IPasswordHasher.hpp"
-#include "Argon2id.hpp"
+#include "Argon2idOpenSsl.hpp"
 
-using Argon2idType = crypto::Argon2id;
+using Argon2idType = crypto::Argon2idOpenSsl;
 
 namespace crypto {
 
