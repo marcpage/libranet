@@ -8,7 +8,8 @@ using Ed25519Key = crypto::Ed25519OpenSsl;
 #if __APPLE__
 using RsaSignKey = crypto::RsaSignKeyMacos;
 #else
-#error "Not implemented"
+#include "RsaSignKeyOpenSsl.hpp"
+using RsaSignKey = crypto::RsaSignKeyOpenSsl;
 #endif
 
 namespace crypto {

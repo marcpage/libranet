@@ -4,7 +4,8 @@
 #if __APPLE__
 using AesType = crypto::AesMacos;
 #else
-#error "Not implemented"
+#include "AesOpenSsl.hpp"
+using AesType = crypto::AesOpenSsl;
 #endif
 
 namespace crypto {

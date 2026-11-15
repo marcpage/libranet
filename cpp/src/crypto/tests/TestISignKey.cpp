@@ -5,7 +5,9 @@
 #include <string>
 #include <string_view>
 
+#include "Fixtures.hpp"
 #include "crypto/ISignKey.hpp"
+#include "crypto/RsaSignKeyOpenSsl.hpp"
 
 using crypto::ISignKey;
 
@@ -35,21 +37,13 @@ constexpr auto x25519_public_pem =
     "MCowBQYDK2VuAyEAj0DFrbaPJWJK5bIU6nZ6bslNgp09e14a0bpvPiE4KF8=\n"
     "-----END PUBLIC KEY-----\n";
 
-std::string hex(const ISignKey::Data& data) {
-    constexpr std::string_view digits = "0123456789abcdef";
-    constexpr auto nibble_bits = 4U;
-    constexpr auto nibble_mask = 0x0FU;
-    std::string text;
+// Reads an RSA signing key from a PEM.
+using ReadRsaKey = ISignKey::Ptr (*)(std::string_view pem);
 
-    for (const auto byte : data) {
-        const auto value = std::to_integer<unsigned int>(byte);
-
-        text.push_back(digits.at(value >> nibble_bits));
-        text.push_back(digits.at(value & nibble_mask));
-    }
-
-    return text;
-}
+// Each test runs on ISignKey::from_pem(), which reads RSA keys with Apple's
+// RSA on macOS, and OpenSSL's elsewhere. On macOS, each runs on OpenSSL's as
+// well.
+class RsaSignKeyTest : public testing::TestWithParam<ReadRsaKey> {};
 
 } // namespace
 
@@ -100,7 +94,7 @@ TEST(ISignKeyTest, Ed25519Rfc8032Vector) {
     const auto verifier = ISignKey::from_pem(rfc_8032_public_pem);
     const auto signature = signer->sign("");
 
-    EXPECT_EQ(hex(signature), rfc_8032_signature);
+    EXPECT_EQ(fixtures::hex(signature), rfc_8032_signature);
     EXPECT_TRUE(verifier->verify("", signature));
     EXPECT_FALSE(verifier->verify("x", signature));
 }
@@ -133,3 +127,26 @@ TEST(ISignKeyTest, Ed25519InvalidInputs) {
 
     EXPECT_FALSE(signer->verify("test", bad_sig));
 }
+
+TEST_P(RsaSignKeyTest, ReadsPythonKey) {
+    const auto signer = GetParam()(fixtures::rsa_pkcs1_private_pem);
+    const auto verifier = GetParam()(fixtures::rsa_pkcs1_public_pem);
+    const auto signature = fixtures::bytes(fixtures::rsa_pss_signature);
+
+    EXPECT_EQ(signer->id(), "rsa-pss-sha256");
+    EXPECT_TRUE(signer->has_private_key());
+    EXPECT_FALSE(verifier->has_private_key());
+    EXPECT_TRUE(verifier->verify(fixtures::rsa_message, signature));
+    EXPECT_TRUE(verifier->verify(fixtures::rsa_message, signer->sign(fixtures::rsa_message)));
+    EXPECT_FALSE(verifier->verify("Tampered message", signature));
+    EXPECT_THROW(static_cast<void>(verifier->sign(fixtures::rsa_message)), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(verifier->private_pem()), std::runtime_error);
+    EXPECT_FALSE(verifier->public_pem().empty());
+    EXPECT_FALSE(signer->private_pem().empty());
+}
+
+INSTANTIATE_TEST_SUITE_P(Factory, RsaSignKeyTest, testing::Values(&ISignKey::from_pem));
+#if __APPLE__
+INSTANTIATE_TEST_SUITE_P(OpenSsl, RsaSignKeyTest,
+                         testing::Values(&crypto::RsaSignKeyOpenSsl::from_pem));
+#endif

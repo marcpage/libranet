@@ -22,7 +22,7 @@ namespace crypto {
 // public key, and PKCS #8 for the private key.
 class Ed25519OpenSsl : public ISignKey {
 public:
-    using Key = OpenSslObject<EVP_PKEY, EVP_PKEY_free>;
+    using Key = OpenSslKey;
 
     [[nodiscard]] static ISignKey::Ptr create();
     [[nodiscard]] static ISignKey::Ptr from_pem(std::string_view pem);
@@ -45,7 +45,6 @@ public:
 
 private:
     using MessageContext = OpenSslObject<EVP_MD_CTX, EVP_MD_CTX_free>;
-    using DerEncoder = int (*)(const EVP_PKEY*, unsigned char**);
 
     // An Ed25519 signature's size, in bytes.
     static constexpr std::size_t signature_size = 64;
@@ -54,8 +53,6 @@ private:
     bool m_has_private;
 
     [[nodiscard]] static Key generate();
-    [[nodiscard]] static Key read_der(const Data& der, bool is_private);
-    [[nodiscard]] Data der(DerEncoder encode) const;
 };
 
 inline ISignKey::Ptr Ed25519OpenSsl::create() {
@@ -66,11 +63,11 @@ inline ISignKey::Ptr Ed25519OpenSsl::from_pem(std::string_view pem) {
     auto [label, der_bytes] = Pem::unwrap(pem);
 
     if (label == "PRIVATE KEY") {
-        return std::make_unique<Ed25519OpenSsl>(read_der(der_bytes, true), true);
+        return std::make_unique<Ed25519OpenSsl>(OpenSslDer::read_private_key(der_bytes), true);
     }
 
     if (label == "PUBLIC KEY") {
-        return std::make_unique<Ed25519OpenSsl>(read_der(der_bytes, false), false);
+        return std::make_unique<Ed25519OpenSsl>(OpenSslDer::read_public_key(der_bytes), false);
     }
 
     throw std::invalid_argument("Unsupported or unrecognized PEM label: " + label);
@@ -96,46 +93,6 @@ inline Ed25519OpenSsl::Key Ed25519OpenSsl::generate() {
     }
 
     return Key(key);
-}
-
-// A key from its DER encoding: PKCS #8 for a private key, and
-// SubjectPublicKeyInfo for a public key. Bytes after the key are refused.
-inline Ed25519OpenSsl::Key Ed25519OpenSsl::read_der(const Data& der, bool is_private) {
-    const auto* const start = OpenSslBytes::of(der);
-    const auto* next = start;
-    // NOLINTNEXTLINE(google-runtime-int): long, as the d2i functions take it
-    const auto length = static_cast<long>(der.size());
-    Key key(is_private ? d2i_AutoPrivateKey(nullptr, &next, length)
-                       : d2i_PUBKEY(nullptr, &next, length));
-
-    if (!key) {
-        ERR_clear_error();
-        throw std::invalid_argument(is_private ? "Not a PKCS #8 private key."
-                                               : "Not a SubjectPublicKeyInfo public key.");
-    }
-
-    if (static_cast<std::size_t>(next - start) != der.size()) {
-        throw std::invalid_argument("Bytes after the key in its PEM.");
-    }
-
-    return key;
-}
-
-inline ISignKey::Data Ed25519OpenSsl::der(DerEncoder encode) const {
-    const auto length = encode(m_key.get(), nullptr);
-
-    if (length <= 0) {
-        throw OpenSslError("Failed to encode an Ed25519 key");
-    }
-
-    Data bytes(static_cast<std::size_t>(length));
-    auto* next = OpenSslBytes::of(bytes);
-
-    if (encode(m_key.get(), &next) != length) {
-        throw OpenSslError("Failed to encode an Ed25519 key");
-    }
-
-    return bytes;
 }
 
 inline ISignKey::Data Ed25519OpenSsl::sign(std::string_view data) const {
@@ -180,7 +137,7 @@ inline bool Ed25519OpenSsl::verify(std::string_view data, const Data& signature)
 }
 
 inline std::string Ed25519OpenSsl::public_pem() const {
-    return Pem::wrap("PUBLIC KEY", der(i2d_PUBKEY));
+    return Pem::wrap("PUBLIC KEY", OpenSslDer::write(m_key.get(), i2d_PUBKEY));
 }
 
 inline std::string Ed25519OpenSsl::private_pem() const {
@@ -190,7 +147,7 @@ inline std::string Ed25519OpenSsl::private_pem() const {
 
     // A key with no older form of its own, as Ed25519 has none, is written
     // in PKCS #8.
-    return Pem::wrap("PRIVATE KEY", der(i2d_PrivateKey));
+    return Pem::wrap("PRIVATE KEY", OpenSslDer::write(m_key.get(), i2d_PrivateKey));
 }
 
 inline std::string Ed25519OpenSsl::id() const {

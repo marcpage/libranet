@@ -4,7 +4,8 @@
 #if __APPLE__
 using RsaType = crypto::RsaMacos;
 #else
-#error "Not implemented for this platform"
+#include "RsaOpenSsl.hpp"
+using RsaType = crypto::RsaOpenSsl;
 #endif
 
 namespace crypto {

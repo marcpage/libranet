@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 #include <cstddef>
+#include <memory>
 #include <string>
 
 #include "crypto/IHasher.hpp"
+#include "crypto/Sha256OpenSsl.hpp"
 
 using crypto::IHasher;
 
@@ -15,24 +17,44 @@ constexpr auto sha256_block_size = 64U;
 // SHA-256 of "abc".
 constexpr auto abc_digest = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
+// Makes the SHA-256 a test runs on.
+using MakeHasher = IHasher::Ptr (*)();
+
+#if __APPLE__
+IHasher::Ptr make_open_ssl() {
+    return std::make_unique<crypto::Sha256OpenSsl>();
+}
+#endif
+
+// Each test runs on what IHasher::Sha256() makes: Apple's on macOS, and
+// OpenSSL's elsewhere. On macOS, each runs on OpenSSL's as well.
+class IHasherTest : public testing::TestWithParam<MakeHasher> {};
+
 } // namespace
 
-TEST(IHasherTest, Metadata) {
-    const auto hasher = IHasher::Sha256();
+TEST_P(IHasherTest, Metadata) {
+    const auto hasher = GetParam()();
 
     EXPECT_EQ(hasher->digest_size(), sha256_digest_size);
     EXPECT_EQ(hasher->block_size(), sha256_block_size);
 }
 
-TEST(IHasherTest, OneShotAndHexDigest) {
-    const auto hasher = IHasher::Sha256();
+TEST_P(IHasherTest, OneShotAndHexDigest) {
+    const auto hasher = GetParam()();
 
     EXPECT_EQ(hasher->hex_digest(IHasher::Data{std::byte{'a'}, std::byte{'b'}, std::byte{'c'}}),
               abc_digest);
 }
 
-TEST(IHasherTest, StreamingUpdates) {
-    const auto hasher = IHasher::Sha256();
+TEST_P(IHasherTest, EmptyInput) {
+    const auto hasher = GetParam()();
+
+    EXPECT_EQ(hasher->hex_digest(),
+              "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+}
+
+TEST_P(IHasherTest, StreamingUpdates) {
+    const auto hasher = GetParam()();
 
     hasher->update("abcd");
     hasher->update(IHasher::Data{std::byte{'e'}, std::byte{'f'}});
@@ -42,8 +64,8 @@ TEST(IHasherTest, StreamingUpdates) {
               "bef57ec7f53a6d40beb640a780a639c83bc29ac8a9816f1fc6c5c6dcd93c4721");
 }
 
-TEST(IHasherTest, Reset) {
-    const auto hasher = IHasher::Sha256();
+TEST_P(IHasherTest, Reset) {
+    const auto hasher = GetParam()();
 
     hasher->update("garbage data");
     (*hasher).reset();
@@ -53,8 +75,8 @@ TEST(IHasherTest, Reset) {
     EXPECT_EQ(hasher->hex_digest(), abc_digest);
 }
 
-TEST(IHasherTest, DigestResets) {
-    const auto hasher = IHasher::Sha256();
+TEST_P(IHasherTest, DigestResets) {
+    const auto hasher = GetParam()();
 
     hasher->update("garbage data");
     static_cast<void>(hasher->digest());
@@ -62,8 +84,8 @@ TEST(IHasherTest, DigestResets) {
     EXPECT_EQ(hasher->hex_digest(), abc_digest);
 }
 
-TEST(IHasherTest, Clone) {
-    const auto hasher1 = IHasher::Sha256();
+TEST_P(IHasherTest, Clone) {
+    const auto hasher1 = GetParam()();
 
     hasher1->update("hello");
 
@@ -80,3 +102,8 @@ TEST(IHasherTest, Clone) {
     EXPECT_EQ(hasher2->hex_digest(),
               "12998c017066eb0d2a70b94e6ed3192985855ce390f321bbdb832022888bd251");
 }
+
+INSTANTIATE_TEST_SUITE_P(Factory, IHasherTest, testing::Values(&IHasher::Sha256));
+#if __APPLE__
+INSTANTIATE_TEST_SUITE_P(OpenSsl, IHasherTest, testing::Values(&make_open_ssl));
+#endif
