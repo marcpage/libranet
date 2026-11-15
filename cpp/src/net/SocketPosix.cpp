@@ -22,6 +22,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#ifdef __APPLE__
+#include <fcntl.h>
+#endif
+
 #include "Address.hpp"
 #include "ISocket.hpp"
 
@@ -239,11 +243,24 @@ ISocket::Ptr SocketPosix::accept() {
 
     int accepted_fd = -1;
 
+    // The accepted socket is closed on exec, so it does not leak into child
+    // processes.
     do {
+#ifdef __APPLE__
+        // macOS has no accept4(), so close-on-exec is set once accepted.
+        // NOLINTNEXTLINE(android-cloexec-accept)
         accepted_fd = ::accept(m_socket_fd, nullptr, nullptr);
+#elif defined(__linux__)
+        accepted_fd = ::accept4(m_socket_fd, nullptr, nullptr, SOCK_CLOEXEC);
+#endif
     } while (accepted_fd < 0 && errno == EINTR);
 
     assert_socket(accepted_fd >= 0, "accept");
+
+#ifdef __APPLE__
+    (void)::fcntl(accepted_fd, F_SETFD, FD_CLOEXEC);
+#endif
+
     return std::unique_ptr<ISocket>(new SocketPosix(accepted_fd));
 }
 
