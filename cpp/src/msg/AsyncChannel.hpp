@@ -23,7 +23,9 @@ public:
     void stop();
 
 protected:
-    Logger m_logger; // for errors when running asynchronously
+    // For errors when running asynchronously, in AsyncChannelOf's too.
+    // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes,misc-non-private-member-variables-in-classes)
+    Logger m_logger;
 
 private:
     std::thread m_thread;        // Thread for processing messages

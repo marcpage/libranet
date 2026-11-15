@@ -47,6 +47,9 @@ private:
     mutable std::mutex m_mutex;
     std::condition_variable m_notEmpty;
     std::condition_variable m_notFull;
+    // Set once, as the queue is made; its mutex and condition variables
+    // already keep it from being copied or assigned.
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
     const size_t m_capacity;
 };
 

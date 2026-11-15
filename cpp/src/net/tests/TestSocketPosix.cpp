@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <cstddef>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -16,6 +18,16 @@ using net::ISocket;
 using net::SocketPosix;
 
 namespace {
+
+// The bytes as text, a char for each.
+std::string as_text(const std::vector<std::byte>& bytes) {
+    std::string text;
+    text.reserve(bytes.size());
+    std::transform(bytes.begin(), bytes.end(), std::back_inserter(text), [](std::byte byte) {
+        return static_cast<char>(std::to_integer<unsigned char>(byte));
+    });
+    return text;
+}
 
 // Helper that binds to an ephemeral port and returns both the socket and the
 // actual address that was assigned by the OS. It throws, failing the test,
@@ -108,7 +120,7 @@ TEST(SocketPosixTest, SendAndReceive) {
     EXPECT_TRUE(success);
 
     // Convert bytes back to string for assertion
-    const std::string received_msg(reinterpret_cast<const char*>(buffer.data()), buffer.size());
+    const std::string received_msg = as_text(buffer);
     EXPECT_EQ(received_msg, message);
 
     client->close();
@@ -137,7 +149,7 @@ TEST(SocketPosixTest, HelpersSendAllAndReadExact) {
     std::vector<std::byte> exact_bytes = peer->read_exact(payload.size());
     EXPECT_EQ(exact_bytes.size(), payload.size());
 
-    const std::string received_payload(reinterpret_cast<const char*>(exact_bytes.data()), exact_bytes.size());
+    const std::string received_payload = as_text(exact_bytes);
     EXPECT_EQ(received_payload, payload);
 
     client->close();
