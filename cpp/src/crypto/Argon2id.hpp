@@ -35,8 +35,7 @@ public:
         uint32_t iterations,
         uint32_t parallelism,
         std::size_t salt_length,
-        std::size_t hash_length
-    );
+        std::size_t hash_length);
 
     ~Argon2id() override = default;
 
@@ -98,8 +97,7 @@ inline Argon2id::Argon2id(
     uint32_t iterations,
     uint32_t parallelism,
     std::size_t salt_length,
-    std::size_t hash_length
-)
+    std::size_t hash_length)
     : memory_cost_kib_(memory_cost_kib)
     , iterations_(iterations)
     , parallelism_(parallelism)
@@ -201,9 +199,9 @@ inline std::optional<Argon2id::PhcString> Argon2id::PhcString::parse(std::string
 
 inline std::string Argon2id::PhcString::str() const {
     return std::string(prefix) + std::to_string(m_parameters.memory_cost_kib)
-         + ",t=" + std::to_string(m_parameters.iterations)
-         + ",p=" + std::to_string(m_parameters.parallelism)
-         + "$" + base64(m_parameters.salt) + "$" + base64(m_hash);
+           + ",t=" + std::to_string(m_parameters.iterations)
+           + ",p=" + std::to_string(m_parameters.parallelism)
+           + "$" + base64(m_parameters.salt) + "$" + base64(m_hash);
 }
 
 // Whether password makes this hash, compared in constant time.

@@ -151,7 +151,7 @@ inline ISignKey::Data Ed25519::sign(std::string_view data) const {
         || EVP_DigestSignInit(context.get(), nullptr, nullptr, nullptr, m_key.get()) != 1
         || EVP_DigestSign(context.get(), OpenSslBytes::of(signature), &length,
                           OpenSslBytes::of(data), data.size())
-            != 1) {
+               != 1) {
         throw OpenSslError("Failed to sign with an Ed25519 key");
     }
 
