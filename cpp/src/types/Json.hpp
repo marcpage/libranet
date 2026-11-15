@@ -1,17 +1,21 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <charconv>
 #include <cmath>
 #include <cstdint>
 #include <initializer_list>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -59,6 +63,7 @@ public:
     Json(Json&&) noexcept = default;
     Json& operator=(const Json&) = default;
     Json& operator=(Json&&) noexcept = default;
+    ~Json() = default;
 
     [[nodiscard]] Type type() const;
     [[nodiscard]] bool is_null() const noexcept;
@@ -133,6 +138,10 @@ private:
         [[nodiscard]] char peek() const noexcept;
         char get();
         bool consume(char expected) noexcept;
+        bool skip_digits() noexcept;
+        std::uint32_t parse_hex4();
+        std::uint32_t parse_code_point();
+        static void append_utf8(std::uint32_t code_point, std::string& text);
 
         Json parse_value();
         Json parse_null();
@@ -150,6 +159,7 @@ private:
     static void serialize(const Json& json_value, std::ostringstream& out_stream,
                           int indent, int current_indent);
     static void escape_string(const std::string& str, std::ostringstream& out_stream);
+    static void write_real(double value, std::ostringstream& out_stream);
 };
 
 inline Json::Json() noexcept
@@ -195,13 +205,14 @@ inline Json::Json(std::initializer_list<Json> arguments) {
         return;
     }
 
-    for (const auto& elem : arguments) {
-        if (!elem.is_array()
-            || elem.array().size() != 2
-            || !elem.array().at(0).is_string()) {
-            m_data = Array(arguments.begin(), arguments.end());
-            return;
-        }
+    // Unless every argument is a [key, value] pair, the Json is an array.
+    const auto is_member = [](const Json& elem) {
+        return elem.is_array() && elem.array().size() == 2 && elem.array().at(0).is_string();
+    };
+
+    if (!std::all_of(arguments.begin(), arguments.end(), is_member)) {
+        m_data = Array(arguments.begin(), arguments.end());
+        return;
     }
 
     Object obj;
@@ -503,13 +514,14 @@ inline void Json::serialize(const Json& json_value, std::ostringstream& out_stre
             out_stream << "null";
         } else if constexpr (std::is_same_v<T, bool>) {
             out_stream << (value ? "true" : "false");
-        } else if constexpr (std::is_same_v<T, std::int64_t>
-                             || std::is_same_v<T, double>) {
+        } else if constexpr (std::is_same_v<T, std::int64_t>) {
+            out_stream << value;
+        } else if constexpr (std::is_same_v<T, double>) {
             if (!std::isfinite(value)) {
                 throw std::domain_error("Json: non-finite double values (NaN or Infinity)"
                                         " cannot be serialized to JSON");
             }
-            out_stream << value;
+            write_real(value, out_stream);
         } else if constexpr (std::is_same_v<T, std::string>) {
             escape_string(value, out_stream);
         } else if constexpr (std::is_same_v<T, Array>) {
@@ -518,6 +530,30 @@ inline void Json::serialize(const Json& json_value, std::ostringstream& out_stre
             serialize_object(value, out_stream, indent, current_indent);
         }
     }, json_value.m_data);
+}
+
+// The fewest digits that read back as the same double, with ".0" when they
+// have no '.' or exponent, so that they read back as a real number rather
+// than as an integer.
+inline void Json::write_real(double value, std::ostringstream& out_stream) {
+    // A double's shortest text is at most 24 characters.
+    constexpr std::size_t text_size = 32;
+    std::array<char, text_size> text{};
+    // std::to_chars takes the end of its buffer as a pointer.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+    const std::to_chars_result result = std::to_chars(text.data(), text.data() + text.size(), value);
+
+    if (result.ec != std::errc()) {
+        throw std::logic_error("Json: a double did not fit its text");
+    }
+
+    const std::string_view written(
+        text.data(), static_cast<std::size_t>(std::distance(text.data(), result.ptr)));
+    out_stream << written;
+
+    if (written.find_first_of(".e") == std::string_view::npos) {
+        out_stream << ".0";
+    }
 }
 
 inline bool Json::is_digit(const char character) {
@@ -719,15 +755,27 @@ inline Json Json::Parser::parse_boolean() {
     throw std::invalid_argument("Json::parse: expected boolean");
 }
 
+inline bool Json::Parser::skip_digits() noexcept {
+    const std::size_t first = m_cursor;
+
+    while (is_digit(peek())) {
+        ++m_cursor;
+    }
+
+    return m_cursor > first;
+}
+
 inline Json Json::Parser::parse_number() {
     const std::size_t start = m_cursor;
 
+    // A number has digits before any '.', after it, and after any exponent
+    // (RFC 8259, section 6).
     if (peek() == '-') {
         ++m_cursor;
     }
 
-    while (is_digit(peek())) {
-        ++m_cursor;
+    if (!skip_digits()) {
+        throw std::invalid_argument("Json::parse: a number needs digits");
     }
 
     bool is_float_num = false;
@@ -737,8 +785,8 @@ inline Json Json::Parser::parse_number() {
 
         ++m_cursor;
 
-        while (is_digit(peek())) {
-            ++m_cursor;
+        if (!skip_digits()) {
+            throw std::invalid_argument("Json::parse: a number needs digits after its '.'");
         }
     }
 
@@ -750,8 +798,8 @@ inline Json Json::Parser::parse_number() {
             ++m_cursor;
         }
 
-        while (is_digit(peek())) {
-            ++m_cursor;
+        if (!skip_digits()) {
+            throw std::invalid_argument("Json::parse: a number needs digits after its exponent");
         }
     }
 
@@ -792,6 +840,7 @@ inline std::string Json::Parser::parse_raw_string() {
                 case 'n': result += '\n'; break;
                 case 'r': result += '\r'; break;
                 case 't': result += '\t'; break;
+                case 'u': append_utf8(parse_code_point(), result); break;
                 default:
                     result += esc;
                     break;
@@ -802,6 +851,91 @@ inline std::string Json::Parser::parse_raw_string() {
     }
 
     throw std::invalid_argument("Json::parse: unterminated string");
+}
+
+// The four hex digits of a \u escape.
+inline std::uint32_t Json::Parser::parse_hex4() {
+    constexpr int hex_digits = 4;
+    constexpr std::uint32_t hex_base = 16;
+    constexpr int letter_values_from = 10;
+    std::uint32_t value = 0;
+
+    for (int digit = 0; digit < hex_digits; ++digit) {
+        const auto character = static_cast<unsigned char>(get());
+
+        if (std::isxdigit(character) == 0) {
+            throw std::invalid_argument("Json::parse: a \\u escape needs four hex digits");
+        }
+
+        const int lower = std::tolower(character);
+        const int digit_value = std::isdigit(lower) != 0 ? lower - '0'
+                                                         : lower - 'a' + letter_values_from;
+        value = (value * hex_base) + static_cast<std::uint32_t>(digit_value);
+    }
+
+    return value;
+}
+
+// The character a \u escape names: four hex digits, or, for one beyond
+// U+FFFF, the two escapes of a UTF-16 surrogate pair (RFC 8259, section 7).
+inline std::uint32_t Json::Parser::parse_code_point() {
+    constexpr std::uint32_t high_first = 0xD800;
+    constexpr std::uint32_t low_first = 0xDC00;
+    constexpr std::uint32_t low_end = 0xE000;
+    constexpr std::uint32_t pair_base = 0x10000;
+    constexpr unsigned pair_shift = 10;
+
+    const std::uint32_t first = parse_hex4();
+
+    if (first < high_first || first >= low_end) {
+        return first;
+    }
+
+    if (first >= low_first || get() != '\\' || get() != 'u') {
+        throw std::invalid_argument("Json::parse: a \\u escape names half a surrogate pair");
+    }
+
+    const std::uint32_t second = parse_hex4();
+
+    if (second < low_first || second >= low_end) {
+        throw std::invalid_argument("Json::parse: a \\u escape names half a surrogate pair");
+    }
+
+    return pair_base + ((first - high_first) << pair_shift) + (second - low_first);
+}
+
+// Appends code_point to text, in UTF-8.
+inline void Json::Parser::append_utf8(std::uint32_t code_point, std::string& text) {
+    constexpr std::uint32_t one_byte_end = 0x80;
+    constexpr std::uint32_t two_byte_end = 0x800;
+    constexpr std::uint32_t three_byte_end = 0x10000;
+    constexpr std::uint32_t two_byte_lead = 0xC0;
+    constexpr std::uint32_t three_byte_lead = 0xE0;
+    constexpr std::uint32_t four_byte_lead = 0xF0;
+    constexpr std::uint32_t continuation_lead = 0x80;
+    constexpr std::uint32_t continuation_mask = 0x3F;
+    constexpr unsigned continuation_bits = 6;
+
+    const auto byte = [&text](std::uint32_t value) { text += static_cast<char>(value); };
+    const auto continuation = [&byte, code_point](unsigned shift) {
+        byte(continuation_lead | ((code_point >> shift) & continuation_mask));
+    };
+
+    if (code_point < one_byte_end) {
+        byte(code_point);
+    } else if (code_point < two_byte_end) {
+        byte(two_byte_lead | (code_point >> continuation_bits));
+        continuation(0);
+    } else if (code_point < three_byte_end) {
+        byte(three_byte_lead | (code_point >> (2 * continuation_bits)));
+        continuation(continuation_bits);
+        continuation(0);
+    } else {
+        byte(four_byte_lead | (code_point >> (3 * continuation_bits)));
+        continuation(2 * continuation_bits);
+        continuation(continuation_bits);
+        continuation(0);
+    }
 }
 
 inline Json Json::Parser::parse_string_value() {

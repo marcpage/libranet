@@ -45,6 +45,12 @@ inline Address Address::parse(std::string_view endpoint) {
         host = host.substr(1, host.size() - 2);
     }
 
+    // Only the brackets around an IPv6 address: in a host they would be
+    // written as if they were those.
+    if (host.find_first_of("[]") != std::string_view::npos) {
+        throw std::invalid_argument("Invalid address format, brackets in the host");
+    }
+
     int port_number = 0;
 
     try {

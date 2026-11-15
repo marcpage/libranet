@@ -172,7 +172,9 @@ inline std::string Query::to_string() const {
 
         result += m_parameters.at(parameter_index).first;
 
-        if (!m_parameters.at(parameter_index).second.empty()) {
+        // A name alone needs no '='; an empty name does, or it would be lost.
+        if (!m_parameters.at(parameter_index).second.empty()
+            || m_parameters.at(parameter_index).first.empty()) {
             result += "=" + m_parameters.at(parameter_index).second;
         }
     }

@@ -20,26 +20,32 @@ Checks:
   # Contradicts misc-use-anonymous-namespace.
   - '-llvm-prefer-static-over-anonymous-namespace'
   # Names the guard from the file's absolute path, which differs between
-  # machines. portability-avoid-pragma-once still requires guards.
+  # machines.
   - '-llvm-header-guard'
+  # The code uses #pragma once, which every compiler it builds with
+  # supports, in place of include guards.
+  - '-portability-avoid-pragma-once'
+  # Default arguments and overloaded operators are part of the code's
+  # design, as in Json, Integer, and Url; Fuchsia's style forbids both.
+  - '-fuchsia-default-arguments-calls'
+  - '-fuchsia-default-arguments-declarations'
+  - '-fuchsia-overloaded-operator'
+  # Ask for Abseil's, Boost's, and LLVM's own library functions, none of
+  # which the code uses.
+  - '-abseil-string-find-str-contains'
+  - '-boost-use-ranges'
+  - '-llvm-use-ranges'
+  # Its fix is wrong for Json, whose std::initializer_list constructor
+  # takes return {value}; as a one-element array.
+  - '-modernize-return-braced-init-list'
 
   # Not yet met by the code.
-
-  # 4 to clean up (4 in library code, 0 in tests), such as src/http/Url.hpp:115:
-  # use absl::StrContains instead of find() != npos
-  #     || allowed_chars.find(character) != std::string_view::npos) {
-  - '-abseil-string-find-str-contains'
 
   # 1 to clean up (1 in library code, 0 in tests), such as
   # src/net/SocketPosix.cpp:243: prefer accept4() to accept() because accept4()
   # allows SOCK_CLOEXEC
   #     accepted_fd = ::accept(m_socket_fd, nullptr, nullptr);
   - '-android-cloexec-accept'
-
-  # 4 to clean up (4 in library code, 0 in tests), such as
-  # src/http/Headers.hpp:66: use a boost version of this algorithm
-  #     return std::lexicographical_compare(
-  - '-boost-use-ranges'
 
   # 7 to clean up (7 in library code, 0 in tests), such as
   # src/http/Headers.hpp:89: 2 adjacent parameters of 'get' of similar type
@@ -76,35 +82,11 @@ Checks:
   #     reinterpret_cast<sockaddr*>(&storage), &length);
   - '-cppcoreguidelines-pro-type-reinterpret-cast'
 
-  # 8 to clean up (8 in library code, 0 in tests), such as
-  # src/msg/AsyncChannelOf.hpp:13: class 'AsyncChannelOf' defines a non-default
-  # destructor but does not define a copy constructor, a copy assignment
-  # operator, a move constr...
-  #     class AsyncChannelOf : public AsyncChannel {
-  - '-cppcoreguidelines-special-member-functions'
-
   # 1 to clean up (1 in library code, 0 in tests), such as
   # src/net/SocketPosix.cpp:128: enum 'Direction' is unscoped, use 'enum class'
   # instead
   #     enum Direction { DirectionSend,
   - '-cppcoreguidelines-use-enum-class'
-
-  # 117 to clean up (55 in library code, 62 in tests), such as
-  # src/http/Headers.hpp:242: calling a function that uses a default argument is
-  # disallowed
-  #     const auto start = text.find_first_not_of(" \t\r\n");
-  - '-fuchsia-default-arguments-calls'
-
-  # 13 to clean up (11 in library code, 2 in tests), such as
-  # src/http/ResponseCode.hpp:79: declaring a parameter with a default argument
-  # is disallowed
-  #     ResponseCode(Status status, std::optional<std::string> custom_rea...
-  - '-fuchsia-default-arguments-declarations'
-
-  # 127 to clean up (127 in library code, 0 in tests), such as
-  # src/http/Headers.hpp:21: overloading 'operator()' is disallowed
-  #     bool operator()(std::string_view lhs, std::string_view rhs) const...
-  - '-fuchsia-overloaded-operator'
 
   # 2 to clean up (2 in library code, 0 in tests), such as
   # src/msg/Channel.cpp:15: static objects are disallowed; if possible, use a
@@ -118,37 +100,17 @@ Checks:
   #     return std::visit([](auto&& value) -> Type {
   - '-fuchsia-trailing-return'
 
-  # 2 to clean up (2 in library code, 0 in tests), such as
-  # src/msg/Channel.cpp:28: use an LLVM range-based algorithm
-  #     const auto position = std::find(channelList.begin(), channelList....
-  - '-llvm-use-ranges'
-
   # 5 to clean up (5 in library code, 0 in tests), such as
   # src/types/Integer.hpp:700: function 'operator&' is within a recursive call
   # chain
   #     inline Integer operator&(const Integer& left, const Integer& righ...
   - '-misc-no-recursion'
 
-  # 10 to clean up (10 in library code, 0 in tests), such as
-  # src/types/Json.hpp:673: avoid repeating the return type from the
-  # declaration; use a braced initializer list instead
-  #     return Json(nullptr);
-  # Its fix is wrong for Json, whose std::initializer_list constructor takes
-  # return {value}; as a one-element array, so Json's returns are left as they
-  # are.
-  - '-modernize-return-braced-init-list'
-
   # 3 to clean up (3 in library code, 0 in tests), such as src/http/Url.hpp:22:
   # enum 'EncodeContext' uses a larger base type ('int', size: 4 bytes) than
   # necessary for its value set, consider using 'std::uint8_t' (1 by...
   #     enum class EncodeContext {
   - '-performance-enum-size'
-
-  # 17 to clean up (17 in library code, 0 in tests), such as
-  # src/http/Headers.hpp:1: avoid 'pragma once' directive; use include guards
-  # instead
-  #     #pragma once
-  - '-portability-avoid-pragma-once'
 
 WarningsAsErrors: '*'
 # Every header that is not a system header. CMake includes Conan's packages
@@ -163,9 +125,9 @@ CheckOptions:
   # includes, and leaves the POSIX ones as written. It also never suggests a
   # standard library's private headers (libc++'s __chrono/..., libstdc++'s
   # bits/...).
+  misc-include-cleaner.IgnoreHeaders: '__.*;bits/.*;asm/.*\.h$;asm-generic/.*\.h$;linux/.*\.h$;sys/.*\.h$;net/.*\.h$;netinet/.*\.h$;arpa/.*\.h$;netdb\.h$;unistd\.h$;ifaddrs\.h$'
   # Json's operator[] checks its own bounds: on a Json that is not const, it
   # grows the array or adds the member, and on a const Json it throws, as
   # at() does. Like std::map's, which the check leaves out by default, it is
   # no unchecked access.
   cppcoreguidelines-pro-bounds-avoid-unchecked-container-access.ExcludeClasses: '::std::map;::std::unordered_map;::std::flat_map;::types::Json'
-  misc-include-cleaner.IgnoreHeaders: '__.*;bits/.*;asm/.*\.h$;asm-generic/.*\.h$;linux/.*\.h$;sys/.*\.h$;net/.*\.h$;netinet/.*\.h$;arpa/.*\.h$;netdb\.h$;unistd\.h$;ifaddrs\.h$'

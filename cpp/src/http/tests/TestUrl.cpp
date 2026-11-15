@@ -308,4 +308,26 @@ TEST(UrlTest, StreamOperatorsAndParsing) {
     EXPECT_TRUE(bad_iss.fail());
 }
 
+TEST(UrlTest, WrittenAsRead) {
+    // A password with no username keeps both.
+    EXPECT_EQ(Url::parse("http://:secret@example.com/").value().to_string(),
+              "http://:secret@example.com/");
+
+    // A query that itself starts with '?' keeps it.
+    const Url doubled = Url::parse("http://example.com/path??x=1").value();
+    EXPECT_EQ(doubled.query().to_string(), "?x=1");
+    EXPECT_EQ(doubled.to_string(), "http://example.com/path??x=1");
+
+    // A "://" in the path names no scheme.
+    const Url in_path = Url::parse("example.com/a://b").value();
+    EXPECT_TRUE(in_path.scheme().empty());
+    EXPECT_EQ(in_path.host(), "example.com");
+    EXPECT_EQ(in_path.path(), "/a://b");
+
+    // Brackets belong only around an IPv6 address.
+    EXPECT_FALSE(Url::parse("http://[[]]/").has_value());
+    EXPECT_FALSE(Url::parse("http://exa]mple.com/").has_value());
+    EXPECT_EQ(Url::parse("http://[::1]:8080/").value().host(), "::1");
+}
+
 // NOLINTEND(bugprone-unchecked-optional-access)

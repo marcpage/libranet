@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -8,6 +9,21 @@
 #include "types/Json.hpp"
 
 using types::Json;
+
+namespace {
+
+// Whether Json::parse turns down text as invalid.
+bool refused(const std::string& text) {
+    try {
+        static_cast<void>(Json::parse(text));
+    } catch (const std::invalid_argument&) {
+        return true;
+    }
+
+    return false;
+}
+
+} // namespace
 
 TEST(JsonTest, ConstructorsAndTypes) {
     // Default constructor (null state)
@@ -241,4 +257,49 @@ TEST(JsonTest, NestingLimit) {
     }
     deeper_objects += "null" + std::string(deepest + 1, '}');
     EXPECT_THROW((void)Json::parse(deeper_objects), std::invalid_argument);
+}
+
+TEST(JsonTest, NumbersNeedDigits) {
+    // Before a '.', after it, and after an exponent (RFC 8259, section 6).
+    for (const char* text : {"-", "0E", "1e", "1e+", "1.", "-.5"}) {
+        EXPECT_TRUE(refused(text)) << text;
+    }
+
+    EXPECT_TRUE(Json::parse("0e0").is_real());
+    EXPECT_TRUE(Json::parse("-1.5E+3").is_real());
+}
+
+TEST(JsonTest, RealsReadBackAsTheSameReal) {
+    constexpr double whole = 2.0;
+    constexpr double precise = 0.1234567;
+    constexpr double large = 1e20;
+
+    EXPECT_EQ(Json(whole).dump(), "2.0");
+
+    // Read back as a real, not an integer, and as the same real.
+    for (const double value : {whole, precise, large, -whole}) {
+        EXPECT_EQ(Json::parse(Json(value).dump()), Json(value)) << value;
+    }
+}
+
+TEST(JsonTest, UnicodeEscapes) {
+    EXPECT_EQ(Json::parse(R"("\u0041")").string(), "A");
+    EXPECT_EQ(Json::parse(R"("\u00e9")").string(), "\xc3\xa9");
+    EXPECT_EQ(Json::parse(R"("\u20AC")").string(), "\xe2\x82\xac");
+    // A character beyond U+FFFF, as a UTF-16 surrogate pair.
+    EXPECT_EQ(Json::parse(R"("\ud83d\ude00")").string(), "\xf0\x9f\x98\x80");
+}
+
+TEST(JsonTest, UnicodeEscapesRefused) {
+    // Half a pair, too few hex digits, or one that is not hex.
+    for (const char* text : {R"("\ud83d")", R"("\ude00")", R"("\ud83dx")", R"("\u12")", R"("\u12G4")"}) {
+        EXPECT_TRUE(refused(text)) << text;
+    }
+}
+
+TEST(JsonTest, ControlCharactersEscaped) {
+    // A control character is written as an escape, and read back as itself.
+    const Json control(std::string("\x01"));
+    EXPECT_EQ(control.dump(), R"("\u0001")");
+    EXPECT_EQ(Json::parse(control.dump()), control);
 }

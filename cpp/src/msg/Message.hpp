@@ -12,7 +12,6 @@ template<typename Type>
 class Message : public IMessage {
 public:
     explicit Message(Type value);
-    ~Message() override = default;
     [[nodiscard]] std::string to_string() const override;
     [[nodiscard]] const Type& value() const;
 

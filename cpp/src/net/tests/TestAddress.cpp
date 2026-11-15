@@ -98,6 +98,13 @@ TEST(AddressTest, PortOutOfRange) {
     EXPECT_EQ(Address::parse("127.0.0.1:65535").port(), 65535);
 }
 
+TEST(AddressTest, BracketsOnlyAroundIpv6) {
+    EXPECT_THROW((void)Address::parse("[[]]:4"), std::invalid_argument);
+    EXPECT_THROW((void)Address::parse("[::1:80"), std::invalid_argument);
+    EXPECT_THROW((void)Address::parse("exa]mple.com:80"), std::invalid_argument);
+    EXPECT_EQ(Address::parse("[::1]:80").host(), "::1");
+}
+
 TEST(AddressTest, Resolve) {
     // 1. Resolve loopback address
     const Address addr1("127.0.0.1", http_port);

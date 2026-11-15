@@ -21,6 +21,8 @@ public:
     virtual ~ISocket() = default;
     ISocket(const ISocket&) = delete;
     ISocket& operator=(const ISocket&) = delete;
+    ISocket(ISocket&&) = delete;
+    ISocket& operator=(ISocket&&) = delete;
 
     virtual void listen(int backlog) = 0;
     [[nodiscard]] virtual std::unique_ptr<ISocket> accept() = 0;

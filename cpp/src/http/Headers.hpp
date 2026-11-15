@@ -214,8 +214,15 @@ inline std::string Headers::process_header_line(
         std::string updated_value(existing_val.value());
         const std::string_view cleaned_chunk = trim_whitespace(line);
 
-        updated_value.append(" ");
-        updated_value.append(cleaned_chunk.data(), cleaned_chunk.size());
+        // A space only between text, so the value gains none at either end,
+        // where reading it back would trim them away.
+        if (!cleaned_chunk.empty()) {
+            if (!updated_value.empty()) {
+                updated_value.append(" ");
+            }
+
+            updated_value.append(cleaned_chunk.data(), cleaned_chunk.size());
+        }
         headers.set(last_key, std::move(updated_value));
         return last_key;
     }

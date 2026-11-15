@@ -134,4 +134,26 @@ TEST(HeadersTest, HelperUtilities) {
     EXPECT_FALSE(fail_success);
 }
 
+TEST(HeadersTest, ContinuationAddsNoSpaces) {
+    // A continuation line of only spaces adds nothing, and one onto an empty
+    // value adds its text alone, so the value reads back as written.
+    std::istringstream stream(
+        "Blank: value\r\n"
+        "   \r\n"
+        "Empty:\r\n"
+        " more\r\n"
+        "\r\n");
+    Headers headers;
+    stream >> headers;
+
+    EXPECT_FALSE(stream.fail());
+    EXPECT_EQ(headers.get("blank"), "value");
+    EXPECT_EQ(headers.get("empty"), "more");
+
+    std::istringstream written(headers.to_string());
+    Headers reread;
+    written >> reread;
+    EXPECT_EQ(reread, headers);
+}
+
 // NOLINTEND(bugprone-unchecked-optional-access)
