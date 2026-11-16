@@ -10,6 +10,7 @@
 
 namespace net {
 
+// cppcheck-suppress noConstructor
 class Address {
 public:
     using Port = std::uint16_t;
