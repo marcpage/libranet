@@ -49,6 +49,7 @@ private:
     static void use_pss(EVP_PKEY_CTX* context);
 };
 
+// cppcheck-suppress duplInheritedMember
 inline ISignKey::Ptr RsaSignKeyOpenSsl::from_pem(std::string_view pem) {
     auto [key, has_private] = RsaPemOpenSsl::from_pem(pem);
 
