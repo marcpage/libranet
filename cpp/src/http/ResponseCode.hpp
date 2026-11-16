@@ -75,6 +75,7 @@ public:
     };
 
     // Implicit conversion from Status enum, with optional custom reason phrase
+    // cppcheck-suppress noExplicitConstructor
     // NOLINTNEXTLINE(*-explicit-constructor)
     ResponseCode(Status status, std::optional<std::string> custom_reason = std::nullopt);
 

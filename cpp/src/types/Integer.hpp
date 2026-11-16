@@ -30,6 +30,7 @@ public:
     Integer() = default;
     // Integer converts implicitly from the built-in integers, as they convert
     // to each other.
+    // cppcheck-suppress noExplicitConstructor
     // NOLINTNEXTLINE(*-explicit-constructor)
     Integer(std::int64_t value);
     explicit Integer(const std::string& text);

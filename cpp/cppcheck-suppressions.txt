@@ -27,13 +27,6 @@ checkersReport
 # Mistaken: Address's constructor is defined after the class.
 noConstructor
 
-# 1 to clean up (1 in library code, 0 in tests), such as
-# src/http/ResponseCode.hpp:79: Class 'ResponseCode' has a constructor with 1
-# argument that is not explicit.
-#     ResponseCode(Status status, std::optional<std::string> custom_reason = ...
-# On purpose: a Status converts to a ResponseCode, as for clang-tidy.
-noExplicitConstructor
-
 # 5 to clean up (5 in library code, 0 in tests), such as src/types/Json.hpp:779:
 # Returning object that will be invalid when returning.
 #     return Json(parse_raw_string());
