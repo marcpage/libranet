@@ -34,7 +34,7 @@ and can be built alongside any phase.
 
 ## 2. What It Adds
 
-Twelve steps, the first eight built:
+Twelve steps, the first nine built:
 
 - **Importing a file encrypted.** The node's one change. Step 160.
 - **The photos application, and its albums.** Step 161.
@@ -1271,9 +1271,9 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 168 — Editing a Photo's Details
+## Step 168 — Editing a Photo's Details ✅
 
-**Issue:** to be made (§4), from #477. **Depends on:** Steps 163, 164.
+**Issue:** #676, from #477. **Depends on:** Steps 163, 164.
 
 Settled with the user:
 
@@ -1303,6 +1303,88 @@ My calls, not yet reviewed:
 **Testable in isolation:** checked by hand: a title, a caption, a date, and
 a turn edited, and kept after a reload; a photo moved to another day by its
 date; and a cover chosen.
+
+Built, in one change set, the page alone, on Step 167's. It was checked on
+a node of its own in headless Chromium, with four photos and a video made
+for the purpose and kept out of the repository, imported as Step 162
+imports them: Edit, by `E`, showing the title empty, and the day and time
+the photo was taken, to the second; a title, a caption of two lines, and a
+quarter turn right saved, its `info.json` holding `title`, `caption`, and
+`rotation` 90, and its entry in the index `title` and `rotation`, but not
+the caption; the viewer then naming it by its title, with its caption below
+when it was taken, and Details giving both, and its width and height as
+seen, 600 by 800 of a photo of 800 by 600; the photo turned, fitting the
+stage, at its own pixels as 600 by 800 when zoomed, and its tile in the
+grid turned; a photo given another day and time, by the icon, its
+`info.json` and its entry saying `2024-07-04T18:45:00`, `taken_from`
+`edited`, Details saying it was edited, the entry moved from `2024-05.json`
+to `2024-07.json`, the grid showing it under July, and Next hidden, as it
+was then the album's last; the dialog saved with nothing changed, making no
+new bundle; a time with no day refused; a video given a title, with no Turn
+left or Turn right offered; a PNG's day and time cleared, leaving it
+undated, its month's file of the index taken out, and its entry in
+`undated.json`; a photo turned a quarter left and made the album's cover,
+then made it again, which said it was its cover already; the album's tile
+showing its cover turned left; and everything read again after a reload,
+as it was. The dialog and the viewer were seen at a phone's width, the
+dialog's fields below its thumbnail. Safari is yet to be checked, and so is
+an edited photo copied to another album.
+
+Calls made while building it, not yet reviewed:
+
+- **`rotation` is in degrees, clockwise**, 90, 180, or 270, and left out of
+  `info.json` and the index when it is 0.
+- **The caption is kept in `info.json` alone**, as the grid does not show
+  it, so that a month's file of the index stays small; the title, the
+  rotation, and when it was taken are kept in both. A title is 200
+  characters at most, and a caption 2,000.
+- **The dialog.** Edit opens a dialog over the viewer, its heading naming
+  the photo's file, with its thumbnail, whole, turned as chosen, with Turn
+  left and Turn right below it, and what the turn is in words; then Title,
+  Caption, Day taken, and Time, to the second. Save saves it all at once,
+  and closes it; Cancel, or Escape, keeps nothing. A dialog saved with
+  nothing changed makes no new bundle.
+- **The day and the time.** A time is shown and kept to the second; a
+  fraction of a second, as the camera wrote it, is kept while neither is
+  changed. A day with no time is kept as the day alone. A day cleared, with
+  its time, leaves the photo undated, with no `taken` or `taken_from`; a
+  time with no day is refused. A year is of four digits.
+- **A day or time changed takes out `offset`**, as nothing says it is of the
+  time given.
+- **Videos are not turned**, as their controls would turn with them. Their
+  title, caption, and day and time are edited as a photo's are.
+- **The viewer names a photo by its title**, if it has one, and its caption
+  is shown below when it was taken, two lines at most, the whole of it in
+  Details, above its name. A tile's name, for its tooltip and a screen
+  reader, is its title too.
+- **Turned as it is laid out.** The viewer lays a photo turned out at the
+  width and height it is seen at, then turns the photo about its middle
+  into that place, so that zooming and dragging work as before. Details
+  gives its width and height as seen, turned.
+- **The viewer is laid out again whenever its stage changes size**, as when
+  what is said above the photo takes another line, where before it was laid
+  out again only as the window changed size. A line said after the photo
+  was laid out, as `This photo's details were saved.`, otherwise took the
+  photo past the bottom of the window.
+- **An album's tile turns its cover** as its photo is turned, read from the
+  cover's `info.json`, once for each album's bundle.
+- **Use as cover** is an icon after Edit, hidden for a photo with no
+  thumbnail, since a cover is shown by its thumbnail. It says what it did,
+  or that the photo is the cover already, below the photo's name.
+- **Once saved**, the dialog closes, the viewer shows the photo as it is
+  now, where the grid, read again, has it, and says that its details were
+  saved. Its image is not read again.
+- **Its entry in the index is found** in the month its `info.json` says it
+  was taken, or else in any, as one made elsewhere since may list it
+  apart.
+
+**Open questions:**
+
+- **The slideshow** (Step 169) is to turn a photo as the viewer does, as it
+  is not built yet.
+- **A photo's place**, its latitude and longitude, is not edited, though a
+  photo with no place, or a wrong one, could be given one.
+- **Keys in the dialog**, as `[` and `]` to turn, were not asked.
 
 ---
 
@@ -1442,7 +1524,7 @@ and this table then given their numbers.
 | #673 | Step 165 — Photos No Browser Shows as They Are | 165 |
 | #674 | Step 166 — Videos | 166 |
 | #675 | Step 167 — Copying, Moving, and Removing Photos | 167 |
-| *to be made* | Step 168 — Editing a Photo's Details | 168 |
+| #676 | Step 168 — Editing a Photo's Details | 168 |
 | *to be made* | Step 169 — Slideshow | 169 |
 | *to be made* | Step 170 — Sharing an Album | 170 |
 | *to be made* | Step 171 — Playing a Live Photo | 171 |

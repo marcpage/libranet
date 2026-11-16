@@ -277,7 +277,10 @@ it alone, as large as the window holds it, with its name and when it was
 taken: the arrows at its sides, or the left and right arrow keys, move to
 the photo before or after, as does a swipe on a touch screen; `I` shows
 its details beside it, with **Show on Google Maps** for a photo that says
-where it was taken; a click, or `Z`, zooms to its own pixels, dragged to
+where it was taken; `E` edits its title, its caption, and when it was
+taken, and turns it a quarter left or right, in that album alone, its
+original kept as it is, a photo given another day moving to that day;
+**Use as cover** makes it its album's cover; a click, or `Z`, zooms to its own pixels, dragged to
 see the rest; `F` shows it full screen; `D` downloads its original under
 its file's name; and Escape goes back to the album, at the photo shown. A
 video plays with the browser's own controls, and one the browser cannot
@@ -295,9 +298,8 @@ albums, or an album's photos, Enter opens an album, Escape or Backspace goes
 back, `N` makes a new album, `S` chooses photos, and `?` shows the keys. Your albums are kept for
 you alone, each encrypted, and are read on any node you sign in on, which
 fetches them from the network as it needs them, so the photos application
-keeps none for a browser no one is signed in on. Copying, moving, and
-removing photos are the next step of its
-[plan](docs/apps/Photos%20App.md).
+keeps none for a browser no one is signed in on. A slideshow is the next
+step of its [plan](docs/apps/Photos%20App.md).
 
 ### Use and share applications
 
