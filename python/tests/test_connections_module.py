@@ -58,7 +58,10 @@ from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_
 from tests.helpers import with_node_key
 from tests.stubs import StubModule
 
-TIMEOUT = 5.0
+# How long a test waits for what it expects, and the module for a peer.
+# Dialing and answering can take seconds when the tests run in parallel; a
+# test that passes waits no longer for it.
+TIMEOUT = 30.0
 RETRY_DELAY = 30.0
 TURNED_AWAY_REST = 300.0
 SEEK_REFRESH = 10.0

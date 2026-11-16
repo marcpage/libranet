@@ -343,6 +343,8 @@ def test_a_persons_public_key_is_an_rsa_key_of_at_least_2048_bits(public_key: by
         (b"not a key", "Bob's id names no public key"),
         (public_pem(generate_private_key(65537, 1024)), "Bob's id names no RSA key of at least"),
     ],
+    # A new key would name its case differently in each test worker.
+    ids=["not-a-key", "rsa-1024"],
 )
 def test_what_is_no_persons_public_key_is_refused_naming_what_named_it(
     public_key: bytes, complaint: str

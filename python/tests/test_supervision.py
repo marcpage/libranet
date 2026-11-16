@@ -259,6 +259,9 @@ def test_restart_waits_for_the_backoff_delay(
         (crasher,), restart_delay_seconds=60.0, max_restart_delay_seconds=60.0
     )
     supervisor.poll()
+    # The module may take seconds to start, and so to crash, when the tests
+    # run in parallel.
+    _poll_until(supervisor, lambda: supervisor.process_id(ModuleName.FETCHER) is None)
     deadline = monotonic() + 3.0
 
     while monotonic() < deadline:
@@ -339,7 +342,12 @@ def test_messages_published_while_stopping_do_not_hold_up_shutdown(
         ModuleSpec(ModuleName.CONNECTIONS, farewell_module_factory),
         ModuleSpec(ModuleName.WEBSERVER, stub_module_factory),
     )
-    supervisor = make_supervisor(modules, logger=getLogger(__name__))
+    # The modules are still starting as the shutdown begins, which may take
+    # them seconds when the tests run in parallel. One held up by what it
+    # publishes never stops, so the longer wait still finds it.
+    supervisor = make_supervisor(
+        modules, logger=getLogger(__name__), stop_timeout_seconds=TIMEOUT_SECONDS
+    )
     caplog.set_level(INFO, logger=__name__)
     supervisor.poll()
 

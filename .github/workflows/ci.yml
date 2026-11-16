@@ -64,8 +64,10 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
+      # The tests are spread over a worker for each CPU. pytest-cov combines
+      # what each worker covered into one report.
       - name: pytest
-        run: uv run pytest --cov --cov-report=term --cov-report=xml
+        run: uv run pytest -n auto --cov --cov-report=term --cov-report=xml
 
       - name: Coverage summary
         if: ${{ !cancelled() }}

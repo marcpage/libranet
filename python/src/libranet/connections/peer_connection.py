@@ -94,6 +94,8 @@ class PeerConnection:  # pylint: disable=too-many-instance-attributes
         self._closed = False
         self._turned_away = False
         self._failure: Exception = ConnectionClosedError(f"Connection to {host} closed")
+        # Set by the send thread when it fails while there is still something to read.
+        self._send_failure: ConnectionClosedError | None = None
         self._last_progress = monotonic()
         self._peer_ip = _peer_ip(sock)
         # Completed once the receive thread has closed everything down.
@@ -270,10 +272,28 @@ class PeerConnection:  # pylint: disable=too-many-instance-attributes
 
             except OSError as error:
                 # Not logged: _fail raises it to the request waiting on it.
-                self._fail(ConnectionClosedError(f"Sending to {self._host} failed: {error}"))
+                self._send_failed(ConnectionClosedError(f"Sending to {self._host} failed: {error}"))
                 return
 
             self._progressed()
+
+    def _send_failed(self, error: ConnectionClosedError) -> None:
+        """Close the connection for a failed send, once what the peer sent has been read.
+
+        A peer that answers with ``Connection: close`` and closes fails the
+        sends of requests pipelined after it, so its answer may still be
+        waiting to be read. While anything is, the receive thread reads it
+        and then closes the connection.
+        """
+        self._send_failure = error
+
+        with DefaultSelector() as selector:
+            selector.register(self._socket, EVENT_READ)
+
+            if selector.select(0):
+                return
+
+        self._fail(error)
 
     def _receive_loop(self) -> None:
         try:
@@ -306,12 +326,18 @@ class PeerConnection:  # pylint: disable=too-many-instance-attributes
                     self._parser.feed(data)
                     self._deliver()
 
+                    if self._send_failure is not None and not selector.select(0):
+                        # Everything the peer sent before a send failed is read.
+                        break
+
         except OSError as error:
             # Not logged: _fail raises it to the request waiting on it.
             self._fail(error)
 
         finally:
-            self._fail(ConnectionClosedError(f"{self._host} closed the connection"))
+            self._fail(
+                self._send_failure or ConnectionClosedError(f"{self._host} closed the connection")
+            )
             self._fail_waiting()
             self._sender.join()
             self._socket.close()
