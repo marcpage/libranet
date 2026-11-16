@@ -171,6 +171,7 @@ net::Address query_socket_address(int socket_fd, Func socket_call,
 
 namespace net {
 
+// cppcheck-suppress duplInheritedMember
 ISocket::Ptr SocketPosix::bind(const Address& address) {
     const auto addresses = resolve_address(address, AI_PASSIVE, SOCK_STREAM);
     int last_error = EADDRNOTAVAIL;
@@ -197,6 +198,7 @@ ISocket::Ptr SocketPosix::bind(const Address& address) {
     return nullptr;
 }
 
+// cppcheck-suppress duplInheritedMember
 ISocket::Ptr SocketPosix::connect(const Address& address) {
     const auto addresses = resolve_address(address, 0, SOCK_STREAM);
     int last_error = ECONNREFUSED;

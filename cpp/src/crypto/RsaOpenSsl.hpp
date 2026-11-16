@@ -25,6 +25,7 @@ namespace crypto {
 // for each share its one OpenSSL key.
 class RsaOpenSsl : public IMultiKey {
 public:
+    // cppcheck-suppress duplInheritedMember
     [[nodiscard]] static IMultiKey::Ptr from_pem(std::string_view pem);
     [[nodiscard]] static IMultiKey::Ptr for_bit_size(std::size_t key_bits);
 
@@ -45,6 +46,10 @@ public:
 
 private:
     OpenSslKey m_key;
+    // Mistaken: the constructor sets m_has_private. cppcheck loses the
+    // class's constructors in a file that names it with
+    // `using crypto::RsaOpenSsl;`.
+    // cppcheck-suppress uninitMemberVarNoCtor
     bool m_has_private;
 
     [[nodiscard]] OpenSslKey shared() const;
@@ -68,6 +73,7 @@ inline IMultiKey::Ptr RsaOpenSsl::for_bit_size(std::size_t key_bits) {
     return std::make_unique<RsaOpenSsl>(OpenSslKey(key), true);
 }
 
+// cppcheck-suppress duplInheritedMember
 inline IMultiKey::Ptr RsaOpenSsl::from_pem(std::string_view pem) {
     auto [key, has_private] = RsaPemOpenSsl::from_pem(pem);
 

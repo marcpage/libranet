@@ -112,8 +112,26 @@ jobs:
           uv tool install "gcovr==8.*"
           uv tool dir --bin >> "$GITHUB_PATH"
 
+      # The profile names the compiler and its version, so its hash is part
+      # of the key of the cache below.
       - name: Conan profile
-        run: conan profile detect --exist-ok
+        id: profile
+        run: |
+          conan profile detect --exist-ok
+          echo "hash=$(shasum -a 256 "$(conan profile path default)" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      # Conan builds OpenSSL and GoogleTest from source, which takes minutes,
+      # so the packages it builds are kept from one run to the next. A new
+      # compiler, or a change to conanfile.py, starts an empty cache. The
+      # cache is saved at the end of a job that passes, only when there was
+      # none with its key. Each job has its own: one that finds a cache never
+      # saves it again, so a job sharing another's would rebuild what that
+      # one never needed.
+      - name: Conan packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.conan2/p
+          key: conan-${{ github.job }}-${{ runner.os }}-${{ steps.profile.outputs.hash }}-${{ hashFiles('cpp/conanfile.py') }}
 
       - name: Build for Debug, with coverage
         run: |
@@ -127,6 +145,11 @@ jobs:
           conan install . --build=missing
           cmake --preset conan-release
           cmake --build --preset conan-release
+
+      # What Conan built its packages from is not needed once they are made,
+      # and is two thirds of its cache.
+      - name: Shrink the Conan cache
+        run: conan cache clean
 
       # AddressSanitizer and ThreadSanitizer cannot share a build, so each
       # has one of its own. UndefinedBehaviorSanitizer runs with
@@ -209,10 +232,10 @@ jobs:
         env:
           ASAN_OPTIONS: detect_stack_use_after_return=1
           UBSAN_OPTIONS: print_stacktrace=1
-        run: ctest --test-dir build/address --output-on-failure
+        run: ctest --test-dir build/address --parallel --output-on-failure
 
       - name: Test with ThreadSanitizer
-        run: ctest --test-dir build/thread --output-on-failure
+        run: ctest --test-dir build/thread --parallel --output-on-failure
 
       # Every fuzzer runs for two minutes, all at once. One that finds a
       # fault stops, shows the end of its log here, and saves the input that
@@ -313,13 +336,24 @@ jobs:
       - name: clang-format
         run: git ls-files -z '*.cpp' '*.h' '*.hpp' | xargs -0 clang-format --dry-run --Werror
 
+      # Conan's packages are cached as in the cpp jobs.
       - name: Conan profile
-        run: conan profile detect --exist-ok
+        id: profile
+        run: |
+          conan profile detect --exist-ok
+          echo "hash=$(shasum -a 256 "$(conan profile path default)" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Conan packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.conan2/p
+          key: conan-${{ github.job }}-${{ runner.os }}-${{ steps.profile.outputs.hash }}-${{ hashFiles('cpp/conanfile.py') }}
 
       - name: Configure
         run: |
           conan install . --build=missing
           cmake --preset conan-release -DLIBRANET_FUZZERS=ON
+          conan cache clean
 
       - name: clang-tidy
         run: run-clang-tidy.py -p build/Release -quiet

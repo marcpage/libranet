@@ -20,13 +20,6 @@ checkersReport
 
 # Not yet met by the code.
 
-# 4 to clean up (4 in library code, 0 in tests), such as
-# src/net/SocketPosix.cpp:164: The class 'SocketPosix' defines member function
-# with name 'bind' also defined in its parent class 'ISocket'.
-#     ISocket::Ptr SocketPosix::bind(const Address& address) {
-# On purpose: ISocket's static bind() and connect() call SocketPosix's.
-duplInheritedMember
-
 # 1 to clean up (1 in library code, 0 in tests), such as src/net/Address.hpp:12:
 # The class 'Address' does not declare a constructor although it has private
 # member variables which likely require initialization.
@@ -40,9 +33,3 @@ noConstructor
 #     ResponseCode(Status status, std::optional<std::string> custom_reason = ...
 # On purpose: a Status converts to a ResponseCode, as for clang-tidy.
 noExplicitConstructor
-
-# 1 to clean up (1 in library code, 0 in tests), such as src/net/Address.hpp:28:
-# Member variable 'Address::m_port' has no initializer.
-#     Port m_port;
-# Mistaken: Address's constructor sets m_port.
-uninitMemberVarNoCtor
