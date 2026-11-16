@@ -17,8 +17,6 @@ namespace crypto {
 
 class RsaEncryptKeyMacos : public IEncryptKey {
 public:
-    static IMultiKey::Ptr from_pem(std::string_view pem);
-
     RsaEncryptKeyMacos(SecKeyRef private_key, SecKeyRef public_key);
     ~RsaEncryptKeyMacos() override = default;
 

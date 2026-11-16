@@ -83,7 +83,7 @@ inline IMultiKey::Ptr RsaMacos::for_bit_size(std::size_t key_bits) {
         throw std::runtime_error("Failed to derive public key from generated RSA private key.");
     }
 
-    return std::make_unique<RsaMacos>(private_key.release(), public_key.release());
+    return std::make_unique<RsaMacos>(private_key.get(), public_key.get());
 }
 
 inline RsaMacos::RsaMacos(SecKeyRef private_key, SecKeyRef public_key)
@@ -114,7 +114,7 @@ inline std::string RsaMacos::id() const {
 inline IMultiKey::Ptr RsaMacos::from_pem(std::string_view pem) {
     auto [private_key, public_key] = RsaPemMacos::from_pem(pem);
 
-    return std::make_unique<RsaMacos>(private_key.release(), public_key.release());
+    return std::make_unique<RsaMacos>(private_key.get(), public_key.get());
 }
 
 } // namespace crypto
