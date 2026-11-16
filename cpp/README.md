@@ -288,6 +288,11 @@ the next.
 
 ## Checking
 
+How the code is written, and which of those rules the tools below check, is
+in the [Coding Style](docs/Coding%20Style.md). Where the code departs from
+it, and what its rules lean on here, is in
+[Coding Style in Libranet](docs/Coding%20Style%20in%20Libranet.md).
+
 clang-format keeps the code in one layout, set in
 [`.clang-format`](.clang-format): the WebKit style, adjusted to change as
 little as it can of the code as first written, for now. It also sorts each
