@@ -102,7 +102,7 @@
   label.check { flex-direction: row; align-items: center; gap: 0.5rem; font-size: 1rem; color: var(--text); }
   .fields { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; margin: 0 0 0.75rem; }
 
-  input {
+  input, textarea {
     font: inherit;
     font-size: 1rem;
     color: var(--text);
@@ -111,6 +111,8 @@
     border-radius: 6px;
     padding: 0.4rem 0.55rem;
   }
+
+  textarea { resize: vertical; }
 
   input[type="checkbox"], input[type="radio"] { flex: none; width: 1.1rem; height: 1.1rem; margin: 0; padding: 0; accent-color: var(--accent); }
 
@@ -331,6 +333,17 @@
   .viewer-bar > .icons { margin-left: auto; }
   .viewer-caption > * { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .viewer-caption > #viewer-result { white-space: normal; }
+
+  /* The photo's caption, as edited, on two lines at most; the whole of it
+     is in Details. */
+  .viewer-caption > #viewer-photo-caption {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: pre-line;
+  }
+
   .viewer-main { display: flex; flex: 1 1 auto; min-height: 0; }
   .viewer-body { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; }
 
@@ -356,6 +369,7 @@
   .details dd { margin: 0; overflow-wrap: anywhere; }
   .details dd > * { display: block; }
   .details a { color: var(--accent); }
+  .details .prose { white-space: pre-line; }
   .viewer-body > .state { position: absolute; top: 50%; left: 1rem; right: 1rem; margin: 0; text-align: center; transform: translateY(-50%); }
 
   a.icon { display: inline-block; padding: 0.3rem; line-height: 0; border: 1px solid transparent; border-radius: 6px; color: var(--text); }
@@ -435,6 +449,14 @@
   }
 
   dialog::backdrop { background: rgb(0 0 0 / 0.6); }
+
+  /* Editing a photo's details: its thumbnail, whole, turned as chosen, with
+     Turn left and Turn right below it, beside what is said of it. */
+  .edit-body { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+  .edit-body .fields { flex: 1 1 16rem; margin: 0; }
+  .edit-turn { display: flex; flex: 0 0 8rem; flex-direction: column; align-items: center; gap: 0.35rem; text-align: center; }
+  .edit-preview { display: block; width: 8rem; overflow: hidden; }
+  .edit-preview img.cover { object-fit: contain; background: var(--background); }
 
   /* The keys, and what each does. */
   .keys { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 1rem; margin: 0; }
@@ -524,6 +546,7 @@
     <div class="viewer-caption">
       <strong id="viewer-name"></strong>
       <span class="note" id="viewer-taken"></span>
+      <span id="viewer-photo-caption" hidden></span>
       <span class="note" id="viewer-result" role="status" hidden></span>
     </div>
     <div class="icons">
@@ -539,6 +562,12 @@
       <a class="icon" id="viewer-download" title="Download" aria-label="Download" download>
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12 M7 10l5 5 5-5 M4 15v5h16v-5"/></svg>
       </a>
+      <button type="button" class="icon changes-only" id="viewer-edit" title="Edit" aria-label="Edit" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
+      </button>
+      <button type="button" class="icon changes-only" id="viewer-cover" title="Use as cover" aria-label="Use as cover" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>
+      </button>
       <button type="button" class="icon changes-only" id="viewer-copy" title="Copy to album" aria-label="Copy to album" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
       </button>
@@ -677,6 +706,39 @@
   </form>
 </dialog>
 
+<dialog id="edit-dialog" aria-labelledby="edit-heading">
+  <form id="edit-form">
+    <h3 id="edit-heading"></h3>
+    <div class="edit-body">
+      <div class="edit-turn">
+        <span class="edit-preview" id="edit-preview"></span>
+        <div class="icons" id="edit-turns">
+          <button type="button" class="icon" id="edit-left" title="Turn left" aria-label="Turn left">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 4v6h6 M3.5 15a9 9 0 1 0 2.1-9.4L3 10"/></svg>
+          </button>
+          <button type="button" class="icon" id="edit-right" title="Turn right" aria-label="Turn right">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 4v6h-6 M20.5 15a9 9 0 1 1-2.1-9.4L21 10"/></svg>
+          </button>
+        </div>
+        <span class="note" id="edit-turned" role="status"></span>
+      </div>
+      <div class="fields">
+        <label class="wide">Title <input id="edit-title" maxlength="200" autocomplete="off"></label>
+        <label class="wide">Caption <textarea id="edit-caption" rows="3" maxlength="2000"></textarea></label>
+        <label>Day taken <input type="date" id="edit-date" min="1000-01-01" max="9999-12-31"></label>
+        <label>Time <input type="time" id="edit-time" step="1"></label>
+      </div>
+    </div>
+    <p class="hint">What is known of it is changed in this album alone, and its original is kept as it
+    is. A day or time changed moves it to that day, and cleared, leaves it undated.</p>
+    <p class="result" id="edit-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="keys-dialog" aria-labelledby="keys-heading">
   <h3 id="keys-heading">Keys</h3>
   <p class="hint">Anywhere on the page but in a field, and while no other dialog is open.</p>
@@ -704,6 +766,8 @@
     <dd>The photo before, or after, in the album's order.</dd>
     <dt><kbd>I</kbd></dt>
     <dd>Its details: when it was taken, the camera, and where, or hide them.</dd>
+    <dt><kbd>E</kbd></dt>
+    <dd>Edit its title, its caption, and when it was taken, or turn it a quarter left or right.</dd>
     <dt><kbd>Z</kbd></dt>
     <dd>Zoom to the photo's own pixels, or fit it to the window again.</dd>
     <dt><kbd>F</kbd></dt>
@@ -774,9 +838,11 @@ const THUMB_FILE = "thumb.jpg";
 
 // What else a photo's folder holds, beside its original under the name of
 // the file it was imported from: what is known of it, its members in this
-// order. `kind` is PHOTO_KIND, or VIDEO_KIND, `taken` a local date and time,
-// and `taken_from` where that came from: TAKEN_FROM_EXIF, TAKEN_FROM_METADATA,
-// of a video, TAKEN_FROM_NAME, or TAKEN_FROM_MODIFIED. What its
+// order. `title` and `caption` are as edited. `kind` is PHOTO_KIND, or
+// VIDEO_KIND, `taken` a local date and time, and `taken_from` where that
+// came from: TAKEN_FROM_EXIF, TAKEN_FROM_METADATA, of a video,
+// TAKEN_FROM_NAME, TAKEN_FROM_MODIFIED, or TAKEN_FROM_EDITED. `rotation` is
+// how far it is turned as edited, one of ROTATIONS. What its
 // Exif, or a video's metadata, gives: `offset`, from UTC, as "+09:00", of
 // when it was taken; `orientation`; `camera`, {"make", "model", "lens"};
 // `exposure`, {"iso", "aperture", "shutter", "focal_length"}, the shutter in
@@ -786,8 +852,8 @@ const THUMB_FILE = "thumb.jpg";
 // Live Photo's video, and `thumb` name their files.
 const INFO_FILE = "info.json";
 const INFO_KEYS = [
-  "name", "kind", "taken", "taken_from", "offset", "width", "height", "orientation", "size", "duration_seconds",
-  "camera", "exposure", "location", "original", "view", "motion", "thumb",
+  "name", "title", "caption", "kind", "taken", "taken_from", "offset", "width", "height", "orientation", "rotation",
+  "size", "duration_seconds", "camera", "exposure", "location", "original", "view", "motion", "thumb",
 ];
 const PHOTO_KIND = "photo";
 const VIDEO_KIND = "video";
@@ -795,6 +861,23 @@ const TAKEN_FROM_EXIF = "exif";
 const TAKEN_FROM_METADATA = "metadata";
 const TAKEN_FROM_NAME = "name";
 const TAKEN_FROM_MODIFIED = "modified";
+const TAKEN_FROM_EDITED = "edited";
+
+// How far a photo is turned as it is shown, as its `rotation` says,
+// clockwise, in degrees, a quarter at a time, once edited (Step 168): the
+// thumbnail and the view are not made again, but turned as they are shown.
+// Not turned at all is kept as no `rotation`. Each as Edit says it.
+const ROTATIONS = [0, 90, 180, 270];
+const TURN_TEXT = {
+  0: "Not turned",
+  90: "Turned a quarter right",
+  180: "Turned upside down",
+  270: "Turned a quarter left",
+};
+
+// The day and the time a photo's `taken` gives, as Edit shows them, to the
+// second.
+const TAKEN_PARTS = /^(\d{4}-\d\d-\d\d)(?:T(\d\d:\d\d(?::\d\d)?))?/;
 
 // Where each `taken_from` says when a photo was taken came from, as its
 // details say it.
@@ -803,6 +886,7 @@ const TAKEN_FROM_TEXT = {
   [TAKEN_FROM_METADATA]: "As the video itself says",
   [TAKEN_FROM_NAME]: "From its file's name",
   [TAKEN_FROM_MODIFIED]: "From when its file was last changed",
+  [TAKEN_FROM_EDITED]: "As edited",
 };
 
 // How much of a photo's original is read for its details (HttpApi 12.1,
@@ -1453,6 +1537,32 @@ function dayTaken(entry) {
   return isText(entry.taken) && /^\d{4}-\d{2}-\d{2}(?:T|$)/.test(entry.taken) ? entry.taken.slice(0, 10) : null;
 }
 
+// The month of an album's index the photo `entry` describes is listed in,
+// as YYYY-MM, or UNDATED, by when it was taken.
+function monthTaken(entry) {
+  const day = dayTaken(entry);
+  return day ? day.slice(0, 7) : UNDATED;
+}
+
+// How far the photo `known` describes, its entry in the index or its
+// info.json, is turned as it is shown, one of ROTATIONS, as its `rotation`
+// says. A video is not turned, as its controls would turn with it.
+function turnOf(known) {
+  return known.kind !== VIDEO_KIND && ROTATIONS.includes(known.rotation) ? known.rotation : 0;
+}
+
+// Shows `element`, a thumbnail or what is shown of a photo, turned `turn`
+// degrees clockwise about its middle, as a square tile or cover is.
+function showTurned(element, turn) {
+  element.style.transform = turn ? `rotate(${turn}deg)` : "";
+}
+
+// A time as a time field gives it, "HH:MM" or "HH:MM:SS", or as a photo's
+// `taken` holds it, to the second, "HH:MM:SS"; or "" if there is none.
+function clockOf(time) {
+  return /^\d\d:\d\d$/.test(time) ? `${time}:00` : time.slice(0, 8);
+}
+
 // The entries of an album's index, each [folder, entry], in order of when
 // each photo was taken, the undated first, then of their folders.
 function inTakenOrder(one, other) {
@@ -1533,6 +1643,13 @@ class AlbumIndex {
     }
 
     return index;
+  }
+
+  // The index of `bundle`, of the files of the months `months` alone, each
+  // YYYY-MM or UNDATED, read at once.
+  static async of(bundle, months) {
+    const names = await AlbumIndex.names(bundle);
+    return AlbumIndex.read(bundle, names.filter((name) => months.has(INDEX_FILE.exec(name)[1])));
   }
 
   // The days the first and the last dated photo of the album `bundle` were
@@ -1728,6 +1845,26 @@ class Album {
   // Where its cover is shown from, or null, if it has none.
   coverUrl() {
     return this.cover ? entryUrl(this.bundle, `${PHOTOS}/${this.cover}/${THUMB_FILE}`) : null;
+  }
+
+  // The info.json of the photo in `folder` of it; or an error, if it holds
+  // the photo no longer, or that could not be read, so that nothing is
+  // changed.
+  async photoInfo(folder) {
+    let info;
+
+    try {
+      info = await readEntry(this.bundle, `${PHOTOS}/${folder}/${INFO_FILE}`);
+    } catch (error) {
+      throw new Error(error.status === 404 ? `This photo is in “${this.name}” no longer, so nothing is changed.`
+        : `What is known of this photo could not be read, so nothing is changed: ${error.message}`);
+    }
+
+    if (!isObject(info)) {
+      throw new Error("What is known of this photo could not be read, so nothing is changed.");
+    }
+
+    return info;
   }
 }
 
@@ -2076,6 +2213,21 @@ function spanOf(bundle) {
   return spans.get(bundle);
 }
 
+// How far the cover of each album is turned, by "{bundle} {cover}", as its
+// info.json says, each read once.
+const coverTurns = new Map();
+
+function coverTurnOf(album) {
+  const key = `${album.bundle} ${album.cover}`;
+
+  if (!coverTurns.has(key)) {
+    coverTurns.set(key, readEntry(album.bundle, `${PHOTOS}/${album.cover}/${INFO_FILE}`)
+      .then((info) => (isObject(info) ? turnOf(info) : 0), () => 0));
+  }
+
+  return coverTurns.get(key);
+}
+
 function spanText(span) {
   return span.first === span.last ? dateText(span.first) : `${dateText(span.first)} – ${dateText(span.last)}`;
 }
@@ -2126,20 +2278,25 @@ function renderAlbums() {
   }
 }
 
-// The tile of `album`: its cover, its name, how many photos it holds, and
-// the days of its first and last, once read.
+// The tile of `album`: its cover, turned as its photo is, its name, how
+// many photos it holds, and the days of its first and last, once read.
 function albumTile(album) {
   const item = make("li");
   const pick = make("button", null, "pick");
   const caption = make("span", null, "caption");
   const days = make("span", null, "note");
+  const cover = coverImage(album.coverUrl());
   pick.type = "button";
   pick.dataset.id = album.id;
   days.hidden = true;
   caption.append(make("strong", album.name), make("span", countText(album), "note"), days);
-  pick.append(coverImage(album.coverUrl()), caption);
+  pick.append(cover, caption);
   pick.addEventListener("click", () => openAlbum(album.id));
   item.append(pick);
+
+  if (album.cover) {
+    coverTurnOf(album).then((turn) => showTurned(cover, turn));
+  }
 
   if (album.count > 0) {
     spanOf(album.bundle).then((span) => {
@@ -2463,15 +2620,11 @@ class Grid {
 
     if (!tile || (thumb && !tile.dataset.thumb)) {
       const name = isText(entry.name) ? entry.name : folder;
-      const taken = isText(entry.taken) ? takenText(entry.taken) : "Undated";
       const length = entry.kind === VIDEO_KIND ? durationText(entry.duration_seconds) : "";
-      const video = entry.kind === VIDEO_KIND ? `, a video${length ? ` of ${length}` : ""}` : "";
       tile = make("button", null, "tile");
       tile.type = "button";
-      tile.title = `${name}\n${taken}`;
       tile.dataset.folder = folder;
       tile.dataset.thumb = thumb || "";
-      tile.setAttribute("aria-label", `${name}${video}, ${taken}`);
       tile.append(thumb ? coverImage(entryUrl(this.bundle, `${PHOTOS}/${folder}/${thumb}`)) : unviewable(name), chosenBox());
 
       if (length) {
@@ -2498,10 +2651,30 @@ class Grid {
       this.tiles.set(folder, tile);
     }
 
+    Grid.describe(tile, folder, entry);
     tile.tabIndex = -1;
     this.positions.set(tile, position);
     Grid.mark(tile);
     return tile;
+  }
+
+  // Names the photo in `folder` of `tile`, as `entry`, its entry in the
+  // index, describes it: by its title, or else its name, with when it was
+  // taken, and of a video, how long it plays; and turns its thumbnail as its
+  // rotation says. A tile kept as the photo is edited is named and turned
+  // again.
+  static describe(tile, folder, entry) {
+    const name = isText(entry.title) ? entry.title : (isText(entry.name) ? entry.name : folder);
+    const taken = isText(entry.taken) ? takenText(entry.taken) : "Undated";
+    const length = entry.kind === VIDEO_KIND ? durationText(entry.duration_seconds) : "";
+    const video = entry.kind === VIDEO_KIND ? `, a video${length ? ` of ${length}` : ""}` : "";
+    const image = tile.querySelector("img.cover");
+    tile.title = `${name}\n${taken}`;
+    tile.setAttribute("aria-label", `${name}${video}, ${taken}`);
+
+    if (image) {
+      showTurned(image, turnOf(entry));
+    }
   }
 
   // Shows, while photos are chosen, whether the photo of `tile` is.
@@ -3082,7 +3255,8 @@ class ChosenPhotos {
   }
 }
 
-// Details, beside the photo shown, or below it at a phone's width: its name,
+// Details, beside the photo shown, or below it at a phone's width: its title
+// and its caption, as edited, its name,
 // when it was taken, and where that came from, its width and height, a
 // video's length, its size, the camera and lens, the exposure, and where it
 // was taken, with a link to the place on Google Maps. What is not known of it
@@ -3111,6 +3285,8 @@ class DetailsPanel {
     const known = { ...entry, ...info };
     const camera = isObject(known.camera) ? known.camera : {};
     const rows = [
+      ["Title", [known.title]],
+      ["Caption", [isText(known.caption) ? make("span", known.caption, "prose") : null]],
       ["Name", [name]],
       ["Taken", DetailsPanel.taken(known)],
       ["Pixels", DetailsPanel.pixels(known)],
@@ -3142,8 +3318,9 @@ class DetailsPanel {
     return [`${takenText(known.taken)}${offset}`, from];
   }
 
-  // Its width and height, as seen.
-  static pixels({ width, height }) {
+  // Its width and height, as seen, turned as it is.
+  static pixels(known) {
+    const [width, height] = turnOf(known) % 180 ? [known.height, known.width] : [known.width, known.height];
     const sized = [width, height].every((side) => Number.isInteger(side) && side > 0);
     return sized ? [`${width.toLocaleString()} × ${height.toLocaleString()}`] : [];
   }
@@ -3219,11 +3396,13 @@ class Viewer {
     this.folder = null;
     this.described = new Map();
     this.shown = 0;
-    // The photo's image, and its width and height, once known; whether it is
-    // zoomed; and where its upper left corner is in the stage, and its width
-    // and height as it is laid out.
+    // The photo's image, and its width and height, once known, as seen,
+    // turned as it is; how far it is turned, as its rotation says; whether
+    // it is zoomed; and where its upper left corner is in the stage, and its
+    // width and height as it is laid out, as seen.
     this.image = null;
     this.size = null;
+    this.turn = 0;
     this.zoomed = false;
     this.offset = [0, 0];
     this.laid = [0, 0];
@@ -3248,6 +3427,7 @@ class Viewer {
 
   listen() {
     byId("viewer-info").addEventListener("click", () => this.toggleDetails());
+    byId("viewer-edit").addEventListener("click", () => this.edit());
     byId("viewer-close").addEventListener("click", () => this.close());
     byId("viewer-previous").addEventListener("click", () => this.move(false));
     byId("viewer-next").addEventListener("click", () => this.move(true));
@@ -3270,7 +3450,9 @@ class Viewer {
       }
     }, { passive: false });
     this.element.addEventListener("wheel", (event) => this.wheel(event), { passive: false });
-    window.addEventListener("resize", () => this.layout());
+    // Laid out again as the stage changes size: with the window, or as what
+    // is said above it takes more lines, or fewer.
+    new ResizeObserver(() => this.layout()).observe(this.stage);
 
     for (const name of ["fullscreenchange", "webkitfullscreenchange"]) {
       document.addEventListener(name, () => this.showFullscreen());
@@ -3384,9 +3566,10 @@ class Viewer {
     }
   }
 
-  // Shows the photo in `folder` of `grid`, fitting the window, its name and
-  // when it was taken, and its details, as its entry in the index gives
-  // them, while what is shown of it, and what is known of it, is read.
+  // Shows the photo in `folder` of `grid`, fitting the window, turned as it
+  // is, its title or name, when it was taken, and its details, as its entry
+  // in the index gives them, while what is shown of it, and what is known of
+  // it, is read.
   async present(grid, folder) {
     const position = grid.place(folder);
     const [, entry] = grid.photoAt(position);
@@ -3397,7 +3580,8 @@ class Viewer {
     this.grid = grid;
     this.folder = folder;
     this.zoomed = false;
-    this.size = sized ? [entry.width, entry.height] : null;
+    this.turn = turnOf(entry);
+    this.size = sized ? this.seen([entry.width, entry.height]) : null;
     this.image = null;
     this.release();
     this.ahead = [];
@@ -3406,12 +3590,11 @@ class Viewer {
     this.download.removeAttribute("href");
     byId("viewer-zoom").setAttribute("aria-pressed", "false");
     byId("viewer-zoom").hidden = entry.kind === VIDEO_KIND;
-    byId("viewer-name").textContent = name;
-    byId("viewer-taken").textContent = isText(entry.taken) ? takenText(entry.taken) : "Undated";
+    // A cover is shown by its thumbnail, so a photo with none is not made one.
+    byId("viewer-cover").hidden = !canChange() || !isText(entry.thumb);
     show(byId("viewer-result"), "");
-    byId("viewer-previous").hidden = !grid.moved(position, "ArrowLeft");
-    byId("viewer-next").hidden = !grid.moved(position, "ArrowRight");
-    this.panel.show(name, {}, entry);
+    this.sides(grid, position);
+    this.tell(name, entry, {});
     show(this.status, "Loading…");
 
     // Focus kept within it, as when Next has it, and is hidden at the last.
@@ -3427,8 +3610,113 @@ class Viewer {
 
     this.download.href = photo.original;
     this.download.download = photo.name;
-    this.panel.show(photo.name, photo.info, entry);
+    this.tell(photo.name, entry, photo.info);
+    this.turnTo(turnOf({ ...entry, ...photo.info }));
     this.load(photo);
+  }
+
+  // Hides Previous, at the first photo of `grid`, and Next, at its last, the
+  // photo shown being at `position`.
+  sides(grid, position) {
+    byId("viewer-previous").hidden = !grid.moved(position, "ArrowLeft");
+    byId("viewer-next").hidden = !grid.moved(position, "ArrowRight");
+  }
+
+  // Says what is known of the photo shown, named `name`, as `info`, its
+  // info.json, gives it, or else as `entry`, its entry in the index, does:
+  // its title, or else its name, when it was taken, its caption, and its
+  // details.
+  tell(name, entry, info) {
+    const known = { ...entry, ...info };
+    byId("viewer-name").textContent = isText(known.title) ? known.title : name;
+    byId("viewer-taken").textContent = isText(known.taken) ? takenText(known.taken) : "Undated";
+    show(byId("viewer-photo-caption"), isText(known.caption) ? known.caption : "");
+    this.panel.show(name, info, entry);
+  }
+
+  // A width and height of the photo shown, `size`, before it is turned, as
+  // seen, turned as it is.
+  seen([width, height]) {
+    return this.turn % 180 ? [height, width] : [width, height];
+  }
+
+  // Turns the photo shown to `turn`, one of ROTATIONS, and lays it out again.
+  turnTo(turn) {
+    if (this.size && (turn - this.turn) % 180 !== 0) {
+      this.size = [this.size[1], this.size[0]];
+    }
+
+    this.turn = turn;
+    this.layout();
+  }
+
+  // Edits the photo shown, once what is known of it is read: its title, its
+  // caption, when it was taken, and how it is turned.
+  async edit() {
+    if (byId("viewer-edit").hidden || !this.isOpen()) {
+      return;
+    }
+
+    const [grid, folder, shown] = [this.current(), this.folder, this.shown];
+    const photo = await this.describe(grid, folder);
+
+    if (this.shown !== shown || !this.isOpen() || document.querySelector("dialog[open]")) {
+      return;
+    }
+
+    const [, entry] = grid.photoAt(grid.place(folder));
+    editing = new PhotoEdit(grid.id, folder, { ...entry, ...photo.info }, photo);
+    editing.open();
+  }
+
+  // Once the photo in `folder` is edited, says `outcome`, what was done, and
+  // shows it as `info`, its info.json, now describes it, turned as it says,
+  // where the album's grid, read again, has it.
+  async edited(folder, info, outcome) {
+    const album = openAlbumOf();
+
+    if (album) {
+      await showGrid(album);
+    }
+
+    if (!this.isOpen() || this.folder !== folder) {
+      return;
+    }
+
+    const photo = await this.describe(this.grid, folder);
+    const grid = this.current();
+    const position = grid.place(folder);
+    const [, entry] = grid.photoAt(position);
+    this.grid = grid;
+    this.described.set(`${grid.bundle} ${folder}`, Promise.resolve({ ...photo, info }));
+    this.sides(grid, position);
+    this.tell(photo.name, entry, info);
+    show(byId("viewer-result"), ...outcome);
+    this.turnTo(turnOf({ ...entry, ...info }));
+  }
+
+  // Makes the photo shown its album's cover, and gives what was done, as
+  // perform takes it.
+  async useAsCover() {
+    const [id, folder] = [this.grid.id, this.folder];
+    let outcome = null;
+    await changeAlbums(async (albums) => {
+      const album = albums.find((each) => each.id === id);
+
+      if (!album) {
+        throw new Error("Its album was removed, so nothing is changed.");
+      }
+
+      if (album.cover === folder) {
+        outcome = [`This photo is the cover of “${album.name}” already.`, false];
+        return albums;
+      }
+
+      await album.photoInfo(folder);
+      outcome = [`This photo is the cover of “${album.name}” now.`, false];
+      return albums.map((each) => (each.id === id ? each.with({ cover: folder }) : each));
+    });
+    return outcome;
   }
 
   // What is shown of the photo in `folder` of `grid`, as described reads it,
@@ -3526,10 +3814,11 @@ class Viewer {
   }
 
   // Lays out `image`, the photo shown, or a video, once it is loaded, at its
-  // own width and height, then loads the photos before and after it.
+  // own width and height, turned as it is, then loads the photos before and
+  // after it.
   loaded(image) {
     const video = image instanceof HTMLVideoElement;
-    this.size = video ? [image.videoWidth, image.videoHeight] : [image.naturalWidth, image.naturalHeight];
+    this.size = this.seen(video ? [image.videoWidth, image.videoHeight] : [image.naturalWidth, image.naturalHeight]);
     show(this.status, "");
     this.layout();
     this.loadAhead();
@@ -3757,7 +4046,9 @@ class Viewer {
 
   // Lays the photo out in the stage, as large as scale says: centered along
   // each side it fits within, and along each it does not, where it was moved
-  // to, though never so far as to leave black beyond its edge.
+  // to, though never so far as to leave black beyond its edge. A photo turned
+  // is laid out at its own width and height, then turned about its middle
+  // into the place laid out for it as seen.
   layout() {
     const image = this.image;
 
@@ -3776,9 +4067,13 @@ class Viewer {
     this.laid = this.size.map((side) => side * scale);
     this.offset = this.offset.map((offset, side) => (this.laid[side] <= room[side]
       ? (room[side] - this.laid[side]) / 2 : Math.min(0, Math.max(room[side] - this.laid[side], offset))));
-    image.style.width = `${this.laid[0]}px`;
-    image.style.height = `${this.laid[1]}px`;
-    image.style.transform = `translate(${this.offset[0]}px, ${this.offset[1]}px)`;
+    const [width, height] = this.seen(this.laid);
+    const turned = this.turn
+      ? ` translate(${this.laid[0] / 2}px, ${this.laid[1] / 2}px) rotate(${this.turn}deg) translate(${-width / 2}px, ${-height / 2}px)`
+      : "";
+    image.style.width = `${width}px`;
+    image.style.height = `${height}px`;
+    image.style.transform = `translate(${this.offset[0]}px, ${this.offset[1]}px)${turned}`;
     this.stage.classList.toggle("zoomed", this.zoomed);
     byId("viewer-zoom").setAttribute("aria-pressed", String(this.zoomed));
   }
@@ -3927,8 +4222,9 @@ class Viewer {
 
   // Hears every key while it is open, but while a dialog is open over it:
   // the left and right arrow keys move to the photo before or after, `I`
-  // shows its details, `Z` zooms, `F` shows it full screen, `D` downloads
-  // its original, Escape closes it, and `?` or `/` shows the keys.
+  // shows its details, `E` edits them, `Z` zooms, `F` shows it full screen,
+  // `D` downloads its original, Escape closes it, and `?` or `/` shows the
+  // keys.
   key(event) {
     const key = String(event.key).toLowerCase();
     const keys = {
@@ -3936,6 +4232,7 @@ class Viewer {
       arrowleft: () => this.move(false),
       arrowright: () => this.move(true),
       i: () => this.toggleDetails(),
+      e: () => this.edit(),
       z: () => this.zoom(),
       f: () => this.toggleFullscreen(),
       d: () => this.download.click(),
@@ -4190,6 +4487,172 @@ async function removePhotos() {
   await photos.done(outcome, true, neighbor);
   return null;
 }
+
+// The details of a photo, edited in the dialog that Edit, in the viewer, or
+// `E`, opens: its title, its caption, the day and time it was taken, and how
+// it is turned, a quarter left or right at a time. What is edited is written
+// to its info.json, and its entry in the index, as a new bundle of its
+// album, in that album alone. Its original is not changed.
+class PhotoEdit {
+  // Of the photo in `folder` of the album whose id is `id`, as `known`, its
+  // entry in the index and its info.json, describe it, and `photo`, as
+  // Viewer.described gives it. What it was as the dialog opened, `before`,
+  // and how it is turned now, `turn`.
+  constructor(id, folder, known, photo) {
+    const [, day = "", time = ""] = TAKEN_PARTS.exec(isText(known.taken) ? known.taken : "") || [];
+    this.id = id;
+    this.folder = folder;
+    this.photo = photo;
+    this.before = {
+      title: isText(known.title) ? known.title : undefined,
+      caption: isText(known.caption) ? known.caption : undefined,
+      rotation: turnOf(known) || undefined,
+      day,
+      time: clockOf(time),
+    };
+    this.turn = turnOf(known);
+    this.preview = null;
+  }
+
+  // Opens the dialog, showing what is known of it now, and its thumbnail,
+  // whole, turned as it is. A video is not turned.
+  open() {
+    const { title = "", caption = "", day, time } = this.before;
+    byId("edit-form").reset();
+    byId("edit-heading").textContent = `Edit “${this.photo.name}”`;
+    byId("edit-title").value = title;
+    byId("edit-caption").value = caption;
+    byId("edit-date").value = day;
+    byId("edit-time").value = time;
+    byId("edit-turns").hidden = this.photo.video;
+    byId("edit-turned").hidden = this.photo.video;
+    this.preview = this.photo.poster ? coverImage(this.photo.poster) : unviewable(this.photo.name);
+    byId("edit-preview").replaceChildren(this.preview);
+    this.showTurn();
+    show(byId("edit-result"), "");
+    byId("edit-dialog").showModal();
+    byId("edit-title").focus();
+  }
+
+  // Turns it a quarter right, or, if `left`, a quarter left.
+  turnBy(left) {
+    this.turn = (this.turn + (left ? 270 : 90)) % 360;
+    this.showTurn();
+  }
+
+  showTurn() {
+    if (this.preview instanceof HTMLImageElement) {
+      showTurned(this.preview, this.turn);
+    }
+
+    byId("edit-turned").textContent = TURN_TEXT[this.turn];
+  }
+
+  // What the dialog changes of it, as info.json holds it, each member it
+  // takes out undefined: its title, its caption, and its rotation; and, if
+  // the day or the time is changed, when it was taken, and where that came
+  // from, TAKEN_FROM_EDITED, its offset from UTC taken out, as nothing says
+  // it is of the time given. Null if nothing is changed; an error if the day
+  // and the time given are not one.
+  changes() {
+    const day = byId("edit-date").value;
+    const time = clockOf(byId("edit-time").value);
+    const changes = {
+      title: byId("edit-title").value.trim() || undefined,
+      caption: byId("edit-caption").value.trim() || undefined,
+      rotation: this.turn || undefined,
+    };
+
+    if (day && !/^\d{4}-\d\d-\d\d$/.test(day)) {
+      throw new Error("Give the day it was taken as a date, its year of four digits.");
+    }
+
+    if (time && !day) {
+      throw new Error("Give the day it was taken, or clear its time too.");
+    }
+
+    if (day !== this.before.day || time !== this.before.time) {
+      changes.taken = day ? (time ? `${day}T${time}` : day) : undefined;
+      changes.taken_from = day ? TAKEN_FROM_EDITED : undefined;
+      changes.offset = undefined;
+    }
+
+    const same = ["title", "caption", "rotation"].every((key) => changes[key] === this.before[key]);
+    return same && !Object.hasOwn(changes, "taken") ? null : changes;
+  }
+
+  // Keeps what the dialog says of it, if it changes anything, and closes the
+  // dialog. The viewer then shows it as it is now.
+  async save() {
+    const changes = this.changes();
+
+    if (!changes) {
+      byId("edit-dialog").close();
+      return null;
+    }
+
+    show(byId("edit-result"), "Saving…");
+    const info = await this.keep(changes);
+    byId("edit-dialog").close();
+    await viewer.edited(this.folder, info, ["This photo's details were saved.", false]);
+    return null;
+  }
+
+  // Writes `changes` to its info.json, and to its entry in the index, its
+  // title, its rotation, and when it was taken, moved to the month of that,
+  // as a new bundle of its album, and gives its info.json as written. An
+  // error, if the album was removed, or holds it no longer.
+  async keep(changes) {
+    const folder = this.folder;
+    const dated = Object.hasOwn(changes, "taken");
+    let written = null;
+    await changeAlbums(async (albums) => {
+      const album = albums.find((each) => each.id === this.id);
+
+      if (!album) {
+        throw new Error("Its album was removed, so nothing is changed.");
+      }
+
+      // Its entry is in the month it was taken, as an import lists it, or
+      // else, as one made elsewhere since may list it, in any month.
+      const info = await album.photoInfo(folder);
+      let index = await AlbumIndex.of(album.bundle, new Set([monthTaken(info), ...(dated ? [monthTaken(changes)] : [])]));
+
+      if (!index.holds(folder)) {
+        index = await AlbumIndex.whole(album);
+      }
+
+      if (!index.holds(folder)) {
+        throw new Error(`This photo is in “${album.name}” no longer, so nothing is changed.`);
+      }
+
+      const month = index.folders.get(folder);
+      const entry = index.months.get(month).get(folder);
+      const listed = defined({ ...entry, ...(dated ? { taken: changes.taken } : {}), title: changes.title, rotation: changes.rotation });
+      const moved = dated ? monthTaken(changes) : month;
+      const add = { [`${PHOTOS}/${folder}/${INFO_FILE}`]: { text: jsonText(INFO_KEYS, { ...info, ...changes }) } };
+      let remove = [];
+
+      // Its entry is written again only if it changes, as a caption is kept
+      // in its info.json alone.
+      if (moved !== month || JSON.stringify(listed) !== JSON.stringify(entry)) {
+        index.delete(folder);
+        index.set(moved, folder, listed);
+        const files = index.files(new Set([month, moved]));
+        Object.assign(add, files.add);
+        remove = files.remove;
+      }
+
+      const bundle = await editInParts(album.bundle, add, remove);
+      written = defined({ ...info, ...changes });
+      return albums.map((each) => (each.id === album.id ? each.with({ bundle }) : each));
+    });
+    return written;
+  }
+}
+
+// The photo the dialog editing a photo's details is for, a PhotoEdit.
+let editing = null;
 
 // Importing photos from the folders the node offers.
 
@@ -7139,6 +7602,8 @@ byId("copy-chosen").addEventListener("click", () => openCopy(selection.chosen(),
 byId("move-chosen").addEventListener("click", () => openCopy(selection.chosen(), true));
 byId("remove-chosen").addEventListener("click", () => openRemovePhotos(selection.chosen()));
 byId("copy-albums").addEventListener("change", showNewName);
+byId("edit-left").addEventListener("click", () => editing.turnBy(true));
+byId("edit-right").addEventListener("click", () => editing.turnBy(false));
 byId("found-list").addEventListener("change", showFoundCount);
 byId("found-back").addEventListener("click", () => {
   showFolders();
@@ -7150,9 +7615,11 @@ onSubmit("rename-form", "rename-result", renameAlbum);
 onSubmit("remove-form", "remove-result", removeAlbum);
 onSubmit("copy-form", "copy-result", copyChosen);
 onSubmit("remove-photos-form", "remove-photos-result", removePhotos);
+onSubmit("edit-form", "edit-result", () => editing.save());
 onSubmit("found-form", "found-result", importFound);
 onClick("folder-all", "folder-state", findEvery);
 onClick("import-chosen", "folder-state", findChosen);
+onClick("viewer-cover", "viewer-result", () => viewer.useAsCover());
 
 start();
 </script>

@@ -1064,6 +1064,8 @@ def test_the_photos_page_imports_into_albums_as_the_plan_names_them(photos_page:
     [keys] = findall(r"^const INFO_KEYS = \[(.*?)\];$", photos_page, DOTALL | MULTILINE)
     assert findall(r'"(\w+)"', keys) == [
         "name",
+        "title",
+        "caption",
         "kind",
         "taken",
         "taken_from",
@@ -1071,6 +1073,7 @@ def test_the_photos_page_imports_into_albums_as_the_plan_names_them(photos_page:
         "width",
         "height",
         "orientation",
+        "rotation",
         "size",
         "duration_seconds",
         "camera",
@@ -1087,6 +1090,7 @@ def test_the_photos_page_imports_into_albums_as_the_plan_names_them(photos_page:
     assert 'const TAKEN_FROM_METADATA = "metadata";' in photos_page
     assert 'const TAKEN_FROM_NAME = "name";' in photos_page
     assert 'const TAKEN_FROM_MODIFIED = "modified";' in photos_page
+    assert 'const TAKEN_FROM_EDITED = "edited";' in photos_page
 
 
 def test_the_photos_page_reads_when_a_photo_was_taken_from_its_name(photos_page: str) -> None:
@@ -1188,12 +1192,13 @@ def test_the_photos_page_reads_a_photos_details_as_the_plan_names_them(photos_pa
 def test_the_photos_page_shows_a_photo_with_the_keys_the_plan_names(photos_page: str) -> None:
     [keys] = findall(r"^    const keys = \{\n(.*?)\n    \};$", photos_page, DOTALL | MULTILINE)
 
-    # The photo before and after, Details, Zoom, Full screen, Download, and
-    # Close, with the keys, as the keys dialog shows them.
+    # The photo before and after, Details, Edit, Zoom, Full screen,
+    # Download, and Close, with the keys, as the keys dialog shows them.
     assert set(findall(r'^\s+"?([a-z?/]+)"?: ', keys, MULTILINE)) == {
         "arrowleft",
         "arrowright",
         "i",
+        "e",
         "z",
         "f",
         "d",
@@ -1230,6 +1235,27 @@ def test_the_photos_page_copies_moves_and_removes_photos_as_the_plan_names_them(
         ("viewer-remove", "Remove from album"),
     ]:
         assert f'id="{control}" title="{name}" aria-label="{name}"' in photos_page
+
+
+def test_the_photos_page_edits_a_photos_details_as_the_plan_names_them(
+    photos_page: str,
+) -> None:
+    # Edit, and Use as cover, in the viewer.
+    for control, name in [("viewer-edit", "Edit"), ("viewer-cover", "Use as cover")]:
+        assert f'id="{control}" title="{name}" aria-label="{name}"' in photos_page
+    # Turned a quarter left or right at a time.
+    assert "const ROTATIONS = [0, 90, 180, 270];" in photos_page
+    for control, name in [("edit-left", "Turn left"), ("edit-right", "Turn right")]:
+        assert f'id="{control}" title="{name}" aria-label="{name}"' in photos_page
+    # What is edited is written to its info.json, and to its entry in the
+    # index, moved to the month of a date changed, which says it was edited.
+    info = "[`${PHOTOS}/${folder}/${INFO_FILE}`]"
+    written = "{ text: jsonText(INFO_KEYS, { ...info, ...changes }) }"
+    assert f"const add = {{ {info}: {written} }};" in photos_page
+    assert "index.set(moved, folder, listed);" in photos_page
+    assert "changes.taken_from = day ? TAKEN_FROM_EDITED : undefined;" in photos_page
+    # The photo shown is made its album's cover.
+    assert "each.with({ cover: folder })" in photos_page
 
 
 def test_the_photos_page_is_black_as_the_movie_and_tv_pages_are_dark(photos_page: str) -> None:
