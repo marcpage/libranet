@@ -45,6 +45,7 @@ public:
     // long long on macOS, so with only std::int64_t, a value of the other type
     // would match no constructor exactly, and be ambiguous.
     // NOLINTBEGIN(*-explicit-constructor,google-runtime-int)
+    // cppcheck-suppress-begin noExplicitConstructor
     Json(std::nullptr_t) noexcept;
     Json(bool value) noexcept;
     Json(int value) noexcept;
@@ -56,6 +57,7 @@ public:
     explicit Json(std::string_view value);
     Json(Array value);
     Json(Object value);
+    // cppcheck-suppress-end noExplicitConstructor
     // NOLINTEND(*-explicit-constructor,google-runtime-int)
     Json(std::initializer_list<Json> arguments);
 
