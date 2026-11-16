@@ -96,6 +96,10 @@ FILM = b"0123456789"
 # The fewest bits a search returns, fewer than a node's, so that what the
 # node places for itself, as a trust list's version, is quick to match.
 MINIMUM_BITS = 16
+# How long a test waits for an answer, or for what the server publishes.
+# Making a person's key and deriving their passwords can take many seconds
+# when the tests run in parallel; a test that passes waits no longer for it.
+WAIT_SECONDS = 30.0
 
 
 @fixture
@@ -158,7 +162,7 @@ def serving(server: LibranetHTTPServer) -> Iterator[LibranetHTTPServer]:
 def connected(server: LibranetHTTPServer) -> Iterator[HTTPConnection]:
     """A connection to ``server``, closed when the test that asked for it is done."""
     host, port = server.server_address[:2]
-    connection = HTTPConnection(str(host), int(port), timeout=5)
+    connection = HTTPConnection(str(host), int(port), timeout=WAIT_SECONDS)
     yield connection
     connection.close()
 
@@ -348,12 +352,12 @@ def _new_identity() -> NodeIdentity:
 
 
 def _awaited(queues: ModuleQueues, wanted: Callable[[Message], bool]) -> Message:
-    """The first message published that is ``wanted``, waited for up to five seconds.
+    """The first message published that is ``wanted``, waited for up to :data:`WAIT_SECONDS`.
 
     Raises:
         Empty: none came in time.
     """
-    deadline = monotonic() + 5
+    deadline = monotonic() + WAIT_SECONDS
 
     while True:
         message = queues.outbox.get(timeout=max(deadline - monotonic(), 0))
