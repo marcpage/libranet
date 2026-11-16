@@ -103,7 +103,8 @@ inline std::string Url::encode(std::string_view value, std::string_view allowed_
                                bool space_to_plus) {
     std::ostringstream escaped;
 
-    escaped.fill('0');
+    // fill() returns the old fill character, which is not needed.
+    (void)escaped.fill('0');
     escaped << std::hex;
 
     for (const auto character : value) {

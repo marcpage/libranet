@@ -27,12 +27,6 @@ checkersReport
 # On purpose: ISocket's static bind() and connect() call SocketPosix's.
 duplInheritedMember
 
-# 1 to clean up (1 in library code, 0 in tests), such as src/http/Url.hpp:104:
-# Return value of function escaped.fill() is not used.
-#     escaped.fill('0');
-# Mistaken: fill() returns the old fill character, which is not needed.
-ignoredReturnValue
-
 # 1 to clean up (1 in library code, 0 in tests), such as src/net/Address.hpp:12:
 # The class 'Address' does not declare a constructor although it has private
 # member variables which likely require initialization.
@@ -52,10 +46,3 @@ noExplicitConstructor
 #     return Json(parse_raw_string());
 # Mistaken: each Json constructor copies or moves its argument into the Json.
 returnDanglingLifetime
-
-# 1 to clean up (0 in library code, 1 in tests), such as
-# src/msg/tests/TestAsyncChannel.cpp:220: Instance of 'msg::AsyncChannel' object
-# is destroyed immediately.
-#     EXPECT_THROW(AsyncChannel("test.async.null", nullptr), std::invalid_arg...
-# On purpose: EXPECT_THROW constructs one to see it throw.
-unusedScopedObject
