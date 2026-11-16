@@ -23,6 +23,7 @@ namespace crypto {
 
 // An RSA key, built on OpenSSL, which signs and encrypts. The keys it gives
 // for each share its one OpenSSL key.
+// cppcheck-suppress noConstructor
 class RsaOpenSsl : public IMultiKey {
 public:
     // cppcheck-suppress duplInheritedMember
