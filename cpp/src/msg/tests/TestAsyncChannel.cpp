@@ -221,5 +221,6 @@ TEST(AsyncChannelTest, DestructorStopsWorker) {
 }
 
 TEST(AsyncChannelTest, NullCallbackRejected) {
+    // cppcheck-suppress unusedScopedObject
     EXPECT_THROW(AsyncChannel("test.async.null", nullptr), std::invalid_argument);
 }

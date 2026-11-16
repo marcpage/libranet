@@ -66,10 +66,3 @@ returnDanglingLifetime
 #     Port m_port;
 # Mistaken: Address's constructor sets m_port.
 uninitMemberVarNoCtor
-
-# 1 to clean up (0 in library code, 1 in tests), such as
-# src/msg/tests/TestAsyncChannel.cpp:220: Instance of 'msg::AsyncChannel' object
-# is destroyed immediately.
-#     EXPECT_THROW(AsyncChannel("test.async.null", nullptr), std::invalid_arg...
-# On purpose: EXPECT_THROW constructs one to see it throw.
-unusedScopedObject
