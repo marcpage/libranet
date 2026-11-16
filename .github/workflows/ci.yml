@@ -167,6 +167,37 @@ jobs:
       - name: Test
         run: ctest --preset conan-debug --output-on-failure
 
+      # Apple's Clang has no LeakSanitizer, so on macOS each test program
+      # runs again under leaks, which lists the memory nothing points to when
+      # the program ends, with the stack that allocated each block. It exits
+      # with status 1 when it finds any, and above 1 when it cannot look.
+      - name: Find leaks
+        if: runner.os == 'macOS'
+        run: |
+          failed=0
+          for tests in build/Debug/src/*/*_tests; do
+            name=$(basename "$tests")
+            report="build/$name.leaks"
+            status=0
+            leaks --atExit -- "$tests" > "$report" 2>&1 || status=$?
+            case "$status" in
+              0)
+                echo "$name: no leaks"
+                ;;
+              1)
+                echo "::error::$name leaks memory"
+                awk '/^leaks Report/ { found = 1 } found && shown < 80 { print; shown++ }' "$report"
+                failed=1
+                ;;
+              *)
+                echo "::error::leaks could not check $name (status $status)"
+                tail -n 20 "$report"
+                failed=1
+                ;;
+            esac
+          done
+          exit "$failed"
+
       # Some sanitizer runtimes fail as a program starts when Linux spreads
       # memory over 32 bits of random addresses, as recent Ubuntu does. 28
       # bits was the default before.
