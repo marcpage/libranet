@@ -104,7 +104,7 @@ def test_a_file_gets_its_recorded_modification_time(
 
 @mark.parametrize(
     ("writable", "executable", "mode"),
-    [(True, False, 0o644), (True, True, 0o755), (False, False, 0o444), (False, True, 0o555)],
+    [(True, False, 0o600), (True, True, 0o700), (False, False, 0o400), (False, True, 0o500)],
 )
 def test_a_file_gets_the_permissions_its_owner_had(
     tmp_path: Path, store: CasStore, target: Path, writable: bool, executable: bool, mode: int
@@ -117,17 +117,29 @@ def test_a_file_gets_the_permissions_its_owner_had(
     assert S_IMODE((target / "script").stat().st_mode) == mode
 
 
-@mark.parametrize(("mask", "mode"), [(0o027, 0o750), (0o077, 0o700)])
-def test_only_those_who_may_read_a_file_may_run_it(
-    tmp_path: Path, store: CasStore, target: Path, mask: int, mode: int
+@mark.parametrize("mask", [0o000, 0o002])
+def test_a_file_is_its_owners_alone_whatever_the_umask(
+    tmp_path: Path, store: CasStore, target: Path, mask: int
 ) -> None:
-    entry = file_entry(tmp_path, store, b"#!", writable=True, executable=True)
+    entry = file_entry(tmp_path, store, b"private", writable=True)
     umask(mask)
 
     with writer(target) as placing:
-        placing.place_file("script", entry, store)
+        placing.place_file("private.txt", entry, store)
 
-    assert S_IMODE((target / "script").stat().st_mode) == mode
+    assert S_IMODE((target / "private.txt").stat().st_mode) == 0o600
+
+
+@mark.parametrize(("mask", "mode"), [(0o027, 0o750), (0o077, 0o700)])
+def test_only_those_who_may_read_a_directory_may_search_it(
+    store: CasStore, target: Path, mask: int, mode: int
+) -> None:
+    umask(mask)
+
+    with writer(target) as placing:
+        placing.place_directory("searched", Metadata(writable=True, executable=True), store)
+
+    assert S_IMODE((target / "searched").stat().st_mode) == mode
 
 
 @mark.parametrize("modified", [None, "not a time", "2026-09-01T08:30:00"])
@@ -461,7 +473,7 @@ def test_a_file_its_owner_could_not_write_is_given_its_extended_attributes(
     with writer(target, xattrs=ExtendedAttributes()) as placing:
         placing.place_file("locked.txt", entry, store)
 
-    assert S_IMODE((target / "locked.txt").stat().st_mode) == 0o444
+    assert S_IMODE((target / "locked.txt").stat().st_mode) == 0o400
     assert xattr(str(target / "locked.txt")).get("user.tag") == b"red"
 
 
