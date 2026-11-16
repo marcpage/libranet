@@ -20,14 +20,6 @@ checkersReport
 
 # Not yet met by the code.
 
-# 2 to clean up (0 in library code, 2 in tests), such as
-# src/types/tests/TestBlockingQueue.cpp:52: Access of moved variable
-# 'first_text'.
-#     EXPECT_TRUE(first_text.empty()); // moved-from
-# On purpose: the test reads the strings after moving them, to see that push()
-# emptied them.
-accessMoved
-
 # 4 to clean up (4 in library code, 0 in tests), such as
 # src/net/SocketPosix.cpp:164: The class 'SocketPosix' defines member function
 # with name 'bind' also defined in its parent class 'ISocket'.
