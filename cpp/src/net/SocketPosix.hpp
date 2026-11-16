@@ -6,7 +6,9 @@ namespace net {
 
 class SocketPosix final : public ISocket {
 public:
+    // cppcheck-suppress duplInheritedMember
     static ISocket::Ptr bind(const Address& address);
+    // cppcheck-suppress duplInheritedMember
     static ISocket::Ptr connect(const Address& address);
 
     SocketPosix() = delete;

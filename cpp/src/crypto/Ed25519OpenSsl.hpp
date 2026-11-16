@@ -59,6 +59,7 @@ inline ISignKey::Ptr Ed25519OpenSsl::create() {
     return std::make_unique<crypto::Ed25519OpenSsl>();
 }
 
+// cppcheck-suppress duplInheritedMember
 inline ISignKey::Ptr Ed25519OpenSsl::from_pem(std::string_view pem) {
     auto [label, der_bytes] = Pem::unwrap(pem);
 
