@@ -35,12 +35,6 @@ accessMoved
 # On purpose: ISocket's static bind() and connect() call SocketPosix's.
 duplInheritedMember
 
-# 1 to clean up (1 in library code, 0 in tests), such as src/http/Url.hpp:104:
-# Return value of function escaped.fill() is not used.
-#     escaped.fill('0');
-# Mistaken: fill() returns the old fill character, which is not needed.
-ignoredReturnValue
-
 # 1 to clean up (1 in library code, 0 in tests), such as src/net/Address.hpp:12:
 # The class 'Address' does not declare a constructor although it has private
 # member variables which likely require initialization.
