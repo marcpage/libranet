@@ -47,7 +47,8 @@ and `conan install` writes `CMakeUserPresets.json` here; git ignores both.
 CI builds the node and its tests on Ubuntu and macOS, for Debug and for
 Release, runs the Debug build's tests, and measures how much of the code
 they run; see [Coverage](#coverage). It also runs the tests with
-sanitizers; see [Sanitizers](#sanitizers).
+sanitizers, and on macOS looks for leaks; see [Sanitizers](#sanitizers)
+and [Leaks on macOS](#leaks-on-macos).
 
 ---
 
@@ -168,7 +169,7 @@ ThreadSanitizer cannot share one:
 
 | Build | Finds |
 | ----- | ----- |
-| `address,undefined` | Reading or writing outside a buffer, use after free or after a variable's scope ends, double free; leaks, on Linux only; and undefined behavior, such as signed overflow, shifts out of range, and misaligned or null pointers |
+| `address,undefined` | Reading or writing outside a buffer, use after free or after a variable's scope ends, double free; leaks, on Linux only (see [Leaks on macOS](#leaks-on-macos)); and undefined behavior, such as signed overflow, shifts out of range, and misaligned or null pointers |
 | `thread` | Data races, and locks taken in orders that can deadlock |
 
 From this directory, each in a directory of its own beside the Debug
@@ -209,7 +210,25 @@ Clang. Others are left out:
   GoogleTest among them, and reports false findings otherwise. It also
   needs Clang on Linux.
 - HWAddressSanitizer runs only on 64-bit ARM Linux.
-- Apple's Clang has no LeakSanitizer, so leaks are found only on Linux.
+- Apple's Clang has no LeakSanitizer, so AddressSanitizer finds leaks
+  only on Linux. On macOS, `leaks` finds them instead.
+
+### Leaks on macOS
+
+Apple's `leaks` runs a program and, when it ends, lists any memory that
+nothing points to any more, with the stack that allocated each block. After
+a Debug build, from this directory:
+
+```bash
+leaks --atExit -- build/Debug/src/crypto/crypto_tests
+```
+
+It exits with status 0 when it finds no leaks, 1 when it finds some, and
+above 1 when it cannot look, as with a program built with AddressSanitizer,
+which has its own allocator. So it takes the plain Debug build.
+
+CI runs each test program under `leaks` on macOS, after the Debug build's
+tests, and fails on any leak, showing the start of the report.
 
 ---
 
