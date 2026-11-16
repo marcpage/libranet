@@ -79,16 +79,20 @@ def target(tmp_path: Path) -> Path:
 
 @fixture
 def tree(tmp_path: Path) -> Path:
+    """Files and directories to back up, each file its owner's alone, as a restore makes it."""
     root = tmp_path / "tree"
     (root / "docs").mkdir(parents=True)
     (root / "empty").mkdir()
     (root / "readme.txt").write_bytes(b"read me")
+    chmod(root / "readme.txt", 0o600)
     (root / "docs" / "notes.txt").write_bytes(b"some notes")
+    chmod(root / "docs" / "notes.txt", 0o600)
     (root / "big.bin").write_bytes(BIG)
+    chmod(root / "big.bin", 0o600)
     (root / "run.sh").write_bytes(b"#!/bin/sh\n")
-    chmod(root / "run.sh", 0o755)
+    chmod(root / "run.sh", 0o700)
     (root / "locked.txt").write_bytes(b"read only")
-    chmod(root / "locked.txt", 0o444)
+    chmod(root / "locked.txt", 0o400)
     symlink("docs/notes.txt", root / "link")
     utime(root / "readme.txt", ns=(MODIFIED_NS, MODIFIED_NS))
     utime(root / "empty", ns=(MODIFIED_NS, MODIFIED_NS))
@@ -788,9 +792,9 @@ def test_extended_attributes_are_restored_as_backed_up(
     fork = urandom(INLINE_LIMIT_BYTES * 3)
     xattr(str(tree / "readme.txt")).set("user.tag", b"red")
     xattr(str(tree / "big.bin")).set("user.fork", fork)
-    chmod(tree / "locked.txt", 0o644)
+    chmod(tree / "locked.txt", 0o600)
     xattr(str(tree / "locked.txt")).set("user.tag", b"locked")
-    chmod(tree / "locked.txt", 0o444)
+    chmod(tree / "locked.txt", 0o400)
     xattr(str(tree / "empty")).set("user.tag", b"empty")
     xattr(str(tree / "docs")).set("user.tag", b"docs")
     built = build_directory(tree, store, xattrs=ExtendedAttributes()).bundle
