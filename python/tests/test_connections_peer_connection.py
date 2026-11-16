@@ -14,14 +14,14 @@ from threading import Event, Thread
 from time import monotonic, sleep
 from typing import Iterator, Mapping, NoReturn
 
-from pytest import LogCaptureFixture, fixture, mark, raises, skip
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises, skip
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, StorageConfig
 from libranet.connections.errors import ConnectionClosedError, MalformedResponseError
 from libranet.connections.peer_connection import PeerConnection
-from libranet.connections.response_parser import RequestLine
+from libranet.connections.response_parser import RequestLine, ResponseParser
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
@@ -196,6 +196,36 @@ def test_connection_close_response_fails_the_rest(pair: tuple[PeerConnection, so
     _read_requests(peer, 2)
 
     peer.sendall(_response(200, b"bye", {"Connection": "close"}))
+
+    assert first.result(TIMEOUT).closes_connection
+    assert connection.turned_away
+
+    with raises(ConnectionClosedError):
+        second.result(TIMEOUT)
+
+
+def test_connection_close_response_is_read_though_a_send_after_it_failed(
+    pair: tuple[PeerConnection, socket], monkeypatch: MonkeyPatch
+) -> None:
+    connection, peer = pair
+    feed = ResponseParser.feed
+    sent = Event()
+
+    def feeding_once_sent(parser: ResponseParser, data: bytes) -> None:
+        # The receive thread falls behind the send thread.
+        sent.wait(TIMEOUT)
+        feed(parser, data)
+
+    monkeypatch.setattr(ResponseParser, "feed", feeding_once_sent)
+    first = connection.request("GET", "/one")
+    _read_requests(peer, 1)
+    peer.sendall(_response(200, b"bye", {"Connection": "close"}))
+    peer.close()
+
+    # Sent after the peer closed, so sending it fails.
+    second = connection.request("GET", "/two")
+    sleep(0.2)
+    sent.set()
 
     assert first.result(TIMEOUT).closes_connection
     assert connection.turned_away
