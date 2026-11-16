@@ -50,10 +50,12 @@ TEST(BlockingQueueTest, MoveSemantics) {
 
     std::string first_text = "hello";
     queue.push(std::move(first_text));
+    // cppcheck-suppress accessMoved
     EXPECT_TRUE(first_text.empty()); // moved-from
 
     std::string second_text = "world";
     EXPECT_TRUE(queue.push_ms_timeout(std::move(second_text), timeout));
+    // cppcheck-suppress accessMoved
     EXPECT_TRUE(second_text.empty());
 
     auto opt = queue.pop_ms_timeout(timeout);
