@@ -67,6 +67,8 @@ def test_raw_deflate_and_gzip_are_not_zlib() -> None:
         CONTENT,
         b"",
     ],
+    # Random content would name each case differently in each test worker.
+    ids=["zeros", "incompressible", "mixed", "text", "empty"],
 )
 def test_chunks_are_the_content_in_order_and_none_is_larger_than_a_chunk(content: bytes) -> None:
     chunks = list(decompressed_chunks(compress(content, 9)))

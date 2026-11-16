@@ -88,6 +88,8 @@ def test_compressed_content_is_decompressed(store: CasStore) -> None:
         urandom(200_000),  # incompressible
         (urandom(1000) + b"a" * 70_000) * 4,
     ],
+    # Random content would name each case differently in each test worker.
+    ids=["zeros", "incompressible", "mixed"],
 )
 def test_large_compressed_content_arrives_in_bounded_chunks(
     store: CasStore, content: bytes

@@ -37,6 +37,8 @@ def test_zlib_compressed_content_matches(level: int) -> None:
         (urandom(1000) + b"a" * 70_000) * 4,
         b"",
     ],
+    # Random content would name each case differently in each test worker.
+    ids=["zeros", "incompressible", "mixed", "empty"],
 )
 def test_compressed_content_of_any_shape_matches(content: bytes) -> None:
     assert content_matches(ContentId.for_data(content, "sha256"), compress(content, 9))
