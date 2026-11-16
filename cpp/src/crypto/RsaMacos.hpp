@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <CoreFoundation/CoreFoundation.h>
@@ -26,7 +27,7 @@ public:
     [[nodiscard]] static IMultiKey::Ptr from_pem(std::string_view pem);
     [[nodiscard]] static IMultiKey::Ptr for_bit_size(std::size_t key_bits);
 
-    RsaMacos(SecKeyRef private_key, SecKeyRef public_key);
+    RsaMacos(CFObject<SecKeyRef> private_key, CFObject<SecKeyRef> public_key);
 
     [[nodiscard]] ISignKey::Ptr RsaPssSha256() const override;
     [[nodiscard]] IEncryptKey::Ptr RsaOaepSha256() const override;
@@ -83,12 +84,12 @@ inline IMultiKey::Ptr RsaMacos::for_bit_size(std::size_t key_bits) {
         throw std::runtime_error("Failed to derive public key from generated RSA private key.");
     }
 
-    return std::make_unique<RsaMacos>(private_key.release(), public_key.release());
+    return std::make_unique<RsaMacos>(std::move(private_key), std::move(public_key));
 }
 
-inline RsaMacos::RsaMacos(SecKeyRef private_key, SecKeyRef public_key)
-    : m_private_key(private_key, CFObject<SecKeyRef>::Policy::Retain)
-    , m_public_key(public_key, CFObject<SecKeyRef>::Policy::Retain) {
+inline RsaMacos::RsaMacos(CFObject<SecKeyRef> private_key, CFObject<SecKeyRef> public_key)
+    : m_private_key(std::move(private_key))
+    , m_public_key(std::move(public_key)) {
 }
 
 inline ISignKey::Ptr RsaMacos::RsaPssSha256() const {
@@ -114,7 +115,7 @@ inline std::string RsaMacos::id() const {
 inline IMultiKey::Ptr RsaMacos::from_pem(std::string_view pem) {
     auto [private_key, public_key] = RsaPemMacos::from_pem(pem);
 
-    return std::make_unique<RsaMacos>(private_key.release(), public_key.release());
+    return std::make_unique<RsaMacos>(std::move(private_key), std::move(public_key));
 }
 
 } // namespace crypto

@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "CFObject.hpp"
@@ -20,7 +21,7 @@ class RsaSignKeyMacos : public ISignKey {
 public:
     [[nodiscard]] static ISignKey::Ptr from_pem(std::string_view pem);
 
-    RsaSignKeyMacos(SecKeyRef private_key, SecKeyRef public_key);
+    RsaSignKeyMacos(CFObject<SecKeyRef> private_key, CFObject<SecKeyRef> public_key);
 
     [[nodiscard]] Data sign(std::string_view data) const override;
     [[nodiscard]] bool verify(std::string_view data, const Data& signature) const override;
@@ -41,9 +42,10 @@ private:
     CFObject<SecKeyRef> m_public_key;
 };
 
-inline RsaSignKeyMacos::RsaSignKeyMacos(SecKeyRef private_key, SecKeyRef public_key)
-    : m_private_key(private_key, CFObject<SecKeyRef>::Policy::Retain)
-    , m_public_key(public_key, CFObject<SecKeyRef>::Policy::Retain) {}
+inline RsaSignKeyMacos::RsaSignKeyMacos(CFObject<SecKeyRef> private_key,
+                                        CFObject<SecKeyRef> public_key)
+    : m_private_key(std::move(private_key))
+    , m_public_key(std::move(public_key)) {}
 
 inline ISignKey::Data RsaSignKeyMacos::sign(std::string_view data) const {
     if (!m_private_key) {
@@ -124,7 +126,7 @@ inline bool RsaSignKeyMacos::has_private_key() const noexcept {
 inline ISignKey::Ptr RsaSignKeyMacos::from_pem(std::string_view pem) {
     auto [private_key, public_key] = RsaPemMacos::from_pem(pem);
 
-    return std::make_unique<RsaSignKeyMacos>(private_key.release(), public_key.release());
+    return std::make_unique<RsaSignKeyMacos>(std::move(private_key), std::move(public_key));
 }
 
 } // namespace crypto

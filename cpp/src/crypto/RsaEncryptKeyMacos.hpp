@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "CFObject.hpp"
@@ -19,7 +20,7 @@ class RsaEncryptKeyMacos : public IEncryptKey {
 public:
     static IMultiKey::Ptr from_pem(std::string_view pem);
 
-    RsaEncryptKeyMacos(SecKeyRef private_key, SecKeyRef public_key);
+    RsaEncryptKeyMacos(CFObject<SecKeyRef> private_key, CFObject<SecKeyRef> public_key);
     ~RsaEncryptKeyMacos() override = default;
 
     RsaEncryptKeyMacos(const RsaEncryptKeyMacos&) = delete;
@@ -35,9 +36,10 @@ private:
     CFObject<SecKeyRef> m_public_key;
 };
 
-inline RsaEncryptKeyMacos::RsaEncryptKeyMacos(SecKeyRef private_key, SecKeyRef public_key)
-    : m_private_key(private_key, CFObject<SecKeyRef>::Policy::Retain)
-    , m_public_key(public_key, CFObject<SecKeyRef>::Policy::Retain) {}
+inline RsaEncryptKeyMacos::RsaEncryptKeyMacos(CFObject<SecKeyRef> private_key,
+                                              CFObject<SecKeyRef> public_key)
+    : m_private_key(std::move(private_key))
+    , m_public_key(std::move(public_key)) {}
 
 inline IEncryptKey::Data RsaEncryptKeyMacos::encrypt(std::string_view plaintext, const InitializationVector& /*vector*/) const {
     if (!m_public_key) {
