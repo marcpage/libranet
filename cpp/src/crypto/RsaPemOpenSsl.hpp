@@ -23,7 +23,7 @@ public:
     // A key read from a PEM, and whether it holds the private key.
     struct KeyPair {
         OpenSslKey key;
-        bool has_private;
+        bool has_private = false;
     };
 
     [[nodiscard]] static std::string public_pem(const EVP_PKEY* key);
