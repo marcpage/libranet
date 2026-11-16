@@ -76,11 +76,17 @@ def followed(root: Chain, alice: NodeIdentity, bob: NodeIdentity) -> Chain:
 
 
 @fixture(scope="module")
-def heavier(root: Chain, alice: NodeIdentity, bob: NodeIdentity, carol: NodeIdentity) -> Chain:
-    """Three generations on Alice's root that Carol builds, the second paying Bob again."""
-    first = root.then(carol, alice, bits=9)
-    second = first.then(carol, alice, first.block_after(paying(alice, bob, 2)), bits=9)
-    return second.then(carol, alice, bits=9)
+def heavier(
+    root: Chain, followed: Chain, alice: NodeIdentity, bob: NodeIdentity, carol: NodeIdentity
+) -> Chain:
+    """Three generations on Alice's root that Carol builds, the second paying Bob again.
+
+    Its targets are apart from those of ``followed``, which it is weighed against.
+    """
+    first = root.then(carol, alice, bits=9, beside=followed)
+    block = first.block_after(paying(alice, bob, 2))
+    second = first.then(carol, alice, block, bits=9, beside=followed)
+    return second.then(carol, alice, bits=9, beside=followed)
 
 
 @fixture(scope="module")
@@ -404,13 +410,15 @@ def test_a_block_that_does_not_check_says_its_builder_false_and_the_head_is_kept
     carol: NodeIdentity,
 ) -> None:
     following(follower, truth, followed)
-    second = root.then(carol, alice, bits=9).then(carol, alice, bits=9)
+    second = root.then(carol, alice, bits=9, beside=followed).then(
+        carol, alice, bits=9, beside=followed
+    )
     block = second.block_after()
     misstated = {
         identity: replace(balance, kismet=balance.kismet + Kismet(1))
         for identity, balance in block.balances.items()
     }
-    false = second.then(carol, alice, replace(block, balances=misstated), bits=9)
+    false = second.then(carol, alice, replace(block, balances=misstated), bits=9, beside=followed)
     hold(truth, *false.drops(1, 2, 3))
     changes.told(PEER, false.head)
 

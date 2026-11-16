@@ -199,6 +199,14 @@ class Chain:
         """The targets of the generation after its latest."""
         return GenerationTargets.after(self.head)
 
+    @property
+    def named(self) -> list[GenerationTargets]:
+        """The targets of each of its generations, and of the generation after its latest."""
+        return [
+            ROOT,
+            *(GenerationTargets.after(id_of(each.validation)) for each in self.generations),
+        ]
+
     def drops(self, *generations: int) -> list[bytes]:
         """The drops of each of ``generations``."""
         return [
@@ -297,6 +305,7 @@ class Chain:
         generation: int | None = None,
         witnessed: tuple[str, ...] = (),
         kismet: int = 5,
+        beside: Chain | None = None,
     ) -> Chain:
         """This chain and the next generation: ``block``, or the next as it truly is.
 
@@ -304,6 +313,10 @@ class Chain:
         validation block of ``generation``, the block's unless given, staking
         ``kismet`` on it, and listing the hashes ``witnessed``, each drop
         sharing ``bits`` with its target.
+
+        The targets it names are apart from those ``beside`` names too, if
+        given, so that a chain split from ``beside`` finds none of the blocks
+        of the other at its targets, as one in 256 otherwise does.
         """
         built = self.block_after() if block is None else block
         transaction = signed_at(self.targets.transaction, builder, built, bits)
@@ -313,10 +326,7 @@ class Chain:
             (staked(staker, id_of(transaction), kismet),),
             witnessed,
         )
-        earlier = [
-            ROOT,
-            *(GenerationTargets.after(id_of(each.validation)) for each in self.generations),
-        ]
+        earlier = [*self.named, *([] if beside is None else beside.named)]
         drops = Generation(
             transaction,
             signed_at(self.targets.validation, staker, validation, bits, apart_from=earlier),
