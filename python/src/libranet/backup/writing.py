@@ -22,10 +22,12 @@ a file or a symlink in the way is replaced, but a directory never is, so
 nothing beneath one is lost. The paths given to be ignored, such as the node's
 own directories, are never written in.
 
-A file or directory gets the modification time its metadata records, and the
-permissions a new one gets from the umask, adjusted as its metadata records:
-without write access if its owner could not write it, and with execute access
-wherever it can be read if its owner could run or, for a directory, search it.
+A file or directory gets the modification time its metadata records, and
+permissions adjusted as its metadata records: without write access if its
+owner could not write it, and with execute access wherever it can be read if
+its owner could run or, for a directory, search it. A new directory starts
+from the permissions the umask gives it, but a file is only ever its owner's,
+as a bundle does not record whether anyone else could read it.
 Creation times are not set, as the standard library cannot set them.
 
 It gets the extended attributes its metadata records too, all but those the
@@ -98,8 +100,10 @@ _DIRECTORY_FLAGS: Final = O_RDONLY | O_DIRECTORY | O_NOFOLLOW
 # A temporary file is always a new one, never something already there.
 _NEW_FILE_FLAGS: Final = O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW
 
-# What a new file is created with, before the umask takes its share.
-_NEW_FILE_MODE: Final = 0o666
+# What a new file is created with: for its owner alone, as a bundle does not
+# record whether anyone else could read or write it, and as no one else may
+# change it between its checks and its rename into place.
+_NEW_FILE_MODE: Final = 0o600
 
 # What opening a directory without following symlinks fails with when a file
 # or a symlink is there instead.
