@@ -939,6 +939,7 @@ inline void Json::Parser::append_utf8(std::uint32_t code_point, std::string& tex
 }
 
 inline Json Json::Parser::parse_string_value() {
+    // cppcheck-suppress returnDanglingLifetime
     return Json(parse_raw_string());
 }
 
@@ -950,6 +951,7 @@ inline Json Json::Parser::parse_array() {
     skip_whitespace();
 
     if (consume(']')) {
+        // cppcheck-suppress returnDanglingLifetime
         return Json(elements);
     }
 
@@ -966,6 +968,7 @@ inline Json Json::Parser::parse_array() {
         }
     }
 
+    // cppcheck-suppress returnDanglingLifetime
     return Json(elements);
 }
 
@@ -977,6 +980,7 @@ inline Json Json::Parser::parse_object() {
     skip_whitespace();
 
     if (consume('}')) {
+        // cppcheck-suppress returnDanglingLifetime
         return Json(members);
     }
 
@@ -1007,6 +1011,7 @@ inline Json Json::Parser::parse_object() {
         }
     }
 
+    // cppcheck-suppress returnDanglingLifetime
     return Json(members);
 }
 

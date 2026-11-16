@@ -41,12 +41,6 @@ noConstructor
 # On purpose: a Status converts to a ResponseCode, as for clang-tidy.
 noExplicitConstructor
 
-# 5 to clean up (5 in library code, 0 in tests), such as src/types/Json.hpp:779:
-# Returning object that will be invalid when returning.
-#     return Json(parse_raw_string());
-# Mistaken: each Json constructor copies or moves its argument into the Json.
-returnDanglingLifetime
-
 # 1 to clean up (1 in library code, 0 in tests), such as src/net/Address.hpp:28:
 # Member variable 'Address::m_port' has no initializer.
 #     Port m_port;
