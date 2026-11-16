@@ -17,11 +17,3 @@
 missingIncludeSystem
 # A count of the checkers that ran, not a finding.
 checkersReport
-
-# Not yet met by the code.
-
-# 5 to clean up (5 in library code, 0 in tests), such as src/types/Json.hpp:779:
-# Returning object that will be invalid when returning.
-#     return Json(parse_raw_string());
-# Mistaken: each Json constructor copies or moves its argument into the Json.
-returnDanglingLifetime
