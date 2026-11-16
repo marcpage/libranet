@@ -46,6 +46,10 @@ public:
 
 private:
     OpenSslKey m_key;
+    // Mistaken: the constructor sets m_has_private. cppcheck loses the
+    // class's constructors in a file that names it with
+    // `using crypto::RsaOpenSsl;`.
+    // cppcheck-suppress uninitMemberVarNoCtor
     bool m_has_private;
 
     [[nodiscard]] OpenSslKey shared() const;

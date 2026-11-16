@@ -52,9 +52,9 @@ private:
 
     // What a hash is made with, besides the password.
     struct Parameters {
-        uint32_t memory_cost_kib;
-        uint32_t iterations;
-        uint32_t parallelism;
+        uint32_t memory_cost_kib = 0;
+        uint32_t iterations = 0;
+        uint32_t parallelism = 0;
         Data salt;
     };
 

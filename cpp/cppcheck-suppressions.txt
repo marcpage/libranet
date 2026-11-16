@@ -39,9 +39,3 @@ noExplicitConstructor
 #     return Json(parse_raw_string());
 # Mistaken: each Json constructor copies or moves its argument into the Json.
 returnDanglingLifetime
-
-# 1 to clean up (1 in library code, 0 in tests), such as src/net/Address.hpp:28:
-# Member variable 'Address::m_port' has no initializer.
-#     Port m_port;
-# Mistaken: Address's constructor sets m_port.
-uninitMemberVarNoCtor
