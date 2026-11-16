@@ -21,8 +21,11 @@ using namespace std::chrono_literals;
 
 namespace {
 
-// How long a test waits for its messages to be handled.
-constexpr auto handling_timeout = 500ms;
+// How long a test waits for its messages to be handled. A wait ends as soon
+// as they are, so only a failing test waits this long; it is generous because
+// a sanitizer build, sharing a slow machine with other tests, can take far
+// longer than a test run alone.
+constexpr auto handling_timeout = 5s;
 
 template<typename Predicate>
 bool wait_until(Predicate predicate, std::chrono::milliseconds timeout = handling_timeout) {
