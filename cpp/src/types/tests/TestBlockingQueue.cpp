@@ -67,6 +67,17 @@ TEST(BlockingQueueTest, MoveSemantics) {
 }
 // NOLINTEND(bugprone-use-after-move)
 
+TEST(BlockingQueueTest, PushWithTimeoutCopiesNamedValue) {
+    constexpr auto timeout = 10ms;
+    BlockingQueue<std::string> queue;
+    const std::string text = "kept";
+
+    EXPECT_TRUE(queue.push_ms_timeout(text, timeout));
+
+    EXPECT_EQ(text, "kept");
+    EXPECT_EQ(queue.pop(), "kept");
+}
+
 TEST(BlockingQueueTest, CapacityAndTimeouts) {
     constexpr auto timeout = 5ms;
     constexpr auto full_push_timeout = 20ms;
