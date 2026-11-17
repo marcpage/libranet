@@ -85,8 +85,6 @@ public:
     friend std::istream& operator>>(std::istream& in_stream, Integer& value);
 
 private:
-    bool m_negative = false;
-    std::vector<word_t> m_magnitude; // little-endian, no zero padding
     static constexpr word_t decimal_base = 10;
 
     static_assert(sizeof(double_word_t) >= 2 * sizeof(word_t)
@@ -96,34 +94,37 @@ private:
     static_assert(sizeof(double_word_t) >= sizeof(std::uint64_t),
                   "double_word_t must be at least as large as std::uint64_t for safe conversions.");
 
-    void normalize();
-    static int compare_magnitudes(const std::vector<word_t>& left,
-                                  const std::vector<word_t>& right) noexcept;
-    static void add_magnitudes(std::vector<word_t>& left,
-                               const std::vector<word_t>& right);
-    static void subtract_magnitudes(std::vector<word_t>& left,
-                                    const std::vector<word_t>& right);
-    static std::vector<word_t> multiply_magnitudes(const std::vector<word_t>& left,
-                                                   const std::vector<word_t>& right);
-    static void divide_modulo_magnitudes(const std::vector<word_t>& numerator,
-                                         const std::vector<word_t>& denominator,
-                                         std::vector<word_t>& quotient,
-                                         std::vector<word_t>& remainder);
-    static void shift_left_magnitude(std::vector<word_t>& value, unsigned shift);
-    static void shift_right_magnitude(std::vector<word_t>& value, unsigned shift);
-    static unsigned get_normalization_shift(word_t high_word) noexcept;
-    static double_word_t calculate_estimated_quotient(
+    bool m_negative = false;
+    std::vector<word_t> m_magnitude; // little-endian, no zero padding
+
+    void _normalize();
+    static int _compare_magnitudes(const std::vector<word_t>& left,
+                                   const std::vector<word_t>& right) noexcept;
+    static void _add_magnitudes(std::vector<word_t>& left,
+                                const std::vector<word_t>& right);
+    static void _subtract_magnitudes(std::vector<word_t>& left,
+                                     const std::vector<word_t>& right);
+    static std::vector<word_t> _multiply_magnitudes(const std::vector<word_t>& left,
+                                                    const std::vector<word_t>& right);
+    static void _divide_modulo_magnitudes(const std::vector<word_t>& numerator,
+                                          const std::vector<word_t>& denominator,
+                                          std::vector<word_t>& quotient,
+                                          std::vector<word_t>& remainder);
+    static void _shift_left_magnitude(std::vector<word_t>& value, unsigned shift);
+    static void _shift_right_magnitude(std::vector<word_t>& value, unsigned shift);
+    static unsigned _get_normalization_shift(word_t high_word) noexcept;
+    static double_word_t _calculate_estimated_quotient(
         const std::vector<word_t>& remainder,
         std::size_t divisor_size,
         std::size_t quotient_index,
         word_t divisor_high_word) noexcept;
-    static void execute_long_division_loop(const std::vector<word_t>& normalized_divisor,
-                                           std::size_t divisor_size,
-                                           std::vector<word_t>& quotient,
-                                           std::vector<word_t>& remainder);
+    static void _execute_long_division_loop(const std::vector<word_t>& normalized_divisor,
+                                            std::size_t divisor_size,
+                                            std::vector<word_t>& quotient,
+                                            std::vector<word_t>& remainder);
 };
 
-inline void Integer::normalize() {
+inline void Integer::_normalize() {
     while (!m_magnitude.empty() && 0 == m_magnitude.back()) {
         m_magnitude.pop_back();
     }
@@ -138,8 +139,8 @@ inline void Integer::normalize() {
 // would pay for a check on every word. In the tests, the Debug builds'
 // standard library checks and the sanitizers catch an index out of range.
 // NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-inline int Integer::compare_magnitudes(const std::vector<word_t>& left,
-                                       const std::vector<word_t>& right) noexcept {
+inline int Integer::_compare_magnitudes(const std::vector<word_t>& left,
+                                        const std::vector<word_t>& right) noexcept {
     if (left.size() != right.size()) {
         return left.size() < right.size() ? -1 : 1;
     }
@@ -153,8 +154,8 @@ inline int Integer::compare_magnitudes(const std::vector<word_t>& left,
     return 0;
 }
 
-inline void Integer::add_magnitudes(std::vector<word_t>& left,
-                                    const std::vector<word_t>& right) {
+inline void Integer::_add_magnitudes(std::vector<word_t>& left,
+                                     const std::vector<word_t>& right) {
     const auto word_count = std::max(left.size(), right.size());
 
     left.resize(word_count, 0);
@@ -175,22 +176,22 @@ inline void Integer::add_magnitudes(std::vector<word_t>& left,
     }
 }
 
-inline void Integer::subtract_magnitudes(std::vector<word_t>& left,
-                                         const std::vector<word_t>& right) {
+inline void Integer::_subtract_magnitudes(std::vector<word_t>& left,
+                                          const std::vector<word_t>& right) {
     word_t borrow = 0;
 
     for (std::size_t word_index = 0; word_index < left.size(); ++word_index) {
-        const auto temp = static_cast<double_word_t>(left[word_index])
-                          - (word_index < right.size() ? right[word_index] : 0) - borrow;
+        const auto difference = static_cast<double_word_t>(left[word_index])
+                                - (word_index < right.size() ? right[word_index] : 0) - borrow;
 
-        left[word_index] = static_cast<word_t>(temp);
-        borrow = (temp >> word_bits) != 0U ? 1 : 0;
+        left[word_index] = static_cast<word_t>(difference);
+        borrow = (difference >> word_bits) != 0U ? 1 : 0;
     }
 }
 
 inline std::vector<Integer::word_t>
-Integer::multiply_magnitudes(const std::vector<word_t>& left,
-                             const std::vector<word_t>& right) {
+Integer::_multiply_magnitudes(const std::vector<word_t>& left,
+                              const std::vector<word_t>& right) {
     if (left.empty() || right.empty()) {
         return {};
     }
@@ -219,7 +220,7 @@ Integer::multiply_magnitudes(const std::vector<word_t>& left,
 }
 
 
-inline unsigned Integer::get_normalization_shift(word_t high_word) noexcept {
+inline unsigned Integer::_get_normalization_shift(word_t high_word) noexcept {
     unsigned shift = 0;
 
     while (0 == (high_word & (static_cast<word_t>(1) << (word_bits - 1)))) {
@@ -230,7 +231,7 @@ inline unsigned Integer::get_normalization_shift(word_t high_word) noexcept {
     return shift;
 }
 
-inline Integer::double_word_t Integer::calculate_estimated_quotient(
+inline Integer::double_word_t Integer::_calculate_estimated_quotient(
     const std::vector<word_t>& remainder,
     std::size_t divisor_size,
     std::size_t quotient_index,
@@ -254,31 +255,31 @@ inline Integer::double_word_t Integer::calculate_estimated_quotient(
     return estimated_quotient;
 }
 
-inline void Integer::execute_long_division_loop(
+inline void Integer::_execute_long_division_loop(
     const std::vector<word_t>& normalized_divisor,
     std::size_t divisor_size,
     std::vector<word_t>& quotient,
     std::vector<word_t>& remainder) {
     for (std::size_t quotient_index = quotient.size(); quotient_index-- > 0;) {
-        auto estimated_quotient = calculate_estimated_quotient(
+        auto estimated_quotient = _calculate_estimated_quotient(
             remainder,
             divisor_size,
             quotient_index,
             normalized_divisor.back());
-        auto product = multiply_magnitudes(normalized_divisor,
-                                           {static_cast<word_t>(estimated_quotient)});
+        auto product = _multiply_magnitudes(normalized_divisor,
+                                            {static_cast<word_t>(estimated_quotient)});
 
         product.insert(product.begin(), quotient_index, 0);
 
         // Adjust estimated_quotient if the trial product is too large
-        while (compare_magnitudes(remainder, product) < 0) {
+        while (_compare_magnitudes(remainder, product) < 0) {
             --estimated_quotient;
-            product = multiply_magnitudes(normalized_divisor,
-                                          {static_cast<word_t>(estimated_quotient)});
+            product = _multiply_magnitudes(normalized_divisor,
+                                           {static_cast<word_t>(estimated_quotient)});
             product.insert(product.begin(), quotient_index, 0);
         }
 
-        subtract_magnitudes(remainder, product);
+        _subtract_magnitudes(remainder, product);
 
         while (!remainder.empty() && 0 == remainder.back()) {
             remainder.pop_back();
@@ -288,15 +289,15 @@ inline void Integer::execute_long_division_loop(
     }
 }
 
-inline void Integer::divide_modulo_magnitudes(const std::vector<word_t>& numerator,
-                                              const std::vector<word_t>& denominator,
-                                              std::vector<word_t>& quotient,
-                                              std::vector<word_t>& remainder) {
+inline void Integer::_divide_modulo_magnitudes(const std::vector<word_t>& numerator,
+                                               const std::vector<word_t>& denominator,
+                                               std::vector<word_t>& quotient,
+                                               std::vector<word_t>& remainder) {
     if (denominator.empty()) {
         throw std::domain_error("Integer: division by zero");
     }
 
-    if (compare_magnitudes(numerator, denominator) < 0) {
+    if (_compare_magnitudes(numerator, denominator) < 0) {
         quotient.clear();
         remainder = numerator;
         return;
@@ -308,17 +309,17 @@ inline void Integer::divide_modulo_magnitudes(const std::vector<word_t>& numerat
     const auto divisor_size = denominator.size();
 
     // 1. Normalize divisor and remainder
-    const auto shift = get_normalization_shift(denominator.back());
+    const auto shift = _get_normalization_shift(denominator.back());
     auto normalized_divisor = denominator;
 
-    shift_left_magnitude(remainder, shift);
-    shift_left_magnitude(normalized_divisor, shift);
+    _shift_left_magnitude(remainder, shift);
+    _shift_left_magnitude(normalized_divisor, shift);
 
     // 2. Long division digit loop (delegated)
-    execute_long_division_loop(normalized_divisor, divisor_size, quotient, remainder);
+    _execute_long_division_loop(normalized_divisor, divisor_size, quotient, remainder);
 
     // 3. Denormalize remainder and clean up trailing zeros
-    shift_right_magnitude(remainder, shift);
+    _shift_right_magnitude(remainder, shift);
 
     while (!quotient.empty() && 0 == quotient.back()) {
         quotient.pop_back();
@@ -329,7 +330,7 @@ inline void Integer::divide_modulo_magnitudes(const std::vector<word_t>& numerat
     }
 }
 
-inline void Integer::shift_left_magnitude(std::vector<word_t>& value, unsigned shift) {
+inline void Integer::_shift_left_magnitude(std::vector<word_t>& value, unsigned shift) {
 
     if (0 == shift || value.empty()) {
         return;
@@ -358,7 +359,7 @@ inline void Integer::shift_left_magnitude(std::vector<word_t>& value, unsigned s
     }
 }
 
-inline void Integer::shift_right_magnitude(std::vector<word_t>& value, unsigned shift) {
+inline void Integer::_shift_right_magnitude(std::vector<word_t>& value, unsigned shift) {
     if (0 == shift || value.empty()) {
         return;
     }
@@ -426,7 +427,7 @@ inline Integer::Integer(std::int64_t value) {
         }
     }
 
-    normalize();
+    _normalize();
 }
 
 inline Integer::Integer(const std::string& text) {
@@ -452,11 +453,11 @@ inline Integer::Integer(const std::string& text) {
         auto carry = static_cast<word_t>(digit - '0');
 
         for (word_t& word : m_magnitude) {
-            const double_word_t temp =
+            const double_word_t scaled =
                 (static_cast<double_word_t>(word) * decimal_base) + carry;
 
-            word = static_cast<word_t>(temp);
-            carry = static_cast<word_t>(temp >> word_bits);
+            word = static_cast<word_t>(scaled);
+            carry = static_cast<word_t>(scaled >> word_bits);
         }
 
         if (carry != 0U) {
@@ -464,7 +465,7 @@ inline Integer::Integer(const std::string& text) {
         }
     }
 
-    normalize();
+    _normalize();
 }
 
 inline Integer Integer::operator+() const {
@@ -523,24 +524,24 @@ inline Integer& Integer::operator+=(const Integer& right) {
     }
 
     if (m_negative == right.m_negative) {
-        add_magnitudes(m_magnitude, right.m_magnitude);
+        _add_magnitudes(m_magnitude, right.m_magnitude);
     } else {
-        const auto comparison = compare_magnitudes(m_magnitude, right.m_magnitude);
+        const auto comparison = _compare_magnitudes(m_magnitude, right.m_magnitude);
 
         if (0 == comparison) {
             m_magnitude.clear();
             m_negative = false;
         } else if (comparison > 0) {
-            subtract_magnitudes(m_magnitude, right.m_magnitude);
+            _subtract_magnitudes(m_magnitude, right.m_magnitude);
         } else {
             auto difference = right.m_magnitude;
-            subtract_magnitudes(difference, m_magnitude);
+            _subtract_magnitudes(difference, m_magnitude);
             m_magnitude = std::move(difference);
             m_negative = right.m_negative;
         }
     }
 
-    normalize();
+    _normalize();
     return *this;
 }
 
@@ -555,9 +556,9 @@ inline Integer& Integer::operator*=(const Integer& right) {
         return *this;
     }
 
-    m_magnitude = multiply_magnitudes(m_magnitude, right.m_magnitude);
+    m_magnitude = _multiply_magnitudes(m_magnitude, right.m_magnitude);
     m_negative = m_negative != right.m_negative;
-    normalize();
+    _normalize();
     return *this;
 }
 
@@ -573,10 +574,10 @@ inline Integer& Integer::operator/=(const Integer& right) {
     std::vector<word_t> quotient;
     std::vector<word_t> remainder;
 
-    divide_modulo_magnitudes(m_magnitude, right.m_magnitude, quotient, remainder);
+    _divide_modulo_magnitudes(m_magnitude, right.m_magnitude, quotient, remainder);
     m_magnitude = std::move(quotient);
     m_negative = m_negative != right.m_negative;
-    normalize();
+    _normalize();
     return *this;
 }
 
@@ -592,10 +593,10 @@ inline Integer& Integer::operator%=(const Integer& right) {
     std::vector<word_t> quotient;
     std::vector<word_t> remainder;
 
-    divide_modulo_magnitudes(m_magnitude, right.m_magnitude, quotient, remainder);
+    _divide_modulo_magnitudes(m_magnitude, right.m_magnitude, quotient, remainder);
     m_magnitude = std::move(remainder);
     // Remainder keeps the sign of the dividend (C++ toward-zero rule)
-    normalize();
+    _normalize();
     return *this;
 }
 
@@ -641,7 +642,7 @@ inline Integer& Integer::operator<<=(std::size_t shift) {
         }
     }
 
-    normalize();
+    _normalize();
     return *this;
 }
 
@@ -662,10 +663,10 @@ inline Integer& Integer::operator>>=(std::size_t shift) {
     }
 
     if (word_shift != 0U) {
-        auto end_it = m_magnitude.begin();
+        auto first_kept = m_magnitude.begin();
 
-        std::advance(end_it, word_shift);
-        m_magnitude.erase(m_magnitude.begin(), end_it);
+        std::advance(first_kept, word_shift);
+        m_magnitude.erase(m_magnitude.begin(), first_kept);
     }
 
     if (bit_shift != 0U) {
@@ -679,7 +680,7 @@ inline Integer& Integer::operator>>=(std::size_t shift) {
         }
     }
 
-    normalize();
+    _normalize();
     // Note: this is left logical right shift of the magnitude.
     // A full arithmetic right shift for negative values is not implemented.
     return *this;
@@ -727,7 +728,7 @@ inline Integer operator&(const Integer& left, const Integer& right) {
                                          & right.m_magnitude[word_index];
     }
 
-    result.normalize();
+    result._normalize();
     return result;
 }
 
@@ -754,7 +755,7 @@ inline Integer operator|(const Integer& left, const Integer& right) {
         result.m_magnitude[word_index] = left_value | right_value;
     }
 
-    result.normalize();
+    result._normalize();
     return result;
 }
 
@@ -779,7 +780,7 @@ inline Integer operator^(const Integer& left, const Integer& right) {
         result.m_magnitude[word_index] = left_value ^ right_value;
     }
 
-    result.normalize();
+    result._normalize();
     return result;
 }
 // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
@@ -807,7 +808,7 @@ inline bool operator<(const Integer& left, const Integer& right) noexcept {
         return left.m_negative;
     }
 
-    const auto comparison = Integer::compare_magnitudes(left.m_magnitude, right.m_magnitude);
+    const auto comparison = Integer::_compare_magnitudes(left.m_magnitude, right.m_magnitude);
 
     return left.m_negative ? (comparison > 0) : (comparison < 0);
 }
@@ -835,25 +836,25 @@ inline std::ostream& operator<<(std::ostream& out_stream, const Integer& value) 
         out_stream << '-';
     }
 
-    auto temp = value.m_magnitude;
+    auto remaining = value.m_magnitude;
     std::string digits;
 
-    while (!temp.empty()) {
+    while (!remaining.empty()) {
         Integer::word_t remainder = 0;
 
-        for (auto word_index = temp.size(); word_index-- > 0;) {
-            const Integer::double_word_t cur =
+        for (auto word_index = remaining.size(); word_index-- > 0;) {
+            const Integer::double_word_t current =
                 (static_cast<Integer::double_word_t>(remainder) << Integer::word_bits)
-                | temp[word_index];
+                | remaining[word_index];
 
-            temp[word_index] = static_cast<Integer::word_t>(cur / Integer::decimal_base);
-            remainder = static_cast<Integer::word_t>(cur % Integer::decimal_base);
+            remaining[word_index] = static_cast<Integer::word_t>(current / Integer::decimal_base);
+            remainder = static_cast<Integer::word_t>(current % Integer::decimal_base);
         }
 
         digits.push_back(static_cast<char>('0' + remainder));
 
-        while (!temp.empty() && 0 == temp.back()) {
-            temp.pop_back();
+        while (!remaining.empty() && 0 == remaining.back()) {
+            remaining.pop_back();
         }
     }
 
@@ -919,8 +920,8 @@ inline std::size_t Integer::bit_length() const noexcept {
     return bits;
 }
 
-inline Integer operator""_i(const char* str, std::size_t /*unused*/) {
-    return Integer(str);
+inline Integer operator""_i(const char* text, std::size_t /*unused*/) {
+    return Integer(text);
 }
 
 } // namespace types

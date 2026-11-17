@@ -89,3 +89,7 @@ CheckOptions:
   # at() does. Like std::map's, which the check leaves out by default, it is
   # no unchecked access.
   cppcoreguidelines-pro-bounds-avoid-unchecked-container-access.ExcludeClasses: '::std::map;::std::unordered_map;::std::flat_map;::types::Json'
+  # A private method's name starts with an underscore, as in _parse_value()
+  # (Coding Style §4). Only this naming rule is set; the others are kept by
+  # hand.
+  readability-identifier-naming.PrivateMethodPrefix: '_'

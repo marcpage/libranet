@@ -31,10 +31,10 @@ TEST(Base64Test, DecodeValid) {
 
 TEST(Base64Test, DecodeInvalidLength) {
     // Length not a multiple of 4
-    EXPECT_THROW(static_cast<void>(Base64::decode("abc")), std::invalid_argument);
+    EXPECT_THROW((void)Base64::decode("abc"), std::invalid_argument);
 }
 
 TEST(Base64Test, DecodeInvalidCharacter) {
     // Contains '$' which is not part of the Base64 alphabet
-    EXPECT_THROW(static_cast<void>(Base64::decode("AB$D")), std::invalid_argument);
+    EXPECT_THROW((void)Base64::decode("AB$D"), std::invalid_argument);
 }

@@ -36,12 +36,6 @@ public:
     [[nodiscard]] bool empty() const;
 
 private:
-    template<typename Item>
-    void core_push(Item&& item);
-
-    template<typename Item>
-    bool core_push_ms_timeout(Item&& item, Milliseconds timeout);
-
     std::queue<Type> m_queue;
     mutable std::mutex m_mutex;
     std::condition_variable m_not_empty;
@@ -50,6 +44,12 @@ private:
     // already keep it from being copied or assigned.
     // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
     const size_t m_capacity;
+
+    template<typename Item>
+    void _core_push(Item&& item);
+
+    template<typename Item>
+    bool _core_push_ms_timeout(Item&& item, Milliseconds timeout);
 };
 
 template<typename Type>
@@ -58,7 +58,7 @@ BlockingQueue<Type>::BlockingQueue(size_t capacity)
 
 template<typename Type>
 template<typename Item>
-void BlockingQueue<Type>::core_push(Item&& item) {
+void BlockingQueue<Type>::_core_push(Item&& item) {
     std::unique_lock lock(m_mutex);
 
     m_not_full.wait(lock, [this] {
@@ -72,17 +72,17 @@ void BlockingQueue<Type>::core_push(Item&& item) {
 
 template<typename Type>
 void BlockingQueue<Type>::push(const Type& item) {
-    core_push(item);
+    _core_push(item);
 }
 
 template<typename Type>
 void BlockingQueue<Type>::push(Type&& item) {
-    core_push(std::move(item));
+    _core_push(std::move(item));
 }
 
 template<typename Type>
 template<typename Item>
-bool BlockingQueue<Type>::core_push_ms_timeout(Item&& item, Milliseconds timeout) {
+bool BlockingQueue<Type>::_core_push_ms_timeout(Item&& item, Milliseconds timeout) {
     std::unique_lock lock(m_mutex);
 
     if (!m_not_full.wait_for(lock, timeout, [this] {
@@ -104,7 +104,7 @@ bool BlockingQueue<Type>::push_ms_timeout(const Type& item, Milliseconds timeout
 
 template<typename Type>
 bool BlockingQueue<Type>::push_ms_timeout(Type&& item, Milliseconds timeout) {
-    return core_push_ms_timeout(std::move(item), timeout);
+    return _core_push_ms_timeout(std::move(item), timeout);
 }
 
 template<typename Type>

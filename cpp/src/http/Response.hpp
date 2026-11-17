@@ -161,9 +161,9 @@ inline std::istream& operator>>(std::istream& in_stream, Response& response) {
         return in_stream;
     }
 
-    const auto content_length_opt = response.m_headers.get("Content-Length");
+    const auto content_length = response.m_headers.get("Content-Length");
 
-    if (!content_length_opt.has_value()) {
+    if (!content_length.has_value()) {
         response.m_body.clear();
         return in_stream;
     }
@@ -171,7 +171,7 @@ inline std::istream& operator>>(std::istream& in_stream, Response& response) {
     std::size_t body_length = 0;
 
     try {
-        body_length = std::stoull(std::string(content_length_opt.value()));
+        body_length = std::stoull(std::string(content_length.value()));
     } catch (const std::invalid_argument&) {
         in_stream.setstate(std::ios_base::failbit);
         return in_stream;

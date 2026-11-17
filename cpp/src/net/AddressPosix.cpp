@@ -24,27 +24,27 @@ namespace {
     hints.ai_family = AF_UNSPEC; // Allow IPv4 or IPv6
     hints.ai_socktype = SOCK_STREAM;
 
-    addrinfo* res = nullptr;
-    const auto port_str = std::to_string(port);
+    addrinfo* result = nullptr;
+    const auto port_text = std::to_string(port);
 
-    const auto status = ::getaddrinfo(host.c_str(), port_str.c_str(), &hints, &res);
+    const auto status = ::getaddrinfo(host.c_str(), port_text.c_str(), &hints, &result);
 
     if (status != 0) {
         throw std::runtime_error(std::string("Failed to resolve host: ")
                                  + gai_strerror(status));
     }
 
-    return res;
+    return result;
 }
 
 [[nodiscard]] std::string get_numeric_ip(const addrinfo* info) {
-    std::array<char, NI_MAXHOST> ip_buf{};
+    std::array<char, NI_MAXHOST> ip_text{};
     const int error = getnameinfo(info->ai_addr, info->ai_addrlen,
-                                  ip_buf.data(), static_cast<socklen_t>(ip_buf.size()),
+                                  ip_text.data(), static_cast<socklen_t>(ip_text.size()),
                                   nullptr, 0, NI_NUMERICHOST);
 
     if (0 == error) {
-        return ip_buf.data();
+        return ip_text.data();
     }
 
     return {};
@@ -52,13 +52,13 @@ namespace {
 
 [[nodiscard]] std::string get_reverse_dns_name(const addrinfo* info,
                                                const std::string& numeric_ip) {
-    std::array<char, NI_MAXHOST> host_buf{};
+    std::array<char, NI_MAXHOST> host_text{};
     const int error = getnameinfo(info->ai_addr, info->ai_addrlen,
-                                  host_buf.data(), static_cast<socklen_t>(host_buf.size()),
+                                  host_text.data(), static_cast<socklen_t>(host_text.size()),
                                   nullptr, 0, 0);
 
     if (0 == error) {
-        std::string dns_name = host_buf.data();
+        std::string dns_name = host_text.data();
 
         if (!dns_name.empty() && dns_name != numeric_ip) {
             return dns_name;
@@ -75,34 +75,34 @@ void add_unique(std::string_view value, std::vector<std::string>& results) {
 }
 
 [[nodiscard]] ifaddrs* fetch_interface_addresses() {
-    ifaddrs* ifaddr = nullptr;
+    ifaddrs* interfaces = nullptr;
 
-    if (-1 == ::getifaddrs(&ifaddr)) {
+    if (-1 == ::getifaddrs(&interfaces)) {
         throw std::runtime_error("Failed to retrieve local network interfaces");
     }
 
-    return ifaddr;
+    return interfaces;
 }
 
 [[nodiscard]] bool is_supported_socket_family(int family) {
     return AF_INET == family || AF_INET6 == family;
 }
 
-[[nodiscard]] socklen_t get_sockaddr_len(int family) {
+[[nodiscard]] socklen_t get_sockaddr_length(int family) {
     return (AF_INET == family) ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
 }
 
-[[nodiscard]] std::string extract_interface_ip(const ifaddrs* ifa) {
-    const int family = ifa->ifa_addr->sa_family;
+[[nodiscard]] std::string extract_interface_ip(const ifaddrs* interface_entry) {
+    const int family = interface_entry->ifa_addr->sa_family;
 
     if (!is_supported_socket_family(family)) {
         return {};
     }
 
     std::array<char, NI_MAXHOST> host{};
-    const socklen_t len = get_sockaddr_len(family);
+    const socklen_t length = get_sockaddr_length(family);
 
-    const int error = getnameinfo(ifa->ifa_addr, len, host.data(),
+    const int error = getnameinfo(interface_entry->ifa_addr, length, host.data(),
                                   static_cast<socklen_t>(host.size()), nullptr, 0, NI_NUMERICHOST);
 
     if (error != 0) {
@@ -125,32 +125,32 @@ namespace net {
 
 std::vector<std::string> Address::resolve() const {
     std::vector<std::string> results;
-    addrinfo* res = fetch_address_info(m_host, m_port);
+    addrinfo* result = fetch_address_info(m_host, m_port);
 
-    for (const addrinfo* entry = res; entry != nullptr; entry = entry->ai_next) {
+    for (const addrinfo* entry = result; entry != nullptr; entry = entry->ai_next) {
         const auto numeric_ip = get_numeric_ip(entry);
 
         add_unique(numeric_ip, results);
         add_unique(get_reverse_dns_name(entry, numeric_ip), results);
     }
 
-    freeaddrinfo(res);
+    freeaddrinfo(result);
     return results;
 }
 
 std::vector<std::string> Address::get_local_addresses() {
-    ifaddrs* ifaddr = fetch_interface_addresses();
+    ifaddrs* interfaces = fetch_interface_addresses();
     std::vector<std::string> addresses;
 
-    for (const ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
-        if (nullptr == ifa->ifa_addr) {
+    for (const ifaddrs* interface_entry = interfaces; interface_entry != nullptr; interface_entry = interface_entry->ifa_next) {
+        if (nullptr == interface_entry->ifa_addr) {
             continue;
         }
 
-        add_unique(extract_interface_ip(ifa), addresses);
+        add_unique(extract_interface_ip(interface_entry), addresses);
     }
 
-    freeifaddrs(ifaddr);
+    freeifaddrs(interfaces);
     return addresses;
 }
 

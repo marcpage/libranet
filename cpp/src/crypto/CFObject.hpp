@@ -106,10 +106,10 @@ inline CFType* CFObject<CFType>::put() noexcept {
 
 template<typename CFType>
 inline CFType CFObject<CFType>::release() noexcept {
-    CFType temp = m_object;
+    CFType released = m_object;
 
     m_object = nullptr;
-    return temp;
+    return released;
 }
 
 template<typename CFType>

@@ -34,11 +34,11 @@ public:
 private:
     CC_SHA256_CTX m_context{};
 
-    void start();
+    void _start();
 };
 
 inline Sha256Macos::Sha256Macos() {
-    start();
+    _start();
 }
 
 inline void Sha256Macos::update(std::string_view data) {
@@ -58,7 +58,7 @@ inline IHasher::Data Sha256Macos::digest(const Data& data) {
     Data result(bytes.size());
 
     CC_SHA256_Final(bytes.data(), &m_context);
-    start();
+    _start();
     std::transform(bytes.begin(), bytes.end(), result.begin(),
                    [](unsigned char byte) { return static_cast<std::byte>(byte); });
     return result;
@@ -80,10 +80,10 @@ inline IHasher::Ptr Sha256Macos::clone() const {
 }
 
 inline void Sha256Macos::reset() {
-    start();
+    _start();
 }
 
-inline void Sha256Macos::start() {
+inline void Sha256Macos::_start() {
     CC_SHA256_Init(&m_context);
 }
 

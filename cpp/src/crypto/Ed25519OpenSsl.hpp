@@ -52,7 +52,7 @@ private:
     Key m_key;
     bool m_has_private;
 
-    [[nodiscard]] static Key generate();
+    [[nodiscard]] static Key _generate();
 };
 
 inline ISignKey::Ptr Ed25519OpenSsl::create() {
@@ -74,7 +74,7 @@ inline ISignKey::Ptr Ed25519OpenSsl::from_pem(std::string_view pem) {
     throw std::invalid_argument("Unsupported or unrecognized PEM label: " + label);
 }
 
-inline Ed25519OpenSsl::Ed25519OpenSsl() : Ed25519OpenSsl(generate(), true) {}
+inline Ed25519OpenSsl::Ed25519OpenSsl() : Ed25519OpenSsl(_generate(), true) {}
 
 inline Ed25519OpenSsl::Ed25519OpenSsl(Key key, bool has_private)
     : m_key(std::move(key)), m_has_private(has_private) {
@@ -83,7 +83,7 @@ inline Ed25519OpenSsl::Ed25519OpenSsl(Key key, bool has_private)
     }
 }
 
-inline Ed25519OpenSsl::Key Ed25519OpenSsl::generate() {
+inline Ed25519OpenSsl::Key Ed25519OpenSsl::_generate() {
     const OpenSslObject<EVP_PKEY_CTX, EVP_PKEY_CTX_free> context(
         EVP_PKEY_CTX_new_from_name(nullptr, "ED25519", nullptr));
     EVP_PKEY* key = nullptr;

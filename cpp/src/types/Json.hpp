@@ -120,8 +120,6 @@ private:
         Array,
         Object>;
 
-    VariantType m_data;
-
     class Parser {
     public:
         explicit Parser(std::string_view input) noexcept;
@@ -136,34 +134,36 @@ private:
         std::size_t m_cursor = 0;
         std::size_t m_depth = 0;
 
-        void skip_whitespace() noexcept;
-        [[nodiscard]] char peek() const noexcept;
-        char get();
-        bool consume(char expected) noexcept;
-        bool skip_digits() noexcept;
-        std::uint32_t parse_hex4();
-        std::uint32_t parse_code_point();
-        static void append_utf8(std::uint32_t code_point, std::string& text);
+        void _skip_whitespace() noexcept;
+        [[nodiscard]] char _peek() const noexcept;
+        char _get();
+        bool _consume(char expected) noexcept;
+        bool _skip_digits() noexcept;
+        std::uint32_t _parse_hex4();
+        std::uint32_t _parse_code_point();
+        static void _append_utf8(std::uint32_t code_point, std::string& text);
 
-        Json parse_value();
-        Json parse_null();
-        Json parse_boolean();
-        Json parse_number();
-        Json parse_string_value();
-        std::string parse_raw_string();
-        Json parse_array();
-        Json parse_object();
+        Json _parse_value();
+        Json _parse_null();
+        Json _parse_boolean();
+        Json _parse_number();
+        Json _parse_string_value();
+        std::string _parse_raw_string();
+        Json _parse_array();
+        Json _parse_object();
     };
 
-    static bool is_digit(char character);
-    static void serialize_array(const Array& the_array, std::ostringstream& out_stream,
-                                int indent, int current_indent);
-    static void serialize_object(const Object& the_object, std::ostringstream& out_stream,
+    VariantType m_data;
+
+    static bool _is_digit(char character);
+    static void _serialize_array(const Array& the_array, std::ostringstream& out_stream,
                                  int indent, int current_indent);
-    static void serialize(const Json& json_value, std::ostringstream& out_stream,
-                          int indent, int current_indent);
-    static void escape_string(const std::string& str, std::ostringstream& out_stream);
-    static void write_real(double value, std::ostringstream& out_stream);
+    static void _serialize_object(const Object& the_object, std::ostringstream& out_stream,
+                                  int indent, int current_indent);
+    static void _serialize(const Json& json_value, std::ostringstream& out_stream,
+                           int indent, int current_indent);
+    static void _escape_string(const std::string& text, std::ostringstream& out_stream);
+    static void _write_real(double value, std::ostringstream& out_stream);
 };
 
 inline Json::Json() noexcept
@@ -210,8 +210,8 @@ inline Json::Json(std::initializer_list<Json> arguments) {
     }
 
     // Unless every argument is a [key, value] pair, the Json is an array.
-    const auto is_member = [](const Json& elem) {
-        return elem.is_array() && 2 == elem.array().size() && elem.array().at(0).is_string();
+    const auto is_member = [](const Json& element) {
+        return element.is_array() && 2 == element.array().size() && element.array().at(0).is_string();
     };
 
     if (!std::all_of(arguments.begin(), arguments.end(), is_member)) {
@@ -219,14 +219,14 @@ inline Json::Json(std::initializer_list<Json> arguments) {
         return;
     }
 
-    Object obj;
+    Object members;
 
-    for (const auto& elem : arguments) {
-        const auto& pair_arr = elem.array();
-        obj.emplace(pair_arr.at(0).string(), pair_arr.at(1));
+    for (const auto& element : arguments) {
+        const auto& key_and_value = element.array();
+        members.emplace(key_and_value.at(0).string(), key_and_value.at(1));
     }
 
-    m_data = std::move(obj);
+    m_data = std::move(members);
 }
 
 inline Json::Type Json::type() const {
@@ -354,32 +354,32 @@ inline Json::Object& Json::object() {
 }
 
 inline std::size_t Json::size() const {
-    if (const auto* arr = std::get_if<Array>(&m_data)) {
-        return arr->size();
+    if (const auto* elements = std::get_if<Array>(&m_data)) {
+        return elements->size();
     }
 
-    if (const auto* obj = std::get_if<Object>(&m_data)) {
-        return obj->size();
+    if (const auto* members = std::get_if<Object>(&m_data)) {
+        return members->size();
     }
 
     throw std::domain_error("Json: size() called on non-container type");
 }
 
 inline bool Json::empty() const {
-    if (const auto* arr = std::get_if<Array>(&m_data)) {
-        return arr->empty();
+    if (const auto* elements = std::get_if<Array>(&m_data)) {
+        return elements->empty();
     }
 
-    if (const auto* obj = std::get_if<Object>(&m_data)) {
-        return obj->empty();
+    if (const auto* members = std::get_if<Object>(&m_data)) {
+        return members->empty();
     }
 
     throw std::domain_error("Json: empty() called on non-container type");
 }
 
 inline bool Json::has(const std::string& key) const {
-    if (const auto* obj = std::get_if<Object>(&m_data)) {
-        return obj->find(key) != obj->end();
+    if (const auto* members = std::get_if<Object>(&m_data)) {
+        return members->find(key) != members->end();
     }
 
     return false;
@@ -390,23 +390,23 @@ inline Json& Json::operator[](std::size_t index) {
         m_data = Array{};
     }
 
-    auto& arr = array();
+    auto& elements = array();
 
-    if (index >= arr.size()) {
-        arr.resize(index + 1);
+    if (index >= elements.size()) {
+        elements.resize(index + 1);
     }
 
-    return arr.at(index);
+    return elements.at(index);
 }
 
 inline const Json& Json::operator[](std::size_t index) const {
-    const auto& arr = array();
+    const auto& elements = array();
 
-    if (index >= arr.size()) {
+    if (index >= elements.size()) {
         throw std::out_of_range("Json: array index out of bounds");
     }
 
-    return arr.at(index);
+    return elements.at(index);
 }
 
 inline Json& Json::operator[](const std::string& key) {
@@ -418,10 +418,10 @@ inline Json& Json::operator[](const std::string& key) {
 }
 
 inline const Json& Json::operator[](const std::string& key) const {
-    const auto& obj = object();
-    const auto member = obj.find(key);
+    const auto& members = object();
+    const auto member = members.find(key);
 
-    if (member == obj.end()) {
+    if (member == members.end()) {
         throw std::out_of_range("Json: key not found: " + key);
     }
 
@@ -449,10 +449,10 @@ inline const Json& Json::at(const std::string& key) const {
         throw std::domain_error("Json: not an object");
     }
 
-    const auto& obj = object();
-    const auto member = obj.find(key);
+    const auto& members = object();
+    const auto member = members.find(key);
 
-    if (member == obj.end()) {
+    if (member == members.end()) {
         throw std::out_of_range("Json: key not found");
     }
 
@@ -464,20 +464,20 @@ inline Json& Json::at(const std::string& key) {
         throw std::domain_error("Json: not an object");
     }
 
-    auto& obj = object();
-    const auto member = obj.find(key);
+    auto& members = object();
+    const auto member = members.find(key);
 
-    if (member == obj.end()) {
+    if (member == members.end()) {
         throw std::out_of_range("Json: key not found");
     }
 
     return member->second;
 }
 
-inline void Json::escape_string(const std::string& str, std::ostringstream& out_stream) {
+inline void Json::_escape_string(const std::string& text, std::ostringstream& out_stream) {
     out_stream << '"';
 
-    for (const auto character : str) {
+    for (const auto character : text) {
         switch (character) {
             case '"': out_stream << "\\\""; break;
             case '\\': out_stream << "\\\\"; break;
@@ -511,8 +511,8 @@ inline void Json::escape_string(const std::string& str, std::ostringstream& out_
     out_stream << '"';
 }
 
-inline void Json::serialize(const Json& json_value, std::ostringstream& out_stream,
-                            int indent, int current_indent) {
+inline void Json::_serialize(const Json& json_value, std::ostringstream& out_stream,
+                             int indent, int current_indent) {
     std::visit([&](auto&& value) {
         using T = std::decay_t<decltype(value)>;
 
@@ -528,13 +528,13 @@ inline void Json::serialize(const Json& json_value, std::ostringstream& out_stre
                                         " cannot be serialized to JSON");
             }
 
-            write_real(value, out_stream);
+            _write_real(value, out_stream);
         } else if constexpr (std::is_same_v<T, std::string>) {
-            escape_string(value, out_stream);
+            _escape_string(value, out_stream);
         } else if constexpr (std::is_same_v<T, Array>) {
-            serialize_array(value, out_stream, indent, current_indent);
+            _serialize_array(value, out_stream, indent, current_indent);
         } else if constexpr (std::is_same_v<T, Object>) {
-            serialize_object(value, out_stream, indent, current_indent);
+            _serialize_object(value, out_stream, indent, current_indent);
         }
     }, json_value.m_data);
 }
@@ -542,7 +542,7 @@ inline void Json::serialize(const Json& json_value, std::ostringstream& out_stre
 // The fewest digits that read back as the same double, with ".0" when they
 // have no '.' or exponent, so that they read back as a real number rather
 // than as an integer.
-inline void Json::write_real(double value, std::ostringstream& out_stream) {
+inline void Json::_write_real(double value, std::ostringstream& out_stream) {
     // A double's shortest text is at most 24 characters.
     constexpr std::size_t text_size = 32;
     std::array<char, text_size> text{};
@@ -564,12 +564,12 @@ inline void Json::write_real(double value, std::ostringstream& out_stream) {
     }
 }
 
-inline bool Json::is_digit(const char character) {
+inline bool Json::_is_digit(const char character) {
     return std::isdigit(static_cast<unsigned char>(character)) != 0;
 }
 
-inline void Json::serialize_array(const Array& the_array, std::ostringstream& out_stream,
-                                  int indent, int current_indent) {
+inline void Json::_serialize_array(const Array& the_array, std::ostringstream& out_stream,
+                                   int indent, int current_indent) {
     if (the_array.empty()) {
         out_stream << "[]";
         return;
@@ -578,37 +578,37 @@ inline void Json::serialize_array(const Array& the_array, std::ostringstream& ou
     const bool pretty = indent >= 0;
     const auto current = static_cast<std::string::size_type>(current_indent);
     const auto indented = current + static_cast<std::string::size_type>(indent);
-    const auto indent_str = pretty ? std::string(current, ' ') : std::string();
-    const auto next_indent_str = pretty ? std::string(indented, ' ') : std::string();
+    const auto indentation = pretty ? std::string(current, ' ') : std::string();
+    const auto next_indentation = pretty ? std::string(indented, ' ') : std::string();
     const auto* const newline = pretty ? "\n" : "";
 
     out_stream << "[" << newline;
 
-    for (std::size_t arg_index = 0; arg_index < the_array.size(); ++arg_index) {
-        out_stream << next_indent_str;
-        serialize(the_array.at(arg_index), out_stream, indent, current_indent + indent);
+    for (std::size_t index = 0; index < the_array.size(); ++index) {
+        out_stream << next_indentation;
+        _serialize(the_array.at(index), out_stream, indent, current_indent + indent);
 
-        if (arg_index + 1 < the_array.size()) {
+        if (index + 1 < the_array.size()) {
             out_stream << ",";
         }
 
         out_stream << newline;
     }
 
-    out_stream << indent_str << "]";
+    out_stream << indentation << "]";
 }
 
-inline void Json::serialize_object(const Object& the_object, std::ostringstream& out_stream,
-                                   int indent, int current_indent) {
+inline void Json::_serialize_object(const Object& the_object, std::ostringstream& out_stream,
+                                    int indent, int current_indent) {
     if (the_object.empty()) {
         out_stream << "{}";
         return;
     }
 
     const bool pretty = indent >= 0;
-    const std::string indent_str =
+    const std::string indentation =
         pretty ? std::string(static_cast<std::string::size_type>(current_indent), ' ') : "";
-    const std::string next_indent_str =
+    const std::string next_indentation =
         pretty ? std::string(static_cast<std::string::size_type>(current_indent + indent), ' ')
                : "";
     const std::string newline = pretty ? "\n" : "";
@@ -616,28 +616,28 @@ inline void Json::serialize_object(const Object& the_object, std::ostringstream&
 
     out_stream << "{" << newline;
 
-    std::size_t arg_index = 0;
+    std::size_t index = 0;
 
     for (const auto& [key, value] : the_object) {
-        out_stream << next_indent_str;
-        escape_string(key, out_stream);
+        out_stream << next_indentation;
+        _escape_string(key, out_stream);
         out_stream << ":" << space;
-        serialize(value, out_stream, indent, current_indent + indent);
+        _serialize(value, out_stream, indent, current_indent + indent);
 
-        if (++arg_index < the_object.size()) {
+        if (++index < the_object.size()) {
             out_stream << ",";
         }
 
         out_stream << newline;
     }
 
-    out_stream << indent_str << "}";
+    out_stream << indentation << "}";
 }
 
 inline std::string Json::dump(int indent) const {
     std::ostringstream out_stream;
 
-    serialize(*this, out_stream, indent, 0);
+    _serialize(*this, out_stream, indent, 0);
     return out_stream.str();
 }
 
@@ -650,7 +650,7 @@ inline Json Json::parse(std::string_view input) {
 inline Json::Parser::Parser(std::string_view input) noexcept
     : m_input(input) {}
 
-inline void Json::Parser::skip_whitespace() noexcept {
+inline void Json::Parser::_skip_whitespace() noexcept {
     while (m_cursor < m_input.size()) {
         // Within bounds, as the loop checks; at() could only end the
         // program, from a function that cannot throw.
@@ -668,14 +668,14 @@ inline void Json::Parser::skip_whitespace() noexcept {
     }
 }
 
-inline char Json::Parser::peek() const noexcept {
+inline char Json::Parser::_peek() const noexcept {
     // Within bounds, as checked; at() could only end the program, from a
     // function that cannot throw.
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return m_cursor < m_input.size() ? m_input[m_cursor] : '\0';
 }
 
-inline char Json::Parser::get() {
+inline char Json::Parser::_get() {
     if (m_cursor >= m_input.size()) {
         throw std::invalid_argument("Json::parse: unexpected end of input");
     }
@@ -683,8 +683,8 @@ inline char Json::Parser::get() {
     return m_input.at(m_cursor++);
 }
 
-inline bool Json::Parser::consume(char expected) noexcept {
-    if (peek() == expected) {
+inline bool Json::Parser::_consume(char expected) noexcept {
+    if (_peek() == expected) {
         ++m_cursor;
         return true;
     }
@@ -693,11 +693,11 @@ inline bool Json::Parser::consume(char expected) noexcept {
 }
 
 inline Json Json::Parser::parse() {
-    skip_whitespace();
+    _skip_whitespace();
 
-    Json result = parse_value();
+    Json result = _parse_value();
 
-    skip_whitespace();
+    _skip_whitespace();
 
     if (m_cursor < m_input.size()) {
         throw std::invalid_argument("Json::parse: trailing character at position "
@@ -707,16 +707,16 @@ inline Json Json::Parser::parse() {
     return result;
 }
 
-inline Json Json::Parser::parse_value() {
-    skip_whitespace();
+inline Json Json::Parser::_parse_value() {
+    _skip_whitespace();
 
-    const auto character = peek();
+    const auto character = _peek();
 
     switch (character) {
-        case 'n': return parse_null();
+        case 'n': return _parse_null();
         case 't':
-        case 'f': return parse_boolean();
-        case '"': return parse_string_value();
+        case 'f': return _parse_boolean();
+        case '"': return _parse_string_value();
         case '[':
         case '{': {
             if (m_depth >= max_depth) {
@@ -724,14 +724,14 @@ inline Json Json::Parser::parse_value() {
             }
 
             ++m_depth;
-            Json value = '[' == character ? parse_array() : parse_object();
+            Json value = '[' == character ? _parse_array() : _parse_object();
             --m_depth;
             return value;
         }
-        case '-': return parse_number();
+        case '-': return _parse_number();
         default:
-            if (is_digit(character)) {
-                return parse_number();
+            if (_is_digit(character)) {
+                return _parse_number();
             }
 
             throw std::invalid_argument(std::string("Json::parse: unexpected character '")
@@ -740,7 +740,7 @@ inline Json Json::Parser::parse_value() {
     }
 }
 
-inline Json Json::Parser::parse_null() {
+inline Json Json::Parser::_parse_null() {
     constexpr std::string_view null_text = "null";
 
     if (null_text == m_input.substr(m_cursor, null_text.size())) {
@@ -751,7 +751,7 @@ inline Json Json::Parser::parse_null() {
     throw std::invalid_argument("Json::parse: expected 'null'");
 }
 
-inline Json Json::Parser::parse_boolean() {
+inline Json Json::Parser::_parse_boolean() {
     constexpr std::string_view true_text = "true";
 
     if (true_text == m_input.substr(m_cursor, true_text.size())) {
@@ -769,83 +769,83 @@ inline Json Json::Parser::parse_boolean() {
     throw std::invalid_argument("Json::parse: expected boolean");
 }
 
-inline bool Json::Parser::skip_digits() noexcept {
+inline bool Json::Parser::_skip_digits() noexcept {
     const std::size_t first = m_cursor;
 
-    while (is_digit(peek())) {
+    while (_is_digit(_peek())) {
         ++m_cursor;
     }
 
     return m_cursor > first;
 }
 
-inline Json Json::Parser::parse_number() {
+inline Json Json::Parser::_parse_number() {
     const std::size_t start = m_cursor;
 
     // A number has digits before any '.', after it, and after any exponent
     // (RFC 8259, section 6).
-    if ('-' == peek()) {
+    if ('-' == _peek()) {
         ++m_cursor;
     }
 
-    if (!skip_digits()) {
+    if (!_skip_digits()) {
         throw std::invalid_argument("Json::parse: a number needs digits");
     }
 
-    bool is_float_num = false;
+    bool is_real_number = false;
 
-    if ('.' == peek()) {
-        is_float_num = true;
+    if ('.' == _peek()) {
+        is_real_number = true;
 
         ++m_cursor;
 
-        if (!skip_digits()) {
+        if (!_skip_digits()) {
             throw std::invalid_argument("Json::parse: a number needs digits after its '.'");
         }
     }
 
-    if ('e' == peek() || 'E' == peek()) {
-        is_float_num = true;
+    if ('e' == _peek() || 'E' == _peek()) {
+        is_real_number = true;
         ++m_cursor;
 
-        if ('+' == peek() || '-' == peek()) {
+        if ('+' == _peek() || '-' == _peek()) {
             ++m_cursor;
         }
 
-        if (!skip_digits()) {
+        if (!_skip_digits()) {
             throw std::invalid_argument("Json::parse: a number needs digits after its exponent");
         }
     }
 
-    const std::string num_str(m_input.substr(start, m_cursor - start));
+    const std::string number_text(m_input.substr(start, m_cursor - start));
 
     try {
-        if (is_float_num) {
-            return Json(std::stod(num_str));
+        if (is_real_number) {
+            return Json(std::stod(number_text));
         }
 
-        return Json(static_cast<std::int64_t>(std::stoll(num_str)));
+        return Json(static_cast<std::int64_t>(std::stoll(number_text)));
     } catch (const std::out_of_range&) {
         throw std::invalid_argument("Json::parse: number out of range");
     }
 }
 
-inline std::string Json::Parser::parse_raw_string() {
-    get(); // consume opening '"'
+inline std::string Json::Parser::_parse_raw_string() {
+    _get(); // consume opening '"'
 
     std::string result;
 
     while (m_cursor < m_input.size()) {
-        const char character = get();
+        const char character = _get();
 
         if ('"' == character) {
             return result;
         }
 
         if ('\\' == character) {
-            const char esc = get();
+            const char escape = _get();
 
-            switch (esc) {
+            switch (escape) {
                 case '"': result += '"'; break;
                 case '\\': result += '\\'; break;
                 case '/': result += '/'; break;
@@ -854,9 +854,9 @@ inline std::string Json::Parser::parse_raw_string() {
                 case 'n': result += '\n'; break;
                 case 'r': result += '\r'; break;
                 case 't': result += '\t'; break;
-                case 'u': append_utf8(parse_code_point(), result); break;
+                case 'u': _append_utf8(_parse_code_point(), result); break;
                 default:
-                    result += esc;
+                    result += escape;
                     break;
             }
         } else {
@@ -868,14 +868,14 @@ inline std::string Json::Parser::parse_raw_string() {
 }
 
 // The four hex digits of a \u escape.
-inline std::uint32_t Json::Parser::parse_hex4() {
+inline std::uint32_t Json::Parser::_parse_hex4() {
     constexpr int hex_digits = 4;
     constexpr std::uint32_t hex_base = 16;
     constexpr int letter_values_from = 10;
     std::uint32_t value = 0;
 
     for (int digit = 0; digit < hex_digits; ++digit) {
-        const auto character = static_cast<unsigned char>(get());
+        const auto character = static_cast<unsigned char>(_get());
 
         if (0 == std::isxdigit(character)) {
             throw std::invalid_argument("Json::parse: a \\u escape needs four hex digits");
@@ -892,24 +892,24 @@ inline std::uint32_t Json::Parser::parse_hex4() {
 
 // The character a \u escape names: four hex digits, or, for one beyond
 // U+FFFF, the two escapes of a UTF-16 surrogate pair (RFC 8259, section 7).
-inline std::uint32_t Json::Parser::parse_code_point() {
+inline std::uint32_t Json::Parser::_parse_code_point() {
     constexpr std::uint32_t high_first = 0xD800;
     constexpr std::uint32_t low_first = 0xDC00;
     constexpr std::uint32_t low_end = 0xE000;
     constexpr std::uint32_t pair_base = 0x10000;
     constexpr unsigned pair_shift = 10;
 
-    const std::uint32_t first = parse_hex4();
+    const std::uint32_t first = _parse_hex4();
 
     if (first < high_first || first >= low_end) {
         return first;
     }
 
-    if (first >= low_first || get() != '\\' || get() != 'u') {
+    if (first >= low_first || _get() != '\\' || _get() != 'u') {
         throw std::invalid_argument("Json::parse: a \\u escape names half a surrogate pair");
     }
 
-    const std::uint32_t second = parse_hex4();
+    const std::uint32_t second = _parse_hex4();
 
     if (second < low_first || second >= low_end) {
         throw std::invalid_argument("Json::parse: a \\u escape names half a surrogate pair");
@@ -919,7 +919,7 @@ inline std::uint32_t Json::Parser::parse_code_point() {
 }
 
 // Appends code_point to text, in UTF-8.
-inline void Json::Parser::append_utf8(std::uint32_t code_point, std::string& text) {
+inline void Json::Parser::_append_utf8(std::uint32_t code_point, std::string& text) {
     constexpr std::uint32_t one_byte_end = 0x80;
     constexpr std::uint32_t two_byte_end = 0x800;
     constexpr std::uint32_t three_byte_end = 0x10000;
@@ -952,32 +952,32 @@ inline void Json::Parser::append_utf8(std::uint32_t code_point, std::string& tex
     }
 }
 
-inline Json Json::Parser::parse_string_value() {
+inline Json Json::Parser::_parse_string_value() {
     // cppcheck-suppress returnDanglingLifetime
-    return Json(parse_raw_string());
+    return Json(_parse_raw_string());
 }
 
-inline Json Json::Parser::parse_array() {
-    get(); // consume '['
+inline Json Json::Parser::_parse_array() {
+    _get(); // consume '['
 
     Array elements;
 
-    skip_whitespace();
+    _skip_whitespace();
 
-    if (consume(']')) {
+    if (_consume(']')) {
         // cppcheck-suppress returnDanglingLifetime
         return Json(elements);
     }
 
     while (true) {
-        elements.push_back(parse_value());
-        skip_whitespace();
+        elements.push_back(_parse_value());
+        _skip_whitespace();
 
-        if (consume(']')) {
+        if (_consume(']')) {
             break;
         }
 
-        if (!consume(',')) {
+        if (!_consume(',')) {
             throw std::invalid_argument("Json::parse: expected ',' or ']' in array");
         }
     }
@@ -986,41 +986,41 @@ inline Json Json::Parser::parse_array() {
     return Json(elements);
 }
 
-inline Json Json::Parser::parse_object() {
-    get(); // consume '{'
+inline Json Json::Parser::_parse_object() {
+    _get(); // consume '{'
 
     Object members;
 
-    skip_whitespace();
+    _skip_whitespace();
 
-    if (consume('}')) {
+    if (_consume('}')) {
         // cppcheck-suppress returnDanglingLifetime
         return Json(members);
     }
 
     while (true) {
-        skip_whitespace();
+        _skip_whitespace();
 
-        if (peek() != '"') {
+        if (_peek() != '"') {
             throw std::invalid_argument("Json::parse: expected string key in object");
         }
 
-        const auto key = parse_raw_string();
+        const auto key = _parse_raw_string();
 
-        skip_whitespace();
+        _skip_whitespace();
 
-        if (!consume(':')) {
+        if (!_consume(':')) {
             throw std::invalid_argument("Json::parse: expected ':' after key in object");
         }
 
-        members[key] = parse_value();
-        skip_whitespace();
+        members[key] = _parse_value();
+        _skip_whitespace();
 
-        if (consume('}')) {
+        if (_consume('}')) {
             break;
         }
 
-        if (!consume(',')) {
+        if (!_consume(',')) {
             throw std::invalid_argument("Json::parse: expected ',' or '}' in object");
         }
     }
@@ -1054,8 +1054,8 @@ inline std::istream& operator>>(std::istream& in_stream, Json& value) {
     return in_stream;
 }
 
-inline Json operator""_json(const char* str, std::size_t len) {
-    return Json::parse(std::string_view(str, len));
+inline Json operator""_json(const char* text, std::size_t length) {
+    return Json::parse(std::string_view(text, length));
 }
 
 } // namespace types

@@ -23,7 +23,9 @@ AlignAfterOpenBracket: Align
 AlignOperands: Align
 AlignTrailingComments: true
 BreakBeforeBinaryOperators: NonAssignment
-DerivePointerAlignment: true
+# `*` and `&` go with the type in every file, as WebKit puts them, rather
+# than as each file mostly has them.
+DerivePointerAlignment: false
 AllowShortLoopsOnASingleLine: false
 AllowShortCaseLabelsOnASingleLine: true
 IndentCaseLabels: true

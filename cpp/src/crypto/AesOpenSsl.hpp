@@ -47,13 +47,13 @@ private:
     AesPadding m_padding;
     const EVP_CIPHER* m_cipher;
 
-    [[nodiscard]] static const EVP_CIPHER* cipher(std::size_t key_size, AesMode mode);
-    [[nodiscard]] Data process(bool encrypting, const unsigned char* input, std::size_t size,
-                               const InitializationVector& vector) const;
+    [[nodiscard]] static const EVP_CIPHER* _cipher(std::size_t key_size, AesMode mode);
+    [[nodiscard]] Data _process(bool encrypting, const unsigned char* input, std::size_t size,
+                                const InitializationVector& vector) const;
 };
 
 inline AesOpenSsl::AesOpenSsl(Data key, AesMode mode, AesPadding padding)
-    : m_key(std::move(key)), m_padding(padding), m_cipher(cipher(m_key.size(), mode)) {}
+    : m_key(std::move(key)), m_padding(padding), m_cipher(_cipher(m_key.size(), mode)) {}
 
 // The key is wiped from memory once it is no longer needed.
 inline AesOpenSsl::~AesOpenSsl() {
@@ -62,12 +62,12 @@ inline AesOpenSsl::~AesOpenSsl() {
 
 inline IEncryptKey::Data AesOpenSsl::encrypt(std::string_view plaintext,
                                              const InitializationVector& vector) const {
-    return process(true, OpenSslBytes::of(plaintext), plaintext.size(), vector);
+    return _process(true, OpenSslBytes::of(plaintext), plaintext.size(), vector);
 }
 
 inline std::string AesOpenSsl::decrypt(const Data& ciphertext,
                                        const InitializationVector& vector) const {
-    const auto plaintext = process(false, OpenSslBytes::of(ciphertext), ciphertext.size(), vector);
+    const auto plaintext = _process(false, OpenSslBytes::of(ciphertext), ciphertext.size(), vector);
     std::string text(plaintext.size(), '\0');
 
     for (std::size_t index = 0; index < plaintext.size(); ++index) {
@@ -77,7 +77,7 @@ inline std::string AesOpenSsl::decrypt(const Data& ciphertext,
     return text;
 }
 
-inline const EVP_CIPHER* AesOpenSsl::cipher(std::size_t key_size, AesMode mode) {
+inline const EVP_CIPHER* AesOpenSsl::_cipher(std::size_t key_size, AesMode mode) {
     const auto cbc = AesMode::Cbc == mode;
 
     switch (key_size) {
@@ -88,9 +88,9 @@ inline const EVP_CIPHER* AesOpenSsl::cipher(std::size_t key_size, AesMode mode) 
     }
 }
 
-inline IEncryptKey::Data AesOpenSsl::process(bool encrypting, const unsigned char* input,
-                                             std::size_t size,
-                                             const InitializationVector& vector) const {
+inline IEncryptKey::Data AesOpenSsl::_process(bool encrypting, const unsigned char* input,
+                                              std::size_t size,
+                                              const InitializationVector& vector) const {
     if (!vector.empty() && vector.size() != aes_block_size) {
         throw std::invalid_argument("An AES initialization vector must be 16 bytes");
     }

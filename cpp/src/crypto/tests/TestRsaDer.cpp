@@ -99,7 +99,7 @@ TEST(RsaDerTest, RefusesWhatIsNoSubjectPublicKeyInfo) {
              bytes({0x30, 0x81, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00}),
              bytes({0x30, 0x85, 0x01, 0x00, 0x00, 0x00, 0x00}),
          }) {
-        EXPECT_THROW(static_cast<void>(RsaDer::pkcs1_from_spki(malformed)), std::invalid_argument)
+        EXPECT_THROW((void)RsaDer::pkcs1_from_spki(malformed), std::invalid_argument)
             << fixtures::hex(malformed);
     }
 }
@@ -134,7 +134,7 @@ TEST(RsaDerTest, RefusesWhatIsNoPkcs8) {
                  "MC4CAQAwBQYDK2VwBCIEIJ1hsZ3v/VpguoRK9JLsLMREScVpezJpGXA7rAMcrn9g\n"
                  "-----END PRIVATE KEY-----\n"),
          }) {
-        EXPECT_THROW(static_cast<void>(RsaDer::pkcs1_from_pkcs8(malformed)), std::invalid_argument)
+        EXPECT_THROW((void)RsaDer::pkcs1_from_pkcs8(malformed), std::invalid_argument)
             << fixtures::hex(malformed);
     }
 }

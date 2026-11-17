@@ -75,15 +75,15 @@ private:
     // PKCS #8's version: the INTEGER 0.
     static constexpr std::array<std::uint8_t, 3> pkcs8_version{0x02, 0x01, 0x00};
 
-    [[nodiscard]] static Data element(std::byte tag, const Data& octets);
+    [[nodiscard]] static Data _element(std::byte tag, const Data& octets);
     template<std::size_t size>
-    static void append(Data& der, const std::array<std::uint8_t, size>& bytes);
-    [[nodiscard]] static Element read(const Data& der, std::size_t& offset, std::size_t limit,
-                                      std::byte tag);
+    static void _append(Data& der, const std::array<std::uint8_t, size>& bytes);
+    [[nodiscard]] static Element _read(const Data& der, std::size_t& offset, std::size_t limit,
+                                       std::byte tag);
     template<std::size_t size>
-    [[nodiscard]] static bool holds(const Data& der, const Element& found,
-                                    const std::array<std::uint8_t, size>& bytes);
-    [[nodiscard]] static Data contents(const Data& der, std::size_t start, std::size_t end);
+    [[nodiscard]] static bool _holds(const Data& der, const Element& found,
+                                     const std::array<std::uint8_t, size>& bytes);
+    [[nodiscard]] static Data _contents(const Data& der, std::size_t start, std::size_t end);
 };
 
 inline RsaDer::Data RsaDer::spki_from_pkcs1(const Data& pkcs1) {
@@ -91,29 +91,29 @@ inline RsaDer::Data RsaDer::spki_from_pkcs1(const Data& pkcs1) {
     Data info;
 
     bits.insert(bits.end(), pkcs1.begin(), pkcs1.end());
-    append(info, rsa_algorithm);
+    _append(info, rsa_algorithm);
 
-    const auto bit_string = element(bit_string_tag, bits);
+    const auto bit_string = _element(bit_string_tag, bits);
 
     info.insert(info.end(), bit_string.begin(), bit_string.end());
-    return element(sequence_tag, info);
+    return _element(sequence_tag, info);
 }
 
 inline RsaDer::Data RsaDer::pkcs8_from_pkcs1(const Data& pkcs1) {
     Data info;
 
-    append(info, pkcs8_version);
-    append(info, rsa_algorithm);
+    _append(info, pkcs8_version);
+    _append(info, rsa_algorithm);
 
-    const auto octet_string = element(octet_string_tag, pkcs1);
+    const auto octet_string = _element(octet_string_tag, pkcs1);
 
     info.insert(info.end(), octet_string.begin(), octet_string.end());
-    return element(sequence_tag, info);
+    return _element(sequence_tag, info);
 }
 
 inline RsaDer::Data RsaDer::pkcs1_from_spki(const Data& spki) {
     std::size_t offset = 0;
-    const auto info = read(spki, offset, spki.size(), sequence_tag);
+    const auto info = _read(spki, offset, spki.size(), sequence_tag);
 
     if (offset != spki.size()) {
         throw std::invalid_argument("Bytes after the SubjectPublicKeyInfo");
@@ -121,10 +121,10 @@ inline RsaDer::Data RsaDer::pkcs1_from_spki(const Data& spki) {
 
     offset = info.start;
 
-    const auto algorithm = read(spki, offset, info.end, sequence_tag);
-    const auto bits = read(spki, offset, info.end, bit_string_tag);
+    const auto algorithm = _read(spki, offset, info.end, sequence_tag);
+    const auto bits = _read(spki, offset, info.end, bit_string_tag);
 
-    if (!holds(spki, algorithm, rsa_algorithm)) {
+    if (!_holds(spki, algorithm, rsa_algorithm)) {
         throw std::invalid_argument("Not an RSA public key");
     }
 
@@ -132,12 +132,12 @@ inline RsaDer::Data RsaDer::pkcs1_from_spki(const Data& spki) {
         throw std::invalid_argument("Not a SubjectPublicKeyInfo public key");
     }
 
-    return contents(spki, bits.start + 1, bits.end);
+    return _contents(spki, bits.start + 1, bits.end);
 }
 
 inline RsaDer::Data RsaDer::pkcs1_from_pkcs8(const Data& pkcs8) {
     std::size_t offset = 0;
-    const auto info = read(pkcs8, offset, pkcs8.size(), sequence_tag);
+    const auto info = _read(pkcs8, offset, pkcs8.size(), sequence_tag);
 
     if (offset != pkcs8.size()) {
         throw std::invalid_argument("Bytes after the PKCS #8 private key");
@@ -145,26 +145,26 @@ inline RsaDer::Data RsaDer::pkcs1_from_pkcs8(const Data& pkcs8) {
 
     offset = info.start;
 
-    const auto version = read(pkcs8, offset, info.end, integer_tag);
-    const auto algorithm = read(pkcs8, offset, info.end, sequence_tag);
-    const auto key = read(pkcs8, offset, info.end, octet_string_tag);
+    const auto version = _read(pkcs8, offset, info.end, integer_tag);
+    const auto algorithm = _read(pkcs8, offset, info.end, sequence_tag);
+    const auto key = _read(pkcs8, offset, info.end, octet_string_tag);
 
-    if (!holds(pkcs8, algorithm, rsa_algorithm)) {
+    if (!_holds(pkcs8, algorithm, rsa_algorithm)) {
         throw std::invalid_argument("Not an RSA private key");
     }
 
     // Attributes, after the key, are refused: nothing here writes them.
-    if (!holds(pkcs8, version, pkcs8_version)
+    if (!_holds(pkcs8, version, pkcs8_version)
         || offset != info.end) {
         throw std::invalid_argument("Not a PKCS #8 private key");
     }
 
-    return contents(pkcs8, key.start, key.end);
+    return _contents(pkcs8, key.start, key.end);
 }
 
 // The DER element of tag around octets, its contents, with its length as short
 // as it can be.
-inline RsaDer::Data RsaDer::element(std::byte tag, const Data& octets) {
+inline RsaDer::Data RsaDer::_element(std::byte tag, const Data& octets) {
     Data der{tag};
     const auto size = octets.size();
 
@@ -189,15 +189,15 @@ inline RsaDer::Data RsaDer::element(std::byte tag, const Data& octets) {
 }
 
 template<std::size_t size>
-inline void RsaDer::append(Data& der, const std::array<std::uint8_t, size>& bytes) {
+inline void RsaDer::_append(Data& der, const std::array<std::uint8_t, size>& bytes) {
     std::transform(bytes.begin(), bytes.end(), std::back_inserter(der),
                    [](std::uint8_t byte) { return static_cast<std::byte>(byte); });
 }
 
 // The element at offset, which must have tag and end by limit, and moves
 // offset past it.
-inline RsaDer::Element RsaDer::read(const Data& der, std::size_t& offset, std::size_t limit,
-                                    std::byte tag) {
+inline RsaDer::Element RsaDer::_read(const Data& der, std::size_t& offset, std::size_t limit,
+                                     std::byte tag) {
     const auto begin = offset;
 
     if (limit - offset < 2 || der.at(offset) != tag) {
@@ -244,8 +244,8 @@ inline RsaDer::Element RsaDer::read(const Data& der, std::size_t& offset, std::s
 
 // Whether the element found is exactly the bytes given.
 template<std::size_t size>
-inline bool RsaDer::holds(const Data& der, const Element& found,
-                          const std::array<std::uint8_t, size>& bytes) {
+inline bool RsaDer::_holds(const Data& der, const Element& found,
+                           const std::array<std::uint8_t, size>& bytes) {
     if (found.end - found.begin != size) {
         return false;
     }
@@ -259,7 +259,7 @@ inline bool RsaDer::holds(const Data& der, const Element& found,
     return true;
 }
 
-inline RsaDer::Data RsaDer::contents(const Data& der, std::size_t start, std::size_t end) {
+inline RsaDer::Data RsaDer::_contents(const Data& der, std::size_t start, std::size_t end) {
     return {std::next(der.begin(), static_cast<std::ptrdiff_t>(start)),
             std::next(der.begin(), static_cast<std::ptrdiff_t>(end))};
 }

@@ -51,11 +51,11 @@ private:
 };
 
 inline IMultiKey::Ptr RsaMacos::for_bit_size(std::size_t key_bits) {
-    const CFObject<CFNumberRef> key_size_ref(
+    const CFObject<CFNumberRef> key_size_number(
         CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt64Type, &key_bits),
         CFObject<CFNumberRef>::Policy::TakeOwnership);
     std::array<const void*, 2> keys{kSecAttrKeyType, kSecAttrKeySizeInBits};
-    std::array<const void*, 2> values{kSecAttrKeyTypeRSA, key_size_ref};
+    std::array<const void*, 2> values{kSecAttrKeyTypeRSA, key_size_number};
     const CFObject<CFDictionaryRef> parameters(
         CFDictionaryCreate(
             kCFAllocatorDefault,

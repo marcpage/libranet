@@ -59,16 +59,16 @@ inline ISignKey::Data RsaSignKeyMacos::sign(std::string_view data) const {
     }
 
     CFObject<CFErrorRef> error;
-    const CFObject<CFDataRef> sig_data(
+    const CFObject<CFDataRef> signature_data(
         SecKeyCreateSignature(m_private_key, kSecKeyAlgorithmRSASignatureMessagePSSSHA256,
                               input_data, error.put()),
         CFObject<CFDataRef>::Policy::TakeOwnership);
 
-    if (!sig_data) {
+    if (!signature_data) {
         throw std::runtime_error("RSA PSS signature creation failed");
     }
 
-    return CFBytes::bytes_in(sig_data);
+    return CFBytes::bytes_in(signature_data);
 }
 
 inline bool RsaSignKeyMacos::verify(std::string_view data, const Data& signature) const {
@@ -77,16 +77,16 @@ inline bool RsaSignKeyMacos::verify(std::string_view data, const Data& signature
     }
 
     const auto input_data = CFBytes::of(data);
-    const auto sig_data = CFBytes::of(signature);
+    const auto signature_data = CFBytes::of(signature);
 
-    if (!input_data || !sig_data) {
+    if (!input_data || !signature_data) {
         return false;
     }
 
     CFObject<CFErrorRef> error;
 
     return SecKeyVerifySignature(m_public_key, kSecKeyAlgorithmRSASignatureMessagePSSSHA256,
-                                 input_data, sig_data, error.put())
+                                 input_data, signature_data, error.put())
            != 0U;
 }
 

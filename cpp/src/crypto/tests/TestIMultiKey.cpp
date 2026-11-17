@@ -105,10 +105,10 @@ TEST_P(IMultiKeyTest, PublicKeyOnly) {
     const auto key = GetParam().from_pem(fixtures::rsa_pkcs1_public_pem);
     const auto ciphertext = fixtures::bytes(fixtures::rsa_oaep_ciphertext);
 
-    EXPECT_THROW(static_cast<void>(key->private_pem()), std::runtime_error);
-    EXPECT_THROW(static_cast<void>(key->RsaPssSha256()->sign(fixtures::rsa_message)),
+    EXPECT_THROW((void)key->private_pem(), std::runtime_error);
+    EXPECT_THROW((void)key->RsaPssSha256()->sign(fixtures::rsa_message),
                  std::runtime_error);
-    EXPECT_THROW(static_cast<void>(key->RsaOaepSha256()->decrypt(ciphertext, {})),
+    EXPECT_THROW((void)key->RsaOaepSha256()->decrypt(ciphertext, {}),
                  std::runtime_error);
     EXPECT_FALSE(key->RsaOaepSha256()->encrypt(fixtures::rsa_oaep_plaintext, {}).empty());
 }
@@ -127,8 +127,8 @@ TEST_P(IMultiKeyTest, ReadsPythonKeyInPkcs1) {
 }
 
 TEST_P(IMultiKeyTest, InvalidPem) {
-    EXPECT_THROW(static_cast<void>(GetParam().from_pem(
-                     "-----BEGIN GARBAGE-----\nYWJj\n-----END GARBAGE-----\n")),
+    EXPECT_THROW((void)GetParam().from_pem(
+                     "-----BEGIN GARBAGE-----\nYWJj\n-----END GARBAGE-----\n"),
                  std::exception);
 }
 
@@ -152,18 +152,18 @@ TEST_P(IMultiKeyTest, ReadsAndWritesPythonForms) {
 
 TEST_P(IMultiKeyTest, RefusesOtherKeys) {
     // An Ed25519 key, from RFC 8032.
-    EXPECT_THROW(static_cast<void>(GetParam().from_pem(
+    EXPECT_THROW((void)GetParam().from_pem(
                      "-----BEGIN PUBLIC KEY-----\n"
                      "MCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=\n"
-                     "-----END PUBLIC KEY-----\n")),
+                     "-----END PUBLIC KEY-----\n"),
                  std::invalid_argument);
     // A public key in PKCS #1 labeled as one in SubjectPublicKeyInfo.
-    EXPECT_THROW(static_cast<void>(GetParam().from_pem(
+    EXPECT_THROW((void)GetParam().from_pem(
                      "-----BEGIN PUBLIC KEY-----\n"
                      "MIGJAoGBALv4749Q4HM+vxN+Qv1XxGfFV+VfX8Igz1rRV997Hm68DNTXYjvLbxq4\n"
                      "2z8RCov92ZBo0YCGkDTeMXwvy1X23NWoNGO5PDv7OyPJ9SzkeyA+zBzurkm9y5aJ\n"
                      "h52r3os5R7ekQr3Kgcm4GyqOUWR01hGXWJMjGK6Cebju/MfbD2ihAgMBAAE=\n"
-                     "-----END PUBLIC KEY-----\n")),
+                     "-----END PUBLIC KEY-----\n"),
                  std::invalid_argument);
 }
 
@@ -175,7 +175,7 @@ INSTANTIATE_TEST_SUITE_P(OpenSsl, IMultiKeyTest,
 #endif
 
 TEST(RsaOpenSslTest, RefusesKeySizeOutOfRange) {
-    EXPECT_THROW(static_cast<void>(RsaOpenSsl::for_bit_size(std::size_t{1} << 40U)),
+    EXPECT_THROW((void)RsaOpenSsl::for_bit_size(std::size_t{1} << 40U),
                  std::invalid_argument);
 }
 

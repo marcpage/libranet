@@ -78,10 +78,10 @@ private:
     // NOLINTNEXTLINE(google-runtime-int)
     using KeyReader = EVP_PKEY* (*)(EVP_PKEY** key, const unsigned char** next, long length);
 
-    [[nodiscard]] static OpenSslKey read_key(const std::vector<std::byte>& der, KeyReader read,
-                                             std::string_view what);
+    [[nodiscard]] static OpenSslKey _read_key(const std::vector<std::byte>& der, KeyReader read,
+                                              std::string_view what);
     // NOLINTNEXTLINE(google-runtime-int)
-    static EVP_PKEY* d2i_rsa_public_key(EVP_PKEY** key, const unsigned char** next, long length);
+    static EVP_PKEY* _d2i_rsa_public_key(EVP_PKEY** key, const unsigned char** next, long length);
 };
 
 // A failed OpenSSL call: what was being done, and the last error OpenSSL
@@ -92,7 +92,7 @@ public:
     explicit OpenSslError(std::string_view what);
 
 private:
-    [[nodiscard]] static std::string describe(std::string_view what);
+    [[nodiscard]] static std::string _describe(std::string_view what);
 };
 
 // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
@@ -147,19 +147,19 @@ inline std::vector<std::byte> OpenSslDer::write(const Type* object,
 }
 
 inline OpenSslKey OpenSslDer::read_private_key(const std::vector<std::byte>& der) {
-    return read_key(der, d2i_AutoPrivateKey, "Not a private key.");
+    return _read_key(der, d2i_AutoPrivateKey, "Not a private key.");
 }
 
 inline OpenSslKey OpenSslDer::read_public_key(const std::vector<std::byte>& der) {
-    return read_key(der, d2i_PUBKEY, "Not a SubjectPublicKeyInfo public key.");
+    return _read_key(der, d2i_PUBKEY, "Not a SubjectPublicKeyInfo public key.");
 }
 
 inline OpenSslKey OpenSslDer::read_rsa_public_key(const std::vector<std::byte>& der) {
-    return read_key(der, d2i_rsa_public_key, "Not a PKCS #1 public key.");
+    return _read_key(der, _d2i_rsa_public_key, "Not a PKCS #1 public key.");
 }
 
-inline OpenSslKey OpenSslDer::read_key(const std::vector<std::byte>& der, KeyReader read,
-                                       std::string_view what) {
+inline OpenSslKey OpenSslDer::_read_key(const std::vector<std::byte>& der, KeyReader read,
+                                        std::string_view what) {
     const auto* const start = OpenSslBytes::of(der);
     const auto* next = start;
     // NOLINTNEXTLINE(google-runtime-int)
@@ -178,16 +178,16 @@ inline OpenSslKey OpenSslDer::read_key(const std::vector<std::byte>& der, KeyRea
 }
 
 // NOLINTBEGIN(google-runtime-int)
-inline EVP_PKEY* OpenSslDer::d2i_rsa_public_key(EVP_PKEY** key, const unsigned char** next,
-                                                long length) {
+inline EVP_PKEY* OpenSslDer::_d2i_rsa_public_key(EVP_PKEY** key, const unsigned char** next,
+                                                 long length) {
     return d2i_PublicKey(EVP_PKEY_RSA, key, next, length);
 }
 // NOLINTEND(google-runtime-int)
 
 inline OpenSslError::OpenSslError(std::string_view what)
-    : std::runtime_error(describe(what)) {}
+    : std::runtime_error(_describe(what)) {}
 
-inline std::string OpenSslError::describe(std::string_view what) {
+inline std::string OpenSslError::_describe(std::string_view what) {
     // ERR_error_string_n() writes at most this many characters, ending
     // with a null.
     constexpr auto error_text_size = 256;

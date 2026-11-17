@@ -53,7 +53,7 @@ private:
     // cppcheck-suppress uninitMemberVarNoCtor
     bool m_has_private;
 
-    [[nodiscard]] OpenSslKey shared() const;
+    [[nodiscard]] OpenSslKey _shared() const;
 };
 
 inline IMultiKey::Ptr RsaOpenSsl::for_bit_size(std::size_t key_bits) {
@@ -85,11 +85,11 @@ inline RsaOpenSsl::RsaOpenSsl(OpenSslKey key, bool has_private)
     : m_key(std::move(key)), m_has_private(has_private) {}
 
 inline ISignKey::Ptr RsaOpenSsl::RsaPssSha256() const {
-    return std::make_unique<RsaSignKeyOpenSsl>(shared(), m_has_private);
+    return std::make_unique<RsaSignKeyOpenSsl>(_shared(), m_has_private);
 }
 
 inline IEncryptKey::Ptr RsaOpenSsl::RsaOaepSha256() const {
-    return std::make_unique<RsaEncryptKeyOpenSsl>(shared(), m_has_private);
+    return std::make_unique<RsaEncryptKeyOpenSsl>(_shared(), m_has_private);
 }
 
 inline std::string RsaOpenSsl::public_pem() const {
@@ -109,7 +109,7 @@ inline std::string RsaOpenSsl::id() const {
 }
 
 // Another reference to the key: OpenSSL frees it once the last one goes.
-inline OpenSslKey RsaOpenSsl::shared() const {
+inline OpenSslKey RsaOpenSsl::_shared() const {
     if (EVP_PKEY_up_ref(m_key.get()) != 1) {
         throw OpenSslError("Failed to share an RSA key");
     }

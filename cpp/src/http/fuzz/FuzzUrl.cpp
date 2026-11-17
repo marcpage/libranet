@@ -21,11 +21,11 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         return 0;
     }
 
-    static_cast<void>(url->username());
-    static_cast<void>(url->password());
-    static_cast<void>(url->path());
-    static_cast<void>(url->fragment());
-    static_cast<void>(url->effective_port());
+    (void)url->username();
+    (void)url->password();
+    (void)url->path();
+    (void)url->fragment();
+    (void)url->effective_port();
 
     const std::string text = url->to_string();
     const auto reread = http::Url::parse(text);

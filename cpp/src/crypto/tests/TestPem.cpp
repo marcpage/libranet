@@ -64,7 +64,7 @@ TEST(PemTest, UnwrapMissingHeader) {
         "YWJj\n"
         "-----END PUBLIC KEY-----\n";
 
-    EXPECT_THROW(static_cast<void>(Pem::unwrap(pem)), std::invalid_argument);
+    EXPECT_THROW((void)Pem::unwrap(pem), std::invalid_argument);
 }
 
 TEST(PemTest, UnwrapMissingFooter) {
@@ -72,7 +72,7 @@ TEST(PemTest, UnwrapMissingFooter) {
         "-----BEGIN PUBLIC KEY-----\n"
         "YWJj\n";
 
-    EXPECT_THROW(static_cast<void>(Pem::unwrap(pem)), std::invalid_argument);
+    EXPECT_THROW((void)Pem::unwrap(pem), std::invalid_argument);
 }
 
 TEST(PemTest, UnwrapMismatchedLabel) {
@@ -81,5 +81,5 @@ TEST(PemTest, UnwrapMismatchedLabel) {
         "YWJj\n"
         "-----END PRIVATE KEY-----\n";
 
-    EXPECT_THROW(static_cast<void>(Pem::unwrap(pem)), std::invalid_argument);
+    EXPECT_THROW((void)Pem::unwrap(pem), std::invalid_argument);
 }
