@@ -211,7 +211,8 @@ inline Json::Json(std::initializer_list<Json> arguments) {
 
     // Unless every argument is a [key, value] pair, the Json is an array.
     const auto is_member = [](const Json& element) {
-        return element.is_array() && 2 == element.array().size() && element.array().at(0).is_string();
+        return element.is_array() && 2 == element.array().size()
+               && element.array().at(0).is_string();
     };
 
     if (!std::all_of(arguments.begin(), arguments.end(), is_member)) {

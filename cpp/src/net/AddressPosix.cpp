@@ -142,7 +142,9 @@ std::vector<std::string> Address::get_local_addresses() {
     ifaddrs* interfaces = fetch_interface_addresses();
     std::vector<std::string> addresses;
 
-    for (const ifaddrs* interface_entry = interfaces; interface_entry != nullptr; interface_entry = interface_entry->ifa_next) {
+    for (const ifaddrs* interface_entry = interfaces;
+         interface_entry != nullptr;
+         interface_entry = interface_entry->ifa_next) {
         if (nullptr == interface_entry->ifa_addr) {
             continue;
         }
