@@ -75,8 +75,8 @@ the code changes.
 `cppcheck`'s suppressions file is kept the same way, and `cppcheck` fails on
 a suppression that matches nothing, so none outlives its finding.
 
-`readability-identifier-naming` is on but given no rules, so names (§4) are
-a convention.
+`readability-identifier-naming` is given one rule, the underscore that
+starts a private method's name (§4); the other names are a convention.
 
 ### 2.1 Turning a Check Off
 
@@ -252,8 +252,7 @@ labels. Braces are attached: a function's opening brace is on its line.
 - **Every `if`, `for`, `while`, and `do` has braces**, even around one line.
   `readability-braces-around-statements` checks it.
 - **`*` and `&` go with the type**: `const Record& record`,
-  `const char* name`. `clang-format` keeps whichever a file mostly uses, so
-  a new file is written this way by hand.
+  `const char* name`. `clang-format` puts them there.
 - **Code runs to 100 columns**, kept by hand: WebKit sets no limit, so
   `clang-format` does not wrap lines. Prose is wrapped at 79 columns, in
   comments.
@@ -271,6 +270,7 @@ labels. Braces are attached: a function's opening brace is on its line.
 | Setter | `set_` and what it sets; its parameter `new_` and the same | `set_path(std::string new_path)` |
 | Predicate | `is_…`, `has_…`, or as the standard library names it | `is_open()`, `has(key)`, `empty()` |
 | Variable and parameter | snake_case, words spelled out | `record_id`, `socket_fd` |
+| Private method | `_` and snake_case | `_parse_value()`, `_read_body()` |
 | Data member | `m_` and snake_case | `m_records`, `m_socket_fd` |
 | A struct's member | snake_case, with no `m_` | `begin`, `der_bytes` |
 | Constant | snake_case | `max_depth`, `bits_per_byte` |
@@ -292,9 +292,12 @@ labels. Braces are attached: a function's opening brace is on its line.
   `index`, or `…_index`. The two operands of an operator are `left` and
   `right`. `clang-tidy` holds a variable or parameter to three characters at
   least (`readability-identifier-length`).
-- **Private is said by the access specifier**, not by the name: a private
-  method is named as a public one would be, with no leading or trailing
-  underscore.
+- **A private method's name starts with an underscore**, `_parse_value()`,
+  so that a call shows it is the class's own detail.
+  `readability-identifier-naming` checks it. A constructor, a destructor,
+  and an operator are named by the language, and a function in an
+  anonymous namespace is no method, so none of them has one. A data member
+  starts `m_`, and no name ends with an underscore.
 - **A setter's parameter is `new_` and the member's name**, so that it does
   not share its name with the getter, which `cppcheck`'s `shadowFunction`
   reports.
@@ -623,7 +626,7 @@ and the detail of each step is in a function of its own.
 // Reads one request from the connection and answers it. Whether the
 // connection is kept open for another comes back.
 inline bool Connection::serve_one() {
-    const auto request = read_request();
+    const auto request = _read_request();
 
     if (!request) {
         return false;
@@ -631,8 +634,8 @@ inline bool Connection::serve_one() {
 
     const auto response = m_handler.answer(*request);
 
-    send(response);
-    return keeps_alive(*request, response);
+    _send(response);
+    return _keeps_alive(*request, response);
 }
 ```
 
@@ -645,8 +648,8 @@ inline bool Connection::serve_one() {
   a method named for what it does, and the longer one calls it. Where the
   class has a `.cpp` file, the part is a function in its anonymous
   namespace, and is passed the members it uses, so that the header shows no
-  more than it must. In a class with only a header, it is a private method
-  (§6.1).
+  more than it must. In a class with only a header, it is a private method,
+  named with an underscore (§4).
 - **A part is not pulled out only to make a function shorter.** Each has a
   name that says what it does, and its caller reads as well without its
   detail as with it.
@@ -816,12 +819,12 @@ throws; it never takes "none of the others" to mean the last kind:
 
 ```cpp
 if (const auto* opened = dynamic_cast<const Opened*>(event.get())) {
-    open(*opened);
+    _open(*opened);
     return;
 }
 
 if (const auto* closed = dynamic_cast<const Closed*>(event.get())) {
-    close(*closed);
+    _close(*closed);
     return;
 }
 
