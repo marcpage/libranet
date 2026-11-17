@@ -320,8 +320,6 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            cc: clang
-            cxx: clang++
             fuzzers: "ON"
             cppcheck: -D__linux__
           # Apple's Clang, which cannot build the fuzzers. Some findings in
@@ -329,13 +327,13 @@ jobs:
           # from Linux's choice of implementation, so a suppression may match
           # nothing here; it fails only on Ubuntu, which reads the most code.
           - os: macos-latest
-            cc: cc
-            cxx: c++
             fuzzers: "OFF"
             cppcheck: -D__APPLE__ --suppress=unmatchedSuppression
+    # LLVM's Clang on Ubuntu, and Apple's on macOS. Conan tells which a
+    # compiler is from its name, and cannot from "cc".
     env:
-      CC: ${{ matrix.cc }}
-      CXX: ${{ matrix.cxx }}
+      CC: clang
+      CXX: clang++
     defaults:
       run:
         working-directory: cpp
