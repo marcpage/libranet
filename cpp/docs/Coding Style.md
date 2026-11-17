@@ -34,10 +34,10 @@ departure is not fixed in passing: a change set keeps to its task.
 
 ## 2. What the Tools Check
 
-CI runs every tool below on every pull request. It builds with GCC and with
-Clang, on each operating system the project supports, for Debug and for
-Release, since some warnings come from only one compiler, or only with
-optimization.
+CI runs every tool below on every pull request that changes the C++ code, or
+what it is built from. It builds with GCC and with Clang, on each operating
+system the project supports, for Debug and for Release, since some warnings come
+from only one compiler, or only with optimization.
 
 | Tool | Settings | What it holds to |
 | --- | --- | --- |
