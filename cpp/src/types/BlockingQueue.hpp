@@ -99,7 +99,7 @@ bool BlockingQueue<Type>::_core_push_ms_timeout(Item&& item, Milliseconds timeou
 
 template<typename Type>
 bool BlockingQueue<Type>::push_ms_timeout(const Type& item, Milliseconds timeout) {
-    return core_push_ms_timeout(item, timeout);
+    return _core_push_ms_timeout(item, timeout);
 }
 
 template<typename Type>
