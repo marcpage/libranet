@@ -25,7 +25,8 @@ The commands are in the README's sections on
 [Coverage](../README.md#coverage), [Sanitizers](../README.md#sanitizers),
 [Fuzzing](../README.md#fuzzing), and [Checking](../README.md#checking).
 
-CI runs two C++ jobs on every pull request, besides CodeQL:
+CI runs two C++ jobs, besides CodeQL, on every pull request that changes
+`cpp/` or a workflow, and on each push to `main` that does:
 
 - **`cpp`**, on Ubuntu with GCC and on macOS with Apple's Clang, builds for
   Debug, with coverage, for Release, and with each set of sanitizers, runs
@@ -38,6 +39,9 @@ CI runs two C++ jobs on every pull request, besides CodeQL:
   runs `clang-tidy` and `cppcheck` on what CMake writes. On Ubuntu it runs
   `clang-format` as well. It runs LLVM 23.1 and Cppcheck 2.22.0, whose
   findings change from one version to the next.
+
+A job named `C++` passes when both passed, or were not needed, and is the
+check a pull request must pass.
 
 Each lint run sees only what its platform builds: the code under
 `#if __APPLE__`, which is the Apple classes in `crypto/` (`*Macos.hpp`,
