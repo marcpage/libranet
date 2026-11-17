@@ -151,8 +151,9 @@ A `.cpp` file reads:
 
 1. Its own header, alone.
 2. The other includes.
-3. An anonymous namespace holding the file's private helpers: the functions
-   that wrap a C library's calls, deleters, and small types.
+3. An anonymous namespace holding the file's private helpers: the steps
+   pulled out of its class's methods (§6.8), the functions that wrap a C
+   library's calls, deleters, and small types.
 4. The library's namespace, with the definitions.
 
 Within a class, `public:` comes first, then `protected:`, then `private:`.
@@ -638,11 +639,12 @@ inline bool Connection::serve_one() {
   that hold code: blank lines, and lines that hold only a comment, are not
   counted. Tests are held to this too.
 - **A longer one is split into the logical parts it is made of.** A part
-  that is one step, with a name of its own, is pulled out into a method or a
-  function named for what it does, and the longer one calls it. A part that
-  needs none of the class's members is a function in the anonymous
-  namespace of the class's `.cpp` file, where it has one, so that the header
-  shows no more than it must; otherwise it is a private method (§6.1).
+  that is one step, with a name of its own, is pulled out into a function or
+  a method named for what it does, and the longer one calls it. Where the
+  class has a `.cpp` file, the part is a function in its anonymous
+  namespace, and is passed the members it uses, so that the header shows no
+  more than it must. In a class with only a header, it is a private method
+  (§6.1).
 - **A part is not pulled out only to make a function shorter.** Each has a
   name that says what it does, and its caller reads as well without its
   detail as with it.
