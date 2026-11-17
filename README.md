@@ -555,10 +555,10 @@ The repository is laid out by what every implementation shares:
 
 Each implementation says how to build and check it: the Python node in its
 [README](python/README.md#development), and the C++ node in its
-[README](cpp/README.md#building). Changes to protocol behavior should
-say which section of which specification they implement, and specification
-changes are best raised as an issue first. The applications a node ships
-with are described in the
+[README](cpp/README.md#building). CI builds and tests only the implementations a
+change touches. Changes to protocol behavior should say which section of which
+specification they implement, and specification changes are best raised as an
+issue first. The applications a node ships with are described in the
 [App Developer Guide](python/docs/App%20Developer%20Guide.md#9-changing-the-shipped-applications).
 
 ---

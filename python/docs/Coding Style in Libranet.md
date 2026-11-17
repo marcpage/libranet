@@ -29,9 +29,12 @@ uv run pytest --cov
 ```
 
 `pylint` reads `hatch_build.py`, the hook that builds the wheel, as well as
-`src` and `tests`. CI runs all five on every pull request, and the tests on
-Ubuntu and macOS against Python 3.11, the oldest version supported, and
-3.14.
+`src` and `tests`. CI runs all five on every pull request that changes
+`python/`, the `applications/` and `data/` it packages, the workspace's
+`pyproject.toml`, `uv.lock`, or `.python-version`, or a workflow, and the
+tests on Ubuntu and macOS against Python 3.11, the oldest version
+supported, and 3.14. A job named `Python` passes when those passed, or
+were not needed, and is the check a pull request must pass.
 
 ## 3. What the Rules Lean On
 

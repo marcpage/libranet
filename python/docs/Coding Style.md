@@ -37,9 +37,9 @@ uv run pylint src tests  # lint further
 uv run pytest --cov      # tests, with coverage
 ```
 
-CI runs all five on every pull request, and the tests on each operating
-system the project supports, against the oldest and the newest Python it
-supports.
+CI runs all five on every pull request that changes the Python code, or what it
+is built from, and the tests on each operating system the project supports,
+against the oldest and the newest Python it supports.
 
 | Tool | Settings | What it holds to |
 | --- | --- | --- |
