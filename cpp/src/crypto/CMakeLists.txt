@@ -21,6 +21,7 @@ endif()
 if(BUILD_TESTING)
     add_executable(crypto_tests
         tests/TestBase64.cpp
+        tests/TestCFObject.cpp
         tests/TestIEncryptKey.cpp
         tests/TestIHasher.cpp
         tests/TestIMultiKey.cpp

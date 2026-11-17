@@ -2,13 +2,18 @@
 
 #if __APPLE__
 
-#include <CommonCrypto/CommonCryptor.h>
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
+#include <utility>
 #include <vector>
+
+#include <CommonCrypto/CommonCryptor.h>
 
 #include "IEncryptKey.hpp"
 
@@ -24,24 +29,37 @@ public:
                                       const InitializationVector& vector) const override;
 
     ~AesMacos() override = default;
+    AesMacos(const AesMacos&) = delete;
+    AesMacos& operator=(const AesMacos&) = delete;
     AesMacos(AesMacos&&) noexcept = default;
     AesMacos& operator=(AesMacos&&) noexcept = default;
 
 private:
-    AesMacos(const AesMacos&) = delete;
-    AesMacos& operator=(const AesMacos&) = delete;
+    // Releases a cryptor CommonCrypto made.
+    struct CryptorRelease {
+        void operator()(CCCryptorRef cryptor) const noexcept {
+            CCCryptorRelease(cryptor);
+        }
+    };
+
+    using Cryptor = std::unique_ptr<std::remove_pointer_t<CCCryptorRef>, CryptorRelease>;
+
+    // AES's key sizes, in bytes.
+    static constexpr std::size_t aes_128_key_bytes = 16;
+    static constexpr std::size_t aes_192_key_bytes = 24;
+    static constexpr std::size_t aes_256_key_bytes = 32;
 
     Data m_key;
     AesMode m_mode;
     AesPadding m_padding;
 
-    [[nodiscard]] Data process(CCOperation op, std::string_view input,
+    [[nodiscard]] Data process(CCOperation operation, std::string_view input,
                                const InitializationVector& vector) const;
-    [[nodiscard]] std::size_t process_cbc(CCOperation op, std::string_view input,
+    [[nodiscard]] std::size_t process_cbc(CCOperation operation, std::string_view input,
                                           const InitializationVector& vector, Data& output) const;
-    [[nodiscard]] std::size_t process_ctr(CCOperation op, std::string_view input,
+    [[nodiscard]] std::size_t process_ctr(CCOperation operation, std::string_view input,
                                           const InitializationVector& vector, Data& output) const;
-    [[nodiscard]] std::size_t process_ctr_part(CCOperation op, std::string_view input,
+    [[nodiscard]] std::size_t process_ctr_part(CCOperation operation, std::string_view input,
                                                const InitializationVector& counter, Data& output,
                                                std::size_t offset) const;
     [[nodiscard]] static std::size_t unpadded_size(const Data& decrypted, std::size_t size);
@@ -54,7 +72,8 @@ inline AesMacos::AesMacos(Data key, AesMode mode, AesPadding padding)
     , m_mode(mode)
     , m_padding(padding) {
 
-    if (m_key.size() != 16 && m_key.size() != 24 && m_key.size() != 32) {
+    if (m_key.size() != aes_128_key_bytes && m_key.size() != aes_192_key_bytes
+        && m_key.size() != aes_256_key_bytes) {
         throw std::invalid_argument(
             "Invalid AES key size. Must be 128, 192, or 256 bits.");
     }
@@ -67,16 +86,19 @@ inline IEncryptKey::Data AesMacos::encrypt(std::string_view plaintext,
 
 inline std::string AesMacos::decrypt(const Data& ciphertext,
                                      const InitializationVector& vector) const {
-    const Data raw_in(ciphertext.begin(), ciphertext.end());
-    Data raw_out = process(
-        kCCDecrypt,
-        std::string_view(reinterpret_cast<const char*>(raw_in.data()), raw_in.size()),
-        vector);
+    const auto as_char = [](std::byte byte) { return static_cast<char>(byte); };
+    std::string input(ciphertext.size(), '\0');
 
-    return std::string(reinterpret_cast<char*>(raw_out.data()), raw_out.size());
+    std::transform(ciphertext.begin(), ciphertext.end(), input.begin(), as_char);
+
+    const auto output = process(kCCDecrypt, input, vector);
+    std::string text(output.size(), '\0');
+
+    std::transform(output.begin(), output.end(), text.begin(), as_char);
+    return text;
 }
 
-inline IEncryptKey::Data AesMacos::process(CCOperation op, std::string_view input,
+inline IEncryptKey::Data AesMacos::process(CCOperation operation, std::string_view input,
                                            const InitializationVector& vector) const {
     if (m_mode != AesMode::Cbc && m_mode != AesMode::Ctr) {
         throw std::runtime_error("Only Cbc and Ctr supported.");
@@ -85,25 +107,25 @@ inline IEncryptKey::Data AesMacos::process(CCOperation op, std::string_view inpu
     const std::size_t buffer_size = input.size() + kCCBlockSizeAES128;
     Data output(buffer_size);
     const auto data_moved = AesMode::Cbc == m_mode
-                                ? process_cbc(op, input, vector, output)
-                                : process_ctr(op, input, vector, output);
+                                ? process_cbc(operation, input, vector, output)
+                                : process_ctr(operation, input, vector, output);
 
     output.resize(data_moved);
     return output;
 }
 
-inline std::size_t AesMacos::process_cbc(CCOperation op, std::string_view input,
+inline std::size_t AesMacos::process_cbc(CCOperation operation, std::string_view input,
                                          const InitializationVector& vector, Data& output) const {
     // CommonCrypto removes padding without checking it, so it decrypts with
     // none, and the padding is checked and removed here.
     const bool padded = m_padding == AesPadding::Pkcs7;
-    CCOptions options = (padded && op == kCCEncrypt) ? kCCOptionPKCS7Padding : 0;
+    const CCOptions options = (padded && operation == kCCEncrypt) ? kCCOptionPKCS7Padding : 0;
     std::size_t data_moved = 0;
 
-    CCCryptorStatus status = CCCrypt(
-        op, kCCAlgorithmAES, options,
+    const CCCryptorStatus status = CCCrypt(
+        operation, kCCAlgorithmAES, options,
         m_key.data(), m_key.size(),
-        vector.empty() ? nullptr : reinterpret_cast<const void*>(vector.data()),
+        vector.empty() ? nullptr : vector.data(),
         input.data(), input.size(),
         output.data(), output.size(), &data_moved);
 
@@ -112,7 +134,7 @@ inline std::size_t AesMacos::process_cbc(CCOperation op, std::string_view input,
                                  + std::to_string(status));
     }
 
-    return (padded && op == kCCDecrypt) ? unpadded_size(output, data_moved) : data_moved;
+    return (padded && operation == kCCDecrypt) ? unpadded_size(output, data_moved) : data_moved;
 }
 
 // How long the first size bytes of decrypted are without the PKCS #7 padding
@@ -146,7 +168,7 @@ inline std::size_t AesMacos::unpadded_size(const Data& decrypted, std::size_t si
 // where OpenSSL and the Python node carry into the high 64 bits. So where
 // the low 64 bits would wrap around, the rest is processed again from the
 // counter that carries. No message is long enough to wrap them twice.
-inline std::size_t AesMacos::process_ctr(CCOperation op, std::string_view input,
+inline std::size_t AesMacos::process_ctr(CCOperation operation, std::string_view input,
                                          const InitializationVector& vector, Data& output) const {
     constexpr std::size_t block_size = kCCBlockSizeAES128;
     // An empty initialization vector is all zeros, as CommonCrypto takes a
@@ -162,14 +184,16 @@ inline std::size_t AesMacos::process_ctr(CCOperation op, std::string_view input,
     const auto blocks = (input.size() + block_size - 1) / block_size;
 
     if (low == 0 || blocks <= blocks_before_wrap) {
-        return process_ctr_part(op, input, counter, output, 0);
+        return process_ctr_part(operation, input, counter, output, 0);
     }
 
     const auto first_size = static_cast<std::size_t>(blocks_before_wrap) * block_size;
-    const auto first_moved = process_ctr_part(op, input.substr(0, first_size), counter, output, 0);
+    const auto first_moved = process_ctr_part(operation, input.substr(0, first_size), counter,
+                                              output, 0);
 
     carry_count(counter);
-    return first_moved + process_ctr_part(op, input.substr(first_size), counter, output, first_moved);
+    return first_moved
+           + process_ctr_part(operation, input.substr(first_size), counter, output, first_moved);
 }
 
 // The low 64 bits of the counter block, big-endian.
@@ -203,31 +227,27 @@ inline void AesMacos::carry_count(InitializationVector& counter) {
     }
 }
 
-inline std::size_t AesMacos::process_ctr_part(CCOperation op, std::string_view input,
+// The output is written from offset, which is before its end: it has room
+// for a block more than the whole input.
+inline std::size_t AesMacos::process_ctr_part(CCOperation operation, std::string_view input,
                                               const InitializationVector& counter, Data& output,
                                               std::size_t offset) const {
     std::size_t update_moved = 0;
     std::size_t final_moved = 0;
-    struct CryptorGuard {
-        CCCryptorRef ref{nullptr};
-        ~CryptorGuard() {
-            if (ref) {
-                CCCryptorRelease(ref);
-            }
-        }
-    } cryptor;
+    CCCryptorRef created = nullptr;
     CCCryptorStatus status = CCCryptorCreateWithMode(
-        op, kCCModeCTR, kCCAlgorithmAES, ccNoPadding,
-        reinterpret_cast<const void*>(counter.data()),
+        operation, kCCModeCTR, kCCAlgorithmAES, ccNoPadding,
+        counter.data(),
         m_key.data(), m_key.size(),
-        nullptr, 0, 0, kCCModeOptionCTR_BE, &cryptor.ref);
+        nullptr, 0, 0, kCCModeOptionCTR_BE, &created);
+    const Cryptor cryptor(created);
 
     if (status != kCCSuccess) {
         throw std::runtime_error("Failed to create AES-CTR cryptor. Status: "
                                  + std::to_string(status));
     }
 
-    status = CCCryptorUpdate(cryptor.ref, input.data(), input.size(), output.data() + offset,
+    status = CCCryptorUpdate(cryptor.get(), input.data(), input.size(), &output.at(offset),
                              output.size() - offset, &update_moved);
 
     if (status != kCCSuccess) {
@@ -235,7 +255,7 @@ inline std::size_t AesMacos::process_ctr_part(CCOperation op, std::string_view i
                                  + std::to_string(status));
     }
 
-    status = CCCryptorFinal(cryptor.ref, output.data() + offset + update_moved,
+    status = CCCryptorFinal(cryptor.get(), &output.at(offset + update_moved),
                             output.size() - offset - update_moved, &final_moved);
 
     if (status != kCCSuccess) {

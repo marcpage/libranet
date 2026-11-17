@@ -276,7 +276,6 @@ inline bool Headers::parse_header_line(std::string_view line, std::string& out_k
     return true;
 }
 
-// Add inside class Headers (or as a static helper):
 inline std::vector<std::string_view> Headers::split_spaces(std::string_view text, std::size_t max_fields) {
     std::vector<std::string_view> fields;
     if (text.empty() || max_fields == 0) {

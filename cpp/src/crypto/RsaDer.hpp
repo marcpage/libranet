@@ -75,7 +75,7 @@ private:
     // PKCS #8's version: the INTEGER 0.
     static constexpr std::array<std::uint8_t, 3> pkcs8_version{0x02, 0x01, 0x00};
 
-    [[nodiscard]] static Data element(std::byte tag, const Data& contents);
+    [[nodiscard]] static Data element(std::byte tag, const Data& octets);
     template<std::size_t size>
     static void append(Data& der, const std::array<std::uint8_t, size>& bytes);
     [[nodiscard]] static Element read(const Data& der, std::size_t& offset, std::size_t limit,
@@ -162,10 +162,11 @@ inline RsaDer::Data RsaDer::pkcs1_from_pkcs8(const Data& pkcs8) {
     return contents(pkcs8, key.start, key.end);
 }
 
-// The DER element of tag and contents, its length as short as it can be.
-inline RsaDer::Data RsaDer::element(std::byte tag, const Data& contents) {
+// The DER element of tag around octets, its contents, with its length as short
+// as it can be.
+inline RsaDer::Data RsaDer::element(std::byte tag, const Data& octets) {
     Data der{tag};
-    const auto size = contents.size();
+    const auto size = octets.size();
 
     if (size < long_length) {
         der.push_back(static_cast<std::byte>(size));
@@ -183,7 +184,7 @@ inline RsaDer::Data RsaDer::element(std::byte tag, const Data& contents) {
         }
     }
 
-    der.insert(der.end(), contents.begin(), contents.end());
+    der.insert(der.end(), octets.begin(), octets.end());
     return der;
 }
 

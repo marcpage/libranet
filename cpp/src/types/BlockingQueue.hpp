@@ -18,11 +18,10 @@ public:
     explicit BlockingQueue(size_t capacity = Unbounded);
     ~BlockingQueue() = default;
 
-    // non-copyable, movable
     BlockingQueue(const BlockingQueue&) = delete;
     BlockingQueue& operator=(const BlockingQueue&) = delete;
-    BlockingQueue(BlockingQueue&&) = default;
-    BlockingQueue& operator=(BlockingQueue&&) = default;
+    BlockingQueue(BlockingQueue&&) = delete;
+    BlockingQueue& operator=(BlockingQueue&&) = delete;
 
     void push(const T& item);
     void push(T&& item);

@@ -36,6 +36,18 @@ constexpr auto x25519_public_pem =
     "MCowBQYDK2VuAyEAj0DFrbaPJWJK5bIU6nZ6bslNgp09e14a0bpvPiE4KF8=\n"
     "-----END PUBLIC KEY-----\n";
 
+// What ISignKey::from_pem() says is wrong with a PEM it turns down; empty if
+// it reads it.
+std::string refusal(std::string_view pem) {
+    try {
+        (void)ISignKey::from_pem(pem);
+    } catch (const std::exception& error) {
+        return error.what();
+    }
+
+    return {};
+}
+
 // Reads an RSA signing key from a PEM.
 using ReadRsaKey = ISignKey::Ptr (*)(std::string_view pem);
 
@@ -127,6 +139,27 @@ TEST(ISignKeyTest, Ed25519InvalidInputs) {
     EXPECT_FALSE(signer->verify("test", bad_sig));
 }
 
+TEST(ISignKeyTest, DamagedRsaKeyRefusedByRsaReader) {
+    std::string damaged = fixtures::rsa_pkcs1_private_pem;
+
+    // The DER's first three bytes become zeros, so it is no SEQUENCE.
+    damaged.replace(damaged.find('\n') + 1, 4, "AAAA");
+
+    const auto message = refusal(damaged);
+
+    // The RSA reader says what is wrong with the key; the Ed25519 reader,
+    // given it, would say only that it does not know the label.
+    EXPECT_FALSE(message.empty());
+    EXPECT_EQ(message.find("label"), std::string::npos) << message;
+}
+
+TEST(ISignKeyTest, KeysOfOtherAlgorithmsRefused) {
+    EXPECT_EQ(refusal(x25519_public_pem).find("Neither an RSA nor an Ed25519 key"), 0U);
+    EXPECT_EQ(refusal("-----BEGIN CERTIFICATE-----\nYWJj\n-----END CERTIFICATE-----\n")
+                  .find("Neither an RSA nor an Ed25519 key"),
+              0U);
+}
+
 TEST_P(RsaSignKeyTest, ReadsPythonKey) {
     const auto signer = GetParam()(fixtures::rsa_pkcs1_private_pem);
     const auto verifier = GetParam()(fixtures::rsa_pkcs1_public_pem);
@@ -142,6 +175,17 @@ TEST_P(RsaSignKeyTest, ReadsPythonKey) {
     EXPECT_THROW(static_cast<void>(verifier->private_pem()), std::runtime_error);
     EXPECT_FALSE(verifier->public_pem().empty());
     EXPECT_FALSE(signer->private_pem().empty());
+}
+
+TEST_P(RsaSignKeyTest, ReadsPkcs8AndSpki) {
+    const auto signer = GetParam()(fixtures::rsa_pkcs8_private_pem);
+    const auto verifier = GetParam()(fixtures::rsa_spki_public_pem);
+    const auto signature = fixtures::bytes(fixtures::rsa_pss_signature);
+
+    EXPECT_TRUE(signer->has_private_key());
+    EXPECT_FALSE(verifier->has_private_key());
+    EXPECT_TRUE(verifier->verify(fixtures::rsa_message, signature));
+    EXPECT_TRUE(verifier->verify(fixtures::rsa_message, signer->sign(fixtures::rsa_message)));
 }
 
 INSTANTIATE_TEST_SUITE_P(Factory, RsaSignKeyTest, testing::Values(&ISignKey::from_pem));
