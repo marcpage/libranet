@@ -101,14 +101,15 @@ TEST(BlockingQueueTest, CapacityAndTimeouts) {
 }
 
 TEST(BlockingQueueTest, UnboundedConstant) {
-    BlockingQueue<int> unbounded_queue(BlockingQueue<int>::Unbounded);
-    BlockingQueue<int> default_queue; // same as Unbounded
+    BlockingQueue<int> unbounded_queue(BlockingQueue<int>::unbounded);
+    BlockingQueue<int> default_queue; // same as unbounded
     constexpr int item_count = 1000;
 
     for (int i = 0; i < item_count; ++i) {
         unbounded_queue.push(i);
         default_queue.push(i);
     }
+
     EXPECT_EQ(unbounded_queue.size(), static_cast<std::size_t>(item_count));
     EXPECT_EQ(default_queue.size(), static_cast<std::size_t>(item_count));
 }
@@ -159,6 +160,7 @@ TEST(BlockingQueueTest, ProducerConsumer) {
     const auto consumer_fn = [&] {
         while (consumed.load(std::memory_order_relaxed) < num_items) {
             auto item = queue.pop_ms_timeout(pop_timeout);
+
             if (item) {
                 sum.fetch_add(*item, std::memory_order_relaxed);
                 consumed.fetch_add(1, std::memory_order_relaxed);
@@ -198,6 +200,7 @@ TEST(BlockingQueueTest, MultipleProducersConsumers) {
 
     std::vector<std::thread> producers;
     producers.reserve(num_producers);
+
     for (int producer_index = 0; producer_index < num_producers; ++producer_index) {
         producers.emplace_back([&, producer_index] {
             for (int i = 0; i < items_per_producer; ++i) {
@@ -208,6 +211,7 @@ TEST(BlockingQueueTest, MultipleProducersConsumers) {
 
     std::vector<std::thread> consumers;
     consumers.reserve(num_consumers);
+
     for (int consumer_index = 0; consumer_index < num_consumers; ++consumer_index) {
         consumers.emplace_back([&] {
             while (consumed.load(std::memory_order_relaxed) < total) {
@@ -222,6 +226,7 @@ TEST(BlockingQueueTest, MultipleProducersConsumers) {
     for (auto& producer : producers) {
         producer.join();
     }
+
     for (auto& consumer : consumers) {
         consumer.join();
     }

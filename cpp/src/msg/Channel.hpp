@@ -19,7 +19,7 @@ namespace msg {
 class Channel {
 public:
     using Milliseconds = std::chrono::milliseconds;
-    static constexpr Milliseconds WaitForever{-1};
+    static constexpr Milliseconds wait_forever{-1};
 
     explicit Channel(const std::string& name);
     ~Channel();
@@ -30,10 +30,10 @@ public:
     [[nodiscard]] bool empty() const;
     [[nodiscard]] size_t size() const;
 
-    [[nodiscard]] std::optional<IMessage::Ptr> next_message(Milliseconds timeout = WaitForever);
+    [[nodiscard]] std::optional<IMessage::Ptr> next_message(Milliseconds timeout = wait_forever);
 
     template<typename Type>
-    [[nodiscard]] std::optional<Type> next(Milliseconds timeout = WaitForever);
+    [[nodiscard]] std::optional<Type> next(Milliseconds timeout = wait_forever);
 
     static void post_message(const std::string& name, const IMessage::Ptr& message);
 
@@ -42,7 +42,7 @@ public:
 
 protected:
     // AsyncChannel's worker takes messages from it, and is woken through it.
-    // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes,misc-non-private-member-variables-in-classes)
+    // NOLINTNEXTLINE(*-non-private-member-variables-in-classes)
     types::BlockingQueue<IMessage::Ptr> m_message_queue;
 
 private:
@@ -60,7 +60,7 @@ std::optional<Type> Channel::next(Milliseconds timeout) {
 
     const auto* typed = dynamic_cast<Message<Type>*>(message->get());
 
-    if (!typed) {
+    if (nullptr == typed) {
         return std::nullopt; // type mismatch
     }
 

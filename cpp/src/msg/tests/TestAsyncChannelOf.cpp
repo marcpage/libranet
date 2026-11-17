@@ -15,10 +15,6 @@ using msg::AsyncChannelOf;
 using msg::Channel;
 using namespace std::chrono_literals;
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 namespace {
 
 // How long a test waits for its messages to be handled. A wait ends as soon
@@ -30,20 +26,19 @@ constexpr auto handling_timeout = 5s;
 template<typename Predicate>
 bool wait_until(Predicate predicate, std::chrono::milliseconds timeout = handling_timeout) {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
+
     while (std::chrono::steady_clock::now() < deadline) {
         if (predicate()) {
             return true;
         }
+
         std::this_thread::sleep_for(1ms);
     }
+
     return predicate();
 }
 
 } // namespace
-
-// ---------------------------------------------------------------------------
-// Test cases
-// ---------------------------------------------------------------------------
 
 TEST(AsyncChannelOfTest, ConstructionAndCallback) {
     std::mutex mutex;
@@ -67,7 +62,7 @@ TEST(AsyncChannelOfTest, ConstructionAndCallback) {
 
         std::unique_lock<std::mutex> lock(mutex);
         const bool delivered = condition.wait_for(lock, handling_timeout, [&] {
-            return received.size() == 1;
+            return 1 == received.size();
         });
         ASSERT_TRUE(delivered);
         EXPECT_EQ(received.at(0), posted_value);
@@ -98,7 +93,7 @@ TEST(AsyncChannelOfTest, MultipleMessagesFifoOrder) {
 
         std::unique_lock<std::mutex> lock(mutex);
         const bool delivered = condition.wait_for(lock, handling_timeout, [&] {
-            return received.size() == 3;
+            return 3 == received.size();
         });
         ASSERT_TRUE(delivered);
         EXPECT_EQ(received.at(0), first_value);
@@ -136,7 +131,7 @@ TEST(AsyncChannelOfTest, BroadcastToMultipleAsyncChannels) {
 
         std::unique_lock<std::mutex> lock(mutex);
         const bool delivered = condition.wait_for(lock, handling_timeout, [&] {
-            return received_a.size() == 1 && received_b.size() == 1;
+            return 1 == received_a.size() && 1 == received_b.size();
         });
         ASSERT_TRUE(delivered);
         EXPECT_EQ(received_a.at(0), posted_value);
@@ -151,13 +146,14 @@ TEST(AsyncChannelOfTest, UnexpectedMessageTypeLogging) {
     {
         std::vector<std::string> logged;
 
-        const AsyncChannelOf<int> channel("test.asyncof.unexpected", [](int) {}, [&](std::string msg) {
+        const auto log = [&](std::string message) {
             {
                 const std::scoped_lock lock(mutex);
-                logged.push_back(std::move(msg));
+                logged.push_back(std::move(message));
             }
             condition.notify_one();
-        });
+        };
+        const AsyncChannelOf<int> channel("test.asyncof.unexpected", [](int) {}, log);
 
         // Post a message of unexpected type (std::string instead of int)
         Channel::post("test.asyncof.unexpected", std::string("mismatch"));
@@ -180,7 +176,7 @@ TEST(AsyncChannelOfTest, StopAndIdempotence) {
 
     Channel::post("test.asyncof.stop", 1);
     const bool delivered = wait_until([&] {
-        return callback_count.load() == 1;
+        return 1 == callback_count.load();
     });
     EXPECT_TRUE(delivered);
 

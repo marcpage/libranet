@@ -47,7 +47,8 @@ TEST(UrlTest, ConstructorsAndBasicAccessors) {
 
 TEST(UrlTest, UrlParsing) {
     // Comprehensive URL parsing test
-    auto parsed = Url::parse("https://john:doe@sub.example.com:9000/path/to/page?foo=bar&baz=123#anchor");
+    auto parsed = Url::parse(
+        "https://john:doe@sub.example.com:9000/path/to/page?foo=bar&baz=123#anchor");
     ASSERT_TRUE(parsed.has_value());
 
     const auto& url = parsed.value();

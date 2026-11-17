@@ -45,7 +45,8 @@ public:
     Argon2idOpenSsl& operator=(Argon2idOpenSsl&&) noexcept = default;
 
     [[nodiscard]] std::string hash_password(std::string_view password) const override;
-    [[nodiscard]] bool verify_password(std::string_view password, std::string_view hash) const override;
+    [[nodiscard]] bool verify_password(std::string_view password,
+                                       std::string_view hash) const override;
 
 private:
     using Data = std::vector<std::byte>;
@@ -65,7 +66,7 @@ private:
         PhcString(Parameters parameters, Data hash);
 
         [[nodiscard]] static std::optional<PhcString> parse(std::string_view text);
-        [[nodiscard]] std::string str() const;
+        [[nodiscard]] std::string to_string() const;
         [[nodiscard]] bool matches(std::string_view password) const;
 
     private:
@@ -82,11 +83,11 @@ private:
         [[nodiscard]] static std::string base64(const Data& data);
     };
 
-    uint32_t memory_cost_kib_;
-    uint32_t iterations_;
-    uint32_t parallelism_;
-    std::size_t salt_length_;
-    std::size_t hash_length_;
+    uint32_t m_memory_cost_kib;
+    uint32_t m_iterations;
+    uint32_t m_parallelism;
+    std::size_t m_salt_length;
+    std::size_t m_hash_length;
 
     [[nodiscard]] static Data derive(std::string_view password, const Parameters& parameters,
                                      std::size_t hash_length);
@@ -98,32 +99,34 @@ inline Argon2idOpenSsl::Argon2idOpenSsl(
     uint32_t parallelism,
     std::size_t salt_length,
     std::size_t hash_length)
-    : memory_cost_kib_(memory_cost_kib)
-    , iterations_(iterations)
-    , parallelism_(parallelism)
-    , salt_length_(salt_length)
-    , hash_length_(hash_length) {}
+    : m_memory_cost_kib(memory_cost_kib)
+    , m_iterations(iterations)
+    , m_parallelism(parallelism)
+    , m_salt_length(salt_length)
+    , m_hash_length(hash_length) {}
 
 inline std::string Argon2idOpenSsl::hash_password(std::string_view password) const {
-    Parameters parameters{memory_cost_kib_, iterations_, parallelism_, Data(salt_length_)};
+    Parameters parameters{m_memory_cost_kib, m_iterations, m_parallelism, Data(m_salt_length)};
 
     if (RAND_bytes(OpenSslBytes::of(parameters.salt), static_cast<int>(parameters.salt.size()))
         != 1) {
         throw OpenSslError("Failed to make a salt for Argon2id");
     }
 
-    auto hash = derive(password, parameters, hash_length_);
+    auto hash = derive(password, parameters, m_hash_length);
 
-    return PhcString(std::move(parameters), std::move(hash)).str();
+    return PhcString(std::move(parameters), std::move(hash)).to_string();
 }
 
-inline bool Argon2idOpenSsl::verify_password(std::string_view password, std::string_view hash) const {
+inline bool Argon2idOpenSsl::verify_password(std::string_view password,
+                                             std::string_view hash) const {
     const auto encoded = PhcString::parse(hash);
 
     return encoded && encoded->matches(password);
 }
 
-inline Argon2idOpenSsl::Data Argon2idOpenSsl::derive(std::string_view password, const Parameters& parameters,
+inline Argon2idOpenSsl::Data Argon2idOpenSsl::derive(std::string_view password,
+                                                     const Parameters& parameters,
                                                      std::size_t hash_length) {
     const OpenSslObject<EVP_KDF, EVP_KDF_free> kdf(EVP_KDF_fetch(nullptr, "ARGON2ID", nullptr));
 
@@ -170,7 +173,8 @@ inline Argon2idOpenSsl::Data Argon2idOpenSsl::derive(std::string_view password, 
 inline Argon2idOpenSsl::PhcString::PhcString(Parameters parameters, Data hash)
     : m_parameters(std::move(parameters)), m_hash(std::move(hash)) {}
 
-inline std::optional<Argon2idOpenSsl::PhcString> Argon2idOpenSsl::PhcString::parse(std::string_view text) {
+inline std::optional<Argon2idOpenSsl::PhcString>
+Argon2idOpenSsl::PhcString::parse(std::string_view text) {
     Parameters parameters{};
 
     if (!skip(text, prefix) || !read_number(text, parameters.memory_cost_kib)
@@ -182,7 +186,7 @@ inline std::optional<Argon2idOpenSsl::PhcString> Argon2idOpenSsl::PhcString::par
 
     const auto separator = text.find('$');
 
-    if (separator == std::string_view::npos) {
+    if (std::string_view::npos == separator) {
         return std::nullopt;
     }
 
@@ -197,7 +201,7 @@ inline std::optional<Argon2idOpenSsl::PhcString> Argon2idOpenSsl::PhcString::par
     return PhcString(std::move(parameters), std::move(*hash));
 }
 
-inline std::string Argon2idOpenSsl::PhcString::str() const {
+inline std::string Argon2idOpenSsl::PhcString::to_string() const {
     return std::string(prefix) + std::to_string(m_parameters.memory_cost_kib)
            + ",t=" + std::to_string(m_parameters.iterations)
            + ",p=" + std::to_string(m_parameters.parallelism)
@@ -215,7 +219,7 @@ inline bool Argon2idOpenSsl::PhcString::matches(std::string_view password) const
         return false;
     }
 
-    return CRYPTO_memcmp(computed.data(), m_hash.data(), computed.size()) == 0;
+    return 0 == CRYPTO_memcmp(computed.data(), m_hash.data(), computed.size());
 }
 
 // Moves past expected at the start of text, if it is there.
@@ -249,7 +253,7 @@ inline bool Argon2idOpenSsl::PhcString::read_number(std::string_view& text, uint
         ++digits;
     }
 
-    if (digits == 0) {
+    if (0 == digits) {
         return false;
     }
 
@@ -259,11 +263,12 @@ inline bool Argon2idOpenSsl::PhcString::read_number(std::string_view& text, uint
 }
 
 // Base64 without padding, as PHC strings have it.
-inline std::optional<Argon2idOpenSsl::Data> Argon2idOpenSsl::PhcString::read_base64(std::string_view text) {
+inline std::optional<Argon2idOpenSsl::Data>
+Argon2idOpenSsl::PhcString::read_base64(std::string_view text) {
     constexpr std::size_t group_size = 4;
 
     if (text.empty() || text.find('=') != std::string_view::npos
-        || text.size() % group_size == 1) {
+        || 1 == text.size() % group_size) {
         return std::nullopt;
     }
 

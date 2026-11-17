@@ -42,8 +42,6 @@ private:
     std::string m_body;
 };
 
-// --- Inline Member Function Implementations ---
-
 inline std::string_view Request::method() const noexcept {
     return m_method;
 }
@@ -87,7 +85,7 @@ inline void Request::set_body(std::string new_body) {
 inline bool Request::parse_request_line(std::string_view line) {
     line = Headers::trim_trailing_cr(line);
 
-    if (!line.empty() && line.back() == '\n') {
+    if (!line.empty() && '\n' == line.back()) {
         line.remove_suffix(1);
         line = Headers::trim_trailing_cr(line);
     }
@@ -111,13 +109,13 @@ inline bool Request::parse_request_line(std::string_view line) {
 }
 
 inline std::string Request::to_string() const {
-    constexpr auto RequestFormattingOverheadBytes = 64;
+    constexpr auto formatting_overhead_bytes = 64;
     std::string result;
     result.reserve(m_method.size()
                    + m_uri.size()
                    + m_version.size()
                    + m_body.size()
-                   + RequestFormattingOverheadBytes);
+                   + formatting_overhead_bytes);
 
     result += m_method;
     result += ' ';

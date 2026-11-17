@@ -38,7 +38,7 @@ public:
 
 private:
     std::string m_version = "HTTP/1.1";
-    ResponseCode m_status{ResponseCode::Status::OK};
+    ResponseCode m_status{ResponseCode::Status::Ok};
     Headers m_headers;
     std::string m_body;
 };
@@ -86,7 +86,7 @@ inline void Response::set_body(std::string new_body) {
 inline bool Response::parse_status_line(std::string_view line) {
     line = Headers::trim_trailing_cr(line);
 
-    if (!line.empty() && line.back() == '\n') {
+    if (!line.empty() && '\n' == line.back()) {
         line.remove_suffix(1);
         line = Headers::trim_trailing_cr(line);
     }
@@ -116,20 +116,20 @@ inline bool Response::parse_status_line(std::string_view line) {
     const auto code_value = static_cast<uint16_t>(parsed_code);
 
     m_version = std::string(fields.at(0));
-    m_status = ResponseCode(code_value, (fields.size() == 3)
+    m_status = ResponseCode(code_value, (3 == fields.size())
                                             ? std::string(fields.at(2))
                                             : std::string());
     return true;
 }
 
 inline std::string Response::to_string() const {
-    constexpr auto ResponseFormattingOverheadBytes = 64;
+    constexpr auto formatting_overhead_bytes = 64;
 
     std::string result;
     result.reserve(m_version.size()
                    + m_status.reason_phrase().size()
                    + m_body.size()
-                   + ResponseFormattingOverheadBytes);
+                   + formatting_overhead_bytes);
 
     result += m_version;
     result += ' ';

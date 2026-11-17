@@ -28,7 +28,8 @@ constexpr auto rfc_8032_public_pem =
     "-----END PUBLIC KEY-----\n";
 // Its signature of the empty message.
 constexpr auto rfc_8032_signature =
-    "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b";
+    "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555"
+    "fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b";
 
 // An X25519 public key: the same size as an Ed25519 one, for key agreement.
 constexpr auto x25519_public_pem =

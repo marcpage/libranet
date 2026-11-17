@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Base64.hpp"
 #include <algorithm>
 #include <cstddef>
 #include <iterator>
@@ -8,6 +7,8 @@
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include "Base64.hpp"
 
 namespace crypto {
 
@@ -18,7 +19,8 @@ public:
         std::vector<std::byte> der_bytes;
     };
 
-    [[nodiscard]] static std::string wrap(std::string_view label, const std::vector<std::byte>& der_bytes);
+    [[nodiscard]] static std::string wrap(std::string_view label,
+                                          const std::vector<std::byte>& der_bytes);
     [[nodiscard]] static std::string wrap(std::string_view label, std::string_view der_string);
     [[nodiscard]] static Unwrapped unwrap(std::string_view pem_string);
 
@@ -47,7 +49,7 @@ inline std::string Pem::wrap(std::string_view label, const std::vector<std::byte
         wrapped_pem.push_back(character);
         character_count++;
 
-        if (character_count == base64_characters_per_line) {
+        if (base64_characters_per_line == character_count) {
             wrapped_pem.push_back('\n');
             character_count = 0;
         }
@@ -78,22 +80,22 @@ inline Pem::Unwrapped Pem::unwrap(std::string_view pem_string) {
     constexpr std::string_view suffix = "-----";
     const auto begin_position = pem_string.find(begin_prefix);
 
-    if (begin_position == std::string_view::npos) {
-        throw std::invalid_argument("PEM string is missing BEGIN header.");
+    if (std::string_view::npos == begin_position) {
+        throw std::invalid_argument("PEM string is missing BEGIN header");
     }
 
     const auto label_start = begin_position + begin_prefix.size();
     const auto label_end = pem_string.find(suffix, label_start);
 
-    if (label_end == std::string_view::npos) {
-        throw std::invalid_argument("Malformed PEM BEGIN header.");
+    if (std::string_view::npos == label_end) {
+        throw std::invalid_argument("Malformed PEM BEGIN header");
     }
 
     std::string label(pem_string.substr(label_start, label_end - label_start));
     const auto expected_end = std::string(end_prefix) + label + std::string(suffix);
     const auto end_position = pem_string.find(expected_end, label_end);
 
-    if (end_position == std::string_view::npos) {
+    if (std::string_view::npos == end_position) {
         throw std::invalid_argument("PEM string missing matching END footer for label: "
                                     + label);
     }

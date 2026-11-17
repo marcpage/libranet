@@ -116,7 +116,7 @@ inline RsaDer::Data RsaDer::pkcs1_from_spki(const Data& spki) {
     const auto info = read(spki, offset, spki.size(), sequence_tag);
 
     if (offset != spki.size()) {
-        throw std::invalid_argument("Bytes after the SubjectPublicKeyInfo.");
+        throw std::invalid_argument("Bytes after the SubjectPublicKeyInfo");
     }
 
     offset = info.start;
@@ -125,11 +125,11 @@ inline RsaDer::Data RsaDer::pkcs1_from_spki(const Data& spki) {
     const auto bits = read(spki, offset, info.end, bit_string_tag);
 
     if (!holds(spki, algorithm, rsa_algorithm)) {
-        throw std::invalid_argument("Not an RSA public key.");
+        throw std::invalid_argument("Not an RSA public key");
     }
 
     if (offset != info.end || bits.start == bits.end || spki.at(bits.start) != std::byte{0x00}) {
-        throw std::invalid_argument("Not a SubjectPublicKeyInfo public key.");
+        throw std::invalid_argument("Not a SubjectPublicKeyInfo public key");
     }
 
     return contents(spki, bits.start + 1, bits.end);
@@ -140,7 +140,7 @@ inline RsaDer::Data RsaDer::pkcs1_from_pkcs8(const Data& pkcs8) {
     const auto info = read(pkcs8, offset, pkcs8.size(), sequence_tag);
 
     if (offset != pkcs8.size()) {
-        throw std::invalid_argument("Bytes after the PKCS #8 private key.");
+        throw std::invalid_argument("Bytes after the PKCS #8 private key");
     }
 
     offset = info.start;
@@ -150,13 +150,13 @@ inline RsaDer::Data RsaDer::pkcs1_from_pkcs8(const Data& pkcs8) {
     const auto key = read(pkcs8, offset, info.end, octet_string_tag);
 
     if (!holds(pkcs8, algorithm, rsa_algorithm)) {
-        throw std::invalid_argument("Not an RSA private key.");
+        throw std::invalid_argument("Not an RSA private key");
     }
 
     // Attributes, after the key, are refused: nothing here writes them.
     if (!holds(pkcs8, version, pkcs8_version)
         || offset != info.end) {
-        throw std::invalid_argument("Not a PKCS #8 private key.");
+        throw std::invalid_argument("Not a PKCS #8 private key");
     }
 
     return contents(pkcs8, key.start, key.end);
@@ -201,7 +201,7 @@ inline RsaDer::Element RsaDer::read(const Data& der, std::size_t& offset, std::s
     const auto begin = offset;
 
     if (limit - offset < 2 || der.at(offset) != tag) {
-        throw std::invalid_argument("Not the RSA key's DER.");
+        throw std::invalid_argument("Not the RSA key's DER");
     }
 
     const auto first = std::to_integer<std::size_t>(der.at(offset + 1));
@@ -214,9 +214,9 @@ inline RsaDer::Element RsaDer::read(const Data& der, std::size_t& offset, std::s
 
         // 0x80 alone is BER's indefinite length, which DER has not. The
         // length must need every byte given, and the long form at all.
-        if (length_bytes == 0 || length_bytes > most_length_bytes
+        if (0 == length_bytes || length_bytes > most_length_bytes
             || limit - offset < length_bytes || der.at(offset) == std::byte{0x00}) {
-            throw std::invalid_argument("Not a DER length in the RSA key.");
+            throw std::invalid_argument("Not a DER length in the RSA key");
         }
 
         size = 0;
@@ -228,12 +228,12 @@ inline RsaDer::Element RsaDer::read(const Data& der, std::size_t& offset, std::s
         offset += length_bytes;
 
         if (size < long_length) {
-            throw std::invalid_argument("Not a DER length in the RSA key.");
+            throw std::invalid_argument("Not a DER length in the RSA key");
         }
     }
 
     if (limit - offset < size) {
-        throw std::invalid_argument("The RSA key's DER is cut short.");
+        throw std::invalid_argument("The RSA key's DER is cut short");
     }
 
     const auto start = offset;

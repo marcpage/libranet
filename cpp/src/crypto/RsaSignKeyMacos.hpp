@@ -2,13 +2,14 @@
 
 #if __APPLE__
 
-#include <CoreFoundation/CoreFoundation.h>
-#include <Security/Security.h>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include <CoreFoundation/CoreFoundation.h>
+#include <Security/Security.h>
 
 #include "CFBytes.hpp"
 #include "CFObject.hpp"
@@ -48,13 +49,13 @@ inline RsaSignKeyMacos::RsaSignKeyMacos(SecKeyRef private_key, SecKeyRef public_
 
 inline ISignKey::Data RsaSignKeyMacos::sign(std::string_view data) const {
     if (!m_private_key) {
-        throw std::runtime_error("RSA private key required for signing.");
+        throw std::runtime_error("RSA private key required for signing");
     }
 
     const auto input_data = CFBytes::of(data);
 
     if (!input_data) {
-        throw std::runtime_error("Failed to create CFData for signing.");
+        throw std::runtime_error("Failed to create CFData for signing");
     }
 
     CFObject<CFErrorRef> error;
@@ -64,7 +65,7 @@ inline ISignKey::Data RsaSignKeyMacos::sign(std::string_view data) const {
         CFObject<CFDataRef>::Policy::TakeOwnership);
 
     if (!sig_data) {
-        throw std::runtime_error("RSA PSS signature creation failed.");
+        throw std::runtime_error("RSA PSS signature creation failed");
     }
 
     return CFBytes::bytes_in(sig_data);
@@ -72,7 +73,7 @@ inline ISignKey::Data RsaSignKeyMacos::sign(std::string_view data) const {
 
 inline bool RsaSignKeyMacos::verify(std::string_view data, const Data& signature) const {
     if (!m_public_key) {
-        throw std::runtime_error("RSA public key required for verification.");
+        throw std::runtime_error("RSA public key required for verification");
     }
 
     const auto input_data = CFBytes::of(data);

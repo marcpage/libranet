@@ -2,13 +2,15 @@
 
 #if __APPLE__
 
-#include "IHasher.hpp"
-#include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <memory>
 #include <string_view>
+
+#include <CommonCrypto/CommonDigest.h>
+
+#include "IHasher.hpp"
 
 namespace crypto {
 

@@ -29,7 +29,7 @@ public:
 
     static std::string public_pem(SecKeyRef public_key);
     static std::string private_pem(SecKeyRef private_key);
-    static KeyPair from_pem(std::string_view pem);
+    [[nodiscard]] static KeyPair from_pem(std::string_view pem);
 
     RsaPemMacos() = delete;
     ~RsaPemMacos() = delete;
@@ -48,8 +48,8 @@ private:
 };
 
 inline std::string RsaPemMacos::public_pem(SecKeyRef public_key) {
-    if (public_key == nullptr) {
-        throw std::runtime_error("RSA public key not available.");
+    if (nullptr == public_key) {
+        throw std::runtime_error("RSA public key not available");
     }
 
     CFObject<CFErrorRef> error;
@@ -57,7 +57,7 @@ inline std::string RsaPemMacos::public_pem(SecKeyRef public_key) {
                                    CFObject<CFDataRef>::Policy::TakeOwnership);
 
     if (!data) {
-        throw std::runtime_error("Failed to copy external representation of public key.");
+        throw std::runtime_error("Failed to copy external representation of public key");
     }
 
     // Apple gives an RSA key in PKCS #1, which "PUBLIC KEY" does not name.
@@ -65,8 +65,8 @@ inline std::string RsaPemMacos::public_pem(SecKeyRef public_key) {
 }
 
 inline std::string RsaPemMacos::private_pem(SecKeyRef private_key) {
-    if (private_key == nullptr) {
-        throw std::runtime_error("RSA private key not available.");
+    if (nullptr == private_key) {
+        throw std::runtime_error("RSA private key not available");
     }
 
     CFObject<CFErrorRef> error;
@@ -75,7 +75,7 @@ inline std::string RsaPemMacos::private_pem(SecKeyRef private_key) {
 
     if (!data) {
         throw std::runtime_error(
-            "Failed to copy external representation of private key.");
+            "Failed to copy external representation of private key");
     }
 
     // Apple gives an RSA key in PKCS #1, which "PRIVATE KEY" does not name.
@@ -103,8 +103,8 @@ inline RsaPemMacos::KeyPair RsaPemMacos::from_pem(std::string_view pem) {
 
 inline std::pair<bool, bool> RsaPemMacos::validate_and_classify_pem_label(
     std::string_view label) {
-    const bool is_private = (label == "PRIVATE KEY" || label == "RSA PRIVATE KEY");
-    const bool is_public = (label == "PUBLIC KEY" || label == "RSA PUBLIC KEY");
+    const bool is_private = ("PRIVATE KEY" == label || "RSA PRIVATE KEY" == label);
+    const bool is_public = ("PUBLIC KEY" == label || "RSA PUBLIC KEY" == label);
 
     if (!is_private && !is_public) {
         throw std::invalid_argument("Unsupported or unrecognized PEM label: "
@@ -119,11 +119,11 @@ inline std::pair<bool, bool> RsaPemMacos::validate_and_classify_pem_label(
 // "PUBLIC KEY" and "PRIVATE KEY" name.
 inline std::vector<std::byte> RsaPemMacos::pkcs1_from(std::string_view label,
                                                       const std::vector<std::byte>& der_bytes) {
-    if (label == "PUBLIC KEY") {
+    if ("PUBLIC KEY" == label) {
         return RsaDer::pkcs1_from_spki(der_bytes);
     }
 
-    if (label == "PRIVATE KEY") {
+    if ("PRIVATE KEY" == label) {
         return RsaDer::pkcs1_from_pkcs8(der_bytes);
     }
 
@@ -135,7 +135,7 @@ inline CFObject<CFDataRef> RsaPemMacos::create_cf_data(
     auto data_ref = CFBytes::of(der_bytes);
 
     if (!data_ref) {
-        throw std::runtime_error("Failed to create CFData from PEM DER bytes.");
+        throw std::runtime_error("Failed to create CFData from PEM DER bytes");
     }
 
     return data_ref;
@@ -165,7 +165,7 @@ inline CFObject<SecKeyRef> RsaPemMacos::create_sec_key_from_data(CFDataRef data_
                                     CFObject<SecKeyRef>::Policy::TakeOwnership);
 
     if (!created_key) {
-        std::string error_msg = "Failed to create SecKey from PEM data.";
+        std::string error_msg = "Failed to create SecKey from PEM data";
 
         if (error) {
             const CFObject<CFStringRef> desc(CFErrorCopyDescription(error),
@@ -178,7 +178,7 @@ inline CFObject<SecKeyRef> RsaPemMacos::create_sec_key_from_data(CFDataRef data_
                                        static_cast<CFIndex>(description.size()),
                                        kCFStringEncodingUTF8)
                     != 0U) {
-                    error_msg += " Details: ";
+                    error_msg += ": ";
                     error_msg += description.data();
                 }
             }

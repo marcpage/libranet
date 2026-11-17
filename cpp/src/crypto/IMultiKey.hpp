@@ -15,8 +15,8 @@ class IMultiKey {
 public:
     using Ptr = std::unique_ptr<IMultiKey>;
 
-    static Ptr Rsa(std::size_t key_bits);
-    static Ptr from_pem(std::string_view pem);
+    [[nodiscard]] static Ptr Rsa(std::size_t key_bits);
+    [[nodiscard]] static Ptr from_pem(std::string_view pem);
 
     [[nodiscard]] virtual ISignKey::Ptr RsaPssSha256() const = 0;
     [[nodiscard]] virtual IEncryptKey::Ptr RsaOaepSha256() const = 0;

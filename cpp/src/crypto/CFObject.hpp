@@ -46,7 +46,7 @@ constexpr CFObject<CFType>::CFObject() noexcept : m_object(nullptr) {}
 template<typename CFType>
 inline CFObject<CFType>::CFObject(CFType object, Policy policy) noexcept
     : m_object(object) {
-    if (nullptr != m_object && policy == Policy::Retain) {
+    if (nullptr != m_object && Policy::Retain == policy) {
         CFRetain(m_object);
     }
 }
@@ -114,11 +114,11 @@ inline CFType CFObject<CFType>::release() noexcept {
 
 template<typename CFType>
 inline void CFObject<CFType>::reset(CFType new_object, Policy policy) noexcept {
-    if (nullptr != new_object && policy == Policy::Retain) {
+    if (nullptr != new_object && Policy::Retain == policy) {
         CFRetain(new_object);
     }
 
-    if (m_object) {
+    if (nullptr != m_object) {
         CFRelease(m_object);
     }
 

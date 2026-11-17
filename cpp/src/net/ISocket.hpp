@@ -15,8 +15,8 @@ public:
     using Ptr = std::unique_ptr<ISocket>;
     using Milliseconds = std::chrono::milliseconds;
 
-    static Ptr bind(const Address& address);
-    static Ptr connect(const Address& address);
+    [[nodiscard]] static Ptr bind(const Address& address);
+    [[nodiscard]] static Ptr connect(const Address& address);
 
     virtual ~ISocket() = default;
     ISocket(const ISocket&) = delete;

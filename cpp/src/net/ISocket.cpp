@@ -32,7 +32,7 @@ void ISocket::send_all(std::string_view data) {
         const auto remaining = data.substr(total_sent);
         const auto sent = send(remaining);
 
-        if (sent == 0) {
+        if (0 == sent) {
             throw std::runtime_error("Connection closed unexpectedly during send_all");
         }
 
@@ -78,7 +78,7 @@ std::string ISocket::read_line(char delimiter) {
             break;
         }
 
-        if (character == '\r') {
+        if ('\r' == character) {
             continue;
         }
 

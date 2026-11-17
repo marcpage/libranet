@@ -90,7 +90,8 @@ private:
     static constexpr word_t decimal_base = 10;
 
     static_assert(sizeof(double_word_t) >= 2 * sizeof(word_t)
-                      || (sizeof(double_word_t) > sizeof(word_t) && sizeof(word_t) >= sizeof(std::uint64_t)),
+                      || (sizeof(double_word_t) > sizeof(word_t)
+                          && sizeof(word_t) >= sizeof(std::uint64_t)),
                   "double_word_t must be wide enough to hold product/sum carries between words.");
     static_assert(sizeof(double_word_t) >= sizeof(std::uint64_t),
                   "double_word_t must be at least as large as std::uint64_t for safe conversions.");
@@ -123,7 +124,7 @@ private:
 };
 
 inline void Integer::normalize() {
-    while (!m_magnitude.empty() && m_magnitude.back() == 0) {
+    while (!m_magnitude.empty() && 0 == m_magnitude.back()) {
         m_magnitude.pop_back();
     }
 
@@ -179,8 +180,8 @@ inline void Integer::subtract_magnitudes(std::vector<word_t>& left,
     word_t borrow = 0;
 
     for (std::size_t word_index = 0; word_index < left.size(); ++word_index) {
-        const auto temp =
-            static_cast<double_word_t>(left[word_index]) - (word_index < right.size() ? right[word_index] : 0) - borrow;
+        const auto temp = static_cast<double_word_t>(left[word_index])
+                          - (word_index < right.size() ? right[word_index] : 0) - borrow;
 
         left[word_index] = static_cast<word_t>(temp);
         borrow = (temp >> word_bits) != 0U ? 1 : 0;
@@ -210,7 +211,7 @@ Integer::multiply_magnitudes(const std::vector<word_t>& left,
         result[left_index + right.size()] = static_cast<word_t>(carry);
     }
 
-    while (!result.empty() && result.back() == 0) {
+    while (!result.empty() && 0 == result.back()) {
         result.pop_back();
     }
 
@@ -221,7 +222,7 @@ Integer::multiply_magnitudes(const std::vector<word_t>& left,
 inline unsigned Integer::get_normalization_shift(word_t high_word) noexcept {
     unsigned shift = 0;
 
-    while ((high_word & (static_cast<word_t>(1) << (word_bits - 1))) == 0) {
+    while (0 == (high_word & (static_cast<word_t>(1) << (word_bits - 1)))) {
         high_word <<= 1U;
         ++shift;
     }
@@ -279,7 +280,7 @@ inline void Integer::execute_long_division_loop(
 
         subtract_magnitudes(remainder, product);
 
-        while (!remainder.empty() && remainder.back() == 0) {
+        while (!remainder.empty() && 0 == remainder.back()) {
             remainder.pop_back();
         }
 
@@ -319,11 +320,11 @@ inline void Integer::divide_modulo_magnitudes(const std::vector<word_t>& numerat
     // 3. Denormalize remainder and clean up trailing zeros
     shift_right_magnitude(remainder, shift);
 
-    while (!quotient.empty() && quotient.back() == 0) {
+    while (!quotient.empty() && 0 == quotient.back()) {
         quotient.pop_back();
     }
 
-    while (!remainder.empty() && remainder.back() == 0) {
+    while (!remainder.empty() && 0 == remainder.back()) {
         remainder.pop_back();
     }
 }
@@ -385,7 +386,7 @@ inline void Integer::shift_right_magnitude(std::vector<word_t>& value, unsigned 
         }
     }
 
-    while (!value.empty() && value.back() == 0) {
+    while (!value.empty() && 0 == value.back()) {
         value.pop_back();
     }
 }
@@ -433,9 +434,9 @@ inline Integer::Integer(const std::string& text) {
         throw std::invalid_argument("Integer: empty string");
     }
 
-    m_negative = text.at(0) == '-';
+    m_negative = '-' == text.at(0);
 
-    const std::size_t numeric_start = m_negative || text.at(0) == '+' ? 1 : 0;
+    const std::size_t numeric_start = m_negative || '+' == text.at(0) ? 1 : 0;
 
     if (numeric_start == text.size()) {
         throw std::invalid_argument("Integer: no digits");
@@ -444,7 +445,7 @@ inline Integer::Integer(const std::string& text) {
     for (auto position = numeric_start; position < text.size(); ++position) {
         const auto digit = text.at(position);
 
-        if (std::isdigit(static_cast<unsigned char>(digit)) == 0) {
+        if (0 == std::isdigit(static_cast<unsigned char>(digit))) {
             throw std::invalid_argument("Integer: invalid character");
         }
 
@@ -472,9 +473,11 @@ inline Integer Integer::operator+() const {
 
 inline Integer Integer::operator-() const {
     Integer value = *this;
+
     if (!value.is_zero()) {
         value.m_negative = !value.m_negative;
     }
+
     return value;
 }
 
@@ -524,7 +527,7 @@ inline Integer& Integer::operator+=(const Integer& right) {
     } else {
         const auto comparison = compare_magnitudes(m_magnitude, right.m_magnitude);
 
-        if (comparison == 0) {
+        if (0 == comparison) {
             m_magnitude.clear();
             m_negative = false;
         } else if (comparison > 0) {
@@ -612,7 +615,7 @@ inline Integer& Integer::operator^=(const Integer& right) {
 }
 
 inline Integer& Integer::operator<<=(std::size_t shift) {
-    if (is_zero() || shift == 0) {
+    if (is_zero() || 0 == shift) {
         return *this;
     }
 
@@ -645,7 +648,7 @@ inline Integer& Integer::operator<<=(std::size_t shift) {
 // Word arithmetic, unchecked as above.
 // NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 inline Integer& Integer::operator>>=(std::size_t shift) {
-    if (is_zero() || shift == 0) {
+    if (is_zero() || 0 == shift) {
         return *this;
     }
 
@@ -840,7 +843,8 @@ inline std::ostream& operator<<(std::ostream& out_stream, const Integer& value) 
 
         for (auto word_index = temp.size(); word_index-- > 0;) {
             const Integer::double_word_t cur =
-                (static_cast<Integer::double_word_t>(remainder) << Integer::word_bits) | temp[word_index];
+                (static_cast<Integer::double_word_t>(remainder) << Integer::word_bits)
+                | temp[word_index];
 
             temp[word_index] = static_cast<Integer::word_t>(cur / Integer::decimal_base);
             remainder = static_cast<Integer::word_t>(cur % Integer::decimal_base);
@@ -848,7 +852,7 @@ inline std::ostream& operator<<(std::ostream& out_stream, const Integer& value) 
 
         digits.push_back(static_cast<char>('0' + remainder));
 
-        while (!temp.empty() && temp.back() == 0) {
+        while (!temp.empty() && 0 == temp.back()) {
             temp.pop_back();
         }
     }

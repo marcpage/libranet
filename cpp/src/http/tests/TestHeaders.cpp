@@ -51,7 +51,8 @@ TEST(HeadersTest, EqualityAndSerialization) {
     headers.set("Content-Length", "1024");
 
     Headers recased_headers;
-    recased_headers.set("content-length", "1024"); // Key storage order / capitalization difference check if map handles it
+    // Key storage order / capitalization difference check if map handles it
+    recased_headers.set("content-length", "1024");
     recased_headers.set("server", "CustomCppServer");
 
     EXPECT_TRUE(headers == recased_headers);

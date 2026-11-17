@@ -9,13 +9,13 @@
 
 namespace types {
 
-template<typename T>
+template<typename Type>
 class BlockingQueue {
 public:
     using Milliseconds = std::chrono::milliseconds;
-    static constexpr size_t Unbounded = 0;
+    static constexpr size_t unbounded = 0;
 
-    explicit BlockingQueue(size_t capacity = Unbounded);
+    explicit BlockingQueue(size_t capacity = unbounded);
     ~BlockingQueue() = default;
 
     BlockingQueue(const BlockingQueue&) = delete;
@@ -23,126 +23,126 @@ public:
     BlockingQueue(BlockingQueue&&) = delete;
     BlockingQueue& operator=(BlockingQueue&&) = delete;
 
-    void push(const T& item);
-    void push(T&& item);
+    void push(const Type& item);
+    void push(Type&& item);
 
-    [[nodiscard]] bool push_ms_timeout(const T& item, Milliseconds timeout);
-    [[nodiscard]] bool push_ms_timeout(T&& item, Milliseconds timeout);
+    [[nodiscard]] bool push_ms_timeout(const Type& item, Milliseconds timeout);
+    [[nodiscard]] bool push_ms_timeout(Type&& item, Milliseconds timeout);
 
-    T pop();
-    [[nodiscard]] std::optional<T> pop_ms_timeout(Milliseconds timeout);
+    Type pop();
+    [[nodiscard]] std::optional<Type> pop_ms_timeout(Milliseconds timeout);
 
     [[nodiscard]] size_t size() const;
     [[nodiscard]] bool empty() const;
 
 private:
-    template<typename U>
-    void core_push(U&& item);
+    template<typename Item>
+    void core_push(Item&& item);
 
-    template<typename U>
-    bool core_push_ms_timeout(U&& item, Milliseconds timeout);
+    template<typename Item>
+    bool core_push_ms_timeout(Item&& item, Milliseconds timeout);
 
-    std::queue<T> m_queue;
+    std::queue<Type> m_queue;
     mutable std::mutex m_mutex;
-    std::condition_variable m_notEmpty;
-    std::condition_variable m_notFull;
+    std::condition_variable m_not_empty;
+    std::condition_variable m_not_full;
     // Set once, as the queue is made; its mutex and condition variables
     // already keep it from being copied or assigned.
     // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
     const size_t m_capacity;
 };
 
-template<typename T>
-BlockingQueue<T>::BlockingQueue(size_t capacity)
+template<typename Type>
+BlockingQueue<Type>::BlockingQueue(size_t capacity)
     : m_capacity(capacity) {}
 
-template<typename T>
-template<typename U>
-void BlockingQueue<T>::core_push(U&& item) {
+template<typename Type>
+template<typename Item>
+void BlockingQueue<Type>::core_push(Item&& item) {
     std::unique_lock lock(m_mutex);
 
-    m_notFull.wait(lock, [this] {
-        return m_capacity == 0 || m_queue.size() < m_capacity;
+    m_not_full.wait(lock, [this] {
+        return 0 == m_capacity || m_queue.size() < m_capacity;
     });
 
-    m_queue.push(std::forward<U>(item));
+    m_queue.push(std::forward<Item>(item));
     lock.unlock();
-    m_notEmpty.notify_one();
+    m_not_empty.notify_one();
 }
 
-template<typename T>
-void BlockingQueue<T>::push(const T& item) {
+template<typename Type>
+void BlockingQueue<Type>::push(const Type& item) {
     core_push(item);
 }
 
-template<typename T>
-void BlockingQueue<T>::push(T&& item) {
+template<typename Type>
+void BlockingQueue<Type>::push(Type&& item) {
     core_push(std::move(item));
 }
 
-template<typename T>
-template<typename U>
-bool BlockingQueue<T>::core_push_ms_timeout(U&& item, Milliseconds timeout) {
+template<typename Type>
+template<typename Item>
+bool BlockingQueue<Type>::core_push_ms_timeout(Item&& item, Milliseconds timeout) {
     std::unique_lock lock(m_mutex);
 
-    if (!m_notFull.wait_for(lock, timeout, [this] {
-        return m_capacity == 0 || m_queue.size() < m_capacity;
+    if (!m_not_full.wait_for(lock, timeout, [this] {
+        return 0 == m_capacity || m_queue.size() < m_capacity;
     })) {
         return false;
     }
 
-    m_queue.push(std::forward<U>(item));
+    m_queue.push(std::forward<Item>(item));
     lock.unlock();
-    m_notEmpty.notify_one();
+    m_not_empty.notify_one();
     return true;
 }
 
-template<typename T>
-bool BlockingQueue<T>::push_ms_timeout(const T& item, Milliseconds timeout) {
+template<typename Type>
+bool BlockingQueue<Type>::push_ms_timeout(const Type& item, Milliseconds timeout) {
     return core_push_ms_timeout(item, timeout);
 }
 
-template<typename T>
-bool BlockingQueue<T>::push_ms_timeout(T&& item, Milliseconds timeout) {
+template<typename Type>
+bool BlockingQueue<Type>::push_ms_timeout(Type&& item, Milliseconds timeout) {
     return core_push_ms_timeout(std::move(item), timeout);
 }
 
-template<typename T>
-T BlockingQueue<T>::pop() {
+template<typename Type>
+Type BlockingQueue<Type>::pop() {
     std::unique_lock lock(m_mutex);
 
-    m_notEmpty.wait(lock, [this] { return !m_queue.empty(); });
+    m_not_empty.wait(lock, [this] { return !m_queue.empty(); });
 
-    T item = std::move(m_queue.front());
+    Type item = std::move(m_queue.front());
     m_queue.pop();
     lock.unlock();
-    m_notFull.notify_one();
+    m_not_full.notify_one();
     return item;
 }
 
-template<typename T>
-std::optional<T> BlockingQueue<T>::pop_ms_timeout(Milliseconds timeout) {
+template<typename Type>
+std::optional<Type> BlockingQueue<Type>::pop_ms_timeout(Milliseconds timeout) {
     std::unique_lock lock(m_mutex);
 
-    if (!m_notEmpty.wait_for(lock, timeout, [this] { return !m_queue.empty(); })) {
+    if (!m_not_empty.wait_for(lock, timeout, [this] { return !m_queue.empty(); })) {
         return std::nullopt;
     }
 
-    T item = std::move(m_queue.front());
+    Type item = std::move(m_queue.front());
     m_queue.pop();
     lock.unlock();
-    m_notFull.notify_one();
+    m_not_full.notify_one();
     return item;
 }
 
-template<typename T>
-size_t BlockingQueue<T>::size() const {
+template<typename Type>
+size_t BlockingQueue<Type>::size() const {
     const std::scoped_lock lock(m_mutex);
     return m_queue.size();
 }
 
-template<typename T>
-bool BlockingQueue<T>::empty() const {
+template<typename Type>
+bool BlockingQueue<Type>::empty() const {
     const std::scoped_lock lock(m_mutex);
     return m_queue.empty();
 }

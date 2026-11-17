@@ -128,9 +128,4 @@ TEST(AddressTest, GetLocalAddresses) {
 
     // A machine should at least have loopback addresses (like 127.0.0.1 or ::1) active
     EXPECT_FALSE(local_addrs.empty());
-
-    // Optional: Print discovered local interfaces during test run for visibility
-    // std::cout << "\n    [Discovered local IPs: ";
-    // for (const auto& ip : local_addrs) { std::cout << ip << " "; }
-    // std::cout << "] " << std::flush;
 }

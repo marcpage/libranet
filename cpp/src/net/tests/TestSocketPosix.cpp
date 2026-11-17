@@ -35,9 +35,11 @@ std::string as_text(const std::vector<std::byte>& bytes) {
 // a function that returns a value.
 std::pair<ISocket::Ptr, Address> bind_ephemeral() {
     auto server = SocketPosix::bind(Address("127.0.0.1", 0));
+
     if (!server) {
         throw std::runtime_error("bind() returned no socket");
     }
+
     EXPECT_TRUE(server->is_open());
 
     const Address local = server->local_address();

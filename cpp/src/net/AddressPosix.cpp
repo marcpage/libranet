@@ -1,19 +1,20 @@
 #if defined(__linux__) || defined(__APPLE__)
 
+#include "Address.hpp"
+
 #include <algorithm>
-#include <arpa/inet.h>
 #include <array>
-#include <ifaddrs.h>
-#include <net/if.h>
-#include <netdb.h>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <sys/socket.h>
-#include <sys/types.h>
 #include <vector>
 
-#include "Address.hpp"
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 
 namespace {
 
@@ -41,7 +42,8 @@ namespace {
     const int error = getnameinfo(info->ai_addr, info->ai_addrlen,
                                   ip_buf.data(), static_cast<socklen_t>(ip_buf.size()),
                                   nullptr, 0, NI_NUMERICHOST);
-    if (error == 0) {
+
+    if (0 == error) {
         return ip_buf.data();
     }
 
@@ -54,7 +56,8 @@ namespace {
     const int error = getnameinfo(info->ai_addr, info->ai_addrlen,
                                   host_buf.data(), static_cast<socklen_t>(host_buf.size()),
                                   nullptr, 0, 0);
-    if (error == 0) {
+
+    if (0 == error) {
         std::string dns_name = host_buf.data();
 
         if (!dns_name.empty() && dns_name != numeric_ip) {
@@ -74,7 +77,7 @@ void add_unique(std::string_view value, std::vector<std::string>& results) {
 [[nodiscard]] ifaddrs* fetch_interface_addresses() {
     ifaddrs* ifaddr = nullptr;
 
-    if (::getifaddrs(&ifaddr) == -1) {
+    if (-1 == ::getifaddrs(&ifaddr)) {
         throw std::runtime_error("Failed to retrieve local network interfaces");
     }
 
@@ -82,11 +85,11 @@ void add_unique(std::string_view value, std::vector<std::string>& results) {
 }
 
 [[nodiscard]] bool is_supported_socket_family(int family) {
-    return family == AF_INET || family == AF_INET6;
+    return AF_INET == family || AF_INET6 == family;
 }
 
 [[nodiscard]] socklen_t get_sockaddr_len(int family) {
-    return (family == AF_INET) ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
+    return (AF_INET == family) ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
 }
 
 [[nodiscard]] std::string extract_interface_ip(const ifaddrs* ifa) {
@@ -99,8 +102,9 @@ void add_unique(std::string_view value, std::vector<std::string>& results) {
     std::array<char, NI_MAXHOST> host{};
     const socklen_t len = get_sockaddr_len(family);
 
-    const int error = getnameinfo(ifa->ifa_addr, len, host.data(), static_cast<socklen_t>(host.size()),
-                                  nullptr, 0, NI_NUMERICHOST);
+    const int error = getnameinfo(ifa->ifa_addr, len, host.data(),
+                                  static_cast<socklen_t>(host.size()), nullptr, 0, NI_NUMERICHOST);
+
     if (error != 0) {
         return {};
     }
@@ -139,7 +143,7 @@ std::vector<std::string> Address::get_local_addresses() {
     std::vector<std::string> addresses;
 
     for (const ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
-        if (ifa->ifa_addr == nullptr) {
+        if (nullptr == ifa->ifa_addr) {
             continue;
         }
 

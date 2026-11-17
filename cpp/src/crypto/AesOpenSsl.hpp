@@ -78,13 +78,13 @@ inline std::string AesOpenSsl::decrypt(const Data& ciphertext,
 }
 
 inline const EVP_CIPHER* AesOpenSsl::cipher(std::size_t key_size, AesMode mode) {
-    const auto cbc = mode == AesMode::Cbc;
+    const auto cbc = AesMode::Cbc == mode;
 
     switch (key_size) {
         case aes_128_key_size: return cbc ? EVP_aes_128_cbc() : EVP_aes_128_ctr();
         case aes_192_key_size: return cbc ? EVP_aes_192_cbc() : EVP_aes_192_ctr();
         case aes_256_key_size: return cbc ? EVP_aes_256_cbc() : EVP_aes_256_ctr();
-        default: throw std::invalid_argument("Invalid AES key size. Must be 128, 192, or 256 bits.");
+        default: throw std::invalid_argument("Invalid AES key size. Must be 128, 192, or 256 bits");
     }
 }
 
@@ -92,11 +92,11 @@ inline IEncryptKey::Data AesOpenSsl::process(bool encrypting, const unsigned cha
                                              std::size_t size,
                                              const InitializationVector& vector) const {
     if (!vector.empty() && vector.size() != aes_block_size) {
-        throw std::invalid_argument("An AES initialization vector must be 16 bytes.");
+        throw std::invalid_argument("An AES initialization vector must be 16 bytes");
     }
 
     if (size > static_cast<std::size_t>(std::numeric_limits<int>::max()) - aes_block_size) {
-        throw std::invalid_argument("Too much to encrypt or decrypt with AES at once.");
+        throw std::invalid_argument("Too much to encrypt or decrypt with AES at once");
     }
 
     const InitializationVector zeros(aes_block_size);
@@ -107,7 +107,7 @@ inline IEncryptKey::Data AesOpenSsl::process(bool encrypting, const unsigned cha
                               OpenSslBytes::of(vector.empty() ? zeros : vector),
                               encrypting ? 1 : 0, nullptr)
                != 1
-        || EVP_CIPHER_CTX_set_padding(context.get(), m_padding == AesPadding::Pkcs7 ? 1 : 0)
+        || EVP_CIPHER_CTX_set_padding(context.get(), AesPadding::Pkcs7 == m_padding ? 1 : 0)
                != 1) {
         throw OpenSslError("Failed to start AES");
     }

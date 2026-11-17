@@ -65,14 +65,14 @@ inline RsaPemOpenSsl::KeyPair RsaPemOpenSsl::from_pem(std::string_view pem) {
     KeyPair pair{read_der(der_bytes, label), is_private_label(label)};
 
     if (EVP_PKEY_is_a(pair.key.get(), "RSA") != 1) {
-        throw std::invalid_argument("Not an RSA key.");
+        throw std::invalid_argument("Not an RSA key");
     }
 
     return pair;
 }
 
 inline bool RsaPemOpenSsl::is_private_label(std::string_view label) {
-    return label == "PRIVATE KEY" || label == "RSA PRIVATE KEY";
+    return "PRIVATE KEY" == label || "RSA PRIVATE KEY" == label;
 }
 
 inline OpenSslKey RsaPemOpenSsl::read_der(const std::vector<std::byte>& der,
@@ -81,11 +81,11 @@ inline OpenSslKey RsaPemOpenSsl::read_der(const std::vector<std::byte>& der,
         return OpenSslDer::read_private_key(der);
     }
 
-    if (label == "PUBLIC KEY") {
+    if ("PUBLIC KEY" == label) {
         return OpenSslDer::read_public_key(der);
     }
 
-    if (label == "RSA PUBLIC KEY") {
+    if ("RSA PUBLIC KEY" == label) {
         return OpenSslDer::read_rsa_public_key(der);
     }
 

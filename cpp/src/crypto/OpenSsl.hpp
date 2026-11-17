@@ -102,7 +102,7 @@ inline unsigned char* OpenSslBytes::of(std::vector<std::byte>& data) noexcept {
 
 inline unsigned char* OpenSslBytes::of(std::vector<std::byte>& data, std::size_t offset) {
     if (offset > data.size()) {
-        throw std::out_of_range("Past the end of the bytes.");
+        throw std::out_of_range("Past the end of the bytes");
     }
 
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
@@ -171,7 +171,7 @@ inline OpenSslKey OpenSslDer::read_key(const std::vector<std::byte>& der, KeyRea
     }
 
     if (static_cast<std::size_t>(next - start) != der.size()) {
-        throw std::invalid_argument("Bytes after the key in its PEM.");
+        throw std::invalid_argument("Bytes after the key in its PEM");
     }
 
     return key;

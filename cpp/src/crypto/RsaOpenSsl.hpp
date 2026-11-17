@@ -58,7 +58,7 @@ private:
 
 inline IMultiKey::Ptr RsaOpenSsl::for_bit_size(std::size_t key_bits) {
     if (key_bits > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
-        throw std::invalid_argument("RSA key size out of range.");
+        throw std::invalid_argument("RSA key size out of range");
     }
 
     const OpenSslObject<EVP_PKEY_CTX, EVP_PKEY_CTX_free> context(
@@ -98,7 +98,7 @@ inline std::string RsaOpenSsl::public_pem() const {
 
 inline std::string RsaOpenSsl::private_pem() const {
     if (!m_has_private) {
-        throw std::runtime_error("RSA private key not available.");
+        throw std::runtime_error("RSA private key not available");
     }
 
     return RsaPemOpenSsl::private_pem(m_key.get());

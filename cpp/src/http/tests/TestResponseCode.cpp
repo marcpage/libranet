@@ -26,12 +26,12 @@ TEST(ResponseCodeTest, IsInformational) {
     EXPECT_FALSE(ResponseCode(below_informational).is_informational());
     EXPECT_TRUE(ResponseCode(Status::Continue).is_informational());
     EXPECT_TRUE(ResponseCode(last_informational).is_informational());
-    EXPECT_FALSE(ResponseCode(Status::OK).is_informational());
+    EXPECT_FALSE(ResponseCode(Status::Ok).is_informational());
 }
 
 TEST(ResponseCodeTest, IsSuccess) {
     EXPECT_FALSE(ResponseCode(last_informational).is_success());
-    EXPECT_TRUE(ResponseCode(Status::OK).is_success());
+    EXPECT_TRUE(ResponseCode(Status::Ok).is_success());
     EXPECT_TRUE(ResponseCode(last_success).is_success());
     EXPECT_FALSE(ResponseCode(Status::MultipleChoices).is_success());
 }
