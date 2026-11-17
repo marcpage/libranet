@@ -73,9 +73,9 @@ public:
 
     [[nodiscard]] std::string to_string() const;
 
-    friend bool operator==(const Url& lhs, const Url& rhs);
-    friend bool operator!=(const Url& lhs, const Url& rhs);
-    friend bool operator<(const Url& lhs, const Url& rhs);
+    friend bool operator==(const Url& left, const Url& right);
+    friend bool operator!=(const Url& left, const Url& right);
+    friend bool operator<(const Url& left, const Url& right);
 
     friend std::istream& operator>>(std::istream& in_stream, Url& url);
     friend std::ostream& operator<<(std::ostream& out_stream, const Url& url);
@@ -90,15 +90,15 @@ private:
     Query m_query;
     std::string m_fragment;
 
-    static void extract_fragment(std::string_view& url_string, std::string& fragment);
-    static void extract_query(std::string_view& url_string, Query& query);
-    static void extract_scheme(std::string_view& url_string, std::string& scheme);
-    static void parse_authority(std::string_view authority, std::string& username,
-                                std::string& password, std::string& host,
-                                std::optional<uint16_t>& port);
-    static std::string to_lower_copy(std::string_view str);
-    static std::optional<uint16_t> parse_port(std::string_view str);
-    [[nodiscard]] static bool is_hex_digit(char character) noexcept;
+    static void _extract_fragment(std::string_view& url_string, std::string& fragment);
+    static void _extract_query(std::string_view& url_string, Query& query);
+    static void _extract_scheme(std::string_view& url_string, std::string& scheme);
+    static void _parse_authority(std::string_view authority, std::string& username,
+                                 std::string& password, std::string& host,
+                                 std::optional<uint16_t>& port);
+    static std::string _to_lower_copy(std::string_view text);
+    static std::optional<uint16_t> _parse_port(std::string_view text);
+    [[nodiscard]] static bool _is_hex_digit(char character) noexcept;
 };
 
 inline std::string Url::encode(std::string_view value, std::string_view allowed_chars,
@@ -142,7 +142,7 @@ inline std::string Url::encode(std::string_view value, EncodeContext context) {
 }
 
 // std::isxdigit takes an unsigned char's value.
-inline bool Url::is_hex_digit(char character) noexcept {
+inline bool Url::_is_hex_digit(char character) noexcept {
     return std::isxdigit(static_cast<unsigned char>(character)) != 0;
 }
 
@@ -157,8 +157,8 @@ inline std::string Url::decode(std::string_view value, bool decode_plus_as_space
             decoded += ' ';
             ++character_index;
         } else if ('%' == value.at(character_index) && character_index + 2 < value.size()
-                   && is_hex_digit(value.at(character_index + 1))
-                   && is_hex_digit(value.at(character_index + 2))) {
+                   && _is_hex_digit(value.at(character_index + 1))
+                   && _is_hex_digit(value.at(character_index + 2))) {
             constexpr int hex_base = 16;
             const std::string hex_digits(value.substr(character_index + 1, 2));
 
@@ -208,7 +208,7 @@ inline std::optional<uint16_t> Url::effective_port() const {
     constexpr uint16_t http_port = 80;
     constexpr uint16_t https_port = 443;
     constexpr uint16_t ftp_port = 21;
-    const std::string lower_scheme = to_lower_copy(m_scheme);
+    const std::string lower_scheme = _to_lower_copy(m_scheme);
 
     if ("http" == lower_scheme || "ws" == lower_scheme) {
         return http_port;
@@ -253,9 +253,9 @@ inline std::optional<std::string> Url::get_query(std::string_view key) const {
 
 inline void Url::set_query(std::string_view key, std::string_view value) {
     const std::string encoded_key = encode(key, EncodeContext::FormUrl);
-    const std::string encoded_val = encode(value, EncodeContext::FormUrl);
+    const std::string encoded_value = encode(value, EncodeContext::FormUrl);
 
-    m_query.set(encoded_key, encoded_val);
+    m_query.set(encoded_key, encoded_value);
 }
 
 inline void Url::set_query_parameters(
@@ -331,9 +331,9 @@ inline std::optional<Url> Url::parse(std::string_view url_string) {
 
     Url url;
 
-    extract_fragment(url_string, url.m_fragment);
-    extract_query(url_string, url.m_query);
-    extract_scheme(url_string, url.m_scheme);
+    _extract_fragment(url_string, url.m_fragment);
+    _extract_query(url_string, url.m_query);
+    _extract_scheme(url_string, url.m_scheme);
 
     // Separate Authority from Path
     const auto path_start = url_string.find('/');
@@ -348,7 +348,7 @@ inline std::optional<Url> Url::parse(std::string_view url_string) {
         url.m_path = "/";
     }
 
-    parse_authority(authority, url.m_username, url.m_password, url.m_host, url.m_port);
+    _parse_authority(authority, url.m_username, url.m_password, url.m_host, url.m_port);
 
     // Only the brackets around an IPv6 address: in a host they would be
     // written as if they were those.
@@ -407,13 +407,13 @@ inline std::string Url::to_string() const {
 
 
 inline std::istream& operator>>(std::istream& in_stream, Url& url) {
-    std::string url_str;
+    std::string url_text;
 
-    if (!(in_stream >> url_str)) {
+    if (!(in_stream >> url_text)) {
         return in_stream;
     }
 
-    const auto parsed_url = Url::parse(url_str);
+    const auto parsed_url = Url::parse(url_text);
 
     if (!parsed_url.has_value()) {
         in_stream.setstate(std::ios_base::failbit);
@@ -430,27 +430,27 @@ inline std::ostream& operator<<(std::ostream& out_stream, const Url& url) {
     return out_stream;
 }
 
-inline void Url::extract_fragment(std::string_view& url_string, std::string& fragment) {
-    const auto frag_pos = url_string.find('#');
+inline void Url::_extract_fragment(std::string_view& url_string, std::string& fragment) {
+    const auto fragment_position = url_string.find('#');
 
-    if (frag_pos != std::string_view::npos) {
-        fragment = std::string(url_string.substr(frag_pos + 1));
-        url_string = url_string.substr(0, frag_pos);
+    if (fragment_position != std::string_view::npos) {
+        fragment = std::string(url_string.substr(fragment_position + 1));
+        url_string = url_string.substr(0, fragment_position);
     }
 }
 
-inline void Url::extract_query(std::string_view& url_string, Query& query) {
-    const auto query_pos = url_string.find('?');
+inline void Url::_extract_query(std::string_view& url_string, Query& query) {
+    const auto query_position = url_string.find('?');
 
-    if (query_pos != std::string_view::npos) {
+    if (query_position != std::string_view::npos) {
         // With its '?', which Query::parse drops, so that a query that
         // itself starts with '?' keeps it.
-        query = Query::parse(url_string.substr(query_pos));
-        url_string = url_string.substr(0, query_pos);
+        query = Query::parse(url_string.substr(query_position));
+        url_string = url_string.substr(0, query_position);
     }
 }
 
-inline void Url::extract_scheme(std::string_view& url_string, std::string& scheme) {
+inline void Url::_extract_scheme(std::string_view& url_string, std::string& scheme) {
     const auto scheme_end = url_string.find("://");
 
     // A "://" after the first '/' is in the path, and names no scheme.
@@ -460,39 +460,39 @@ inline void Url::extract_scheme(std::string_view& url_string, std::string& schem
     }
 }
 
-inline void Url::parse_authority(std::string_view authority, std::string& username,
-                                 std::string& password, std::string& host,
-                                 std::optional<uint16_t>& port) {
+inline void Url::_parse_authority(std::string_view authority, std::string& username,
+                                  std::string& password, std::string& host,
+                                  std::optional<uint16_t>& port) {
     if (authority.empty()) {
         return;
     }
 
-    const auto at_pos = authority.rfind('@');
+    const auto at_position = authority.rfind('@');
 
-    if (at_pos != std::string_view::npos) {
-        const auto user_info_str = authority.substr(0, at_pos);
-        const auto colon_pos = user_info_str.find(':');
+    if (at_position != std::string_view::npos) {
+        const auto user_info = authority.substr(0, at_position);
+        const auto colon_position = user_info.find(':');
 
-        if (colon_pos != std::string_view::npos) {
-            username = std::string(user_info_str.substr(0, colon_pos));
-            password = std::string(user_info_str.substr(colon_pos + 1));
+        if (colon_position != std::string_view::npos) {
+            username = std::string(user_info.substr(0, colon_position));
+            password = std::string(user_info.substr(colon_position + 1));
         } else {
-            username = std::string(user_info_str);
+            username = std::string(user_info);
         }
 
-        authority.remove_prefix(at_pos + 1);
+        authority.remove_prefix(at_position + 1);
     }
 
-    const auto colon_pos = authority.rfind(':');
+    const auto colon_position = authority.rfind(':');
 
-    if (colon_pos != std::string_view::npos) {
+    if (colon_position != std::string_view::npos) {
         const auto closing_bracket = authority.rfind(']');
 
-        if (std::string_view::npos == closing_bracket || colon_pos > closing_bracket) {
-            const auto port_string = std::string(authority.substr(colon_pos + 1));
+        if (std::string_view::npos == closing_bracket || colon_position > closing_bracket) {
+            const auto port_string = std::string(authority.substr(colon_position + 1));
 
-            port = parse_port(port_string);
-            authority = authority.substr(0, colon_pos);
+            port = _parse_port(port_string);
+            authority = authority.substr(0, colon_position);
         }
     }
 
@@ -523,7 +523,7 @@ inline void Url::append(std::string_view relative_url) {
     // 2. Extract fragment if present in the relative reference
     std::string rel_fragment;
 
-    extract_fragment(relative_url, rel_fragment);
+    _extract_fragment(relative_url, rel_fragment);
 
     if (!rel_fragment.empty()) {
         m_fragment = std::move(rel_fragment);
@@ -532,7 +532,7 @@ inline void Url::append(std::string_view relative_url) {
     // 3. Extract query if present in the relative reference
     Query rel_query;
 
-    extract_query(relative_url, rel_query);
+    _extract_query(relative_url, rel_query);
 
     if (!rel_query.empty()) {
         m_query = std::move(rel_query);
@@ -562,8 +562,8 @@ inline void Url::append(std::string_view relative_url) {
     m_path = std::move(new_path);
 }
 
-inline std::string Url::to_lower_copy(std::string_view str) {
-    std::string result(str);
+inline std::string Url::_to_lower_copy(std::string_view text) {
+    std::string result(text);
 
     std::transform(result.begin(), result.end(), result.begin(), [](char character) {
         return static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
@@ -572,71 +572,71 @@ inline std::string Url::to_lower_copy(std::string_view str) {
     return result;
 }
 
-inline bool operator==(const Url& lhs, const Url& rhs) {
-    return Url::to_lower_copy(lhs.m_scheme) == Url::to_lower_copy(rhs.m_scheme)
-           && lhs.m_username == rhs.m_username
-           && lhs.m_password == rhs.m_password
-           && Url::to_lower_copy(lhs.m_host) == Url::to_lower_copy(rhs.m_host)
-           && lhs.m_port == rhs.m_port
-           && lhs.m_path == rhs.m_path
-           && lhs.m_query.to_string() == rhs.m_query.to_string()
-           && lhs.m_fragment == rhs.m_fragment;
+inline bool operator==(const Url& left, const Url& right) {
+    return Url::_to_lower_copy(left.m_scheme) == Url::_to_lower_copy(right.m_scheme)
+           && left.m_username == right.m_username
+           && left.m_password == right.m_password
+           && Url::_to_lower_copy(left.m_host) == Url::_to_lower_copy(right.m_host)
+           && left.m_port == right.m_port
+           && left.m_path == right.m_path
+           && left.m_query.to_string() == right.m_query.to_string()
+           && left.m_fragment == right.m_fragment;
 }
 
-inline bool operator!=(const Url& lhs, const Url& rhs) {
-    return !(lhs == rhs);
+inline bool operator!=(const Url& left, const Url& right) {
+    return !(left == right);
 }
 
-inline bool operator<(const Url& lhs, const Url& rhs) {
-    const auto lhs_scheme = Url::to_lower_copy(lhs.m_scheme);
-    const auto rhs_scheme = Url::to_lower_copy(rhs.m_scheme);
+inline bool operator<(const Url& left, const Url& right) {
+    const auto left_scheme = Url::_to_lower_copy(left.m_scheme);
+    const auto right_scheme = Url::_to_lower_copy(right.m_scheme);
 
-    if (lhs_scheme != rhs_scheme) {
-        return lhs_scheme < rhs_scheme;
+    if (left_scheme != right_scheme) {
+        return left_scheme < right_scheme;
     }
 
-    if (lhs.m_username != rhs.m_username) {
-        return lhs.m_username < rhs.m_username;
+    if (left.m_username != right.m_username) {
+        return left.m_username < right.m_username;
     }
 
-    if (lhs.m_password != rhs.m_password) {
-        return lhs.m_password < rhs.m_password;
+    if (left.m_password != right.m_password) {
+        return left.m_password < right.m_password;
     }
 
-    const auto lhs_host = Url::to_lower_copy(lhs.m_host);
-    const auto rhs_host = Url::to_lower_copy(rhs.m_host);
+    const auto left_host = Url::_to_lower_copy(left.m_host);
+    const auto right_host = Url::_to_lower_copy(right.m_host);
 
-    if (lhs_host != rhs_host) {
-        return lhs_host < rhs_host;
+    if (left_host != right_host) {
+        return left_host < right_host;
     }
 
-    if (lhs.m_port != rhs.m_port) {
-        return lhs.m_port < rhs.m_port;
+    if (left.m_port != right.m_port) {
+        return left.m_port < right.m_port;
     }
 
-    if (lhs.m_path != rhs.m_path) {
-        return lhs.m_path < rhs.m_path;
+    if (left.m_path != right.m_path) {
+        return left.m_path < right.m_path;
     }
 
-    const auto lhs_query = lhs.m_query.to_string();
-    const auto rhs_query = rhs.m_query.to_string();
+    const auto left_query = left.m_query.to_string();
+    const auto right_query = right.m_query.to_string();
 
-    if (lhs_query != rhs_query) {
-        return lhs_query < rhs_query;
+    if (left_query != right_query) {
+        return left_query < right_query;
     }
 
-    return lhs.m_fragment < rhs.m_fragment;
+    return left.m_fragment < right.m_fragment;
 }
 
-inline std::optional<uint16_t> Url::parse_port(std::string_view str) {
+inline std::optional<uint16_t> Url::_parse_port(std::string_view text) {
     constexpr auto max_port_number = std::numeric_limits<uint16_t>::max();
 
-    if (str.empty()) {
+    if (text.empty()) {
         return std::nullopt;
     }
 
     try {
-        const auto port_number = std::stoul(std::string(str));
+        const auto port_number = std::stoul(std::string(text));
 
         if (port_number <= max_port_number) {
             return static_cast<uint16_t>(port_number);

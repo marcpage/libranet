@@ -23,9 +23,9 @@ TEST(QueryTest, ConstructorsAndBasicAccessors) {
     EXPECT_FALSE(query.items().empty());
     EXPECT_EQ(query.items().size(), 1U);
 
-    auto val = query.get_first("foo");
-    ASSERT_TRUE(val.has_value());
-    EXPECT_EQ(val.value(), "bar");
+    auto value = query.get_first("foo");
+    ASSERT_TRUE(value.has_value());
+    EXPECT_EQ(value.value(), "bar");
 
     // Removal and clearing
     query.remove("foo");
@@ -96,16 +96,16 @@ TEST(QueryTest, StreamOperatorsAndParsing) {
     EXPECT_EQ(serialized, "foo=bar&baz=123");
 
     // Test ostream operator<<
-    std::ostringstream oss;
-    oss << query;
-    EXPECT_EQ(oss.str(), "foo=bar&baz=123");
+    std::ostringstream out_stream;
+    out_stream << query;
+    EXPECT_EQ(out_stream.str(), "foo=bar&baz=123");
 
     // Test istream operator>>
-    std::istringstream iss("alpha=one&beta=two");
+    std::istringstream in_stream("alpha=one&beta=two");
     Query parsed_stream_query;
-    iss >> parsed_stream_query;
+    in_stream >> parsed_stream_query;
 
-    EXPECT_FALSE(iss.fail());
+    EXPECT_FALSE(in_stream.fail());
     EXPECT_EQ(parsed_stream_query.get_first("alpha"), "one");
     EXPECT_EQ(parsed_stream_query.get_first("beta"), "two");
 }

@@ -68,10 +68,10 @@ TEST_P(IEncryptKeyTest, AesKeyValidation) {
     const IEncryptKey::Data invalid_key(invalid_key_size, std::byte{0x00});
     const auto make = GetParam();
 
-    EXPECT_NO_THROW(static_cast<void>(make(valid_key_128, AesMode::Cbc, AesPadding::Pkcs7)));
-    EXPECT_NO_THROW(static_cast<void>(make(valid_key_192, AesMode::Ctr, AesPadding::None)));
-    EXPECT_NO_THROW(static_cast<void>(make(valid_key_256, AesMode::Cbc, AesPadding::Pkcs7)));
-    EXPECT_THROW(static_cast<void>(make(invalid_key, AesMode::Cbc, AesPadding::Pkcs7)),
+    EXPECT_NO_THROW((void)make(valid_key_128, AesMode::Cbc, AesPadding::Pkcs7));
+    EXPECT_NO_THROW((void)make(valid_key_192, AesMode::Ctr, AesPadding::None));
+    EXPECT_NO_THROW((void)make(valid_key_256, AesMode::Cbc, AesPadding::Pkcs7));
+    EXPECT_THROW((void)make(invalid_key, AesMode::Cbc, AesPadding::Pkcs7),
                  std::invalid_argument);
 }
 
@@ -103,7 +103,7 @@ TEST_P(IEncryptKeyTest, AesCbcWithoutPadding) {
     EXPECT_EQ(fixtures::hex(ciphertext), cbc_128_unpadded_ciphertext);
     EXPECT_EQ(aes->decrypt(ciphertext, initialization_vector), cbc_unpadded_plaintext);
     // Without padding, CBC takes only whole blocks.
-    EXPECT_THROW(static_cast<void>(aes->encrypt("Not a whole block", initialization_vector)),
+    EXPECT_THROW((void)aes->encrypt("Not a whole block", initialization_vector),
                  std::runtime_error);
 }
 
@@ -113,7 +113,7 @@ TEST_P(IEncryptKeyTest, AesCbcBadPadding) {
     const IEncryptKey::Data ciphertext(aes_block_size, std::byte{0x00});
     const auto aes = GetParam()(key, AesMode::Cbc, AesPadding::Pkcs7);
 
-    EXPECT_THROW(static_cast<void>(aes->decrypt(ciphertext, {})), std::runtime_error);
+    EXPECT_THROW((void)aes->decrypt(ciphertext, {}), std::runtime_error);
 }
 
 // Each EXPECT_THROW counts toward the complexity, as branches would.
@@ -130,11 +130,11 @@ TEST_P(IEncryptKeyTest, AesCbcPaddingChecked) {
 
     EXPECT_EQ(decrypt(std::string("fourteen bytes") + "\x02\x02"), "fourteen bytes");
     EXPECT_EQ(decrypt(std::string(aes_block_size, '\x10')), "");
-    EXPECT_THROW(static_cast<void>(decrypt(std::string("fourteen bytes") + "\x01\x02")),
+    EXPECT_THROW((void)decrypt(std::string("fourteen bytes") + "\x01\x02"),
                  std::runtime_error);
-    EXPECT_THROW(static_cast<void>(decrypt(std::string("fifteen bytes..") + '\0')),
+    EXPECT_THROW((void)decrypt(std::string("fifteen bytes..") + '\0'),
                  std::runtime_error);
-    EXPECT_THROW(static_cast<void>(decrypt(std::string("fifteen bytes..") + "\x11")),
+    EXPECT_THROW((void)decrypt(std::string("fifteen bytes..") + "\x11"),
                  std::runtime_error);
 }
 // NOLINTEND(readability-function-cognitive-complexity)
@@ -185,7 +185,7 @@ TEST_P(IEncryptKeyTest, AesCbcEmptyCiphertext) {
     const IEncryptKey::Data key(aes_256_key_size, std::byte{0x42});
     const auto aes = GetParam()(key, AesMode::Cbc, AesPadding::Pkcs7);
 
-    EXPECT_THROW(static_cast<void>(aes->decrypt({}, {})), std::runtime_error);
+    EXPECT_THROW((void)aes->decrypt({}, {}), std::runtime_error);
 }
 
 INSTANTIATE_TEST_SUITE_P(Factory, IEncryptKeyTest, testing::Values(&IEncryptKey::Aes));

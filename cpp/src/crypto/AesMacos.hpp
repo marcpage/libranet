@@ -53,18 +53,18 @@ private:
     AesMode m_mode;
     AesPadding m_padding;
 
-    [[nodiscard]] Data process(CCOperation operation, std::string_view input,
-                               const InitializationVector& vector) const;
-    [[nodiscard]] std::size_t process_cbc(CCOperation operation, std::string_view input,
-                                          const InitializationVector& vector, Data& output) const;
-    [[nodiscard]] std::size_t process_ctr(CCOperation operation, std::string_view input,
-                                          const InitializationVector& vector, Data& output) const;
-    [[nodiscard]] std::size_t process_ctr_part(CCOperation operation, std::string_view input,
-                                               const InitializationVector& counter, Data& output,
-                                               std::size_t offset) const;
-    [[nodiscard]] static std::size_t unpadded_size(const Data& decrypted, std::size_t size);
-    [[nodiscard]] static std::uint64_t low_count(const InitializationVector& counter);
-    static void carry_count(InitializationVector& counter);
+    [[nodiscard]] Data _process(CCOperation operation, std::string_view input,
+                                const InitializationVector& vector) const;
+    [[nodiscard]] std::size_t _process_cbc(CCOperation operation, std::string_view input,
+                                           const InitializationVector& vector, Data& output) const;
+    [[nodiscard]] std::size_t _process_ctr(CCOperation operation, std::string_view input,
+                                           const InitializationVector& vector, Data& output) const;
+    [[nodiscard]] std::size_t _process_ctr_part(CCOperation operation, std::string_view input,
+                                                const InitializationVector& counter, Data& output,
+                                                std::size_t offset) const;
+    [[nodiscard]] static std::size_t _unpadded_size(const Data& decrypted, std::size_t size);
+    [[nodiscard]] static std::uint64_t _low_count(const InitializationVector& counter);
+    static void _carry_count(InitializationVector& counter);
 };
 
 inline AesMacos::AesMacos(Data key, AesMode mode, AesPadding padding)
@@ -81,7 +81,7 @@ inline AesMacos::AesMacos(Data key, AesMode mode, AesPadding padding)
 
 inline IEncryptKey::Data AesMacos::encrypt(std::string_view plaintext,
                                            const InitializationVector& vector) const {
-    return process(kCCEncrypt, plaintext, vector);
+    return _process(kCCEncrypt, plaintext, vector);
 }
 
 inline std::string AesMacos::decrypt(const Data& ciphertext,
@@ -91,15 +91,15 @@ inline std::string AesMacos::decrypt(const Data& ciphertext,
 
     std::transform(ciphertext.begin(), ciphertext.end(), input.begin(), as_char);
 
-    const auto output = process(kCCDecrypt, input, vector);
+    const auto output = _process(kCCDecrypt, input, vector);
     std::string text(output.size(), '\0');
 
     std::transform(output.begin(), output.end(), text.begin(), as_char);
     return text;
 }
 
-inline IEncryptKey::Data AesMacos::process(CCOperation operation, std::string_view input,
-                                           const InitializationVector& vector) const {
+inline IEncryptKey::Data AesMacos::_process(CCOperation operation, std::string_view input,
+                                            const InitializationVector& vector) const {
     if (m_mode != AesMode::Cbc && m_mode != AesMode::Ctr) {
         throw std::runtime_error("Only Cbc and Ctr supported");
     }
@@ -107,15 +107,15 @@ inline IEncryptKey::Data AesMacos::process(CCOperation operation, std::string_vi
     const std::size_t buffer_size = input.size() + kCCBlockSizeAES128;
     Data output(buffer_size);
     const auto data_moved = AesMode::Cbc == m_mode
-                                ? process_cbc(operation, input, vector, output)
-                                : process_ctr(operation, input, vector, output);
+                                ? _process_cbc(operation, input, vector, output)
+                                : _process_ctr(operation, input, vector, output);
 
     output.resize(data_moved);
     return output;
 }
 
-inline std::size_t AesMacos::process_cbc(CCOperation operation, std::string_view input,
-                                         const InitializationVector& vector, Data& output) const {
+inline std::size_t AesMacos::_process_cbc(CCOperation operation, std::string_view input,
+                                          const InitializationVector& vector, Data& output) const {
     // CommonCrypto removes padding without checking it, so it decrypts with
     // none, and the padding is checked and removed here.
     const bool padded = AesPadding::Pkcs7 == m_padding;
@@ -134,14 +134,14 @@ inline std::size_t AesMacos::process_cbc(CCOperation operation, std::string_view
                                  + std::to_string(status));
     }
 
-    return (padded && kCCDecrypt == operation) ? unpadded_size(output, data_moved) : data_moved;
+    return (padded && kCCDecrypt == operation) ? _unpadded_size(output, data_moved) : data_moved;
 }
 
 // How long the first size bytes of decrypted are without the PKCS #7 padding
 // that ends them: n bytes, each n, for n from 1 to the block size. The whole
 // last block is checked whatever n is, so that the time a check takes does
 // not tell what it found.
-inline std::size_t AesMacos::unpadded_size(const Data& decrypted, std::size_t size) {
+inline std::size_t AesMacos::_unpadded_size(const Data& decrypted, std::size_t size) {
     constexpr std::size_t block_size = kCCBlockSizeAES128;
 
     if (size < block_size) {
@@ -169,8 +169,8 @@ inline std::size_t AesMacos::unpadded_size(const Data& decrypted, std::size_t si
 // where OpenSSL and the Python node carry into the high 64 bits. So where
 // the low 64 bits would wrap around, the rest is processed again from the
 // counter that carries. No message is long enough to wrap them twice.
-inline std::size_t AesMacos::process_ctr(CCOperation operation, std::string_view input,
-                                         const InitializationVector& vector, Data& output) const {
+inline std::size_t AesMacos::_process_ctr(CCOperation operation, std::string_view input,
+                                          const InitializationVector& vector, Data& output) const {
     constexpr std::size_t block_size = kCCBlockSizeAES128;
     // An empty initialization vector is all zeros, as CommonCrypto takes a
     // null one.
@@ -180,25 +180,25 @@ inline std::size_t AesMacos::process_ctr(CCOperation operation, std::string_view
         throw std::invalid_argument("An AES initialization vector must be 16 bytes");
     }
 
-    const auto low = low_count(counter);
+    const auto low = _low_count(counter);
     const std::uint64_t blocks_before_wrap = 0 - low;
     const auto blocks = (input.size() + block_size - 1) / block_size;
 
     if (0 == low || blocks <= blocks_before_wrap) {
-        return process_ctr_part(operation, input, counter, output, 0);
+        return _process_ctr_part(operation, input, counter, output, 0);
     }
 
     const auto first_size = static_cast<std::size_t>(blocks_before_wrap) * block_size;
-    const auto first_moved = process_ctr_part(operation, input.substr(0, first_size), counter,
-                                              output, 0);
+    const auto first_moved = _process_ctr_part(operation, input.substr(0, first_size), counter,
+                                               output, 0);
 
-    carry_count(counter);
+    _carry_count(counter);
     return first_moved
-           + process_ctr_part(operation, input.substr(first_size), counter, output, first_moved);
+           + _process_ctr_part(operation, input.substr(first_size), counter, output, first_moved);
 }
 
 // The low 64 bits of the counter block, big-endian.
-inline std::uint64_t AesMacos::low_count(const InitializationVector& counter) {
+inline std::uint64_t AesMacos::_low_count(const InitializationVector& counter) {
     constexpr std::size_t half = kCCBlockSizeAES128 / 2;
     constexpr auto byte_bits = 8U;
     std::uint64_t low = 0;
@@ -212,7 +212,7 @@ inline std::uint64_t AesMacos::low_count(const InitializationVector& counter) {
 
 // The counter block after the low 64 bits wrap around: those are zero, and
 // the high 64 bits are one more, big-endian.
-inline void AesMacos::carry_count(InitializationVector& counter) {
+inline void AesMacos::_carry_count(InitializationVector& counter) {
     constexpr std::size_t half = kCCBlockSizeAES128 / 2;
 
     for (std::size_t index = half; index < kCCBlockSizeAES128; ++index) {
@@ -232,9 +232,9 @@ inline void AesMacos::carry_count(InitializationVector& counter) {
 
 // The output is written from offset, which is before its end: it has room
 // for a block more than the whole input.
-inline std::size_t AesMacos::process_ctr_part(CCOperation operation, std::string_view input,
-                                              const InitializationVector& counter, Data& output,
-                                              std::size_t offset) const {
+inline std::size_t AesMacos::_process_ctr_part(CCOperation operation, std::string_view input,
+                                               const InitializationVector& counter, Data& output,
+                                               std::size_t offset) const {
     std::size_t update_moved = 0;
     std::size_t final_moved = 0;
     CCCryptorRef created = nullptr;

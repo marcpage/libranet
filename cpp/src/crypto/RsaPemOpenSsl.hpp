@@ -38,9 +38,9 @@ public:
     RsaPemOpenSsl& operator=(RsaPemOpenSsl&&) = delete;
 
 private:
-    [[nodiscard]] static bool is_private_label(std::string_view label);
-    [[nodiscard]] static OpenSslKey read_der(const std::vector<std::byte>& der,
-                                             std::string_view label);
+    [[nodiscard]] static bool _is_private_label(std::string_view label);
+    [[nodiscard]] static OpenSslKey _read_der(const std::vector<std::byte>& der,
+                                              std::string_view label);
 };
 
 inline std::string RsaPemOpenSsl::public_pem(const EVP_PKEY* key) {
@@ -62,7 +62,7 @@ inline std::string RsaPemOpenSsl::private_pem(const EVP_PKEY* key) {
 
 inline RsaPemOpenSsl::KeyPair RsaPemOpenSsl::from_pem(std::string_view pem) {
     auto [label, der_bytes] = Pem::unwrap(pem);
-    KeyPair pair{read_der(der_bytes, label), is_private_label(label)};
+    KeyPair pair{_read_der(der_bytes, label), _is_private_label(label)};
 
     if (EVP_PKEY_is_a(pair.key.get(), "RSA") != 1) {
         throw std::invalid_argument("Not an RSA key");
@@ -71,13 +71,13 @@ inline RsaPemOpenSsl::KeyPair RsaPemOpenSsl::from_pem(std::string_view pem) {
     return pair;
 }
 
-inline bool RsaPemOpenSsl::is_private_label(std::string_view label) {
+inline bool RsaPemOpenSsl::_is_private_label(std::string_view label) {
     return "PRIVATE KEY" == label || "RSA PRIVATE KEY" == label;
 }
 
-inline OpenSslKey RsaPemOpenSsl::read_der(const std::vector<std::byte>& der,
-                                          std::string_view label) {
-    if (is_private_label(label)) {
+inline OpenSslKey RsaPemOpenSsl::_read_der(const std::vector<std::byte>& der,
+                                           std::string_view label) {
+    if (_is_private_label(label)) {
         return OpenSslDer::read_private_key(der);
     }
 

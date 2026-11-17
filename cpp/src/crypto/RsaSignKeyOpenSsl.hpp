@@ -46,7 +46,7 @@ private:
     OpenSslKey m_key;
     bool m_has_private;
 
-    static void use_pss(EVP_PKEY_CTX* context);
+    static void _use_pss(EVP_PKEY_CTX* context);
 };
 
 // cppcheck-suppress duplInheritedMember
@@ -73,7 +73,7 @@ inline ISignKey::Data RsaSignKeyOpenSsl::sign(std::string_view data) const {
         throw OpenSslError("Failed to start signing with an RSA key");
     }
 
-    use_pss(key_context);
+    _use_pss(key_context);
 
     Data signature(static_cast<std::size_t>(EVP_PKEY_get_size(m_key.get())));
     auto length = signature.size();
@@ -98,7 +98,7 @@ inline bool RsaSignKeyOpenSsl::verify(std::string_view data, const Data& signatu
         throw OpenSslError("Failed to start verifying with an RSA key");
     }
 
-    use_pss(key_context);
+    _use_pss(key_context);
 
     const auto result = EVP_DigestVerify(context.get(), OpenSslBytes::of(signature),
                                          signature.size(), OpenSslBytes::of(data), data.size());
@@ -129,7 +129,7 @@ inline bool RsaSignKeyOpenSsl::has_private_key() const noexcept {
 }
 
 // The context belongs to the message context that made it.
-inline void RsaSignKeyOpenSsl::use_pss(EVP_PKEY_CTX* context) {
+inline void RsaSignKeyOpenSsl::_use_pss(EVP_PKEY_CTX* context) {
     if (EVP_PKEY_CTX_set_rsa_padding(context, RSA_PKCS1_PSS_PADDING) <= 0
         || EVP_PKEY_CTX_set_rsa_mgf1_md(context, EVP_sha256()) <= 0
         || EVP_PKEY_CTX_set_rsa_pss_saltlen(context, RSA_PSS_SALTLEN_DIGEST) <= 0) {

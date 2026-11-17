@@ -38,8 +38,8 @@ private:
 
     Context m_context;
 
-    void start();
-    void add(const unsigned char* bytes, std::size_t size);
+    void _start();
+    void _add(const unsigned char* bytes, std::size_t size);
 };
 
 inline Sha256OpenSsl::Sha256OpenSsl() : m_context(EVP_MD_CTX_new()) {
@@ -47,15 +47,15 @@ inline Sha256OpenSsl::Sha256OpenSsl() : m_context(EVP_MD_CTX_new()) {
         throw OpenSslError("Failed to start SHA-256");
     }
 
-    start();
+    _start();
 }
 
 inline void Sha256OpenSsl::update(std::string_view data) {
-    add(OpenSslBytes::of(data), data.size());
+    _add(OpenSslBytes::of(data), data.size());
 }
 
 inline void Sha256OpenSsl::update(const Data& data) {
-    add(OpenSslBytes::of(data), data.size());
+    _add(OpenSslBytes::of(data), data.size());
 }
 
 inline IHasher::Data Sha256OpenSsl::digest(const Data& data) {
@@ -69,7 +69,7 @@ inline IHasher::Data Sha256OpenSsl::digest(const Data& data) {
         throw OpenSslError("SHA-256 failed");
     }
 
-    start();
+    _start();
     return result;
 }
 
@@ -92,16 +92,16 @@ inline IHasher::Ptr Sha256OpenSsl::clone() const {
 }
 
 inline void Sha256OpenSsl::reset() {
-    start();
+    _start();
 }
 
-inline void Sha256OpenSsl::start() {
+inline void Sha256OpenSsl::_start() {
     if (EVP_DigestInit_ex(m_context.get(), EVP_sha256(), nullptr) != 1) {
         throw OpenSslError("Failed to start SHA-256");
     }
 }
 
-inline void Sha256OpenSsl::add(const unsigned char* bytes, std::size_t size) {
+inline void Sha256OpenSsl::_add(const unsigned char* bytes, std::size_t size) {
     if (EVP_DigestUpdate(m_context.get(), bytes, size) != 1) {
         throw OpenSslError("SHA-256 failed");
     }

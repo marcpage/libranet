@@ -36,7 +36,7 @@ public:
     CFBytes& operator=(CFBytes&&) = delete;
 
 private:
-    [[nodiscard]] static CFObject<CFDataRef> copy(const UInt8* start, std::size_t size);
+    [[nodiscard]] static CFObject<CFDataRef> _copy(const UInt8* start, std::size_t size);
 };
 
 // The casts, and the pointer arithmetic over what Core Foundation holds, are
@@ -44,11 +44,11 @@ private:
 // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
 // NOLINTBEGIN(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 inline CFObject<CFDataRef> CFBytes::of(const std::vector<std::byte>& bytes) {
-    return copy(reinterpret_cast<const UInt8*>(bytes.data()), bytes.size());
+    return _copy(reinterpret_cast<const UInt8*>(bytes.data()), bytes.size());
 }
 
 inline CFObject<CFDataRef> CFBytes::of(std::string_view text) {
-    return copy(reinterpret_cast<const UInt8*>(text.data()), text.size());
+    return _copy(reinterpret_cast<const UInt8*>(text.data()), text.size());
 }
 
 inline std::vector<std::byte> CFBytes::bytes_in(CFDataRef data) {
@@ -64,7 +64,7 @@ inline std::string CFBytes::text_in(CFDataRef data) {
 // NOLINTEND(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
 
-inline CFObject<CFDataRef> CFBytes::copy(const UInt8* start, std::size_t size) {
+inline CFObject<CFDataRef> CFBytes::_copy(const UInt8* start, std::size_t size) {
     return CFObject<CFDataRef>(CFDataCreate(kCFAllocatorDefault, start, static_cast<CFIndex>(size)),
                                CFObject<CFDataRef>::Policy::TakeOwnership);
 }

@@ -38,8 +38,8 @@ private:
     OpenSslKey m_key;
     bool m_has_private;
 
-    [[nodiscard]] KeyContext make_context() const;
-    static void use_oaep(EVP_PKEY_CTX* context);
+    [[nodiscard]] KeyContext _make_context() const;
+    static void _use_oaep(EVP_PKEY_CTX* context);
 };
 
 inline RsaEncryptKeyOpenSsl::RsaEncryptKeyOpenSsl(OpenSslKey key, bool has_private)
@@ -47,13 +47,13 @@ inline RsaEncryptKeyOpenSsl::RsaEncryptKeyOpenSsl(OpenSslKey key, bool has_priva
 
 inline IEncryptKey::Data RsaEncryptKeyOpenSsl::encrypt(
     std::string_view plaintext, [[maybe_unused]] const InitializationVector& vector) const {
-    const auto context = make_context();
+    const auto context = _make_context();
 
     if (EVP_PKEY_encrypt_init(context.get()) <= 0) {
         throw OpenSslError("Failed to start RSA OAEP encryption");
     }
 
-    use_oaep(context.get());
+    _use_oaep(context.get());
 
     std::size_t length = 0;
 
@@ -81,13 +81,13 @@ inline std::string RsaEncryptKeyOpenSsl::decrypt(
         throw std::runtime_error("RSA private key required for decryption");
     }
 
-    const auto context = make_context();
+    const auto context = _make_context();
 
     if (EVP_PKEY_decrypt_init(context.get()) <= 0) {
         throw OpenSslError("Failed to start RSA OAEP decryption");
     }
 
-    use_oaep(context.get());
+    _use_oaep(context.get());
 
     std::size_t length = 0;
 
@@ -109,7 +109,7 @@ inline std::string RsaEncryptKeyOpenSsl::decrypt(
     return plaintext;
 }
 
-inline RsaEncryptKeyOpenSsl::KeyContext RsaEncryptKeyOpenSsl::make_context() const {
+inline RsaEncryptKeyOpenSsl::KeyContext RsaEncryptKeyOpenSsl::_make_context() const {
     KeyContext context(EVP_PKEY_CTX_new_from_pkey(nullptr, m_key.get(), nullptr));
 
     if (!context) {
@@ -119,7 +119,7 @@ inline RsaEncryptKeyOpenSsl::KeyContext RsaEncryptKeyOpenSsl::make_context() con
     return context;
 }
 
-inline void RsaEncryptKeyOpenSsl::use_oaep(EVP_PKEY_CTX* context) {
+inline void RsaEncryptKeyOpenSsl::_use_oaep(EVP_PKEY_CTX* context) {
     if (EVP_PKEY_CTX_set_rsa_padding(context, RSA_PKCS1_OAEP_PADDING) <= 0
         || EVP_PKEY_CTX_set_rsa_oaep_md(context, EVP_sha256()) <= 0
         || EVP_PKEY_CTX_set_rsa_mgf1_md(context, EVP_sha256()) <= 0) {

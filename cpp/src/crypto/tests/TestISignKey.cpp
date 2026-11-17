@@ -82,8 +82,8 @@ TEST(ISignKeyTest, Ed25519PublicOnlyVerification) {
     const auto verifier = ISignKey::from_pem(signer->public_pem());
 
     EXPECT_FALSE(verifier->has_private_key());
-    EXPECT_THROW(static_cast<void>(verifier->sign(message)), std::runtime_error);
-    EXPECT_THROW(static_cast<void>(verifier->private_pem()), std::runtime_error);
+    EXPECT_THROW((void)verifier->sign(message), std::runtime_error);
+    EXPECT_THROW((void)verifier->private_pem(), std::runtime_error);
     EXPECT_TRUE(verifier->verify(message, signature));
 }
 
@@ -122,22 +122,22 @@ TEST(ISignKeyTest, Ed25519PemMatchesPython) {
 
 TEST(ISignKeyTest, Ed25519InvalidInputs) {
     // Invalid PEM string should throw
-    EXPECT_THROW(static_cast<void>(ISignKey::from_pem(
-                     "-----BEGIN BAD KEY-----\ninvalid\n-----END BAD KEY-----")),
+    EXPECT_THROW((void)ISignKey::from_pem(
+                     "-----BEGIN BAD KEY-----\ninvalid\n-----END BAD KEY-----"),
                  std::exception);
 
     // A key of another type, or bytes that are no key, is refused.
-    EXPECT_THROW(static_cast<void>(ISignKey::from_pem(x25519_public_pem)),
+    EXPECT_THROW((void)ISignKey::from_pem(x25519_public_pem),
                  std::invalid_argument);
-    EXPECT_THROW(static_cast<void>(ISignKey::from_pem(
-                     "-----BEGIN PUBLIC KEY-----\nYWJj\n-----END PUBLIC KEY-----\n")),
+    EXPECT_THROW((void)ISignKey::from_pem(
+                     "-----BEGIN PUBLIC KEY-----\nYWJj\n-----END PUBLIC KEY-----\n"),
                  std::invalid_argument);
 
     // Verification with invalid signature size should return false rather than throw
     const auto signer = ISignKey::Ed25519();
-    const ISignKey::Data bad_sig(signature_size / 2, std::byte{0x00});
+    const ISignKey::Data bad_signature(signature_size / 2, std::byte{0x00});
 
-    EXPECT_FALSE(signer->verify("test", bad_sig));
+    EXPECT_FALSE(signer->verify("test", bad_signature));
 }
 
 TEST(ISignKeyTest, DamagedRsaKeyRefusedByRsaReader) {
@@ -172,8 +172,8 @@ TEST_P(RsaSignKeyTest, ReadsPythonKey) {
     EXPECT_TRUE(verifier->verify(fixtures::rsa_message, signature));
     EXPECT_TRUE(verifier->verify(fixtures::rsa_message, signer->sign(fixtures::rsa_message)));
     EXPECT_FALSE(verifier->verify("Tampered message", signature));
-    EXPECT_THROW(static_cast<void>(verifier->sign(fixtures::rsa_message)), std::runtime_error);
-    EXPECT_THROW(static_cast<void>(verifier->private_pem()), std::runtime_error);
+    EXPECT_THROW((void)verifier->sign(fixtures::rsa_message), std::runtime_error);
+    EXPECT_THROW((void)verifier->private_pem(), std::runtime_error);
     EXPECT_FALSE(verifier->public_pem().empty());
     EXPECT_FALSE(signer->private_pem().empty());
 }

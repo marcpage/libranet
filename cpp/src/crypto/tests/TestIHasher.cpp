@@ -80,7 +80,7 @@ TEST_P(IHasherTest, DigestResets) {
     const auto hasher = GetParam()();
 
     hasher->update("garbage data");
-    static_cast<void>(hasher->digest());
+    (void)hasher->digest();
     hasher->update("abc");
     EXPECT_EQ(hasher->hex_digest(), abc_digest);
 }

@@ -30,9 +30,9 @@ public:
     void close() override;
 
 private:
-    explicit SocketPosix(int socket_fd) noexcept;
-
     int m_socket_fd;
+
+    explicit SocketPosix(int socket_fd) noexcept;
 };
 
 } // namespace net

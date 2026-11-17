@@ -60,17 +60,17 @@ TEST(IntegerTest, UnaryAndIncrement) {
     EXPECT_EQ(number.to_string(), "12");
 
     // Decrement operators[cite: 1]
-    const Integer pre_dec = --number;
-    EXPECT_EQ(pre_dec.to_string(), "11");
+    const Integer pre_decremented = --number;
+    EXPECT_EQ(pre_decremented.to_string(), "11");
     EXPECT_EQ(number.to_string(), "11");
 
-    const Integer post_dec = number--;
-    EXPECT_EQ(post_dec.to_string(), "11");
+    const Integer post_decremented = number--;
+    EXPECT_EQ(post_decremented.to_string(), "11");
     EXPECT_EQ(number.to_string(), "10");
 
     // Bitwise NOT (~x == -x - 1)[cite: 1]
-    const Integer not_val = ~Integer(0);
-    EXPECT_EQ(not_val.to_string(), "-1");
+    const Integer complement = ~Integer(0);
+    EXPECT_EQ(complement.to_string(), "-1");
 }
 
 TEST(IntegerTest, ArithmeticAndDivisions) {
@@ -79,21 +79,21 @@ TEST(IntegerTest, ArithmeticAndDivisions) {
     constexpr auto addend = 50;
     constexpr auto subtrahend = 30;
     constexpr auto modulus = 40;
-    Integer val(start);
-    val += Integer(addend);
-    EXPECT_EQ(val.to_string(), "150");
+    Integer value(start);
+    value += Integer(addend);
+    EXPECT_EQ(value.to_string(), "150");
 
-    val -= Integer(subtrahend);
-    EXPECT_EQ(val.to_string(), "120");
+    value -= Integer(subtrahend);
+    EXPECT_EQ(value.to_string(), "120");
 
-    val *= Integer(3);
-    EXPECT_EQ(val.to_string(), "360");
+    value *= Integer(3);
+    EXPECT_EQ(value.to_string(), "360");
 
-    val /= Integer(4);
-    EXPECT_EQ(val.to_string(), "90");
+    value /= Integer(4);
+    EXPECT_EQ(value.to_string(), "90");
 
-    val %= Integer(modulus);
-    EXPECT_EQ(val.to_string(), "10");
+    value %= Integer(modulus);
+    EXPECT_EQ(value.to_string(), "10");
 
     // Division by zero exception[cite: 1]
     constexpr auto dividend = 5;
@@ -113,32 +113,32 @@ TEST(IntegerTest, BitwiseAndShifts) {
 
     // Shifts[cite: 1]
     constexpr std::size_t shift_bits = 64; // Test cross-word shift boundary
-    Integer shift_val(1);
-    shift_val <<= shift_bits;
-    EXPECT_EQ(shift_val.bit_length(), 65U);
+    Integer shifted(1);
+    shifted <<= shift_bits;
+    EXPECT_EQ(shifted.bit_length(), 65U);
 
-    shift_val >>= shift_bits;
-    EXPECT_EQ(shift_val.to_string(), "1");
+    shifted >>= shift_bits;
+    EXPECT_EQ(shifted.to_string(), "1");
 }
 
 TEST(IntegerTest, StreamsAndLiterals) {
     // Stream Output[cite: 1]
     constexpr auto output_value = 987654321987654321LL;
     const Integer test_out(output_value);
-    std::ostringstream oss;
-    oss << test_out;
-    EXPECT_EQ(oss.str(), "987654321987654321");
+    std::ostringstream out_stream;
+    out_stream << test_out;
+    EXPECT_EQ(out_stream.str(), "987654321987654321");
 
     // Stream Input[cite: 1]
-    std::istringstream iss("12345678901234567890");
+    std::istringstream in_stream("12345678901234567890");
     Integer test_in;
-    iss >> test_in;
+    in_stream >> test_in;
     EXPECT_EQ(test_in.to_string(), "12345678901234567890");
 
     // Failed stream input check[cite: 1]
-    std::istringstream bad_iss("invalid_number");
-    bad_iss >> test_in;
-    EXPECT_TRUE(bad_iss.fail());
+    std::istringstream bad_stream("invalid_number");
+    bad_stream >> test_in;
+    EXPECT_TRUE(bad_stream.fail());
 
     // User-defined literal[cite: 1]
     const Integer lit = "999888777666555444"_i;
@@ -150,8 +150,8 @@ TEST(IntegerTest, LargeScaleStress) {
     constexpr int last_factor = 30;
     Integer accumulator(1);
 
-    for (int i = 1; i <= last_factor; ++i) {
-        accumulator *= Integer(i);
+    for (int index = 1; index <= last_factor; ++index) {
+        accumulator *= Integer(index);
     }
 
     // 30! = 265252859812191058636308480000000

@@ -107,10 +107,10 @@ public:
     static std::string_view default_reason_phrase(std::uint16_t code) noexcept;
 
     // Comparisons
-    friend bool operator==(const ResponseCode& lhs, const ResponseCode& rhs) noexcept;
-    friend bool operator!=(const ResponseCode& lhs, const ResponseCode& rhs) noexcept;
-    friend bool operator==(const ResponseCode& lhs, Status rhs) noexcept;
-    friend bool operator!=(const ResponseCode& lhs, Status rhs) noexcept;
+    friend bool operator==(const ResponseCode& left, const ResponseCode& right) noexcept;
+    friend bool operator!=(const ResponseCode& left, const ResponseCode& right) noexcept;
+    friend bool operator==(const ResponseCode& left, Status right) noexcept;
+    friend bool operator!=(const ResponseCode& left, Status right) noexcept;
 
     friend std::ostream& operator<<(std::ostream& out_stream, const ResponseCode& response_code);
 
@@ -259,20 +259,20 @@ inline std::string_view ResponseCode::default_reason_phrase(std::uint16_t code) 
     return default_reason_phrase(static_cast<Status>(code));
 }
 
-inline bool operator==(const ResponseCode& lhs, const ResponseCode& rhs) noexcept {
-    return lhs.code() == rhs.code();
+inline bool operator==(const ResponseCode& left, const ResponseCode& right) noexcept {
+    return left.code() == right.code();
 }
 
-inline bool operator!=(const ResponseCode& lhs, const ResponseCode& rhs) noexcept {
-    return !(lhs == rhs);
+inline bool operator!=(const ResponseCode& left, const ResponseCode& right) noexcept {
+    return !(left == right);
 }
 
-inline bool operator==(const ResponseCode& lhs, ResponseCode::Status rhs) noexcept {
-    return lhs.status() == rhs;
+inline bool operator==(const ResponseCode& left, ResponseCode::Status right) noexcept {
+    return left.status() == right;
 }
 
-inline bool operator!=(const ResponseCode& lhs, ResponseCode::Status rhs) noexcept {
-    return !(lhs == rhs);
+inline bool operator!=(const ResponseCode& left, ResponseCode::Status right) noexcept {
+    return !(left == right);
 }
 
 inline std::ostream& operator<<(std::ostream& out_stream, const ResponseCode& response_code) {

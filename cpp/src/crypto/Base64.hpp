@@ -37,7 +37,7 @@ private:
     // What get_character_value() gives for padding.
     static constexpr int padding_value = -1;
 
-    [[nodiscard]] static int get_character_value(char character);
+    [[nodiscard]] static int _get_character_value(char character);
 };
 
 inline std::string Base64::encode(const std::vector<std::byte>& data) {
@@ -81,7 +81,7 @@ inline std::string Base64::encode(std::string_view data) {
     return encode(bytes);
 }
 
-inline int Base64::get_character_value(char character) {
+inline int Base64::_get_character_value(char character) {
     if (padding == character) {
         return padding_value;
     }
@@ -112,7 +112,7 @@ inline std::vector<std::byte> Base64::decode(std::string_view encoded_string) {
         unsigned int triple = 0;
 
         for (std::size_t position = 0; position < characters_per_group; ++position) {
-            const auto value = get_character_value(group.at(position));
+            const auto value = _get_character_value(group.at(position));
 
             // The first two characters of a group are never padding.
             if (padding_value == value && position < 2) {

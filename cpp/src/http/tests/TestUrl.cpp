@@ -61,13 +61,13 @@ TEST(UrlTest, UrlParsing) {
     EXPECT_EQ(url.path(), "/path/to/page");
     EXPECT_EQ(url.fragment(), "anchor");
 
-    const auto foo_val = url.get_query("foo");
-    EXPECT_TRUE(foo_val.has_value());
-    EXPECT_EQ(foo_val, "bar");
+    const auto foo_value = url.get_query("foo");
+    EXPECT_TRUE(foo_value.has_value());
+    EXPECT_EQ(foo_value, "bar");
 
-    const auto baz_val = url.get_query("baz");
-    EXPECT_TRUE(baz_val.has_value());
-    EXPECT_EQ(baz_val, "123");
+    const auto baz_value = url.get_query("baz");
+    EXPECT_TRUE(baz_value.has_value());
+    EXPECT_EQ(baz_value, "123");
 
     // Minimal URL parsing test (defaults and implicit paths)
     auto minimal = Url::parse("http://example.com");
@@ -213,13 +213,13 @@ TEST(UrlTest, TransparentComponentEncoding) {
     EXPECT_EQ(url.fragment(), "section 3?query=true");
 
     // 2. Verify optional accesses for query parameters
-    auto search_val = url.get_query("search");
-    ASSERT_TRUE(search_val.has_value());
-    EXPECT_EQ(search_val.value(), "modern c++");
+    auto search_value = url.get_query("search");
+    ASSERT_TRUE(search_value.has_value());
+    EXPECT_EQ(search_value.value(), "modern c++");
 
-    const auto missing_val = url.get_query("nonexistent");
-    EXPECT_FALSE(missing_val.has_value());
-    EXPECT_EQ(missing_val.value_or("default"), "default");
+    const auto missing_value = url.get_query("nonexistent");
+    EXPECT_FALSE(missing_value.has_value());
+    EXPECT_EQ(missing_value.value_or("default"), "default");
 
     // 3. Verify case-insensitive comparison operators
     const Url url1 = Url::parse("HTTPS://Example.COM:443/path").value();
@@ -254,59 +254,59 @@ TEST(UrlTest, UrlAppend) {
     auto base = Url::parse("https://example.com/api/v1/posts");
     ASSERT_TRUE(base.has_value());
 
-    auto& url_ref = base.value();
+    auto& url = base.value();
 
     // 1. Append relative path segment
-    url_ref.append("123/comments");
-    EXPECT_EQ(url_ref.to_string(), "https://example.com/api/v1/123/comments");
+    url.append("123/comments");
+    EXPECT_EQ(url.to_string(), "https://example.com/api/v1/123/comments");
 
     // 2. Append absolute path starting with '/'
-    url_ref.append("/health");
-    EXPECT_EQ(url_ref.to_string(), "https://example.com/health");
+    url.append("/health");
+    EXPECT_EQ(url.to_string(), "https://example.com/health");
 
     // 3. Append query parameters and fragments
-    url_ref.append("?verbose=true#status");
-    EXPECT_EQ(url_ref.to_string(), "https://example.com/health?verbose=true#status");
+    url.append("?verbose=true#status");
+    EXPECT_EQ(url.to_string(), "https://example.com/health?verbose=true#status");
 
     // 4. Append an absolute URL
-    url_ref.append("http://other.org/resource");
-    EXPECT_EQ(url_ref.to_string(), "http://other.org/resource");
+    url.append("http://other.org/resource");
+    EXPECT_EQ(url.to_string(), "http://other.org/resource");
 }
 
 TEST(UrlTest, SerializationAndReconstruction) {
-    const std::string original_str = "https://user:pass@example.com:8443/search?q=cpp#top";
-    auto parsed = Url::parse(original_str);
+    const std::string original_text = "https://user:pass@example.com:8443/search?q=cpp#top";
+    auto parsed = Url::parse(original_text);
     ASSERT_TRUE(parsed.has_value());
 
     const std::string serialized = parsed.value().to_string();
-    EXPECT_EQ(serialized, original_str);
+    EXPECT_EQ(serialized, original_text);
 }
 
 TEST(UrlTest, StreamOperatorsAndParsing) {
-    auto url_opt = Url::parse("ftp://files.example.com/pub/file.txt");
-    ASSERT_TRUE(url_opt.has_value());
+    auto url = Url::parse("ftp://files.example.com/pub/file.txt");
+    ASSERT_TRUE(url.has_value());
 
-    std::ostringstream oss;
-    oss << url_opt.value();
-    EXPECT_EQ(oss.str(), "ftp://files.example.com/pub/file.txt");
+    std::ostringstream out_stream;
+    out_stream << url.value();
+    EXPECT_EQ(out_stream.str(), "ftp://files.example.com/pub/file.txt");
 
-    std::istringstream iss("http://test.org/index.html?ref=home");
+    std::istringstream in_stream("http://test.org/index.html?ref=home");
     Url stream_url;
-    iss >> stream_url;
+    in_stream >> stream_url;
 
-    EXPECT_FALSE(iss.fail());
+    EXPECT_FALSE(in_stream.fail());
     EXPECT_EQ(stream_url.scheme(), "http");
     EXPECT_EQ(stream_url.host(), "test.org");
     EXPECT_EQ(stream_url.path(), "/index.html");
 
-    const auto ref_val = stream_url.get_query("ref");
-    EXPECT_TRUE(ref_val.has_value());
-    EXPECT_EQ(ref_val, "home");
+    const auto ref_value = stream_url.get_query("ref");
+    EXPECT_TRUE(ref_value.has_value());
+    EXPECT_EQ(ref_value, "home");
 
-    std::istringstream bad_iss("");
+    std::istringstream bad_stream("");
     Url bad_url;
-    bad_iss >> bad_url;
-    EXPECT_TRUE(bad_iss.fail());
+    bad_stream >> bad_url;
+    EXPECT_TRUE(bad_stream.fail());
 }
 
 TEST(UrlTest, WrittenAsRead) {

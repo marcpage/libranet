@@ -58,14 +58,25 @@ TEST(BlockingQueueTest, MoveSemantics) {
     // cppcheck-suppress accessMoved
     EXPECT_TRUE(second_text.empty());
 
-    auto opt = queue.pop_ms_timeout(timeout);
-    ASSERT_TRUE(opt.has_value());
-    EXPECT_EQ(*opt, "hello");
+    auto popped = queue.pop_ms_timeout(timeout);
+    ASSERT_TRUE(popped.has_value());
+    EXPECT_EQ(*popped, "hello");
 
     const std::string result = queue.pop(); // move out
     EXPECT_EQ(result, "world");
 }
 // NOLINTEND(bugprone-use-after-move)
+
+TEST(BlockingQueueTest, PushWithTimeoutCopiesNamedValue) {
+    constexpr auto timeout = 10ms;
+    BlockingQueue<std::string> queue;
+    const std::string text = "kept";
+
+    EXPECT_TRUE(queue.push_ms_timeout(text, timeout));
+
+    EXPECT_EQ(text, "kept");
+    EXPECT_EQ(queue.pop(), "kept");
+}
 
 TEST(BlockingQueueTest, CapacityAndTimeouts) {
     constexpr auto timeout = 5ms;
@@ -105,9 +116,9 @@ TEST(BlockingQueueTest, UnboundedConstant) {
     BlockingQueue<int> default_queue; // same as unbounded
     constexpr int item_count = 1000;
 
-    for (int i = 0; i < item_count; ++i) {
-        unbounded_queue.push(i);
-        default_queue.push(i);
+    for (int index = 0; index < item_count; ++index) {
+        unbounded_queue.push(index);
+        default_queue.push(index);
     }
 
     EXPECT_EQ(unbounded_queue.size(), static_cast<std::size_t>(item_count));
@@ -139,7 +150,7 @@ TEST(BlockingQueueTest, BlockingBehavior) {
 }
 
 TEST(BlockingQueueTest, ProducerConsumer) {
-    constexpr int num_items = 10'000;
+    constexpr int item_count = 10'000;
     constexpr std::size_t capacity = 100; // modest
     constexpr auto pop_timeout = 50ms;
     BlockingQueue<int> queue(capacity);
@@ -150,15 +161,15 @@ TEST(BlockingQueueTest, ProducerConsumer) {
 
     // Producer
     std::thread producer([&] {
-        for (int i = 1; i <= num_items; ++i) {
-            queue.push(i);
+        for (int index = 1; index <= item_count; ++index) {
+            queue.push(index);
             produced.fetch_add(1, std::memory_order_relaxed);
         }
     });
 
     // Two consumers
-    const auto consumer_fn = [&] {
-        while (consumed.load(std::memory_order_relaxed) < num_items) {
+    const auto consume = [&] {
+        while (consumed.load(std::memory_order_relaxed) < item_count) {
             auto item = queue.pop_ms_timeout(pop_timeout);
 
             if (item) {
@@ -168,17 +179,17 @@ TEST(BlockingQueueTest, ProducerConsumer) {
         }
     };
 
-    std::thread first_consumer(consumer_fn);
-    std::thread second_consumer(consumer_fn);
+    std::thread first_consumer(consume);
+    std::thread second_consumer(consume);
 
     producer.join();
     first_consumer.join();
     second_consumer.join();
 
-    EXPECT_EQ(produced.load(), num_items);
-    EXPECT_EQ(consumed.load(), num_items);
+    EXPECT_EQ(produced.load(), item_count);
+    EXPECT_EQ(consumed.load(), item_count);
     // Sum of 1..N = N*(N+1)/2
-    EXPECT_EQ(sum.load(), static_cast<std::int64_t>(num_items) * (num_items + 1) / 2);
+    EXPECT_EQ(sum.load(), static_cast<std::int64_t>(item_count) * (item_count + 1) / 2);
     EXPECT_TRUE(queue.empty());
 }
 
@@ -187,9 +198,9 @@ TEST(BlockingQueueTest, ProducerConsumer) {
 // NOLINTBEGIN(readability-function-cognitive-complexity)
 TEST(BlockingQueueTest, MultipleProducersConsumers) {
     constexpr int items_per_producer = 2000;
-    constexpr int num_producers = 4;
-    constexpr int num_consumers = 4;
-    constexpr int total = items_per_producer * num_producers;
+    constexpr int producer_count = 4;
+    constexpr int consumer_count = 4;
+    constexpr int total = items_per_producer * producer_count;
     constexpr std::size_t capacity = 50;
     constexpr auto pop_timeout = 100ms;
 
@@ -199,20 +210,20 @@ TEST(BlockingQueueTest, MultipleProducersConsumers) {
     std::atomic<std::int64_t> checksum{0};
 
     std::vector<std::thread> producers;
-    producers.reserve(num_producers);
+    producers.reserve(producer_count);
 
-    for (int producer_index = 0; producer_index < num_producers; ++producer_index) {
+    for (int producer_index = 0; producer_index < producer_count; ++producer_index) {
         producers.emplace_back([&, producer_index] {
-            for (int i = 0; i < items_per_producer; ++i) {
-                queue.push((producer_index * items_per_producer) + i + 1);
+            for (int index = 0; index < items_per_producer; ++index) {
+                queue.push((producer_index * items_per_producer) + index + 1);
             }
         });
     }
 
     std::vector<std::thread> consumers;
-    consumers.reserve(num_consumers);
+    consumers.reserve(consumer_count);
 
-    for (int consumer_index = 0; consumer_index < num_consumers; ++consumer_index) {
+    for (int consumer_index = 0; consumer_index < consumer_count; ++consumer_index) {
         consumers.emplace_back([&] {
             while (consumed.load(std::memory_order_relaxed) < total) {
                 if (auto item = queue.pop_ms_timeout(pop_timeout)) {

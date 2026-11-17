@@ -26,9 +26,9 @@ TEST(HeadersTest, ConstructorsAndBasicAccessors) {
     EXPECT_TRUE(headers.has("content-type")); // Case-insensitive check
     EXPECT_TRUE(headers.has("CONTENT-TYPE"));
 
-    auto val = headers.get("CONTENT-TYPE");
-    ASSERT_TRUE(val.has_value());
-    EXPECT_EQ(val.value(), "application/json");
+    auto value = headers.get("CONTENT-TYPE");
+    ASSERT_TRUE(value.has_value());
+    EXPECT_EQ(value.value(), "application/json");
 
     // Overloaded get with default value
     EXPECT_EQ(headers.get("X-Missing", "default-val"), "default-val");
@@ -69,16 +69,16 @@ TEST(HeadersTest, EqualityAndSerialization) {
 
 TEST(HeadersTest, StreamOperatorsAndParsing) {
     // Valid header block input stream
-    std::istringstream iss(
+    std::istringstream in_stream(
         "Host: example.com\r\n"
         "User-Agent: CppClient/1.0\r\n"
         "Accept: */*\r\n"
         "\r\n");
 
     Headers parsed_headers;
-    iss >> parsed_headers;
+    in_stream >> parsed_headers;
 
-    EXPECT_FALSE(iss.fail());
+    EXPECT_FALSE(in_stream.fail());
     EXPECT_EQ(parsed_headers.size(), 3U);
     EXPECT_EQ(parsed_headers.get("host"), "example.com");
     EXPECT_EQ(parsed_headers.get("user-agent"), "CppClient/1.0");
@@ -87,25 +87,25 @@ TEST(HeadersTest, StreamOperatorsAndParsing) {
 
 TEST(HeadersTest, ContinuationLinesAndEdgeCases) {
     // Test header folding / continuation lines (OBS-fold)
-    std::istringstream folding_iss(
+    std::istringstream folding_stream(
         "Subject: This is a long\r\n"
         " continuation line header\r\n"
         "\r\n");
 
     Headers folded_headers;
-    folding_iss >> folded_headers;
-    EXPECT_FALSE(folding_iss.fail());
+    folding_stream >> folded_headers;
+    EXPECT_FALSE(folding_stream.fail());
     EXPECT_EQ(folded_headers.get("subject"), "This is a long continuation line header");
 
     // Malformed header exception: Missing colon
-    std::istringstream missing_colon_iss("MalformedHeaderWithoutColon\r\n\r\n");
+    std::istringstream missing_colon_stream("MalformedHeaderWithoutColon\r\n\r\n");
     Headers missing_colon;
-    EXPECT_THROW(missing_colon_iss >> missing_colon, std::runtime_error);
+    EXPECT_THROW(missing_colon_stream >> missing_colon, std::runtime_error);
 
     // Malformed header exception: Continuation line without preceding header
-    std::istringstream orphan_iss(" Leading continuation line\r\n\r\n");
+    std::istringstream orphan_stream(" Leading continuation line\r\n\r\n");
     Headers orphan;
-    EXPECT_THROW(orphan_iss >> orphan, std::runtime_error);
+    EXPECT_THROW(orphan_stream >> orphan, std::runtime_error);
 }
 
 TEST(HeadersTest, HelperUtilities) {

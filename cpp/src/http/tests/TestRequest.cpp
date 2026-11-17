@@ -9,116 +9,116 @@ using http::Request;
 
 TEST(RequestTest, ConstructorsAndAccessors) {
     // Default constructor state
-    Request req;
-    EXPECT_TRUE(req.method().empty());
-    EXPECT_TRUE(req.uri().empty());
-    EXPECT_EQ(req.version(), "HTTP/1.1"); // Default version
-    EXPECT_TRUE(req.body().empty());
-    EXPECT_TRUE(req.headers().empty());
+    Request request;
+    EXPECT_TRUE(request.method().empty());
+    EXPECT_TRUE(request.uri().empty());
+    EXPECT_EQ(request.version(), "HTTP/1.1"); // Default version
+    EXPECT_TRUE(request.body().empty());
+    EXPECT_TRUE(request.headers().empty());
 
     // Setters and getters
-    req.set_method("POST");
-    req.set_uri("/api/v1/submit");
-    req.set_version("HTTP/1.0");
-    req.set_body("Hello, Server!");
+    request.set_method("POST");
+    request.set_uri("/api/v1/submit");
+    request.set_version("HTTP/1.0");
+    request.set_body("Hello, Server!");
 
-    EXPECT_EQ(req.method(), "POST");
-    EXPECT_EQ(req.uri(), "/api/v1/submit");
-    EXPECT_EQ(req.version(), "HTTP/1.0");
-    EXPECT_EQ(req.body(), "Hello, Server!");
+    EXPECT_EQ(request.method(), "POST");
+    EXPECT_EQ(request.uri(), "/api/v1/submit");
+    EXPECT_EQ(request.version(), "HTTP/1.0");
+    EXPECT_EQ(request.body(), "Hello, Server!");
 
     // Modifying headers through composition
-    req.headers().set("Content-Type", "text/plain");
-    EXPECT_EQ(req.headers().get("content-type"), "text/plain");
+    request.headers().set("Content-Type", "text/plain");
+    EXPECT_EQ(request.headers().get("content-type"), "text/plain");
 }
 
 TEST(RequestTest, ParseRequestLine) {
-    Request req;
+    Request request;
 
     // Valid request line
-    const bool success = req.parse_request_line("GET /index.html HTTP/1.1\r\n");
+    const bool success = request.parse_request_line("GET /index.html HTTP/1.1\r\n");
     EXPECT_TRUE(success);
-    EXPECT_EQ(req.method(), "GET");
-    EXPECT_EQ(req.uri(), "/index.html");
-    EXPECT_EQ(req.version(), "HTTP/1.1");
+    EXPECT_EQ(request.method(), "GET");
+    EXPECT_EQ(request.uri(), "/index.html");
+    EXPECT_EQ(request.version(), "HTTP/1.1");
 
     // Valid request line with extra spacing
-    const bool success_spaced = req.parse_request_line("   POST   /submit   HTTP/1.1   ");
+    const bool success_spaced = request.parse_request_line("   POST   /submit   HTTP/1.1   ");
     EXPECT_TRUE(success_spaced);
-    EXPECT_EQ(req.method(), "POST");
-    EXPECT_EQ(req.uri(), "/submit");
-    EXPECT_EQ(req.version(), "HTTP/1.1");
+    EXPECT_EQ(request.method(), "POST");
+    EXPECT_EQ(request.uri(), "/submit");
+    EXPECT_EQ(request.version(), "HTTP/1.1");
 
     // Malformed: missing version
-    EXPECT_FALSE(req.parse_request_line("GET /index.html"));
+    EXPECT_FALSE(request.parse_request_line("GET /index.html"));
 
     // Malformed: missing URI and version
-    EXPECT_FALSE(req.parse_request_line("GET"));
+    EXPECT_FALSE(request.parse_request_line("GET"));
 
     // Malformed: empty line
-    EXPECT_FALSE(req.parse_request_line(""));
+    EXPECT_FALSE(request.parse_request_line(""));
 }
 
 TEST(RequestTest, StreamParsingAndBody) {
-    std::istringstream iss(
+    std::istringstream in_stream(
         "POST /api/data HTTP/1.1\r\n"
         "Host: api.example.com\r\n"
         "Content-Length: 15\r\n"
         "\r\n"
         "{\"key\":\"value\"}");
 
-    Request req;
-    iss >> req;
+    Request request;
+    in_stream >> request;
 
-    EXPECT_FALSE(iss.fail());
-    EXPECT_EQ(req.method(), "POST");
-    EXPECT_EQ(req.uri(), "/api/data");
-    EXPECT_EQ(req.version(), "HTTP/1.1");
-    EXPECT_EQ(req.headers().get("host"), "api.example.com");
-    EXPECT_EQ(req.headers().get("content-length"), "15");
-    EXPECT_EQ(req.body(), "{\"key\":\"value\"}");
+    EXPECT_FALSE(in_stream.fail());
+    EXPECT_EQ(request.method(), "POST");
+    EXPECT_EQ(request.uri(), "/api/data");
+    EXPECT_EQ(request.version(), "HTTP/1.1");
+    EXPECT_EQ(request.headers().get("host"), "api.example.com");
+    EXPECT_EQ(request.headers().get("content-length"), "15");
+    EXPECT_EQ(request.body(), "{\"key\":\"value\"}");
 }
 
 TEST(RequestTest, ContentLengthBeyondStream) {
     // A length far past what arrives fails the stream, without first taking
     // that much memory.
-    std::istringstream iss(
+    std::istringstream in_stream(
         "POST /upload HTTP/1.1\r\n"
         "Content-Length: 99999999999\r\n"
         "\r\n"
         "partial");
 
-    Request req;
-    iss >> req;
+    Request request;
+    in_stream >> request;
 
-    EXPECT_TRUE(iss.fail());
-    EXPECT_EQ(req.body(), "partial");
+    EXPECT_TRUE(in_stream.fail());
+    EXPECT_EQ(request.body(), "partial");
 }
 
 TEST(RequestTest, BodyLongerThanOnePiece) {
     constexpr std::size_t body_bytes = 100000;
     const std::string body(body_bytes, 'x');
-    std::istringstream iss(
+    std::istringstream in_stream(
         std::string("POST /upload HTTP/1.1\r\n")
         + "Content-Length: " + std::to_string(body_bytes) + "\r\n"
         + "\r\n"
         + body);
 
-    Request req;
-    iss >> req;
+    Request request;
+    in_stream >> request;
 
-    EXPECT_FALSE(iss.fail());
-    EXPECT_EQ(req.body(), body);
+    EXPECT_FALSE(in_stream.fail());
+    EXPECT_EQ(request.body(), body);
 }
 
 TEST(RequestTest, Serialization) {
-    Request req;
-    req.set_method("GET");
-    req.set_uri("/test");
-    req.set_version("HTTP/1.1");
-    req.headers().set("Host", "localhost");
+    Request request;
+    request.set_method("GET");
+    request.set_uri("/test");
+    request.set_version("HTTP/1.1");
+    request.headers().set("Host", "localhost");
 
-    const std::string serialized = req.to_string();
+    const std::string serialized = request.to_string();
 
     // Request line + headers + blank line + body (empty)
     const std::string expected =

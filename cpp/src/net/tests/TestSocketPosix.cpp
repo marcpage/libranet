@@ -52,15 +52,15 @@ std::pair<ISocket::Ptr, Address> bind_ephemeral() {
 } // namespace
 
 TEST(SocketPosixTest, BindAndLocalAddress) {
-    auto [server, addr] = bind_ephemeral();
+    auto [server, address] = bind_ephemeral();
     EXPECT_TRUE(server->is_open());
-    EXPECT_GT(addr.port(), 0);
+    EXPECT_GT(address.port(), 0);
 
     // A second bind to an address a server is listening on must fail. The
     // server listens first: with SO_REUSEADDR, Linux lets two sockets bind
     // the same address until one of them listens, while macOS refuses either way.
     server->listen(1);
-    EXPECT_THROW((void)SocketPosix::bind(addr), std::system_error);
+    EXPECT_THROW((void)SocketPosix::bind(address), std::system_error);
 
     server->close();
     EXPECT_FALSE(server->is_open());
@@ -69,13 +69,13 @@ TEST(SocketPosixTest, BindAndLocalAddress) {
 TEST(SocketPosixTest, ListenAcceptConnect) {
     auto bound = bind_ephemeral();
     ISocket::Ptr server = std::move(bound.first);
-    Address addr = bound.second;
+    Address address = bound.second;
 
     server->listen(1);
 
     ISocket::Ptr client;
     std::thread connector([&] {
-        client = SocketPosix::connect(addr);
+        client = SocketPosix::connect(address);
     });
 
     auto accepted = server->accept();
@@ -99,13 +99,13 @@ TEST(SocketPosixTest, ListenAcceptConnect) {
 TEST(SocketPosixTest, SendAndReceive) {
     auto bound = bind_ephemeral();
     ISocket::Ptr server = std::move(bound.first);
-    Address addr = bound.second;
+    Address address = bound.second;
 
     server->listen(1);
 
     ISocket::Ptr client;
     std::thread connector([&] {
-        client = SocketPosix::connect(addr);
+        client = SocketPosix::connect(address);
     });
 
     auto peer = server->accept();
@@ -122,8 +122,8 @@ TEST(SocketPosixTest, SendAndReceive) {
     EXPECT_TRUE(success);
 
     // Convert bytes back to string for assertion
-    const std::string received_msg = as_text(buffer);
-    EXPECT_EQ(received_msg, message);
+    const std::string received_message = as_text(buffer);
+    EXPECT_EQ(received_message, message);
 
     client->close();
     peer->close();
@@ -133,13 +133,13 @@ TEST(SocketPosixTest, SendAndReceive) {
 TEST(SocketPosixTest, HelpersSendAllAndReadExact) {
     auto bound = bind_ephemeral();
     ISocket::Ptr server = std::move(bound.first);
-    Address addr = bound.second;
+    Address address = bound.second;
 
     server->listen(1);
 
     ISocket::Ptr client;
     std::thread connector([&] {
-        client = SocketPosix::connect(addr);
+        client = SocketPosix::connect(address);
     });
 
     auto peer = server->accept();
@@ -162,13 +162,13 @@ TEST(SocketPosixTest, HelpersSendAllAndReadExact) {
 TEST(SocketPosixTest, HelperReadLine) {
     auto bound = bind_ephemeral();
     ISocket::Ptr server = std::move(bound.first);
-    Address addr = bound.second;
+    Address address = bound.second;
 
     server->listen(1);
 
     ISocket::Ptr client;
     std::thread connector([&] {
-        client = SocketPosix::connect(addr);
+        client = SocketPosix::connect(address);
     });
 
     auto peer = server->accept();
@@ -189,7 +189,7 @@ TEST(SocketPosixTest, HelperReadLine) {
 }
 
 TEST(SocketPosixTest, CloseIsIdempotent) {
-    auto [server, addr] = bind_ephemeral();
+    auto [server, address] = bind_ephemeral();
     EXPECT_TRUE(server->is_open());
 
     server->close();
@@ -200,14 +200,14 @@ TEST(SocketPosixTest, CloseIsIdempotent) {
 }
 
 TEST(SocketPosixTest, OperationsOnClosedSocket) {
-    auto [server, addr] = bind_ephemeral();
+    auto [server, address] = bind_ephemeral();
     server->close();
 
     EXPECT_THROW(server->listen(1), std::logic_error);
     EXPECT_THROW((void)server->accept(), std::logic_error);
     EXPECT_THROW(server->send("test"), std::logic_error);
     constexpr std::size_t buffer_bytes = 10;
-    std::vector<std::byte> buf(buffer_bytes);
-    EXPECT_THROW((void)server->receive(buf), std::logic_error);
+    std::vector<std::byte> buffer(buffer_bytes);
+    EXPECT_THROW((void)server->receive(buffer), std::logic_error);
     EXPECT_THROW((void)server->local_address(), std::logic_error);
 }

@@ -82,17 +82,17 @@ inline std::optional<std::string_view> Query::get_first(std::string_view key) co
 inline void Query::set(std::string_view key, std::string_view value) {
     bool found = false;
 
-    for (auto it = m_parameters.begin(); it != m_parameters.end();) {
-        if (it->first == key) {
+    for (auto entry = m_parameters.begin(); entry != m_parameters.end();) {
+        if (entry->first == key) {
             if (!found) {
-                it->second = std::string(value);
+                entry->second = std::string(value);
                 found = true;
-                ++it;
+                ++entry;
             } else { // remove duplicates
-                it = m_parameters.erase(it);
+                entry = m_parameters.erase(entry);
             }
         } else {
-            ++it;
+            ++entry;
         }
     }
 
@@ -106,11 +106,11 @@ inline void Query::add(std::string_view key, std::string_view value) {
 }
 
 inline void Query::remove(std::string_view key) {
-    for (auto it = m_parameters.begin(); it != m_parameters.end();) {
-        if (it->first == key) {
-            it = m_parameters.erase(it);
+    for (auto entry = m_parameters.begin(); entry != m_parameters.end();) {
+        if (entry->first == key) {
+            entry = m_parameters.erase(entry);
         } else {
-            ++it;
+            ++entry;
         }
     }
 }
@@ -134,28 +134,28 @@ inline Query Query::parse(std::string_view query_string) {
     std::string_view query = query_string;
 
     while (!query.empty()) {
-        const auto amp_pos = query.find('&');
-        const auto pair = (std::string_view::npos == amp_pos)
+        const auto ampersand_position = query.find('&');
+        const auto pair = (std::string_view::npos == ampersand_position)
                               ? query
-                              : query.substr(0, amp_pos);
+                              : query.substr(0, ampersand_position);
 
         if (!pair.empty()) {
-            const auto eq_pos = pair.find('=');
+            const auto equals_position = pair.find('=');
 
-            if (std::string_view::npos == eq_pos) {
+            if (std::string_view::npos == equals_position) {
                 result.m_parameters.emplace_back(std::string(pair), std::string());
             } else {
                 result.m_parameters.emplace_back(
-                    std::string(pair.substr(0, eq_pos)),
-                    std::string(pair.substr(eq_pos + 1)));
+                    std::string(pair.substr(0, equals_position)),
+                    std::string(pair.substr(equals_position + 1)));
             }
         }
 
-        if (std::string_view::npos == amp_pos) {
+        if (std::string_view::npos == ampersand_position) {
             break;
         }
 
-        query.remove_prefix(amp_pos + 1);
+        query.remove_prefix(ampersand_position + 1);
     }
 
     return result;

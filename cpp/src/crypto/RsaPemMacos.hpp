@@ -39,12 +39,12 @@ public:
     RsaPemMacos& operator=(RsaPemMacos&&) = delete;
 
 private:
-    static std::pair<bool, bool> validate_and_classify_pem_label(std::string_view label);
-    static std::vector<std::byte> pkcs1_from(std::string_view label,
-                                             const std::vector<std::byte>& der_bytes);
-    static CFObject<CFDataRef> create_cf_data(const std::vector<std::byte>& der_bytes);
-    static CFObject<SecKeyRef> create_sec_key_from_data(CFDataRef data_ref,
-                                                        bool is_private);
+    static std::pair<bool, bool> _validate_and_classify_pem_label(std::string_view label);
+    static std::vector<std::byte> _pkcs1_from(std::string_view label,
+                                              const std::vector<std::byte>& der_bytes);
+    static CFObject<CFDataRef> _create_cf_data(const std::vector<std::byte>& der_bytes);
+    static CFObject<SecKeyRef> _create_sec_key_from_data(CFDataRef data,
+                                                         bool is_private);
 };
 
 inline std::string RsaPemMacos::public_pem(SecKeyRef public_key) {
@@ -84,9 +84,9 @@ inline std::string RsaPemMacos::private_pem(SecKeyRef private_key) {
 
 inline RsaPemMacos::KeyPair RsaPemMacos::from_pem(std::string_view pem) {
     auto [label, der_bytes] = Pem::unwrap(pem);
-    auto [is_private, is_public] = validate_and_classify_pem_label(label);
-    const auto data_ref = create_cf_data(pkcs1_from(label, der_bytes));
-    CFObject<SecKeyRef> created_key = create_sec_key_from_data(data_ref, is_private);
+    auto [is_private, is_public] = _validate_and_classify_pem_label(label);
+    const auto data = _create_cf_data(_pkcs1_from(label, der_bytes));
+    CFObject<SecKeyRef> created_key = _create_sec_key_from_data(data, is_private);
     CFObject<SecKeyRef> private_key;
     CFObject<SecKeyRef> public_key;
 
@@ -101,7 +101,7 @@ inline RsaPemMacos::KeyPair RsaPemMacos::from_pem(std::string_view pem) {
     return {std::move(private_key), std::move(public_key)};
 }
 
-inline std::pair<bool, bool> RsaPemMacos::validate_and_classify_pem_label(
+inline std::pair<bool, bool> RsaPemMacos::_validate_and_classify_pem_label(
     std::string_view label) {
     const bool is_private = ("PRIVATE KEY" == label || "RSA PRIVATE KEY" == label);
     const bool is_public = ("PUBLIC KEY" == label || "RSA PUBLIC KEY" == label);
@@ -117,8 +117,8 @@ inline std::pair<bool, bool> RsaPemMacos::validate_and_classify_pem_label(
 // Apple reads an RSA key only in PKCS #1, which "RSA PUBLIC KEY" and
 // "RSA PRIVATE KEY" name, so it is first taken out of the forms that
 // "PUBLIC KEY" and "PRIVATE KEY" name.
-inline std::vector<std::byte> RsaPemMacos::pkcs1_from(std::string_view label,
-                                                      const std::vector<std::byte>& der_bytes) {
+inline std::vector<std::byte> RsaPemMacos::_pkcs1_from(std::string_view label,
+                                                       const std::vector<std::byte>& der_bytes) {
     if ("PUBLIC KEY" == label) {
         return RsaDer::pkcs1_from_spki(der_bytes);
     }
@@ -130,19 +130,19 @@ inline std::vector<std::byte> RsaPemMacos::pkcs1_from(std::string_view label,
     return der_bytes;
 }
 
-inline CFObject<CFDataRef> RsaPemMacos::create_cf_data(
+inline CFObject<CFDataRef> RsaPemMacos::_create_cf_data(
     const std::vector<std::byte>& der_bytes) {
-    auto data_ref = CFBytes::of(der_bytes);
+    auto data = CFBytes::of(der_bytes);
 
-    if (!data_ref) {
+    if (!data) {
         throw std::runtime_error("Failed to create CFData from PEM DER bytes");
     }
 
-    return data_ref;
+    return data;
 }
 
-inline CFObject<SecKeyRef> RsaPemMacos::create_sec_key_from_data(CFDataRef data_ref,
-                                                                 bool is_private) {
+inline CFObject<SecKeyRef> RsaPemMacos::_create_sec_key_from_data(CFDataRef data,
+                                                                  bool is_private) {
     // How much of the error's description is shown, in bytes as UTF-8, with
     // the null that ends it.
     constexpr std::size_t most_description_bytes = 256;
@@ -160,31 +160,31 @@ inline CFObject<SecKeyRef> RsaPemMacos::create_sec_key_from_data(CFDataRef data_
                                                CFObject<CFDictionaryRef>::Policy::TakeOwnership);
 
     CFObject<CFErrorRef> error;
-    CFObject<SecKeyRef> created_key(SecKeyCreateWithData(data_ref,
+    CFObject<SecKeyRef> created_key(SecKeyCreateWithData(data,
                                                          attributes, error.put()),
                                     CFObject<SecKeyRef>::Policy::TakeOwnership);
 
     if (!created_key) {
-        std::string error_msg = "Failed to create SecKey from PEM data";
+        std::string error_message = "Failed to create SecKey from PEM data";
 
         if (error) {
-            const CFObject<CFStringRef> desc(CFErrorCopyDescription(error),
-                                             CFObject<CFStringRef>::Policy::TakeOwnership);
+            const CFObject<CFStringRef> description(CFErrorCopyDescription(error),
+                                                    CFObject<CFStringRef>::Policy::TakeOwnership);
 
-            if (desc) {
-                std::array<char, most_description_bytes> description{};
+            if (description) {
+                std::array<char, most_description_bytes> text{};
 
-                if (CFStringGetCString(desc, description.data(),
-                                       static_cast<CFIndex>(description.size()),
+                if (CFStringGetCString(description, text.data(),
+                                       static_cast<CFIndex>(text.size()),
                                        kCFStringEncodingUTF8)
                     != 0U) {
-                    error_msg += ": ";
-                    error_msg += description.data();
+                    error_message += ": ";
+                    error_message += text.data();
                 }
             }
         }
 
-        throw std::runtime_error(error_msg);
+        throw std::runtime_error(error_message);
     }
 
     return created_key;
