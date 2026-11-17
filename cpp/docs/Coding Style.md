@@ -609,6 +609,50 @@ Each resource is owned by an object that releases it in its destructor.
 
 ThreadSanitizer checks what the tests run of this (§2).
 
+### 6.8 Short Functions
+
+A function is written so that someone who knows what the code is for, but
+not C++, can read it, see what it does, and check that it is right. It reads
+as the steps it takes, each named in the words of what the code is about,
+and the detail of each step is in a function of its own.
+
+```cpp
+// Reads one request from the connection and answers it. Whether the
+// connection is kept open for another comes back.
+inline bool Connection::serve_one() {
+    const auto request = read_request();
+
+    if (!request) {
+        return false;
+    }
+
+    const auto response = m_handler.answer(*request);
+
+    send(response);
+    return keeps_alive(*request, response);
+}
+```
+
+- **A function or method is generally under 30 lines of code, and never over
+  50.** Its lines of code are the lines of its body, between its braces,
+  that hold code: blank lines, and lines that hold only a comment, are not
+  counted. Tests are held to this too.
+- **A longer one is split into the logical parts it is made of.** A part
+  that is one step, with a name of its own, is pulled out into a method or a
+  function named for what it does, and the longer one calls it. A part that
+  needs none of the class's members is a function in the anonymous
+  namespace of the class's `.cpp` file, where it has one, so that the header
+  shows no more than it must; otherwise it is a private method (§6.1).
+- **A part is not pulled out only to make a function shorter.** Each has a
+  name that says what it does, and its caller reads as well without its
+  detail as with it.
+
+Nothing checks the length. `clang-tidy`'s `readability-function-size`
+counts blank lines and comments with the code, so it is not set to.
+`readability-function-cognitive-complexity` holds how much a function
+branches and loops, and how deeply, which a short function can still
+overdo.
+
 ## 7. Constants
 
 ```cpp
