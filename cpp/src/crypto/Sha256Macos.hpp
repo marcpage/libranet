@@ -4,8 +4,11 @@
 
 #include "IHasher.hpp"
 #include <CommonCrypto/CommonDigest.h>
-#include <cstring>
-#include <stdexcept>
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <memory>
+#include <string_view>
 
 namespace crypto {
 
@@ -20,26 +23,28 @@ public:
 
     void update(std::string_view data) override;
     void update(const Data& data) override;
-    [[nodiscard]] Data digest(const Data& data = Data()) override;
+    [[nodiscard]] Data digest(const Data& data) override;
     [[nodiscard]] std::size_t digest_size() const noexcept override;
     [[nodiscard]] std::size_t block_size() const noexcept override;
     [[nodiscard]] Ptr clone() const override;
     void reset() override;
 
 private:
-    CC_SHA256_CTX ctx_;
+    CC_SHA256_CTX m_context{};
+
+    void start();
 };
 
 inline Sha256Macos::Sha256Macos() {
-    reset();
+    start();
 }
 
 inline void Sha256Macos::update(std::string_view data) {
-    CC_SHA256_Update(&ctx_, data.data(), static_cast<CC_LONG>(data.size()));
+    CC_SHA256_Update(&m_context, data.data(), static_cast<CC_LONG>(data.size()));
 }
 
 inline void Sha256Macos::update(const Data& data) {
-    CC_SHA256_Update(&ctx_, data.data(), static_cast<CC_LONG>(data.size()));
+    CC_SHA256_Update(&m_context, data.data(), static_cast<CC_LONG>(data.size()));
 }
 
 inline IHasher::Data Sha256Macos::digest(const Data& data) {
@@ -47,10 +52,13 @@ inline IHasher::Data Sha256Macos::digest(const Data& data) {
         update(data);
     }
 
-    Data result(CC_SHA256_DIGEST_LENGTH);
+    std::array<unsigned char, CC_SHA256_DIGEST_LENGTH> bytes{};
+    Data result(bytes.size());
 
-    CC_SHA256_Final(reinterpret_cast<unsigned char*>(result.data()), &ctx_);
-    reset();
+    CC_SHA256_Final(bytes.data(), &m_context);
+    start();
+    std::transform(bytes.begin(), bytes.end(), result.begin(),
+                   [](unsigned char byte) { return static_cast<std::byte>(byte); });
     return result;
 }
 
@@ -65,12 +73,16 @@ inline std::size_t Sha256Macos::block_size() const noexcept {
 inline IHasher::Ptr Sha256Macos::clone() const {
     auto cloned = std::make_unique<Sha256Macos>();
 
-    cloned->ctx_ = this->ctx_;
+    cloned->m_context = m_context;
     return cloned;
 }
 
 inline void Sha256Macos::reset() {
-    CC_SHA256_Init(&ctx_);
+    start();
+}
+
+inline void Sha256Macos::start() {
+    CC_SHA256_Init(&m_context);
 }
 
 } // namespace crypto

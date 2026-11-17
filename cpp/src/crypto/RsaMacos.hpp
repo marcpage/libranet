@@ -2,6 +2,7 @@
 
 #if __APPLE__
 
+#include <array>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -50,23 +51,23 @@ private:
 };
 
 inline IMultiKey::Ptr RsaMacos::for_bit_size(std::size_t key_bits) {
-    CFObject<CFNumberRef> key_size_ref(
+    const CFObject<CFNumberRef> key_size_ref(
         CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt64Type, &key_bits),
         CFObject<CFNumberRef>::Policy::TakeOwnership);
-    const void* keys[] = {kSecAttrKeyType, kSecAttrKeySizeInBits};
-    const void* values[] = {kSecAttrKeyTypeRSA, key_size_ref};
-    CFObject<CFDictionaryRef> parameters(
+    std::array<const void*, 2> keys{kSecAttrKeyType, kSecAttrKeySizeInBits};
+    std::array<const void*, 2> values{kSecAttrKeyTypeRSA, key_size_ref};
+    const CFObject<CFDictionaryRef> parameters(
         CFDictionaryCreate(
             kCFAllocatorDefault,
-            keys,
-            values,
-            2,
+            keys.data(),
+            values.data(),
+            static_cast<CFIndex>(keys.size()),
             &kCFTypeDictionaryKeyCallBacks,
             &kCFTypeDictionaryValueCallBacks),
         CFObject<CFDictionaryRef>::Policy::TakeOwnership);
 
     CFObject<CFErrorRef> error;
-    CFObject<SecKeyRef> private_key(
+    const CFObject<SecKeyRef> private_key(
         SecKeyCreateRandomKey(parameters, error.put()),
         CFObject<SecKeyRef>::Policy::TakeOwnership);
 
@@ -75,7 +76,7 @@ inline IMultiKey::Ptr RsaMacos::for_bit_size(std::size_t key_bits) {
     }
 
     // Automatically derive the public counterpart from the generated private key
-    CFObject<SecKeyRef> public_key(
+    const CFObject<SecKeyRef> public_key(
         SecKeyCopyPublicKey(private_key),
         CFObject<SecKeyRef>::Policy::TakeOwnership);
 
@@ -111,6 +112,7 @@ inline std::string RsaMacos::id() const {
     return "rsa";
 }
 
+// cppcheck-suppress duplInheritedMember
 inline IMultiKey::Ptr RsaMacos::from_pem(std::string_view pem) {
     auto [private_key, public_key] = RsaPemMacos::from_pem(pem);
 

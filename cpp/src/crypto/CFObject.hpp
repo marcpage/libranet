@@ -2,20 +2,27 @@
 
 #if __APPLE__
 
-#include <CoreFoundation/CoreFoundation.h>
+#include <cstdint>
 #include <utility>
+
+#include <CoreFoundation/CoreFoundation.h>
 
 namespace crypto {
 
 template<typename CFType>
 class CFObject {
 public:
-    enum class Policy { Retain,
-                        TakeOwnership };
+    enum class Policy : std::uint8_t {
+        Retain,
+        TakeOwnership,
+    };
 
     constexpr CFObject() noexcept;
     explicit CFObject(CFType object, Policy policy) noexcept;
 
+    // A CFObject passes as the object it holds to Core Foundation's calls,
+    // which take the object itself.
+    // NOLINTNEXTLINE(*-explicit-constructor)
     operator CFType() const noexcept;
     [[nodiscard]] CFType get() const noexcept;
     [[nodiscard]] CFType* put() noexcept;
@@ -34,7 +41,7 @@ private:
 };
 
 template<typename CFType>
-inline constexpr CFObject<CFType>::CFObject() noexcept : m_object(nullptr) {}
+constexpr CFObject<CFType>::CFObject() noexcept : m_object(nullptr) {}
 
 template<typename CFType>
 inline CFObject<CFType>::CFObject(CFType object, Policy policy) noexcept

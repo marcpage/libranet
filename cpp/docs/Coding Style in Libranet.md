@@ -33,16 +33,23 @@ CI runs two C++ jobs on every pull request, besides CodeQL:
   coverage against the floor in [`gcovr.cfg`](../gcovr.cfg). On macOS it
   also runs each test program under `leaks`. On Ubuntu it builds the
   fuzzers with Clang and runs them all at once for two minutes.
-- **`cpp-lint`**, on Ubuntu, runs `clang-format`, then configures with
-  Clang, with the fuzzers, and runs `clang-tidy` and `cppcheck` on what
-  CMake writes. It runs LLVM 23.1 and Cppcheck 2.22.0, whose findings
-  change from one version to the next.
+- **`cpp-lint`**, on Ubuntu and on macOS, configures, with Clang and the
+  fuzzers on Ubuntu, and with Apple's Clang and no fuzzers on macOS, and
+  runs `clang-tidy` and `cppcheck` on what CMake writes. On Ubuntu it runs
+  `clang-format` as well. It runs LLVM 23.1 and Cppcheck 2.22.0, whose
+  findings change from one version to the next.
 
-The lint job sees only what Linux builds. The code under `#if __APPLE__`,
-which is the Apple classes in `crypto/` (`*Macos.hpp` and `CFObject.hpp`)
-and the macOS branches of `net/SocketPosix.cpp`, is checked only by running
-`clang-tidy` on a Mac, and `cppcheck` with `-D__APPLE__` in place of
-`-D__linux__`. Several of the departures in §4 are in that code.
+Each lint run sees only what its platform builds: the code under
+`#if __APPLE__`, which is the Apple classes in `crypto/` (`*Macos.hpp`,
+`CFObject.hpp`, and `CFBytes.hpp`) and the macOS branches of
+`net/SocketPosix.cpp`, only on macOS, and the Linux branches only on
+Ubuntu. `cppcheck` is given `-D__linux__` on Ubuntu and `-D__APPLE__` on
+macOS. It reads less of the code both platforms build on macOS, without the
+fuzzers and with Apple's implementations chosen in place of OpenSSL's, so
+there the suppressions in `types/Integer.hpp`, `types/Json.hpp`, and
+`crypto/RsaOpenSsl.hpp` match nothing. The macOS run passes
+`--suppress=unmatchedSuppression`, and only the Ubuntu run fails on a
+suppression that matches nothing.
 
 [`.clang-tidy`](../.clang-tidy) turns off, as unable to apply, the checks
 for FPGA kernels (`altera-*`) and LLVM's C library (`llvmlibc-*`); two that
@@ -82,12 +89,15 @@ line it is for (§2.1).
   `CFObject<CFType>`, in `crypto/CFObject.hpp`, holds Core Foundation's,
   and its constructor takes `Policy::Retain` or `Policy::TakeOwnership`.
   `AddrInfoPtr`, in `net/SocketPosix.cpp`, holds what `getaddrinfo()`
-  returns. `AesOpenSsl` wipes its key with `OPENSSL_cleanse()`.
+  returns, and `AesMacos::Cryptor` a CommonCrypto cryptor. `AesOpenSsl`
+  wipes its key with `OPENSSL_cleanse()`.
   `AsyncChannel`'s destructor stops and joins its worker, and ends the
   program if stopping throws.
 - **Casts (§10.4).** `OpenSslBytes::of()` is where bytes held as
   `std::byte` or `char` become the `unsigned char*` OpenSSL takes, and
   `OpenSslDer` is where OpenSSL's `d2i_*` and `i2d_*` functions are called.
+  `CFBytes`, in `crypto/CFBytes.hpp`, is where they become Core
+  Foundation's `UInt8` and back.
   `query_socket_address()`, in `net/SocketPosix.cpp`, casts a
   `sockaddr_storage` for the socket calls.
 - **Errors (§9.1).** `OpenSslError`, a `std::runtime_error`, adds the last
@@ -120,14 +130,15 @@ line it is for (§2.1).
 
 ## 4. Where the Code Departs
 
-These are in the code as of d574ee1 (#762), on 2026-11-16. Paths are
+These are in the code as of 2026-11-17, after the clean-up for linting on
+macOS. Paths are
 relative to `src/`. The checks `.clang-tidy` lists as not yet met are not
 repeated here.
 
 | Where | Departure |
 | --- | --- |
 | `types/BlockingQueue.hpp` `m_notEmpty`, `m_notFull`; `msg/Channel.cpp` `channelList` | A name in camelCase (§4) |
-| `crypto/Argon2idOpenSsl.hpp` `memory_cost_kib_`, `iterations_`, `parallelism_`, `salt_length_`, `hash_length_`; `crypto/Sha256Macos.hpp` `ctx_` | A data member with a trailing underscore, not `m_` (§4) |
+| `crypto/Argon2idOpenSsl.hpp` `memory_cost_kib_`, `iterations_`, `parallelism_`, `salt_length_`, `hash_length_` | A data member with a trailing underscore, not `m_` (§4) |
 | `msg/AsyncChannelOf.hpp` `_handle()` | A private method with a leading underscore (§4) |
 | `types/BlockingQueue.hpp` `Unbounded`; `msg/Channel.hpp` `WaitForever`; `http/Headers.hpp` `AverageHeaderLineSize`, `HttpHeaderNewline`; `http/Request.hpp` `RequestFormattingOverheadBytes`; `http/Response.hpp` `ResponseFormattingOverheadBytes`; `http/Url.hpp` `MaxPortNumber`; `net/SocketPosix.cpp` `SEND_FLAGS` | A constant in PascalCase or upper case (§4); `HttpHeaderNewline` is a `const auto*`, not `constexpr` (§7) |
 | `types/Integer.hpp` `word_t`, `double_word_t` | A type alias in snake_case (§4) |
@@ -135,26 +146,22 @@ repeated here.
 | `crypto/Base64.hpp` `get_character_value()`; `http/Query.hpp` `get_first()`, `get_all()`; `http/Url.hpp` `get_query()`; `net/Address.hpp` `get_local_addresses()`; `net/AddressPosix.cpp` `get_sockaddr_len()`, `get_numeric_ip()`, `get_reverse_dns_name()`; `types/Integer.hpp` `get_normalization_shift()` | A function named with `get_` (§4) |
 | `crypto/Argon2idOpenSsl.hpp` `PhcString::str()` | A text form not named `to_string()` (§4) |
 | `http/ResponseCode.hpp` `Status::OK`, `URITooLong`, `HTTPVersionNotSupported` | An acronym in capitals (§4) |
-| `http/Headers.hpp` `pos`, `colon_pos`, `comp`, `it1`, `it2`, `lhs`, `rhs`; `http/Url.hpp` `str`, `colon_pos`, `lhs`, `rhs`; `http/ResponseCode.hpp` `lhs`, `rhs`; `http/Query.hpp` `it`; `net/Address.hpp` `pos`, `port_str`; `net/AddressPosix.cpp` `res`, `ip_buf`, `host_buf`, `ifaddr`, `len`, `port_str`; `types/Json.hpp` `obj`, `arr`, `elem`, `pair_arr`, `str`, `esc`, `len`; `types/Integer.hpp` `str`, `temp`; `crypto/CFObject.hpp` `temp`; `crypto/RsaPemMacos.hpp` `buf`; tests: `res` in `http/tests/TestResponse.cpp`, `val` in `TestHeaders.cpp`, `TestQuery.cpp`, and `types/tests/TestInteger.cpp`, `arr` and `num` in `TestJson.cpp`, `addr` and `buf` in `net/tests/TestSocketPosix.cpp`, and the loop index `i` in `types/tests/TestBlockingQueue.cpp` (3) and `TestInteger.cpp` (1) | An abbreviated name (§4) |
+| `http/Headers.hpp` `pos`, `colon_pos`, `comp`, `it1`, `it2`, `lhs`, `rhs`; `http/Url.hpp` `str`, `colon_pos`, `lhs`, `rhs`; `http/ResponseCode.hpp` `lhs`, `rhs`; `http/Query.hpp` `it`; `net/Address.hpp` `pos`, `port_str`; `net/AddressPosix.cpp` `res`, `ip_buf`, `host_buf`, `ifaddr`, `len`, `port_str`; `types/Json.hpp` `obj`, `arr`, `elem`, `pair_arr`, `str`, `esc`, `len`; `types/Integer.hpp` `str`, `temp`; `crypto/CFObject.hpp` `temp`; tests: `res` in `http/tests/TestResponse.cpp`, `val` in `TestHeaders.cpp`, `TestQuery.cpp`, and `types/tests/TestInteger.cpp`, `arr` and `num` in `TestJson.cpp`, `addr` and `buf` in `net/tests/TestSocketPosix.cpp`, and the loop index `i` in `types/tests/TestBlockingQueue.cpp` (3) and `TestInteger.cpp` (1) | An abbreviated name (§4) |
 | `crypto/IHasher.hpp` `digest_size()`, `block_size()`, and the constants behind them in `Sha256OpenSsl.hpp` and `Sha256Macos.hpp`; `crypto/AesOpenSsl.hpp` `aes_128_key_size` and the other sizes, and `cipher()`'s `key_size`; `crypto/IPasswordHasher.hpp` and `Argon2idOpenSsl.hpp` `salt_length`, `hash_length`; `http/Headers.hpp` `read_body()`'s `length`; `net/ISocket.hpp` `read_exact()`'s `size` | A size in bytes with no unit in its name (§4) |
-| `crypto/IPasswordHasher.cpp`, `crypto/ISignKey.cpp` | Their includes in one block, their own header not alone (§3.3) |
+| `crypto/IPasswordHasher.cpp` | Its includes in one block, its own header not alone (§3.3) |
 | `net/AddressPosix.cpp` | The operating system's headers in the block of the C++ standard library's, and its own header, `Address.hpp`, last (§3.3) |
 | `types/BlockingQueue.hpp` (methods before data); `types/Integer.hpp` (a constant after data); `types/Json.hpp` (the nested `Parser` after data); `net/SocketPosix.hpp` (the private constructor before data) | The private section out of order (§3.2) |
 | `msg/AsyncChannelOf.hpp` | `&` and `*` with the name, not the type (§3.5) |
-| 53 lines in 24 files, most in `types/Json.hpp` (8), `crypto/RsaEncryptKeyMacos.hpp` (6), and `crypto/Argon2idOpenSsl.hpp` (5) | A line past 100 columns (§3.5) |
-| `http/Headers.hpp` (11), `http/Url.hpp` (4), `types/Json.hpp` (3), `net/AddressPosix.cpp` (3), `types/Integer.hpp` (2), `crypto/RsaEncryptKeyMacos.hpp` (1), `http/Query.hpp` (1); tests: `types/tests/TestBlockingQueue.cpp` (6), `TestJson.cpp` (6), `msg/tests/TestAsyncChannel.cpp` (5), `TestAsyncChannelOf.cpp` (3), `net/tests/TestSocketPosix.cpp` (2), `types/tests/TestInteger.cpp` (2) | No blank line before or after a compound statement (§3.4) |
-| `crypto/CFObject.hpp` `Policy` | An `enum class` with no underlying type (§5) |
-| `types/BlockingQueue.hpp` | Its moves are `= default`, but its mutex and condition variables make them deleted; the comment above them says "movable" (§6.3) |
-| `crypto/AesMacos.hpp` | Its copy constructor and assignment deleted in the private section (§6.3) |
+| 48 lines in 24 files, most in `types/Json.hpp` (8) and `crypto/Argon2idOpenSsl.hpp` (5) | A line past 100 columns (§3.5) |
+| `http/Headers.hpp` (11), `http/Url.hpp` (4), `types/Json.hpp` (3), `net/AddressPosix.cpp` (3), `types/Integer.hpp` (2), `http/Query.hpp` (1); tests: `types/tests/TestBlockingQueue.cpp` (6), `TestJson.cpp` (6), `msg/tests/TestAsyncChannel.cpp` (5), `TestAsyncChannelOf.cpp` (3), `net/tests/TestSocketPosix.cpp` (2), `types/tests/TestInteger.cpp` (2) | No blank line before or after a compound statement (§3.4) |
 | `crypto/IHasher.hpp` `Sha256()`; `crypto/IEncryptKey.hpp` `Aes()`; `crypto/ISignKey.hpp` `Ed25519()`, `from_pem()`; `crypto/IMultiKey.hpp` `Rsa()`, `from_pem()`; `crypto/IPasswordHasher.hpp` `Argon2id()`; `crypto/RsaPemMacos.hpp` `from_pem()`; `net/ISocket.hpp` and `net/SocketPosix.hpp` `bind()`, `connect()`; `types/Json.hpp` `parse()`; `http/Url.hpp` `parse()`, `encode()`, `decode()`; `http/Query.hpp` `parse()` | A factory or parser without `[[nodiscard]]` (§6.5) |
 | `http/Headers.hpp` `parse_header_line()`; `http/Url.hpp` `extract_fragment()`, `extract_query()`, `extract_scheme()`, `parse_authority()`; `crypto/Argon2idOpenSsl.hpp` `PhcString::read_number()` | A result written to a parameter (§6.5) |
-| Every class in `http/`, `msg/`, `net/`, and `types/`, nested ones included; in `crypto/`, the five interfaces, `Base64`, `CFObject`, `Pem` and its `Unwrapped`, and the Apple classes, with `AesMacos::CryptorGuard` and `RsaPemMacos::KeyPair` | No comment above the class (§8) |
+| Every class in `http/`, `msg/`, `net/`, and `types/`, nested ones included; in `crypto/`, the five interfaces, `Base64`, `CFObject`, `Pem` and its `Unwrapped`, and the Apple classes, with `RsaPemMacos::KeyPair` | No comment above the class (§8) |
 | 37 comments in 12 library files, most in `http/Url.hpp` (8), `types/Integer.hpp` (7), `http/Headers.hpp` (5), and `net/SocketPosix.cpp` (5); 168 in 17 test files, most in `http/tests/TestUrl.cpp` (26), `net/tests/TestAddress.cpp` (17), and `types/tests/TestInteger.cpp` (17) | A comment that is a phrase, not a sentence, and not a label (§8) |
 | 39 comments in 22 files, most in `http/Url.hpp` (5), `types/tests/TestBlockingQueue.cpp` (4), and `types/tests/TestInteger.cpp` (4) | A sentence at the end of a line (§8) |
-| `http/Request.hpp` "Inline Member Function Implementations"; `http/Headers.hpp` "Inline implementations for Headers member functions" and "Add inside class Headers (or as a static helper):"; `msg/tests/TestAsyncChannel.cpp`, `TestAsyncChannelOf.cpp`, `TestChannel.cpp` | A banner, or a note left from writing the code (§8) |
+| `http/Request.hpp` "Inline Member Function Implementations"; `http/Headers.hpp` "Inline implementations for Headers member functions"; `msg/tests/TestAsyncChannel.cpp`, `TestAsyncChannelOf.cpp`, `TestChannel.cpp` | A banner dividing a file into sections (§8) |
 | `net/tests/TestAddress.cpp` lines 133–135 | Code left in comments (§8) |
 | 51 messages in 15 files, all in `crypto/`, most in `RsaDer.hpp` (10), `RsaEncryptKeyMacos.hpp` (6), `AesMacos.hpp` (5), and `RsaPemMacos.hpp` (5) | A message ending in a full stop (§9.1) |
-| `crypto/ISignKey.cpp` `from_pem()` | `catch (const std::exception&)`, not at a boundary, to try reading the key as Ed25519 once reading it as RSA fails (§9.2) |
 | `crypto/CFObject.hpp` (3), `msg/AsyncChannel.cpp` (3), `msg/AsyncChannelOf.hpp` (1) | `nullptr` before the pointer it is compared with (§10.4) |
 | `crypto/CFObject.hpp` `reset()`; `msg/Channel.hpp` `next()` | A pointer tested as a condition, in a template, where `clang-tidy` does not look (§10.4) |
 | 38 casts in 9 test and fuzzer files, most in `crypto/tests/TestIEncryptKey.cpp` (10) | A result thrown away with `static_cast<void>`, not `(void)` (§10.4) |

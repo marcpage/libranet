@@ -306,16 +306,36 @@ jobs:
   # clang-format and clang-tidy, at the LLVM version cpp/README.md names.
   # This job builds and tests nothing; the cpp jobs do that. clang-tidy reads
   # the compile commands CMake writes when it configures, and cannot read the
-  # GCC-only warning options of a GCC configuration, so this job configures
-  # with Clang, and with the fuzzers, so that both check their code too.
-  # cppcheck, at the version cpp/README.md names, reads the same compile
-  # commands.
+  # GCC-only warning options of a GCC configuration, so on Ubuntu this job
+  # configures with Clang, and with the fuzzers, so that both check their
+  # code too. cppcheck, at the version cpp/README.md names, reads the same
+  # compile commands. Each platform's lint sees only the code its compiler
+  # builds, so the job runs on macOS as well, for the code under
+  # #if __APPLE__.
   cpp-lint:
-    name: C++ format, clang-tidy, and cppcheck
-    runs-on: ubuntu-latest
+    name: C++ format, clang-tidy, and cppcheck (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            cc: clang
+            cxx: clang++
+            fuzzers: "ON"
+            cppcheck: -D__linux__
+          # Apple's Clang, which cannot build the fuzzers. Some findings in
+          # code both platforms build come only from the fuzzers, or only
+          # from Linux's choice of implementation, so a suppression may match
+          # nothing here; it fails only on Ubuntu, which reads the most code.
+          - os: macos-latest
+            cc: cc
+            cxx: c++
+            fuzzers: "OFF"
+            cppcheck: -D__APPLE__ --suppress=unmatchedSuppression
     env:
-      CC: clang
-      CXX: clang++
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
     defaults:
       run:
         working-directory: cpp
@@ -335,7 +355,9 @@ jobs:
           uv tool install "cppcheck==1.5.3"
           uv tool dir --bin >> "$GITHUB_PATH"
 
+      # The layout is the same on every platform, so it is checked once.
       - name: clang-format
+        if: runner.os == 'Linux'
         run: git ls-files -z '*.cpp' '*.h' '*.hpp' | xargs -0 clang-format --dry-run --Werror
 
       # Conan's packages are cached as in the cpp jobs.
@@ -354,17 +376,17 @@ jobs:
       - name: Configure
         run: |
           conan install . --build=missing
-          cmake --preset conan-release -DLIBRANET_FUZZERS=ON
+          cmake --preset conan-release -DLIBRANET_FUZZERS=${{ matrix.fuzzers }}
           conan cache clean
 
       - name: clang-tidy
         run: run-clang-tidy.py -p build/Release -quiet
 
-      # cppcheck does not know the compiler's own macros, and without one
-      # naming a platform, ISocket.cpp stops at its #error.
+      # cppcheck does not know the compiler's own macros, so each platform
+      # names its own; without one, ISocket.cpp stops at its #error.
       - name: cppcheck
         run: >-
-          cppcheck --project=build/Release/compile_commands.json -D__linux__
+          cppcheck --project=build/Release/compile_commands.json ${{ matrix.cppcheck }}
           --enable=all --inconclusive --check-level=exhaustive
           --library=googletest --inline-suppr
           --suppressions-list=cppcheck-suppressions.txt

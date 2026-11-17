@@ -10,6 +10,7 @@
 #include <string_view>
 #include <vector>
 
+#include "CFBytes.hpp"
 #include "CFObject.hpp"
 #include "ISignKey.hpp"
 #include "RsaPemMacos.hpp"
@@ -50,31 +51,23 @@ inline ISignKey::Data RsaSignKeyMacos::sign(std::string_view data) const {
         throw std::runtime_error("RSA private key required for signing.");
     }
 
-    CFObject<CFDataRef> input_data(CFDataCreate(kCFAllocatorDefault,
-                                                reinterpret_cast<const UInt8*>(data.data()),
-                                                static_cast<CFIndex>(data.size())),
-                                   CFObject<CFDataRef>::Policy::TakeOwnership);
+    const auto input_data = CFBytes::of(data);
 
     if (!input_data) {
         throw std::runtime_error("Failed to create CFData for signing.");
     }
 
     CFObject<CFErrorRef> error;
-    CFObject<CFDataRef> sig_data(SecKeyCreateSignature(m_private_key,
-                                                       kSecKeyAlgorithmRSASignatureMessagePSSSHA256,
-                                                       input_data,
-                                                       error.put()),
-                                 CFObject<CFDataRef>::Policy::TakeOwnership);
+    const CFObject<CFDataRef> sig_data(
+        SecKeyCreateSignature(m_private_key, kSecKeyAlgorithmRSASignatureMessagePSSSHA256,
+                              input_data, error.put()),
+        CFObject<CFDataRef>::Policy::TakeOwnership);
 
     if (!sig_data) {
         throw std::runtime_error("RSA PSS signature creation failed.");
     }
 
-    const auto* ptr = CFDataGetBytePtr(sig_data);
-    const auto length = CFDataGetLength(sig_data);
-    Data result(reinterpret_cast<const std::byte*>(ptr),
-                reinterpret_cast<const std::byte*>(ptr) + length);
-    return result;
+    return CFBytes::bytes_in(sig_data);
 }
 
 inline bool RsaSignKeyMacos::verify(std::string_view data, const Data& signature) const {
@@ -82,27 +75,18 @@ inline bool RsaSignKeyMacos::verify(std::string_view data, const Data& signature
         throw std::runtime_error("RSA public key required for verification.");
     }
 
-    CFObject<CFDataRef> input_data(CFDataCreate(kCFAllocatorDefault,
-                                                reinterpret_cast<const UInt8*>(data.data()),
-                                                static_cast<CFIndex>(data.size())),
-                                   CFObject<CFDataRef>::Policy::TakeOwnership);
-    CFObject<CFDataRef> sig_data(CFDataCreate(kCFAllocatorDefault,
-                                              reinterpret_cast<const UInt8*>(signature.data()),
-                                              static_cast<CFIndex>(signature.size())),
-                                 CFObject<CFDataRef>::Policy::TakeOwnership);
+    const auto input_data = CFBytes::of(data);
+    const auto sig_data = CFBytes::of(signature);
 
     if (!input_data || !sig_data) {
         return false;
     }
 
     CFObject<CFErrorRef> error;
-    bool valid = SecKeyVerifySignature(m_public_key,
-                                       kSecKeyAlgorithmRSASignatureMessagePSSSHA256,
-                                       input_data,
-                                       sig_data,
-                                       error.put());
 
-    return valid;
+    return SecKeyVerifySignature(m_public_key, kSecKeyAlgorithmRSASignatureMessagePSSSHA256,
+                                 input_data, sig_data, error.put())
+           != 0U;
 }
 
 inline std::string RsaSignKeyMacos::public_pem() const {
@@ -121,6 +105,7 @@ inline bool RsaSignKeyMacos::has_private_key() const noexcept {
     return m_private_key != nullptr;
 }
 
+// cppcheck-suppress duplInheritedMember
 inline ISignKey::Ptr RsaSignKeyMacos::from_pem(std::string_view pem) {
     auto [private_key, public_key] = RsaPemMacos::from_pem(pem);
 

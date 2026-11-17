@@ -345,13 +345,25 @@ cppcheck --project=build/Release/compile_commands.json -D__linux__ \
 
 cppcheck does not know the compiler's own macros, so `-D__linux__` names a
 platform, on macOS too; without one, `src/net/ISocket.cpp` stops at its
-`#error`. The POSIX code is the same on both.
+`#error`. The POSIX code is the same on both. To check the code only macOS
+builds, the classes in `src/crypto/` built on Apple's frameworks, name
+`-D__APPLE__` in its place.
 
-In CI, the lint job builds nothing: it configures with Clang on Ubuntu,
+A suppression that matches no finding fails the check, and which findings
+cppcheck reports depends on the code it reads. Some are only in the fuzzers,
+as those the suppressions in `src/types/Integer.hpp` and
+`src/types/Json.hpp` match, and some only in the implementations Linux
+chooses. So after the build above, which has no fuzzers, or with
+`-D__APPLE__`, add `--suppress=unmatchedSuppression`. CI's Ubuntu run, which
+reads the most code, is the one that holds every suppression to a finding.
+
+In CI, the lint job builds nothing. On Ubuntu it configures with Clang,
 because clang-tidy cannot read the GCC-only warning options in a GCC
 configuration's compile commands, and with the fuzzers, so their code is
-checked too. It runs clang-tidy and cppcheck on what CMake writes. The other
-C++ jobs build and run the tests.
+checked too. On macOS it configures with Apple's Clang, without the
+fuzzers, so that the code only macOS builds is checked as well. Each runs
+clang-tidy and cppcheck on what CMake writes, and the Ubuntu run checks the
+format. The other C++ jobs build and run the tests.
 
 CI also runs [CodeQL](https://codeql.github.com/), GitHub's code scanning,
 on the C++ code, without building it, and on the rest of the repository. Its
