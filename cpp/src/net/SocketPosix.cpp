@@ -76,7 +76,7 @@ AddrInfoPtr resolve_address(const net::Address& address, int flags, int socket_t
     const auto error = ::getaddrinfo(host, service.c_str(), &hints, &result);
 
     assert_condition<std::runtime_error>(
-        error == 0, std::string("getaddrinfo: ") + ::gai_strerror(error));
+        0 == error, std::string("getaddrinfo: ") + ::gai_strerror(error));
 
     return AddrInfoPtr(result);
 }
@@ -90,7 +90,7 @@ int create_socket(const addrinfo& info) {
 
     const int enabled = 1;
 
-    if (info.ai_socktype == SOCK_STREAM) {
+    if (SOCK_STREAM == info.ai_socktype) {
         // Allow quick restart of a listening server after it has closed
         (void)::setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled));
 
@@ -119,7 +119,7 @@ net::Address address_from_sockaddr(const sockaddr* address, socklen_t length) {
                                      NI_NUMERICHOST | NI_NUMERICSERV);
 
     assert_condition<std::runtime_error>(
-        error == 0, std::string("getnameinfo: ") + ::gai_strerror(error));
+        0 == error, std::string("getnameinfo: ") + ::gai_strerror(error));
 
     const auto port = std::stoul(service.data());
 
@@ -136,7 +136,7 @@ enum class Direction : std::uint8_t {
 };
 
 int set_timeout(int socket_fd, Direction direction, net::ISocket::Milliseconds timeout) {
-    const auto direction_flag = direction == Direction::Send ? SO_SNDTIMEO : SO_RCVTIMEO;
+    const auto direction_flag = Direction::Send == direction ? SO_SNDTIMEO : SO_RCVTIMEO;
     timeval timeout_value{};
 
     if (timeout.count() > 0) {
@@ -164,7 +164,7 @@ net::Address query_socket_address(int socket_fd, Function socket_call,
     const auto result = socket_call(socket_fd,
                                     reinterpret_cast<sockaddr*>(&storage), &length);
 
-    assert_socket(result == 0, operation_name);
+    assert_socket(0 == result, operation_name);
     return address_from_sockaddr(reinterpret_cast<const sockaddr*>(&storage), length);
     // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
 }
@@ -188,7 +188,7 @@ ISocket::Ptr SocketPosix::bind(const Address& address) {
             continue;
         }
 
-        if (::bind(socket_fd, current->ai_addr, current->ai_addrlen) == 0) {
+        if (0 == ::bind(socket_fd, current->ai_addr, current->ai_addrlen)) {
             return std::unique_ptr<SocketPosix>(new SocketPosix(socket_fd));
         }
 
@@ -219,9 +219,9 @@ ISocket::Ptr SocketPosix::connect(const Address& address) {
 
         do {
             result = ::connect(socket_fd, current->ai_addr, current->ai_addrlen);
-        } while (result < 0 && errno == EINTR);
+        } while (result < 0 && EINTR == errno);
 
-        if (result == 0) {
+        if (0 == result) {
             return std::unique_ptr<SocketPosix>(new SocketPosix(socket_fd));
         }
 
@@ -247,7 +247,7 @@ SocketPosix::~SocketPosix() {
 void SocketPosix::listen(int backlog) {
     assert_condition<std::logic_error>(is_open(), "Cannot listen on a closed socket");
     assert_condition<std::logic_error>(backlog >= 0, "listen backlog cannot be negative");
-    assert_socket(::listen(m_socket_fd, backlog) == 0, "listen");
+    assert_socket(0 == ::listen(m_socket_fd, backlog), "listen");
 }
 
 ISocket::Ptr SocketPosix::accept() {
@@ -265,7 +265,7 @@ ISocket::Ptr SocketPosix::accept() {
 #elif defined(__linux__)
         accepted_fd = ::accept4(m_socket_fd, nullptr, nullptr, SOCK_CLOEXEC);
 #endif
-    } while (accepted_fd < 0 && errno == EINTR);
+    } while (accepted_fd < 0 && EINTR == errno);
 
     assert_socket(accepted_fd >= 0, "accept");
 
@@ -294,7 +294,7 @@ std::size_t SocketPosix::send(std::string_view data) {
 
     do {
         byte_count = ::send(m_socket_fd, data.data(), count, send_flags);
-    } while (byte_count < 0 && errno == EINTR);
+    } while (byte_count < 0 && EINTR == errno);
 
     assert_socket(byte_count >= 0, "send");
     return static_cast<std::size_t>(byte_count);
@@ -316,7 +316,7 @@ bool SocketPosix::receive(std::vector<std::byte>& buffer) {
 
     do {
         byte_count = ::recv(m_socket_fd, buffer.data(), count, 0);
-    } while (byte_count < 0 && errno == EINTR);
+    } while (byte_count < 0 && EINTR == errno);
 
     assert_socket(byte_count >= 0, "recv");
 
@@ -348,7 +348,7 @@ void SocketPosix::set_receive_timeout(ISocket::Milliseconds timeout) {
                                        "Cannot set timeout on a closed socket");
     assert_condition<std::invalid_argument>(timeout.count() >= 0,
                                             "timeout cannot be negative");
-    assert_socket(::set_timeout(m_socket_fd, Direction::Receive, timeout) == 0,
+    assert_socket(0 == ::set_timeout(m_socket_fd, Direction::Receive, timeout),
                   "setsockopt(SO_RCVTIMEO)");
 }
 
@@ -357,7 +357,7 @@ void SocketPosix::set_send_timeout(ISocket::Milliseconds timeout) {
                                        "Cannot set timeout on a closed socket");
     assert_condition<std::invalid_argument>(timeout.count() >= 0,
                                             "timeout cannot be negative");
-    assert_socket(::set_timeout(m_socket_fd, Direction::Send, timeout) == 0,
+    assert_socket(0 == ::set_timeout(m_socket_fd, Direction::Send, timeout),
                   "setsockopt(SO_SNDTIMEO)");
 }
 
@@ -371,7 +371,7 @@ void SocketPosix::close() {
     m_socket_fd = -1;
     // Do not retry close() after EINTR: on Linux the descriptor is released.
 
-    assert_socket(::close(socket_fd) == 0 || errno == EINTR, "close");
+    assert_socket(0 == ::close(socket_fd) || EINTR == errno, "close");
 }
 
 } // namespace net

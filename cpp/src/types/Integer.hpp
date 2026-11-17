@@ -124,7 +124,7 @@ private:
 };
 
 inline void Integer::normalize() {
-    while (!m_magnitude.empty() && m_magnitude.back() == 0) {
+    while (!m_magnitude.empty() && 0 == m_magnitude.back()) {
         m_magnitude.pop_back();
     }
 
@@ -211,7 +211,7 @@ Integer::multiply_magnitudes(const std::vector<word_t>& left,
         result[left_index + right.size()] = static_cast<word_t>(carry);
     }
 
-    while (!result.empty() && result.back() == 0) {
+    while (!result.empty() && 0 == result.back()) {
         result.pop_back();
     }
 
@@ -222,7 +222,7 @@ Integer::multiply_magnitudes(const std::vector<word_t>& left,
 inline unsigned Integer::get_normalization_shift(word_t high_word) noexcept {
     unsigned shift = 0;
 
-    while ((high_word & (static_cast<word_t>(1) << (word_bits - 1))) == 0) {
+    while (0 == (high_word & (static_cast<word_t>(1) << (word_bits - 1)))) {
         high_word <<= 1U;
         ++shift;
     }
@@ -280,7 +280,7 @@ inline void Integer::execute_long_division_loop(
 
         subtract_magnitudes(remainder, product);
 
-        while (!remainder.empty() && remainder.back() == 0) {
+        while (!remainder.empty() && 0 == remainder.back()) {
             remainder.pop_back();
         }
 
@@ -320,11 +320,11 @@ inline void Integer::divide_modulo_magnitudes(const std::vector<word_t>& numerat
     // 3. Denormalize remainder and clean up trailing zeros
     shift_right_magnitude(remainder, shift);
 
-    while (!quotient.empty() && quotient.back() == 0) {
+    while (!quotient.empty() && 0 == quotient.back()) {
         quotient.pop_back();
     }
 
-    while (!remainder.empty() && remainder.back() == 0) {
+    while (!remainder.empty() && 0 == remainder.back()) {
         remainder.pop_back();
     }
 }
@@ -386,7 +386,7 @@ inline void Integer::shift_right_magnitude(std::vector<word_t>& value, unsigned 
         }
     }
 
-    while (!value.empty() && value.back() == 0) {
+    while (!value.empty() && 0 == value.back()) {
         value.pop_back();
     }
 }
@@ -434,9 +434,9 @@ inline Integer::Integer(const std::string& text) {
         throw std::invalid_argument("Integer: empty string");
     }
 
-    m_negative = text.at(0) == '-';
+    m_negative = '-' == text.at(0);
 
-    const std::size_t numeric_start = m_negative || text.at(0) == '+' ? 1 : 0;
+    const std::size_t numeric_start = m_negative || '+' == text.at(0) ? 1 : 0;
 
     if (numeric_start == text.size()) {
         throw std::invalid_argument("Integer: no digits");
@@ -445,7 +445,7 @@ inline Integer::Integer(const std::string& text) {
     for (auto position = numeric_start; position < text.size(); ++position) {
         const auto digit = text.at(position);
 
-        if (std::isdigit(static_cast<unsigned char>(digit)) == 0) {
+        if (0 == std::isdigit(static_cast<unsigned char>(digit))) {
             throw std::invalid_argument("Integer: invalid character");
         }
 
@@ -527,7 +527,7 @@ inline Integer& Integer::operator+=(const Integer& right) {
     } else {
         const auto comparison = compare_magnitudes(m_magnitude, right.m_magnitude);
 
-        if (comparison == 0) {
+        if (0 == comparison) {
             m_magnitude.clear();
             m_negative = false;
         } else if (comparison > 0) {
@@ -615,7 +615,7 @@ inline Integer& Integer::operator^=(const Integer& right) {
 }
 
 inline Integer& Integer::operator<<=(std::size_t shift) {
-    if (is_zero() || shift == 0) {
+    if (is_zero() || 0 == shift) {
         return *this;
     }
 
@@ -648,7 +648,7 @@ inline Integer& Integer::operator<<=(std::size_t shift) {
 // Word arithmetic, unchecked as above.
 // NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 inline Integer& Integer::operator>>=(std::size_t shift) {
-    if (is_zero() || shift == 0) {
+    if (is_zero() || 0 == shift) {
         return *this;
     }
 
@@ -852,7 +852,7 @@ inline std::ostream& operator<<(std::ostream& out_stream, const Integer& value) 
 
         digits.push_back(static_cast<char>('0' + remainder));
 
-        while (!temp.empty() && temp.back() == 0) {
+        while (!temp.empty() && 0 == temp.back()) {
             temp.pop_back();
         }
     }

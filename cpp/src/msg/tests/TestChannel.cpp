@@ -9,10 +9,6 @@
 using msg::Channel;
 using namespace std::chrono_literals;
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 namespace {
 
 void sleep_ms(int duration_ms) {
@@ -20,10 +16,6 @@ void sleep_ms(int duration_ms) {
 }
 
 } // namespace
-
-// ---------------------------------------------------------------------------
-// Test cases
-// ---------------------------------------------------------------------------
 
 // The tests read optionals after ASSERT_TRUE(x.has_value()), which this
 // check does not follow, or with value(), whose exception gtest reports as

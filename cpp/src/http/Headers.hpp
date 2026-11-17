@@ -72,7 +72,6 @@ inline bool Headers::CaseInsensitiveLess::operator()(std::string_view lhs,
     });
 }
 
-// Inline implementations for Headers member functions
 inline void Headers::set(std::string key, std::string value) {
     m_headers[std::move(key)] = std::move(value);
 }
@@ -243,7 +242,7 @@ inline std::string Headers::process_header_line(
 }
 
 inline std::string_view Headers::trim_trailing_cr(std::string_view line) noexcept {
-    if (!line.empty() && line.back() == '\r') {
+    if (!line.empty() && '\r' == line.back()) {
         line.remove_suffix(1);
     }
 
@@ -253,7 +252,7 @@ inline std::string_view Headers::trim_trailing_cr(std::string_view line) noexcep
 inline std::string_view Headers::trim_whitespace(std::string_view text) {
     const auto start = text.find_first_not_of(" \t\r\n");
 
-    if (start == std::string_view::npos) {
+    if (std::string_view::npos == start) {
         return {};
     }
 
@@ -264,14 +263,14 @@ inline std::string_view Headers::trim_whitespace(std::string_view text) {
 }
 
 inline bool Headers::is_continuation_line(std::string_view line) noexcept {
-    return !line.empty() && (line.front() == ' ' || line.front() == '\t');
+    return !line.empty() && (' ' == line.front() || '\t' == line.front());
 }
 
 inline bool Headers::parse_header_line(std::string_view line, std::string& out_key,
                                        std::string& out_value) {
     const auto colon_pos = line.find(':');
 
-    if (colon_pos == std::string_view::npos) {
+    if (std::string_view::npos == colon_pos) {
         return false;
     }
 
@@ -285,7 +284,7 @@ inline std::vector<std::string_view> Headers::split_spaces(std::string_view text
                                                            std::size_t max_fields) {
     std::vector<std::string_view> fields;
 
-    if (text.empty() || max_fields == 0) {
+    if (text.empty() || 0 == max_fields) {
         return fields;
     }
 
@@ -294,13 +293,13 @@ inline std::vector<std::string_view> Headers::split_spaces(std::string_view text
     while (fields.size() + 1 < max_fields && pos < text.size()) {
         pos = text.find_first_not_of(" \t", pos);
 
-        if (pos == std::string_view::npos) {
+        if (std::string_view::npos == pos) {
             break;
         }
 
         const auto end = text.find_first_of(" \t", pos);
 
-        if (end == std::string_view::npos) {
+        if (std::string_view::npos == end) {
             fields.push_back(text.substr(pos));
             pos = std::string_view::npos;
             break;

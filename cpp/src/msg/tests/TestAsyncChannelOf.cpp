@@ -15,10 +15,6 @@ using msg::AsyncChannelOf;
 using msg::Channel;
 using namespace std::chrono_literals;
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 namespace {
 
 // How long a test waits for its messages to be handled. A wait ends as soon
@@ -44,10 +40,6 @@ bool wait_until(Predicate predicate, std::chrono::milliseconds timeout = handlin
 
 } // namespace
 
-// ---------------------------------------------------------------------------
-// Test cases
-// ---------------------------------------------------------------------------
-
 TEST(AsyncChannelOfTest, ConstructionAndCallback) {
     std::mutex mutex;
     std::condition_variable condition;
@@ -70,7 +62,7 @@ TEST(AsyncChannelOfTest, ConstructionAndCallback) {
 
         std::unique_lock<std::mutex> lock(mutex);
         const bool delivered = condition.wait_for(lock, handling_timeout, [&] {
-            return received.size() == 1;
+            return 1 == received.size();
         });
         ASSERT_TRUE(delivered);
         EXPECT_EQ(received.at(0), posted_value);
@@ -101,7 +93,7 @@ TEST(AsyncChannelOfTest, MultipleMessagesFifoOrder) {
 
         std::unique_lock<std::mutex> lock(mutex);
         const bool delivered = condition.wait_for(lock, handling_timeout, [&] {
-            return received.size() == 3;
+            return 3 == received.size();
         });
         ASSERT_TRUE(delivered);
         EXPECT_EQ(received.at(0), first_value);
@@ -139,7 +131,7 @@ TEST(AsyncChannelOfTest, BroadcastToMultipleAsyncChannels) {
 
         std::unique_lock<std::mutex> lock(mutex);
         const bool delivered = condition.wait_for(lock, handling_timeout, [&] {
-            return received_a.size() == 1 && received_b.size() == 1;
+            return 1 == received_a.size() && 1 == received_b.size();
         });
         ASSERT_TRUE(delivered);
         EXPECT_EQ(received_a.at(0), posted_value);
@@ -184,7 +176,7 @@ TEST(AsyncChannelOfTest, StopAndIdempotence) {
 
     Channel::post("test.asyncof.stop", 1);
     const bool delivered = wait_until([&] {
-        return callback_count.load() == 1;
+        return 1 == callback_count.load();
     });
     EXPECT_TRUE(delivered);
 

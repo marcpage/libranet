@@ -186,7 +186,7 @@ Argon2idOpenSsl::PhcString::parse(std::string_view text) {
 
     const auto separator = text.find('$');
 
-    if (separator == std::string_view::npos) {
+    if (std::string_view::npos == separator) {
         return std::nullopt;
     }
 
@@ -219,7 +219,7 @@ inline bool Argon2idOpenSsl::PhcString::matches(std::string_view password) const
         return false;
     }
 
-    return CRYPTO_memcmp(computed.data(), m_hash.data(), computed.size()) == 0;
+    return 0 == CRYPTO_memcmp(computed.data(), m_hash.data(), computed.size());
 }
 
 // Moves past expected at the start of text, if it is there.
@@ -253,7 +253,7 @@ inline bool Argon2idOpenSsl::PhcString::read_number(std::string_view& text, uint
         ++digits;
     }
 
-    if (digits == 0) {
+    if (0 == digits) {
         return false;
     }
 
@@ -268,7 +268,7 @@ Argon2idOpenSsl::PhcString::read_base64(std::string_view text) {
     constexpr std::size_t group_size = 4;
 
     if (text.empty() || text.find('=') != std::string_view::npos
-        || text.size() % group_size == 1) {
+        || 1 == text.size() % group_size) {
         return std::nullopt;
     }
 

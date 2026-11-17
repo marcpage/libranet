@@ -118,8 +118,8 @@ inline std::size_t AesMacos::process_cbc(CCOperation operation, std::string_view
                                          const InitializationVector& vector, Data& output) const {
     // CommonCrypto removes padding without checking it, so it decrypts with
     // none, and the padding is checked and removed here.
-    const bool padded = m_padding == AesPadding::Pkcs7;
-    const CCOptions options = (padded && operation == kCCEncrypt) ? kCCOptionPKCS7Padding : 0;
+    const bool padded = AesPadding::Pkcs7 == m_padding;
+    const CCOptions options = (padded && kCCEncrypt == operation) ? kCCOptionPKCS7Padding : 0;
     std::size_t data_moved = 0;
 
     const CCCryptorStatus status = CCCrypt(
@@ -134,7 +134,7 @@ inline std::size_t AesMacos::process_cbc(CCOperation operation, std::string_view
                                  + std::to_string(status));
     }
 
-    return (padded && operation == kCCDecrypt) ? unpadded_size(output, data_moved) : data_moved;
+    return (padded && kCCDecrypt == operation) ? unpadded_size(output, data_moved) : data_moved;
 }
 
 // How long the first size bytes of decrypted are without the PKCS #7 padding
@@ -149,7 +149,7 @@ inline std::size_t AesMacos::unpadded_size(const Data& decrypted, std::size_t si
     }
 
     const auto padding = std::to_integer<std::size_t>(decrypted.at(size - 1));
-    auto bad = static_cast<std::size_t>(padding == 0)
+    auto bad = static_cast<std::size_t>(0 == padding)
                | static_cast<std::size_t>(padding > block_size);
 
     for (std::size_t index = 1; index <= block_size; ++index) {
@@ -184,7 +184,7 @@ inline std::size_t AesMacos::process_ctr(CCOperation operation, std::string_view
     const std::uint64_t blocks_before_wrap = 0 - low;
     const auto blocks = (input.size() + block_size - 1) / block_size;
 
-    if (low == 0 || blocks <= blocks_before_wrap) {
+    if (0 == low || blocks <= blocks_before_wrap) {
         return process_ctr_part(operation, input, counter, output, 0);
     }
 

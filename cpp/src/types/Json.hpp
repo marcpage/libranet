@@ -205,13 +205,13 @@ inline Json::Json(Object value)
     : m_data(std::move(value)) {}
 
 inline Json::Json(std::initializer_list<Json> arguments) {
-    if (arguments.size() == 0) {
+    if (0 == arguments.size()) {
         return;
     }
 
     // Unless every argument is a [key, value] pair, the Json is an array.
     const auto is_member = [](const Json& elem) {
-        return elem.is_array() && elem.array().size() == 2 && elem.array().at(0).is_string();
+        return elem.is_array() && 2 == elem.array().size() && elem.array().at(0).is_string();
     };
 
     if (!std::all_of(arguments.begin(), arguments.end(), is_member)) {
@@ -559,7 +559,7 @@ inline void Json::write_real(double value, std::ostringstream& out_stream) {
         text.data(), static_cast<std::size_t>(std::distance(text.data(), result.ptr)));
     out_stream << written;
 
-    if (written.find_first_of(".e") == std::string_view::npos) {
+    if (std::string_view::npos == written.find_first_of(".e")) {
         out_stream << ".0";
     }
 }
@@ -724,7 +724,7 @@ inline Json Json::Parser::parse_value() {
             }
 
             ++m_depth;
-            Json value = character == '[' ? parse_array() : parse_object();
+            Json value = '[' == character ? parse_array() : parse_object();
             --m_depth;
             return value;
         }
@@ -743,7 +743,7 @@ inline Json Json::Parser::parse_value() {
 inline Json Json::Parser::parse_null() {
     constexpr std::string_view null_text = "null";
 
-    if (m_input.substr(m_cursor, null_text.size()) == null_text) {
+    if (null_text == m_input.substr(m_cursor, null_text.size())) {
         m_cursor += null_text.size();
         return Json(nullptr);
     }
@@ -754,14 +754,14 @@ inline Json Json::Parser::parse_null() {
 inline Json Json::Parser::parse_boolean() {
     constexpr std::string_view true_text = "true";
 
-    if (m_input.substr(m_cursor, true_text.size()) == true_text) {
+    if (true_text == m_input.substr(m_cursor, true_text.size())) {
         m_cursor += true_text.size();
         return Json(true);
     }
 
     constexpr std::string_view false_text = "false";
 
-    if (m_input.substr(m_cursor, false_text.size()) == false_text) {
+    if (false_text == m_input.substr(m_cursor, false_text.size())) {
         m_cursor += false_text.size();
         return Json(false);
     }
@@ -784,7 +784,7 @@ inline Json Json::Parser::parse_number() {
 
     // A number has digits before any '.', after it, and after any exponent
     // (RFC 8259, section 6).
-    if (peek() == '-') {
+    if ('-' == peek()) {
         ++m_cursor;
     }
 
@@ -794,7 +794,7 @@ inline Json Json::Parser::parse_number() {
 
     bool is_float_num = false;
 
-    if (peek() == '.') {
+    if ('.' == peek()) {
         is_float_num = true;
 
         ++m_cursor;
@@ -804,11 +804,11 @@ inline Json Json::Parser::parse_number() {
         }
     }
 
-    if (peek() == 'e' || peek() == 'E') {
+    if ('e' == peek() || 'E' == peek()) {
         is_float_num = true;
         ++m_cursor;
 
-        if (peek() == '+' || peek() == '-') {
+        if ('+' == peek() || '-' == peek()) {
             ++m_cursor;
         }
 
@@ -838,11 +838,11 @@ inline std::string Json::Parser::parse_raw_string() {
     while (m_cursor < m_input.size()) {
         const char character = get();
 
-        if (character == '"') {
+        if ('"' == character) {
             return result;
         }
 
-        if (character == '\\') {
+        if ('\\' == character) {
             const char esc = get();
 
             switch (esc) {
@@ -877,7 +877,7 @@ inline std::uint32_t Json::Parser::parse_hex4() {
     for (int digit = 0; digit < hex_digits; ++digit) {
         const auto character = static_cast<unsigned char>(get());
 
-        if (std::isxdigit(character) == 0) {
+        if (0 == std::isxdigit(character)) {
             throw std::invalid_argument("Json::parse: a \\u escape needs four hex digits");
         }
 

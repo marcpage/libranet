@@ -114,7 +114,7 @@ inline std::string Url::encode(std::string_view value, std::string_view allowed_
         // unsigned char before std::isalnum and before printing as hex.
         const auto byte = static_cast<unsigned char>(character);
 
-        if (character == ' ') {
+        if (' ' == character) {
             if (space_to_plus) {
                 escaped << '+';
             } else {
@@ -137,7 +137,7 @@ inline std::string Url::encode(std::string_view value, EncodeContext context) {
     // RFC 3986 Section 2.3 Unreserved characters
     constexpr std::string_view unreserved = "-_.~";
 
-    const bool space_to_plus = (context == EncodeContext::FormUrl);
+    const bool space_to_plus = (EncodeContext::FormUrl == context);
     return encode(value, unreserved, space_to_plus);
 }
 
@@ -153,10 +153,10 @@ inline std::string Url::decode(std::string_view value, bool decode_plus_as_space
     std::size_t character_index = 0;
 
     while (character_index < value.size()) {
-        if (decode_plus_as_space && value.at(character_index) == '+') {
+        if (decode_plus_as_space && '+' == value.at(character_index)) {
             decoded += ' ';
             ++character_index;
-        } else if (value.at(character_index) == '%' && character_index + 2 < value.size()
+        } else if ('%' == value.at(character_index) && character_index + 2 < value.size()
                    && is_hex_digit(value.at(character_index + 1))
                    && is_hex_digit(value.at(character_index + 2))) {
             constexpr int hex_base = 16;
@@ -174,7 +174,7 @@ inline std::string Url::decode(std::string_view value, bool decode_plus_as_space
 }
 
 inline std::string Url::decode(std::string_view value, EncodeContext context) {
-    const bool decode_plus = (context == EncodeContext::FormUrl);
+    const bool decode_plus = (EncodeContext::FormUrl == context);
     return decode(value, decode_plus);
 }
 
@@ -210,15 +210,15 @@ inline std::optional<uint16_t> Url::effective_port() const {
     constexpr uint16_t ftp_port = 21;
     const std::string lower_scheme = to_lower_copy(m_scheme);
 
-    if (lower_scheme == "http" || lower_scheme == "ws") {
+    if ("http" == lower_scheme || "ws" == lower_scheme) {
         return http_port;
     }
 
-    if (lower_scheme == "https" || lower_scheme == "wss") {
+    if ("https" == lower_scheme || "wss" == lower_scheme) {
         return https_port;
     }
 
-    if (lower_scheme == "ftp") {
+    if ("ftp" == lower_scheme) {
         return ftp_port;
     }
 
@@ -294,7 +294,7 @@ inline void Url::set_password(const std::string& new_password) {
 }
 
 inline void Url::set_host(std::string new_host) {
-    if (new_host.size() >= 2 && new_host.front() == '[' && new_host.back() == ']') {
+    if (new_host.size() >= 2 && '[' == new_host.front() && ']' == new_host.back()) {
         new_host.erase(0, 1);
         new_host.pop_back();
     }
@@ -488,7 +488,7 @@ inline void Url::parse_authority(std::string_view authority, std::string& userna
     if (colon_pos != std::string_view::npos) {
         const auto closing_bracket = authority.rfind(']');
 
-        if (closing_bracket == std::string_view::npos || colon_pos > closing_bracket) {
+        if (std::string_view::npos == closing_bracket || colon_pos > closing_bracket) {
             const auto port_string = std::string(authority.substr(colon_pos + 1));
 
             port = parse_port(port_string);
@@ -496,7 +496,7 @@ inline void Url::parse_authority(std::string_view authority, std::string& userna
         }
     }
 
-    if (authority.size() >= 2 && authority.front() == '[' && authority.back() == ']') {
+    if (authority.size() >= 2 && '[' == authority.front() && ']' == authority.back()) {
         authority.remove_prefix(1);
         authority.remove_suffix(1);
     }
@@ -543,7 +543,7 @@ inline void Url::append(std::string_view relative_url) {
     }
 
     // 4. If relative path starts with '/', it replaces the path entirely
-    if (relative_url.front() == '/') {
+    if ('/' == relative_url.front()) {
         m_path = std::string(relative_url);
         return;
     }

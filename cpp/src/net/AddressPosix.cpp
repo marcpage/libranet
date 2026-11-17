@@ -43,7 +43,7 @@ namespace {
                                   ip_buf.data(), static_cast<socklen_t>(ip_buf.size()),
                                   nullptr, 0, NI_NUMERICHOST);
 
-    if (error == 0) {
+    if (0 == error) {
         return ip_buf.data();
     }
 
@@ -57,7 +57,7 @@ namespace {
                                   host_buf.data(), static_cast<socklen_t>(host_buf.size()),
                                   nullptr, 0, 0);
 
-    if (error == 0) {
+    if (0 == error) {
         std::string dns_name = host_buf.data();
 
         if (!dns_name.empty() && dns_name != numeric_ip) {
@@ -77,7 +77,7 @@ void add_unique(std::string_view value, std::vector<std::string>& results) {
 [[nodiscard]] ifaddrs* fetch_interface_addresses() {
     ifaddrs* ifaddr = nullptr;
 
-    if (::getifaddrs(&ifaddr) == -1) {
+    if (-1 == ::getifaddrs(&ifaddr)) {
         throw std::runtime_error("Failed to retrieve local network interfaces");
     }
 
@@ -85,11 +85,11 @@ void add_unique(std::string_view value, std::vector<std::string>& results) {
 }
 
 [[nodiscard]] bool is_supported_socket_family(int family) {
-    return family == AF_INET || family == AF_INET6;
+    return AF_INET == family || AF_INET6 == family;
 }
 
 [[nodiscard]] socklen_t get_sockaddr_len(int family) {
-    return (family == AF_INET) ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
+    return (AF_INET == family) ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
 }
 
 [[nodiscard]] std::string extract_interface_ip(const ifaddrs* ifa) {

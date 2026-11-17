@@ -72,7 +72,7 @@ std::optional<Contents> contents_at(const std::vector<std::byte>& der, std::size
     if (size >= long_length) {
         const auto length_bytes = size - long_length;
 
-        if (length_bytes == 0 || length_bytes > most_length_bytes
+        if (0 == length_bytes || length_bytes > most_length_bytes
             || limit - start < length_bytes) {
             return std::nullopt;
         }
@@ -109,7 +109,7 @@ std::optional<Contents> algorithm(const crypto::Pem::Unwrapped& pem) {
 
     auto offset = info->start;
 
-    if (pem.label == "PRIVATE KEY") {
+    if ("PRIVATE KEY" == pem.label) {
         const auto version = contents_at(der, offset, info->end, integer_tag);
 
         if (!version) {
@@ -148,7 +148,7 @@ bool is_for(const crypto::Pem::Unwrapped& pem, const std::array<std::uint8_t, si
 // Whether the PEM holds an RSA key: in PKCS #1, labeled "RSA PRIVATE KEY" or
 // "RSA PUBLIC KEY", or in PKCS #8 or SubjectPublicKeyInfo, as rsaEncryption.
 bool is_rsa(const crypto::Pem::Unwrapped& pem) {
-    return pem.label == "RSA PRIVATE KEY" || pem.label == "RSA PUBLIC KEY"
+    return "RSA PRIVATE KEY" == pem.label || "RSA PUBLIC KEY" == pem.label
            || is_for(pem, rsa_encryption);
 }
 

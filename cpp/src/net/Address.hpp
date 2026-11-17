@@ -37,7 +37,7 @@ inline Address Address::parse(std::string_view endpoint) {
     // Look for the last colon to separate host and port (handles IPv6 vs IPv4)
     const auto pos = endpoint.rfind(':');
 
-    if (pos == std::string_view::npos) {
+    if (std::string_view::npos == pos) {
         throw std::invalid_argument("Invalid address format, missing port");
     }
 
@@ -45,7 +45,7 @@ inline Address Address::parse(std::string_view endpoint) {
     const std::string_view port_str = endpoint.substr(pos + 1);
 
     // Strip brackets if it's an IPv6 address like [::1]:80
-    if (!host.empty() && host.front() == '[' && host.back() == ']') {
+    if (!host.empty() && '[' == host.front() && ']' == host.back()) {
         host = host.substr(1, host.size() - 2);
     }
 

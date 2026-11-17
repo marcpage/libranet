@@ -86,7 +86,7 @@ inline void Response::set_body(std::string new_body) {
 inline bool Response::parse_status_line(std::string_view line) {
     line = Headers::trim_trailing_cr(line);
 
-    if (!line.empty() && line.back() == '\n') {
+    if (!line.empty() && '\n' == line.back()) {
         line.remove_suffix(1);
         line = Headers::trim_trailing_cr(line);
     }
@@ -116,7 +116,7 @@ inline bool Response::parse_status_line(std::string_view line) {
     const auto code_value = static_cast<uint16_t>(parsed_code);
 
     m_version = std::string(fields.at(0));
-    m_status = ResponseCode(code_value, (fields.size() == 3)
+    m_status = ResponseCode(code_value, (3 == fields.size())
                                             ? std::string(fields.at(2))
                                             : std::string());
     return true;

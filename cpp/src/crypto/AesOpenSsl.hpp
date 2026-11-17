@@ -78,7 +78,7 @@ inline std::string AesOpenSsl::decrypt(const Data& ciphertext,
 }
 
 inline const EVP_CIPHER* AesOpenSsl::cipher(std::size_t key_size, AesMode mode) {
-    const auto cbc = mode == AesMode::Cbc;
+    const auto cbc = AesMode::Cbc == mode;
 
     switch (key_size) {
         case aes_128_key_size: return cbc ? EVP_aes_128_cbc() : EVP_aes_128_ctr();
@@ -107,7 +107,7 @@ inline IEncryptKey::Data AesOpenSsl::process(bool encrypting, const unsigned cha
                               OpenSslBytes::of(vector.empty() ? zeros : vector),
                               encrypting ? 1 : 0, nullptr)
                != 1
-        || EVP_CIPHER_CTX_set_padding(context.get(), m_padding == AesPadding::Pkcs7 ? 1 : 0)
+        || EVP_CIPHER_CTX_set_padding(context.get(), AesPadding::Pkcs7 == m_padding ? 1 : 0)
                != 1) {
         throw OpenSslError("Failed to start AES");
     }

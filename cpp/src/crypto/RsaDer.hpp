@@ -214,7 +214,7 @@ inline RsaDer::Element RsaDer::read(const Data& der, std::size_t& offset, std::s
 
         // 0x80 alone is BER's indefinite length, which DER has not. The
         // length must need every byte given, and the long form at all.
-        if (length_bytes == 0 || length_bytes > most_length_bytes
+        if (0 == length_bytes || length_bytes > most_length_bytes
             || limit - offset < length_bytes || der.at(offset) == std::byte{0x00}) {
             throw std::invalid_argument("Not a DER length in the RSA key");
         }

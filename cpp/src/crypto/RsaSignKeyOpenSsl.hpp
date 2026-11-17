@@ -105,7 +105,7 @@ inline bool RsaSignKeyOpenSsl::verify(std::string_view data, const Data& signatu
 
     // A signature that does not match leaves an error in OpenSSL's queue.
     ERR_clear_error();
-    return result == 1;
+    return 1 == result;
 }
 
 inline std::string RsaSignKeyOpenSsl::public_pem() const {

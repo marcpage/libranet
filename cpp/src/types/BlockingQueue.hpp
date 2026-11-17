@@ -62,7 +62,7 @@ void BlockingQueue<Type>::core_push(Item&& item) {
     std::unique_lock lock(m_mutex);
 
     m_not_full.wait(lock, [this] {
-        return m_capacity == 0 || m_queue.size() < m_capacity;
+        return 0 == m_capacity || m_queue.size() < m_capacity;
     });
 
     m_queue.push(std::forward<Item>(item));
@@ -86,7 +86,7 @@ bool BlockingQueue<Type>::core_push_ms_timeout(Item&& item, Milliseconds timeout
     std::unique_lock lock(m_mutex);
 
     if (!m_not_full.wait_for(lock, timeout, [this] {
-        return m_capacity == 0 || m_queue.size() < m_capacity;
+        return 0 == m_capacity || m_queue.size() < m_capacity;
     })) {
         return false;
     }

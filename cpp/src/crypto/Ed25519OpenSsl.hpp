@@ -63,11 +63,11 @@ inline ISignKey::Ptr Ed25519OpenSsl::create() {
 inline ISignKey::Ptr Ed25519OpenSsl::from_pem(std::string_view pem) {
     auto [label, der_bytes] = Pem::unwrap(pem);
 
-    if (label == "PRIVATE KEY") {
+    if ("PRIVATE KEY" == label) {
         return std::make_unique<Ed25519OpenSsl>(OpenSslDer::read_private_key(der_bytes), true);
     }
 
-    if (label == "PUBLIC KEY") {
+    if ("PUBLIC KEY" == label) {
         return std::make_unique<Ed25519OpenSsl>(OpenSslDer::read_public_key(der_bytes), false);
     }
 
@@ -134,7 +134,7 @@ inline bool Ed25519OpenSsl::verify(std::string_view data, const Data& signature)
 
     // A signature that does not match leaves an error in OpenSSL's queue.
     ERR_clear_error();
-    return result == 1;
+    return 1 == result;
 }
 
 inline std::string Ed25519OpenSsl::public_pem() const {

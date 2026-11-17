@@ -103,8 +103,8 @@ inline RsaPemMacos::KeyPair RsaPemMacos::from_pem(std::string_view pem) {
 
 inline std::pair<bool, bool> RsaPemMacos::validate_and_classify_pem_label(
     std::string_view label) {
-    const bool is_private = (label == "PRIVATE KEY" || label == "RSA PRIVATE KEY");
-    const bool is_public = (label == "PUBLIC KEY" || label == "RSA PUBLIC KEY");
+    const bool is_private = ("PRIVATE KEY" == label || "RSA PRIVATE KEY" == label);
+    const bool is_public = ("PUBLIC KEY" == label || "RSA PUBLIC KEY" == label);
 
     if (!is_private && !is_public) {
         throw std::invalid_argument("Unsupported or unrecognized PEM label: "
@@ -119,11 +119,11 @@ inline std::pair<bool, bool> RsaPemMacos::validate_and_classify_pem_label(
 // "PUBLIC KEY" and "PRIVATE KEY" name.
 inline std::vector<std::byte> RsaPemMacos::pkcs1_from(std::string_view label,
                                                       const std::vector<std::byte>& der_bytes) {
-    if (label == "PUBLIC KEY") {
+    if ("PUBLIC KEY" == label) {
         return RsaDer::pkcs1_from_spki(der_bytes);
     }
 
-    if (label == "PRIVATE KEY") {
+    if ("PRIVATE KEY" == label) {
         return RsaDer::pkcs1_from_pkcs8(der_bytes);
     }
 

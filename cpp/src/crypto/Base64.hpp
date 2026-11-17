@@ -82,13 +82,13 @@ inline std::string Base64::encode(std::string_view data) {
 }
 
 inline int Base64::get_character_value(char character) {
-    if (character == padding) {
+    if (padding == character) {
         return padding_value;
     }
 
     const auto found_position = characters.find(character);
 
-    if (found_position == std::string_view::npos) {
+    if (std::string_view::npos == found_position) {
         throw std::invalid_argument("Invalid Base64 character encountered");
     }
 
@@ -115,12 +115,12 @@ inline std::vector<std::byte> Base64::decode(std::string_view encoded_string) {
             const auto value = get_character_value(group.at(position));
 
             // The first two characters of a group are never padding.
-            if (value == padding_value && position < 2) {
+            if (padding_value == value && position < 2) {
                 throw std::invalid_argument("Invalid Base64 padding position");
             }
 
             triple = (triple << bits_per_character)
-                     | (value == padding_value ? 0U : static_cast<unsigned int>(value));
+                     | (padding_value == value ? 0U : static_cast<unsigned int>(value));
         }
 
         // Extract the decoded bytes based on padding presence

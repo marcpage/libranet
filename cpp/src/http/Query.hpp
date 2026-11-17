@@ -127,7 +127,7 @@ inline Query Query::parse(std::string_view query_string) {
     Query result;
 
     // Strip leading '?' if present
-    if (!query_string.empty() && query_string.front() == '?') {
+    if (!query_string.empty() && '?' == query_string.front()) {
         query_string.remove_prefix(1);
     }
 
@@ -135,14 +135,14 @@ inline Query Query::parse(std::string_view query_string) {
 
     while (!query.empty()) {
         const auto amp_pos = query.find('&');
-        const auto pair = (amp_pos == std::string_view::npos)
+        const auto pair = (std::string_view::npos == amp_pos)
                               ? query
                               : query.substr(0, amp_pos);
 
         if (!pair.empty()) {
             const auto eq_pos = pair.find('=');
 
-            if (eq_pos == std::string_view::npos) {
+            if (std::string_view::npos == eq_pos) {
                 result.m_parameters.emplace_back(std::string(pair), std::string());
             } else {
                 result.m_parameters.emplace_back(
@@ -151,7 +151,7 @@ inline Query Query::parse(std::string_view query_string) {
             }
         }
 
-        if (amp_pos == std::string_view::npos) {
+        if (std::string_view::npos == amp_pos) {
             break;
         }
 
