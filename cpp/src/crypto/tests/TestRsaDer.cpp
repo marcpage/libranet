@@ -116,9 +116,10 @@ TEST(RsaDerTest, RefusesWhatIsNoPkcs8) {
 
     version_1.at(pkcs8_version_offset) = std::byte{0x01};
     cut_short.pop_back();
-    attributes.insert(attributes.end(),
-                      std::next(pkcs8.begin(), static_cast<std::ptrdiff_t>(attributes_header.size())),
-                      pkcs8.end());
+    const auto after_header =
+        std::next(pkcs8.begin(), static_cast<std::ptrdiff_t>(attributes_header.size()));
+
+    attributes.insert(attributes.end(), after_header, pkcs8.end());
     attributes.insert(attributes.end(), empty_attributes.begin(), empty_attributes.end());
 
     for (const auto& malformed : {

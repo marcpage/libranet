@@ -111,13 +111,13 @@ inline bool Request::parse_request_line(std::string_view line) {
 }
 
 inline std::string Request::to_string() const {
-    constexpr auto RequestFormattingOverheadBytes = 64;
+    constexpr auto formatting_overhead_bytes = 64;
     std::string result;
     result.reserve(m_method.size()
                    + m_uri.size()
                    + m_version.size()
                    + m_body.size()
-                   + RequestFormattingOverheadBytes);
+                   + formatting_overhead_bytes);
 
     result += m_method;
     result += ' ';

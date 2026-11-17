@@ -151,7 +151,7 @@ TEST(ChannelTest, WaitForeverAndConcurrentProducer) {
     });
 
     // This blocks until the producer posts
-    const auto value = channel.next<int>(Channel::WaitForever);
+    const auto value = channel.next<int>(Channel::wait_forever);
     EXPECT_TRUE(value.has_value());
     EXPECT_EQ(value, posted_value);
 

@@ -24,13 +24,13 @@ Channel::Channel(const std::string& name) {
 Channel::~Channel() {
     const std::scoped_lock lock(m_channel_lock);
 
-    for (auto& [name, channelList] : m_channels) {
-        const auto position = std::find(channelList.begin(), channelList.end(), this);
+    for (auto& [name, channel_list] : m_channels) {
+        const auto position = std::find(channel_list.begin(), channel_list.end(), this);
 
-        if (position != channelList.end()) {
-            channelList.erase(position);
+        if (position != channel_list.end()) {
+            channel_list.erase(position);
 
-            if (channelList.empty()) {
+            if (channel_list.empty()) {
                 m_channels.erase(name);
             }
 
@@ -48,7 +48,7 @@ size_t Channel::size() const {
 }
 
 std::optional<IMessage::Ptr> Channel::next_message(Milliseconds timeout) {
-    if (timeout <= WaitForever) {
+    if (timeout <= wait_forever) {
         return m_message_queue.pop();
     }
 

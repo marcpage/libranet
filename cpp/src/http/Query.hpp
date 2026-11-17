@@ -11,7 +11,7 @@ namespace http {
 
 class Query {
 public:
-    static Query parse(std::string_view query_string);
+    [[nodiscard]] static Query parse(std::string_view query_string);
 
     Query() = default;
     ~Query() = default;
@@ -178,6 +178,7 @@ inline std::string Query::to_string() const {
             result += "=" + m_parameters.at(parameter_index).second;
         }
     }
+
     return result;
 }
 

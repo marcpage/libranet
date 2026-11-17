@@ -90,7 +90,8 @@ private:
     static constexpr word_t decimal_base = 10;
 
     static_assert(sizeof(double_word_t) >= 2 * sizeof(word_t)
-                      || (sizeof(double_word_t) > sizeof(word_t) && sizeof(word_t) >= sizeof(std::uint64_t)),
+                      || (sizeof(double_word_t) > sizeof(word_t)
+                          && sizeof(word_t) >= sizeof(std::uint64_t)),
                   "double_word_t must be wide enough to hold product/sum carries between words.");
     static_assert(sizeof(double_word_t) >= sizeof(std::uint64_t),
                   "double_word_t must be at least as large as std::uint64_t for safe conversions.");
@@ -179,8 +180,8 @@ inline void Integer::subtract_magnitudes(std::vector<word_t>& left,
     word_t borrow = 0;
 
     for (std::size_t word_index = 0; word_index < left.size(); ++word_index) {
-        const auto temp =
-            static_cast<double_word_t>(left[word_index]) - (word_index < right.size() ? right[word_index] : 0) - borrow;
+        const auto temp = static_cast<double_word_t>(left[word_index])
+                          - (word_index < right.size() ? right[word_index] : 0) - borrow;
 
         left[word_index] = static_cast<word_t>(temp);
         borrow = (temp >> word_bits) != 0U ? 1 : 0;
@@ -472,9 +473,11 @@ inline Integer Integer::operator+() const {
 
 inline Integer Integer::operator-() const {
     Integer value = *this;
+
     if (!value.is_zero()) {
         value.m_negative = !value.m_negative;
     }
+
     return value;
 }
 
@@ -840,7 +843,8 @@ inline std::ostream& operator<<(std::ostream& out_stream, const Integer& value) 
 
         for (auto word_index = temp.size(); word_index-- > 0;) {
             const Integer::double_word_t cur =
-                (static_cast<Integer::double_word_t>(remainder) << Integer::word_bits) | temp[word_index];
+                (static_cast<Integer::double_word_t>(remainder) << Integer::word_bits)
+                | temp[word_index];
 
             temp[word_index] = static_cast<Integer::word_t>(cur / Integer::decimal_base);
             remainder = static_cast<Integer::word_t>(cur % Integer::decimal_base);

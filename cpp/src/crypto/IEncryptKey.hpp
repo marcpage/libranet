@@ -23,7 +23,7 @@ public:
         None,
     };
 
-    static Ptr Aes(const Data& raw_key, AesMode mode, AesPadding padding);
+    [[nodiscard]] static Ptr Aes(const Data& raw_key, AesMode mode, AesPadding padding);
 
     [[nodiscard]] virtual Data encrypt(std::string_view plaintext,
                                        const InitializationVector& vector) const = 0;

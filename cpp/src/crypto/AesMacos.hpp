@@ -75,7 +75,7 @@ inline AesMacos::AesMacos(Data key, AesMode mode, AesPadding padding)
     if (m_key.size() != aes_128_key_bytes && m_key.size() != aes_192_key_bytes
         && m_key.size() != aes_256_key_bytes) {
         throw std::invalid_argument(
-            "Invalid AES key size. Must be 128, 192, or 256 bits.");
+            "Invalid AES key size. Must be 128, 192, or 256 bits");
     }
 }
 
@@ -101,7 +101,7 @@ inline std::string AesMacos::decrypt(const Data& ciphertext,
 inline IEncryptKey::Data AesMacos::process(CCOperation operation, std::string_view input,
                                            const InitializationVector& vector) const {
     if (m_mode != AesMode::Cbc && m_mode != AesMode::Ctr) {
-        throw std::runtime_error("Only Cbc and Ctr supported.");
+        throw std::runtime_error("Only Cbc and Ctr supported");
     }
 
     const std::size_t buffer_size = input.size() + kCCBlockSizeAES128;
@@ -145,11 +145,12 @@ inline std::size_t AesMacos::unpadded_size(const Data& decrypted, std::size_t si
     constexpr std::size_t block_size = kCCBlockSizeAES128;
 
     if (size < block_size) {
-        throw std::runtime_error("AES-CBC decryption found no padding.");
+        throw std::runtime_error("AES-CBC decryption found no padding");
     }
 
     const auto padding = std::to_integer<std::size_t>(decrypted.at(size - 1));
-    auto bad = static_cast<std::size_t>(padding == 0) | static_cast<std::size_t>(padding > block_size);
+    auto bad = static_cast<std::size_t>(padding == 0)
+               | static_cast<std::size_t>(padding > block_size);
 
     for (std::size_t index = 1; index <= block_size; ++index) {
         const auto in_padding = static_cast<std::size_t>(index <= padding);
@@ -158,7 +159,7 @@ inline std::size_t AesMacos::unpadded_size(const Data& decrypted, std::size_t si
     }
 
     if (bad != 0) {
-        throw std::runtime_error("AES-CBC decryption found bad padding.");
+        throw std::runtime_error("AES-CBC decryption found bad padding");
     }
 
     return size - padding;
@@ -176,7 +177,7 @@ inline std::size_t AesMacos::process_ctr(CCOperation operation, std::string_view
     InitializationVector counter = vector.empty() ? InitializationVector(block_size) : vector;
 
     if (counter.size() != block_size) {
-        throw std::invalid_argument("An AES initialization vector must be 16 bytes.");
+        throw std::invalid_argument("An AES initialization vector must be 16 bytes");
     }
 
     const auto low = low_count(counter);
@@ -219,7 +220,9 @@ inline void AesMacos::carry_count(InitializationVector& counter) {
     }
 
     for (std::size_t index = half; index-- > 0;) {
-        counter.at(index) = static_cast<std::byte>(std::to_integer<unsigned int>(counter.at(index)) + 1U);
+        const auto incremented = std::to_integer<unsigned int>(counter.at(index)) + 1U;
+
+        counter.at(index) = static_cast<std::byte>(incremented);
 
         if (counter.at(index) != std::byte{0}) {
             break;

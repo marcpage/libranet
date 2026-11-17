@@ -98,7 +98,7 @@ is mistaken, the check is turned off as narrowly as it can be:
 Each names the check: a bare `NOLINT` is never written. A check that
 `clang-tidy` reports under two names, as it does for aliases, is named under
 both, or with a pattern (`*-explicit-constructor`). A comment above it says
-why, in a sentence:
+why:
 
 ```cpp
 // The socket calls take a sockaddr*, and a sockaddr_storage is made to be
@@ -186,6 +186,8 @@ methods.
   operating system's headers; each outside library's; and the project's
   own. `clang-format` sorts each block, in case-sensitive order, as
   `clang-tidy`'s `llvm-include-order` wants.
+- **A test starts with GoogleTest's header**, in the block of the standard
+  library's, where `llvm-include-order` puts it first.
 - **A header in the same library is included by its name**
   (`"Record.hpp"`); one in another library by its path from `src/`
   (`"other/Clock.hpp"`). Tests and fuzzers include by the path from `src/`.
@@ -281,9 +283,10 @@ labels. Braces are attached: a function's opening brace is on its line.
   keeps its spelling, as Apple's `CF` prefix does in a class that holds its
   objects.
 - **Units go in the name** of a number that holds a quantity in a unit its
-  type does not carry: `piece_bytes`, `key_bits`, `memory_cost_kib`. A
-  duration is a `std::chrono` type (§5), whose unit is its type, and a
-  container's `size()` counts its elements.
+  type does not carry, `key_bits`, `memory_cost_kib`, but for bytes: a
+  size, length, or count with no unit named is in bytes, as `size`,
+  `digest_size()`, and `salt_length` are. A duration is a `std::chrono` type
+  (§5), whose unit is its type.
 - **Words are spelled out**: `position`, `element`, `buffer`, `result`,
   `object`, not `pos`, `elem`, `buf`, `res`, `obj`. A loop's index is
   `index`, or `…_index`. The two operands of an operator are `left` and
@@ -487,7 +490,6 @@ constructor or factory refuses arguments it cannot work with by throwing
 right form, then constructs.
 
 ```cpp
-// An address to connect to: a host, and a port on it.
 class Endpoint {
 public:
     using Port = std::uint16_t;
@@ -678,11 +680,11 @@ static constexpr std::size_t max_depth = 128;
 ## 8. Comments
 
 A comment says why, not what: the reason for a value, the case a branch
-covers, the thing that would break if the line changed. Comments are whole
-sentences, each ending in a full stop, wrapped at 79 columns, above the code
-they are about. They are `//` comments. There is no documentation generator,
-so they hold no markup: code is named as it is spelled, a function with its
-parentheses, `parse()`.
+covers, the thing that would break if the line changed. Comments are wrapped
+at 79 columns, above the code they are about, and need not be whole
+sentences: a phrase that says it is enough. They are `//` comments. There is
+no documentation generator, so they hold no markup: code is named as it is
+spelled, a function with its parentheses, `parse()`.
 
 ```cpp
 // Sorted, so that the same entries always hash alike, whatever order the
@@ -690,9 +692,11 @@ parentheses, `parse()`.
 std::sort(names.begin(), names.end());
 ```
 
-- **A class has a comment above it** saying what it is, and for an
-  implementation, what it is built on. A class that reads or writes a format
-  shows an example of it.
+- **A class has no comment above it unless the comment adds something.** A
+  class should be clear from its name and its public interface. A comment is
+  added where something more needs saying, or where something about how the
+  class is built must be known to understand it: what an implementation is
+  built on, a format it reads or writes, a limit it holds to.
 - **A function whose name and types do not tell a caller all they need**
   has a comment, above its declaration or its definition, saying what it
   gives, as a noun phrase ("Whether password makes this hash, compared in
@@ -700,14 +704,21 @@ std::sort(names.begin(), names.end());
   start of text, and moves past them."), and what it throws.
 - **A comment names the specification it follows**, and the section:
   "RFC 3986 §2.3".
-- **A comment at the end of a line, or above a group of lines, may be a
-  label** rather than a sentence: a unit, a range (`// 4xx`), or a tool's
-  pragma (`// IWYU pragma: keep`).
+- **A comment at the end of a line is short**: a label, a unit, a range
+  (`// 4xx`), or a tool's pragma (`// IWYU pragma: keep`). Anything longer
+  goes above the line.
 - **A comment that turns a check off** gives its reason (§2.1).
 
-There are no `TODO` or `FIXME` comments, no banners of dashes that divide a
-file into sections, and no code left in comments. Work left over is recorded
-in the project's plan or an issue.
+**Commented-out code is never committed.** Code that is no longer wanted is
+removed; version control keeps what it was.
+
+Banners do not divide a file into sections. A particularly long file may
+mark its sections instead, each with a comment that starts `MARK:`, as
+`// MARK: Parsing`, which VS Code shows as a heading in the editor's
+minimap.
+
+There are no `TODO` or `FIXME` comments. Work left over is recorded in the
+project's plan or an issue.
 
 ## 9. Errors
 
@@ -844,10 +855,10 @@ its `end()`, which it cannot pass.
   one small helper where they can be, as in a class that hands bytes to a C
   library as `unsigned char*`.
 - **A result thrown away on purpose is cast to `void`**: `(void)::close(fd);`.
-- **A pointer is compared with `nullptr`**, with the pointer first:
-  `if (value == nullptr)`. `readability-implicit-bool-conversion` checks it
-  outside templates. A smart pointer or an `std::optional` is tested as a
-  condition: `if (!key)`.
+- **A pointer is compared with `nullptr`**, which goes on the left (§10.6):
+  `if (nullptr == value)`. `readability-implicit-bool-conversion` checks
+  that it is compared, outside templates. A smart pointer or an
+  `std::optional` is tested as a condition: `if (!key)`.
 
 ### 10.5 Platforms
 
@@ -861,6 +872,16 @@ its `end()`, which it cannot pass.
   alias, as in a factory (§6.2), or a whole file. There are no other macros:
   a constant is `constexpr`, and a function is a function, which
   `cppcoreguidelines-macro-usage` checks.
+
+### 10.6 Constants on the Left
+
+In a comparison with `==`, a constant goes on the left, and what varies on
+the right: `if (nullptr == value)`, `if (0 == count)`,
+`if (Mode::Cbc == m_mode)`. A constant is a literal, `nullptr`, an
+enumerator, or a named constant. If `=` is typed for `==` by mistake,
+`if (0 = count)` does not compile, where `if (count = 0)` would assign. A
+comparison with `!=` cannot be mistaken for an assignment, and may be
+written either way.
 
 ## 11. Tests
 

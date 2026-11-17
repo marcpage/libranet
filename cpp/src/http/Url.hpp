@@ -19,21 +19,21 @@ namespace http {
 
 class Url {
 public:
-    static std::optional<Url> parse(std::string_view url_string);
+    [[nodiscard]] static std::optional<Url> parse(std::string_view url_string);
 
     enum class EncodeContext : std::uint8_t {
         UriComponent, // RFC 3986: unreserved chars, spaces -> %20
         FormUrl,      // Query/Form: unreserved chars, spaces -> +
     };
 
-    static std::string encode(std::string_view value,
-                              EncodeContext context = EncodeContext::FormUrl);
-    static std::string encode(std::string_view value, std::string_view allowed_chars,
-                              bool space_to_plus);
+    [[nodiscard]] static std::string encode(std::string_view value,
+                                            EncodeContext context = EncodeContext::FormUrl);
+    [[nodiscard]] static std::string encode(std::string_view value, std::string_view allowed_chars,
+                                            bool space_to_plus);
 
-    static std::string decode(std::string_view value,
-                              EncodeContext context = EncodeContext::FormUrl);
-    static std::string decode(std::string_view value, bool decode_plus_as_space);
+    [[nodiscard]] static std::string decode(std::string_view value,
+                                            EncodeContext context = EncodeContext::FormUrl);
+    [[nodiscard]] static std::string decode(std::string_view value, bool decode_plus_as_space);
 
     Url() = default;
     ~Url() = default;
@@ -94,9 +94,11 @@ private:
     static void extract_query(std::string_view& url_string, Query& query);
     static void extract_scheme(std::string_view& url_string, std::string& scheme);
     static void parse_authority(std::string_view authority, std::string& username,
-                                std::string& password, std::string& host, std::optional<uint16_t>& port);
+                                std::string& password, std::string& host,
+                                std::optional<uint16_t>& port);
     static std::string to_lower_copy(std::string_view str);
     static std::optional<uint16_t> parse_port(std::string_view str);
+    [[nodiscard]] static bool is_hex_digit(char character) noexcept;
 };
 
 inline std::string Url::encode(std::string_view value, std::string_view allowed_chars,
@@ -139,6 +141,11 @@ inline std::string Url::encode(std::string_view value, EncodeContext context) {
     return encode(value, unreserved, space_to_plus);
 }
 
+// std::isxdigit takes an unsigned char's value.
+inline bool Url::is_hex_digit(char character) noexcept {
+    return std::isxdigit(static_cast<unsigned char>(character)) != 0;
+}
+
 inline std::string Url::decode(std::string_view value, bool decode_plus_as_space) {
     std::string decoded;
     decoded.reserve(value.size());
@@ -150,8 +157,8 @@ inline std::string Url::decode(std::string_view value, bool decode_plus_as_space
             decoded += ' ';
             ++character_index;
         } else if (value.at(character_index) == '%' && character_index + 2 < value.size()
-                   && std::isxdigit(static_cast<unsigned char>(value.at(character_index + 1))) != 0
-                   && std::isxdigit(static_cast<unsigned char>(value.at(character_index + 2))) != 0) {
+                   && is_hex_digit(value.at(character_index + 1))
+                   && is_hex_digit(value.at(character_index + 2))) {
             constexpr int hex_base = 16;
             const std::string hex_digits(value.substr(character_index + 1, 2));
 
@@ -240,6 +247,7 @@ inline std::optional<std::string> Url::get_query(std::string_view key) const {
     if (!value.has_value()) {
         return std::nullopt;
     }
+
     return decode(value.value(), EncodeContext::FormUrl);
 }
 
@@ -453,7 +461,8 @@ inline void Url::extract_scheme(std::string_view& url_string, std::string& schem
 }
 
 inline void Url::parse_authority(std::string_view authority, std::string& username,
-                                 std::string& password, std::string& host, std::optional<uint16_t>& port) {
+                                 std::string& password, std::string& host,
+                                 std::optional<uint16_t>& port) {
     if (authority.empty()) {
         return;
     }
@@ -620,7 +629,7 @@ inline bool operator<(const Url& lhs, const Url& rhs) {
 }
 
 inline std::optional<uint16_t> Url::parse_port(std::string_view str) {
-    constexpr auto MaxPortNumber = std::numeric_limits<uint16_t>::max();
+    constexpr auto max_port_number = std::numeric_limits<uint16_t>::max();
 
     if (str.empty()) {
         return std::nullopt;
@@ -629,7 +638,7 @@ inline std::optional<uint16_t> Url::parse_port(std::string_view str) {
     try {
         const auto port_number = std::stoul(std::string(str));
 
-        if (port_number <= MaxPortNumber) {
+        if (port_number <= max_port_number) {
             return static_cast<uint16_t>(port_number);
         }
     } catch (const std::invalid_argument&) {

@@ -65,7 +65,7 @@ inline RsaPemOpenSsl::KeyPair RsaPemOpenSsl::from_pem(std::string_view pem) {
     KeyPair pair{read_der(der_bytes, label), is_private_label(label)};
 
     if (EVP_PKEY_is_a(pair.key.get(), "RSA") != 1) {
-        throw std::invalid_argument("Not an RSA key.");
+        throw std::invalid_argument("Not an RSA key");
     }
 
     return pair;

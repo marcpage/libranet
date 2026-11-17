@@ -30,12 +30,15 @@ constexpr auto handling_timeout = 5s;
 template<typename Predicate>
 bool wait_until(Predicate predicate, std::chrono::milliseconds timeout = handling_timeout) {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
+
     while (std::chrono::steady_clock::now() < deadline) {
         if (predicate()) {
             return true;
         }
+
         std::this_thread::sleep_for(1ms);
     }
+
     return predicate();
 }
 
@@ -151,13 +154,14 @@ TEST(AsyncChannelOfTest, UnexpectedMessageTypeLogging) {
     {
         std::vector<std::string> logged;
 
-        const AsyncChannelOf<int> channel("test.asyncof.unexpected", [](int) {}, [&](std::string msg) {
+        const auto log = [&](std::string message) {
             {
                 const std::scoped_lock lock(mutex);
-                logged.push_back(std::move(msg));
+                logged.push_back(std::move(message));
             }
             condition.notify_one();
-        });
+        };
+        const AsyncChannelOf<int> channel("test.asyncof.unexpected", [](int) {}, log);
 
         // Post a message of unexpected type (std::string instead of int)
         Channel::post("test.asyncof.unexpected", std::string("mismatch"));

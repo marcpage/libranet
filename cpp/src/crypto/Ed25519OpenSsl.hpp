@@ -79,7 +79,7 @@ inline Ed25519OpenSsl::Ed25519OpenSsl() : Ed25519OpenSsl(generate(), true) {}
 inline Ed25519OpenSsl::Ed25519OpenSsl(Key key, bool has_private)
     : m_key(std::move(key)), m_has_private(has_private) {
     if (!m_key || EVP_PKEY_is_a(m_key.get(), "ED25519") != 1) {
-        throw std::invalid_argument("Not an Ed25519 key.");
+        throw std::invalid_argument("Not an Ed25519 key");
     }
 }
 
@@ -98,7 +98,7 @@ inline Ed25519OpenSsl::Key Ed25519OpenSsl::generate() {
 
 inline ISignKey::Data Ed25519OpenSsl::sign(std::string_view data) const {
     if (!m_has_private) {
-        throw std::runtime_error("Cannot sign: Ed25519 instance contains public key only.");
+        throw std::runtime_error("Cannot sign: Ed25519 instance contains public key only");
     }
 
     const MessageContext context(EVP_MD_CTX_new());
@@ -143,7 +143,7 @@ inline std::string Ed25519OpenSsl::public_pem() const {
 
 inline std::string Ed25519OpenSsl::private_pem() const {
     if (!m_has_private) {
-        throw std::runtime_error("No private key available.");
+        throw std::runtime_error("No private key available");
     }
 
     // A key with no older form of its own, as Ed25519 has none, is written

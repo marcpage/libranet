@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Base64.hpp"
 #include <algorithm>
 #include <cstddef>
 #include <iterator>
@@ -8,6 +7,8 @@
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include "Base64.hpp"
 
 namespace crypto {
 
@@ -18,7 +19,8 @@ public:
         std::vector<std::byte> der_bytes;
     };
 
-    [[nodiscard]] static std::string wrap(std::string_view label, const std::vector<std::byte>& der_bytes);
+    [[nodiscard]] static std::string wrap(std::string_view label,
+                                          const std::vector<std::byte>& der_bytes);
     [[nodiscard]] static std::string wrap(std::string_view label, std::string_view der_string);
     [[nodiscard]] static Unwrapped unwrap(std::string_view pem_string);
 
@@ -79,14 +81,14 @@ inline Pem::Unwrapped Pem::unwrap(std::string_view pem_string) {
     const auto begin_position = pem_string.find(begin_prefix);
 
     if (begin_position == std::string_view::npos) {
-        throw std::invalid_argument("PEM string is missing BEGIN header.");
+        throw std::invalid_argument("PEM string is missing BEGIN header");
     }
 
     const auto label_start = begin_position + begin_prefix.size();
     const auto label_end = pem_string.find(suffix, label_start);
 
     if (label_end == std::string_view::npos) {
-        throw std::invalid_argument("Malformed PEM BEGIN header.");
+        throw std::invalid_argument("Malformed PEM BEGIN header");
     }
 
     std::string label(pem_string.substr(label_start, label_end - label_start));

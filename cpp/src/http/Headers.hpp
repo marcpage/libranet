@@ -87,7 +87,8 @@ inline std::optional<std::string_view> Headers::get(std::string_view key) const 
     return std::nullopt;
 }
 
-inline std::string_view Headers::get(std::string_view key, std::string_view default_value) const noexcept {
+inline std::string_view Headers::get(std::string_view key,
+                                     std::string_view default_value) const noexcept {
     const auto header = m_headers.find(key);
 
     if (header != m_headers.end()) {
@@ -118,19 +119,19 @@ inline bool Headers::empty() const noexcept {
 }
 
 inline std::string Headers::to_string() const {
-    constexpr auto AverageHeaderLineSize = 32;
-    const auto* HttpHeaderNewline = "\r\n";
+    constexpr auto average_header_line_size = 32;
+    constexpr auto header_newline = "\r\n";
     std::string result;
-    result.reserve(m_headers.size() * AverageHeaderLineSize);
+    result.reserve(m_headers.size() * average_header_line_size);
 
     for (const auto& [key, value] : m_headers) {
         result += key;
         result += ": ";
         result += value;
-        result += HttpHeaderNewline;
+        result += header_newline;
     }
 
-    result += HttpHeaderNewline;
+    result += header_newline;
     return result;
 }
 
@@ -153,10 +154,12 @@ inline bool operator==(const Headers& left, const Headers& right) noexcept {
         if (comp(it1->first, it2->first) || comp(it2->first, it1->first)) {
             return false;
         }
+
         // Values must match exactly
         if (it1->second != it2->second) {
             return false;
         }
+
         ++it1;
         ++it2;
     }
@@ -223,6 +226,7 @@ inline std::string Headers::process_header_line(
 
             updated_value.append(cleaned_chunk.data(), cleaned_chunk.size());
         }
+
         headers.set(last_key, std::move(updated_value));
         return last_key;
     }
@@ -263,7 +267,8 @@ inline bool Headers::is_continuation_line(std::string_view line) noexcept {
     return !line.empty() && (line.front() == ' ' || line.front() == '\t');
 }
 
-inline bool Headers::parse_header_line(std::string_view line, std::string& out_key, std::string& out_value) {
+inline bool Headers::parse_header_line(std::string_view line, std::string& out_key,
+                                       std::string& out_value) {
     const auto colon_pos = line.find(':');
 
     if (colon_pos == std::string_view::npos) {
@@ -276,24 +281,31 @@ inline bool Headers::parse_header_line(std::string_view line, std::string& out_k
     return true;
 }
 
-inline std::vector<std::string_view> Headers::split_spaces(std::string_view text, std::size_t max_fields) {
+inline std::vector<std::string_view> Headers::split_spaces(std::string_view text,
+                                                           std::size_t max_fields) {
     std::vector<std::string_view> fields;
+
     if (text.empty() || max_fields == 0) {
         return fields;
     }
 
     std::size_t pos = 0;
+
     while (fields.size() + 1 < max_fields && pos < text.size()) {
         pos = text.find_first_not_of(" \t", pos);
+
         if (pos == std::string_view::npos) {
             break;
         }
+
         const auto end = text.find_first_of(" \t", pos);
+
         if (end == std::string_view::npos) {
             fields.push_back(text.substr(pos));
             pos = std::string_view::npos;
             break;
         }
+
         fields.push_back(text.substr(pos, end - pos));
         pos = end;
     }
@@ -301,6 +313,7 @@ inline std::vector<std::string_view> Headers::split_spaces(std::string_view text
     // If there is remaining text and we need the final catch-all field
     if (pos < text.size() && fields.size() == max_fields - 1) {
         pos = text.find_first_not_of(" \t", pos);
+
         if (pos != std::string_view::npos) {
             fields.push_back(text.substr(pos));
         }

@@ -190,10 +190,11 @@ TEST(RsaInteropTest, AppleAndOpenSslAgree) {
 
     EXPECT_TRUE(open_ssl->RsaPssSha256()->verify(message, apple->RsaPssSha256()->sign(message)));
     EXPECT_TRUE(apple->RsaPssSha256()->verify(message, open_ssl->RsaPssSha256()->sign(message)));
-    EXPECT_EQ(open_ssl->RsaOaepSha256()->decrypt(apple->RsaOaepSha256()->encrypt(plaintext, {}), {}),
-              plaintext);
-    EXPECT_EQ(apple->RsaOaepSha256()->decrypt(open_ssl->RsaOaepSha256()->encrypt(plaintext, {}), {}),
-              plaintext);
+    const auto from_apple = apple->RsaOaepSha256()->encrypt(plaintext, {});
+    const auto from_open_ssl = open_ssl->RsaOaepSha256()->encrypt(plaintext, {});
+
+    EXPECT_EQ(open_ssl->RsaOaepSha256()->decrypt(from_apple, {}), plaintext);
+    EXPECT_EQ(apple->RsaOaepSha256()->decrypt(from_open_ssl, {}), plaintext);
 }
 
 // What each writes in PEM, the other reads as the same key.

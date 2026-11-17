@@ -23,7 +23,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#ifdef __APPLE__
+#if __APPLE__
 #include <fcntl.h>
 #endif
 
@@ -32,10 +32,10 @@
 
 namespace {
 
-#ifdef __APPLE__
-constexpr int SEND_FLAGS = 0;
+#if __APPLE__
+constexpr int send_flags = 0;
 #elif defined(__linux__)
-constexpr int SEND_FLAGS = MSG_NOSIGNAL;
+constexpr int send_flags = MSG_NOSIGNAL;
 #endif
 
 void assert_socket(bool condition, const char* operation, int error = errno) {
@@ -44,10 +44,10 @@ void assert_socket(bool condition, const char* operation, int error = errno) {
     }
 }
 
-template<typename E>
+template<typename Error>
 void assert_condition(bool condition, const std::string& message) {
     if (!condition) {
-        throw E(message);
+        throw Error(message);
     }
 }
 
@@ -101,7 +101,7 @@ int create_socket(const addrinfo& info) {
         (void)::setsockopt(socket_fd, SOL_SOCKET, SO_KEEPALIVE, &enabled, sizeof(enabled));
     }
 
-#ifdef __APPLE__
+#if __APPLE__
     // Prevent SIGPIPE when writing to a closed peer (macOS / BSD)
     (void)::setsockopt(socket_fd, SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof(enabled));
 #endif
@@ -144,14 +144,16 @@ int set_timeout(int socket_fd, Direction direction, net::ISocket::Milliseconds t
         constexpr auto microseconds_per_millisecond = 1000;
 
         timeout_value.tv_sec = static_cast<time_t>(timeout.count() / milliseconds_per_second);
-        timeout_value.tv_usec = static_cast<suseconds_t>((timeout.count() % milliseconds_per_second) * microseconds_per_millisecond);
+        timeout_value.tv_usec = static_cast<suseconds_t>(
+            (timeout.count() % milliseconds_per_second) * microseconds_per_millisecond);
     }
 
-    return ::setsockopt(socket_fd, SOL_SOCKET, direction_flag, &timeout_value, sizeof(timeout_value));
+    return ::setsockopt(socket_fd, SOL_SOCKET, direction_flag, &timeout_value,
+                        sizeof(timeout_value));
 }
 
-template<typename Func>
-net::Address query_socket_address(int socket_fd, Func socket_call,
+template<typename Function>
+net::Address query_socket_address(int socket_fd, Function socket_call,
                                   const char* operation_name) {
     sockaddr_storage storage{};
     socklen_t length = sizeof(storage);
@@ -203,7 +205,9 @@ ISocket::Ptr SocketPosix::connect(const Address& address) {
     const auto addresses = resolve_address(address, 0, SOCK_STREAM);
     int last_error = ECONNREFUSED;
 
-    for (const addrinfo* current = addresses.get(); current != nullptr; current = current->ai_next) {
+    for (const addrinfo* current = addresses.get();
+         current != nullptr;
+         current = current->ai_next) {
         const auto socket_fd = create_socket(*current);
 
         if (socket_fd < 0) {
@@ -254,7 +258,7 @@ ISocket::Ptr SocketPosix::accept() {
     // The accepted socket is closed on exec, so it does not leak into child
     // processes.
     do {
-#ifdef __APPLE__
+#if __APPLE__
         // macOS has no accept4(), so close-on-exec is set once accepted.
         // NOLINTNEXTLINE(android-cloexec-accept)
         accepted_fd = ::accept(m_socket_fd, nullptr, nullptr);
@@ -265,7 +269,7 @@ ISocket::Ptr SocketPosix::accept() {
 
     assert_socket(accepted_fd >= 0, "accept");
 
-#ifdef __APPLE__
+#if __APPLE__
     // fcntl() is the POSIX call that sets close-on-exec, and it takes
     // variable arguments; there is no other form.
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg)
@@ -289,7 +293,7 @@ std::size_t SocketPosix::send(std::string_view data) {
     ssize_t byte_count = -1;
 
     do {
-        byte_count = ::send(m_socket_fd, data.data(), count, SEND_FLAGS);
+        byte_count = ::send(m_socket_fd, data.data(), count, send_flags);
     } while (byte_count < 0 && errno == EINTR);
 
     assert_socket(byte_count >= 0, "send");

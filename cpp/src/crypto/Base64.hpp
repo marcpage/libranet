@@ -23,7 +23,8 @@ public:
     Base64& operator=(Base64&&) = delete;
 
 private:
-    static constexpr std::string_view characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    static constexpr std::string_view characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                                   "abcdefghijklmnopqrstuvwxyz0123456789+/";
 
     // Each group of 3 bytes is written as 4 characters of 6 bits each.
     static constexpr std::size_t bits_per_byte = 8;
@@ -88,7 +89,7 @@ inline int Base64::get_character_value(char character) {
     const auto found_position = characters.find(character);
 
     if (found_position == std::string_view::npos) {
-        throw std::invalid_argument("Invalid Base64 character encountered.");
+        throw std::invalid_argument("Invalid Base64 character encountered");
     }
 
     return static_cast<int>(found_position);
@@ -96,7 +97,7 @@ inline int Base64::get_character_value(char character) {
 
 inline std::vector<std::byte> Base64::decode(std::string_view encoded_string) {
     if (encoded_string.size() % characters_per_group != 0) {
-        throw std::invalid_argument("Invalid Base64 string length.");
+        throw std::invalid_argument("Invalid Base64 string length");
     }
 
     std::vector<std::byte> decoded_bytes;
@@ -115,7 +116,7 @@ inline std::vector<std::byte> Base64::decode(std::string_view encoded_string) {
 
             // The first two characters of a group are never padding.
             if (value == padding_value && position < 2) {
-                throw std::invalid_argument("Invalid Base64 padding position.");
+                throw std::invalid_argument("Invalid Base64 padding position");
             }
 
             triple = (triple << bits_per_character)
@@ -123,7 +124,8 @@ inline std::vector<std::byte> Base64::decode(std::string_view encoded_string) {
         }
 
         // Extract the decoded bytes based on padding presence
-        decoded_bytes.push_back(static_cast<std::byte>((triple >> (2 * bits_per_byte)) & byte_mask));
+        decoded_bytes.push_back(
+            static_cast<std::byte>((triple >> (2 * bits_per_byte)) & byte_mask));
 
         if (group.at(2) != padding) {
             decoded_bytes.push_back(static_cast<std::byte>((triple >> bits_per_byte) & byte_mask));

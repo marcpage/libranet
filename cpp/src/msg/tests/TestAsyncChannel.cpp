@@ -33,12 +33,15 @@ constexpr auto handling_timeout = 5s;
 template<typename Predicate>
 bool wait_until(Predicate predicate, std::chrono::milliseconds timeout = handling_timeout) {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
+
     while (std::chrono::steady_clock::now() < deadline) {
         if (predicate()) {
             return true;
         }
+
         std::this_thread::sleep_for(1ms);
     }
+
     return predicate();
 }
 
@@ -157,9 +160,11 @@ TEST(AsyncChannelTest, CallbackExceptionDoesNotStopProcessing) {
 
         const AsyncChannel channel("test.async.exceptions", [&](const IMessage::Ptr& message) {
             const std::string value = message->to_string();
+
             if (value == "1") {
                 throw std::runtime_error("expected test exception");
             }
+
             {
                 const std::scoped_lock lock(mutex);
                 received.push_back(value);

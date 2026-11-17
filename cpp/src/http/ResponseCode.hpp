@@ -18,7 +18,7 @@ public:
         EarlyHints = 103,
 
         // 2xx Success
-        OK = 200,
+        Ok = 200,
         Created = 201,
         Accepted = 202,
         NonAuthoritativeInformation = 203,
@@ -52,7 +52,7 @@ public:
         LengthRequired = 411,
         PreconditionFailed = 412,
         PayloadTooLarge = 413,
-        URITooLong = 414,
+        UriTooLong = 414,
         UnsupportedMediaType = 415,
         RangeNotSatisfiable = 416,
         ExpectationFailed = 417,
@@ -66,7 +66,7 @@ public:
         BadGateway = 502,
         ServiceUnavailable = 503,
         GatewayTimeout = 504,
-        HTTPVersionNotSupported = 505,
+        HttpVersionNotSupported = 505,
         VariantAlsoNegotiates = 506,
         InsufficientStorage = 507,
         LoopDetected = 508,
@@ -80,7 +80,8 @@ public:
     ResponseCode(Status status, std::optional<std::string> custom_reason = std::nullopt);
 
     // Construct directly from raw integer (e.g., 200)
-    explicit ResponseCode(std::uint16_t code, std::optional<std::string> custom_reason = std::nullopt);
+    explicit ResponseCode(std::uint16_t code,
+                          std::optional<std::string> custom_reason = std::nullopt);
 
     ResponseCode() = default;
     ~ResponseCode() = default;
@@ -122,7 +123,7 @@ private:
     static constexpr std::uint16_t server_error_start = 500;
     static constexpr std::uint16_t server_error_end = 600;
 
-    Status m_status = Status::OK;
+    Status m_status = Status::Ok;
     std::optional<std::string> m_custom_reason;
 };
 
@@ -195,7 +196,7 @@ inline std::string_view ResponseCode::default_reason_phrase(Status status) noexc
         case Status::EarlyHints: return "Early Hints";
 
         // 2xx
-        case Status::OK: return "OK";
+        case Status::Ok: return "OK";
         case Status::Created: return "Created";
         case Status::Accepted: return "Accepted";
         case Status::NonAuthoritativeInformation: return "Non-Authoritative Information";
@@ -229,7 +230,7 @@ inline std::string_view ResponseCode::default_reason_phrase(Status status) noexc
         case Status::LengthRequired: return "Length Required";
         case Status::PreconditionFailed: return "Precondition Failed";
         case Status::PayloadTooLarge: return "Payload Too Large";
-        case Status::URITooLong: return "URI Too Long";
+        case Status::UriTooLong: return "URI Too Long";
         case Status::UnsupportedMediaType: return "Unsupported Media Type";
         case Status::RangeNotSatisfiable: return "Range Not Satisfiable";
         case Status::ExpectationFailed: return "Expectation Failed";
@@ -243,7 +244,7 @@ inline std::string_view ResponseCode::default_reason_phrase(Status status) noexc
         case Status::BadGateway: return "Bad Gateway";
         case Status::ServiceUnavailable: return "Service Unavailable";
         case Status::GatewayTimeout: return "Gateway Timeout";
-        case Status::HTTPVersionNotSupported: return "HTTP Version Not Supported";
+        case Status::HttpVersionNotSupported: return "HTTP Version Not Supported";
         case Status::VariantAlsoNegotiates: return "Variant Also Negotiates";
         case Status::InsufficientStorage: return "Insufficient Storage";
         case Status::LoopDetected: return "Loop Detected";

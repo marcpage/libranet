@@ -24,7 +24,7 @@ public:
 
 protected:
     // For errors when running asynchronously, in AsyncChannelOf's too.
-    // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes,misc-non-private-member-variables-in-classes)
+    // NOLINTNEXTLINE(*-non-private-member-variables-in-classes)
     Logger m_logger;
 
 private:

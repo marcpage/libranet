@@ -1,8 +1,10 @@
 #include "IPasswordHasher.hpp"
-#include "Argon2idOpenSsl.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+
+#include "Argon2idOpenSsl.hpp"
 
 using Argon2idType = crypto::Argon2idOpenSsl;
 

@@ -75,10 +75,10 @@ inline IEncryptKey::Data RsaEncryptKeyOpenSsl::encrypt(
     return ciphertext;
 }
 
-inline std::string RsaEncryptKeyOpenSsl::decrypt(const Data& ciphertext,
-                                                 [[maybe_unused]] const InitializationVector& vector) const {
+inline std::string RsaEncryptKeyOpenSsl::decrypt(
+    const Data& ciphertext, [[maybe_unused]] const InitializationVector& vector) const {
     if (!m_has_private) {
-        throw std::runtime_error("RSA private key required for decryption.");
+        throw std::runtime_error("RSA private key required for decryption");
     }
 
     const auto context = make_context();

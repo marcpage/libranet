@@ -149,9 +149,11 @@ TEST(IntegerTest, LargeScaleStress) {
     // Compute a pseudo-factorial or large growth
     constexpr int last_factor = 30;
     Integer accumulator(1);
+
     for (int i = 1; i <= last_factor; ++i) {
         accumulator *= Integer(i);
     }
+
     // 30! = 265252859812191058636308480000000
     EXPECT_EQ(accumulator.to_string(), "265252859812191058636308480000000");
     EXPECT_GT(accumulator.bit_length(), 100U);

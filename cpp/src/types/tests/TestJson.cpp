@@ -157,6 +157,7 @@ TEST(JsonTest, ExceptionsAndTypeSafety) {
 
     // Expect std::domain_error or std::runtime_error when requesting bad conversions
     bool caught_bad_string_cast = false;
+
     try {
         (void)num.string();
     } catch (const std::domain_error&) {
@@ -164,9 +165,11 @@ TEST(JsonTest, ExceptionsAndTypeSafety) {
     } catch (const std::runtime_error&) {
         caught_bad_string_cast = true;
     }
+
     EXPECT_TRUE(caught_bad_string_cast);
 
     bool caught_bad_bool_cast = false;
+
     try {
         (void)num.boolean();
     } catch (const std::domain_error&) {
@@ -174,6 +177,7 @@ TEST(JsonTest, ExceptionsAndTypeSafety) {
     } catch (const std::runtime_error&) {
         caught_bad_bool_cast = true;
     }
+
     EXPECT_TRUE(caught_bad_bool_cast);
 
     // Out-of-bounds array access check
@@ -204,7 +208,13 @@ TEST(JsonTest, SerializationAndStreams) {
 TEST(JsonTest, NestedComplexStructures) {
     Json root = {
         {"company", "TechCorp"},
-        {"employees", {{{"id", 1}, {"name", "Alice"}, {"skills", {"C++", "Python"}}}, {{"id", 2}, {"name", "Bob"}, {"skills", {"Rust", "Go"}}}}},
+        {
+            "employees",
+            {
+                {{"id", 1}, {"name", "Alice"}, {"skills", {"C++", "Python"}}},
+                {{"id", 2}, {"name", "Bob"}, {"skills", {"Rust", "Go"}}},
+            },
+        },
     };
 
     EXPECT_TRUE(root["employees"].is_array());
@@ -252,9 +262,11 @@ TEST(JsonTest, NestingLimit) {
 
     // Objects count as levels too.
     std::string deeper_objects;
+
     for (std::size_t level = 0; level <= deepest; ++level) {
         deeper_objects += R"({"a":)";
     }
+
     deeper_objects += "null" + std::string(deepest + 1, '}');
     EXPECT_THROW((void)Json::parse(deeper_objects), std::invalid_argument);
 }
@@ -292,7 +304,8 @@ TEST(JsonTest, UnicodeEscapes) {
 
 TEST(JsonTest, UnicodeEscapesRefused) {
     // Half a pair, too few hex digits, or one that is not hex.
-    for (const char* text : {R"("\ud83d")", R"("\ude00")", R"("\ud83dx")", R"("\u12")", R"("\u12G4")"}) {
+    for (const char* text :
+         {R"("\ud83d")", R"("\ude00")", R"("\ud83dx")", R"("\u12")", R"("\u12G4")"}) {
         EXPECT_TRUE(refused(text)) << text;
     }
 }

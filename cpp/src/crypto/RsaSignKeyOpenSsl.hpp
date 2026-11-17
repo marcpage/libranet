@@ -61,7 +61,7 @@ inline RsaSignKeyOpenSsl::RsaSignKeyOpenSsl(OpenSslKey key, bool has_private)
 
 inline ISignKey::Data RsaSignKeyOpenSsl::sign(std::string_view data) const {
     if (!m_has_private) {
-        throw std::runtime_error("RSA private key required for signing.");
+        throw std::runtime_error("RSA private key required for signing");
     }
 
     const MessageContext context(EVP_MD_CTX_new());
@@ -114,7 +114,7 @@ inline std::string RsaSignKeyOpenSsl::public_pem() const {
 
 inline std::string RsaSignKeyOpenSsl::private_pem() const {
     if (!m_has_private) {
-        throw std::runtime_error("RSA private key not available.");
+        throw std::runtime_error("RSA private key not available");
     }
 
     return RsaPemOpenSsl::private_pem(m_key.get());

@@ -13,8 +13,8 @@ public:
     using Ptr = std::unique_ptr<ISignKey>;
     using Data = std::vector<std::byte>;
 
-    static Ptr Ed25519();
-    static Ptr from_pem(std::string_view pem);
+    [[nodiscard]] static Ptr Ed25519();
+    [[nodiscard]] static Ptr from_pem(std::string_view pem);
 
     [[nodiscard]] virtual Data sign(std::string_view data) const = 0;
     [[nodiscard]] virtual bool verify(std::string_view data,

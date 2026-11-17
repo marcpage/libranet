@@ -13,7 +13,7 @@ public:
     using Ptr = std::unique_ptr<IHasher>;
     using Data = std::vector<std::byte>;
 
-    static Ptr Sha256();
+    [[nodiscard]] static Ptr Sha256();
 
     virtual void update(std::string_view data) = 0;
     virtual void update(const Data& data) = 0;

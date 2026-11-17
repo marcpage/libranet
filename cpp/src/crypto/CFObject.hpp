@@ -118,7 +118,7 @@ inline void CFObject<CFType>::reset(CFType new_object, Policy policy) noexcept {
         CFRetain(new_object);
     }
 
-    if (m_object) {
+    if (nullptr != m_object) {
         CFRelease(m_object);
     }
 

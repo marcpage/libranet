@@ -38,7 +38,7 @@ public:
 
 private:
     std::string m_version = "HTTP/1.1";
-    ResponseCode m_status{ResponseCode::Status::OK};
+    ResponseCode m_status{ResponseCode::Status::Ok};
     Headers m_headers;
     std::string m_body;
 };
@@ -123,13 +123,13 @@ inline bool Response::parse_status_line(std::string_view line) {
 }
 
 inline std::string Response::to_string() const {
-    constexpr auto ResponseFormattingOverheadBytes = 64;
+    constexpr auto formatting_overhead_bytes = 64;
 
     std::string result;
     result.reserve(m_version.size()
                    + m_status.reason_phrase().size()
                    + m_body.size()
-                   + ResponseFormattingOverheadBytes);
+                   + formatting_overhead_bytes);
 
     result += m_version;
     result += ' ';
