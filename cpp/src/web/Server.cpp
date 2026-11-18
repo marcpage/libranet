@@ -1,20 +1,34 @@
 #include "Server.hpp"
+
+#include <atomic>
+#include <cstddef>
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "http/Headers.hpp"
 #include "http/Request.hpp"
+#include "http/Response.hpp"
 #include "http/ResponseCode.hpp"
 #include "net/ISocket.hpp"
-#include <cstddef>
-#include <optional>
-#include <vector>
 
 using http::Headers;
 using http::Request;
 using http::Response;
 using http::ResponseCode;
+using net::Address;
 using net::ISocket;
 using std::atomic;
+using std::invalid_argument;
 using std::nullopt;
+using std::out_of_range;
+using std::runtime_error;
 using std::size_t;
 using std::string;
+using std::string_view;
 using web::Server;
 
 namespace {
@@ -26,18 +40,18 @@ void set_error_response(Response& response, ResponseCode::Status status) {
     response.set_body(message + "\r\n");
 }
 
-void file_not_found([[maybe_unused]] const http::Request& request, http::Response& response) {
+void file_not_found([[maybe_unused]] const Request& request, Response& response) {
     set_error_response(response, ResponseCode::Status::NotFound);
 }
 
-std::string read_body(ISocket::Ptr& client, size_t bytes) {
+string read_body(ISocket::Ptr& client, size_t bytes) {
     const auto body = client->read_exact(bytes);
 
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
     return string(reinterpret_cast<const char*>(body.data()), body.size());
 }
 
-std::optional<Request> read(ISocket::Ptr& client, atomic<bool>& running) {
+std::optional<Request> read(ISocket::Ptr& client, const atomic<bool>& running) {
     Request request;
     string line;
     string last_key;
@@ -60,9 +74,9 @@ std::optional<Request> read(ISocket::Ptr& client, atomic<bool>& running) {
     if (content_length.has_value()) {
         try {
             body_length = std::stoull(std::string(content_length.value()));
-        } catch (const std::invalid_argument&) {
+        } catch (const invalid_argument&) {
             return nullopt;
-        } catch (const std::out_of_range&) {
+        } catch (const out_of_range&) {
             return nullopt;
         }
     }
@@ -75,17 +89,17 @@ std::optional<Request> read(ISocket::Ptr& client, atomic<bool>& running) {
 
 namespace web {
 
-Server::Server(net::Address address) : m_address(std::move(address)) {
+Server::Server(Address address) : m_address(std::move(address)) {
     m_listener = net::ISocket::bind(m_address);
 }
 
-void Server::register_handler(std::string_view path, RequestHandler handler) {
+void Server::register_handler(string_view path, RequestHandler handler) {
     m_handlers[string(path)] = std::move(handler);
 }
 
 void Server::start(int backlog) {
     if (!m_listener) {
-        throw std::runtime_error("Failed to bind socket on the given address.");
+        throw runtime_error("Failed to bind socket on the given address.");
     }
 
     m_listener->listen(backlog);
@@ -110,9 +124,8 @@ void Server::start(int backlog) {
         }
 
         Response response;
-        auto handler = _find_handler(request->uri());
 
-        handler(*request, response);
+        _find_handler(request->uri())(*request, response);
         client->send_all(response.to_string());
         client->close();
     }
@@ -126,9 +139,9 @@ void Server::stop() {
     }
 }
 
-Server::RequestHandler Server::_find_handler(std::string_view uri) const {
-    string uri_str(uri);
-    auto found_handler = m_handlers.find(uri_str);
+Server::RequestHandler Server::_find_handler(string_view uri) const {
+    const string uri_str(uri);
+    const auto found_handler = m_handlers.find(uri_str);
 
     if (found_handler != m_handlers.end()) {
         return found_handler->second;
@@ -138,11 +151,9 @@ Server::RequestHandler Server::_find_handler(std::string_view uri) const {
     RequestHandler best_handler = file_not_found;
 
     for (const auto& [prefix, handler] : m_handlers) {
-        if (uri_str.rfind(prefix, 0) == 0) { // starts with prefix
-            if (prefix.size() > best_prefix.size()) {
-                best_prefix = prefix;
-                best_handler = handler;
-            }
+        if (uri_str.rfind(prefix, 0) == 0 && prefix.size() > best_prefix.size()) {
+            best_prefix = prefix;
+            best_handler = handler;
         }
     }
 
