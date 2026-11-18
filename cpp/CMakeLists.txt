@@ -107,6 +107,9 @@ add_subdirectory(src/types)
 add_subdirectory(src/http)
 add_subdirectory(src/msg)
 add_subdirectory(src/net)
+add_subdirectory(src/web)
 add_subdirectory(src/crypto)
 
 add_executable(libranet src/main.cpp)
+target_link_libraries(libranet PUBLIC 
+    libranet::web)

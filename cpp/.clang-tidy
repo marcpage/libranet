@@ -33,6 +33,7 @@ Checks:
   # Ask for Abseil's, Boost's, and LLVM's own library functions, none of
   # which the code uses.
   - '-abseil-string-find-str-contains'
+  - '-abseil-string-find-startswith'
   - '-boost-use-ranges'
   - '-llvm-use-ranges'
   # Its fix is wrong for Json, whose std::initializer_list constructor

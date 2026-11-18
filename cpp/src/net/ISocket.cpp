@@ -1,6 +1,7 @@
 #include "ISocket.hpp"
 
 #include <cstddef>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -63,19 +64,28 @@ std::vector<std::byte> ISocket::read_exact(std::size_t size) {
 
 std::string ISocket::read_line(char delimiter) {
     std::string line;
+
+    (void)read_line(line, delimiter);
+
+    return line;
+}
+
+bool ISocket::read_line(std::string& line, char delimiter) {
     std::vector<std::byte> byte_buffer(1);
+
+    line.clear();
 
     while (true) {
         const auto success = receive(byte_buffer);
 
         if (!success || byte_buffer.empty()) {
-            break; // EOF reached
+            return !line.empty();
         }
 
         const auto character = static_cast<char>(byte_buffer.at(0));
 
         if (character == delimiter) {
-            break;
+            return true;
         }
 
         if ('\r' == character) {
@@ -85,7 +95,7 @@ std::string ISocket::read_line(char delimiter) {
         line.push_back(character);
     }
 
-    return line;
+    return true;
 }
 
 } // namespace net

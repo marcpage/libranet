@@ -2,7 +2,6 @@
 
 #include <chrono>
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -25,11 +24,13 @@ public:
     ISocket& operator=(ISocket&&) = delete;
 
     virtual void listen(int backlog) = 0;
-    [[nodiscard]] virtual std::unique_ptr<ISocket> accept() = 0;
+    [[nodiscard]] virtual Ptr accept() = 0;
 
     void send_all(std::string_view data);
     [[nodiscard]] std::vector<std::byte> read_exact(std::size_t size);
     [[nodiscard]] std::string read_line(char delimiter = '\n');
+    bool read_line(std::string& line, char delimiter = '\n');
+
     virtual std::size_t send(std::string_view data) = 0;
     virtual bool receive(std::vector<std::byte>& buffer) = 0;
 
