@@ -6,6 +6,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -13,6 +14,7 @@
 #include "http/Request.hpp"
 #include "http/Response.hpp"
 #include "http/ResponseCode.hpp"
+#include "net/Address.hpp"
 #include "net/ISocket.hpp"
 
 using http::Headers;
