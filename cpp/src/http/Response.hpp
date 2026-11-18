@@ -2,7 +2,6 @@
 
 #include <iostream>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -28,7 +27,8 @@ public:
 
     void set_version(std::string new_version);
     void set_status_code(uint16_t new_status_code);
-    void set_reason_phrase(std::string new_reason_phrase);
+    void set_status_code(ResponseCode::Status new_status_code);
+    void set_reason_phrase(const std::string& new_reason_phrase);
     void set_body(std::string new_body);
 
     bool parse_status_line(std::string_view line);
@@ -75,7 +75,11 @@ inline void Response::set_status_code(uint16_t new_status_code) {
     m_status = ResponseCode(new_status_code);
 }
 
-inline void Response::set_reason_phrase(std::string new_reason_phrase) {
+inline void Response::set_status_code(ResponseCode::Status new_status_code) {
+    set_status_code(static_cast<uint16_t>(new_status_code));
+}
+
+inline void Response::set_reason_phrase(const std::string& new_reason_phrase) {
     m_status = ResponseCode(m_status.code(), new_reason_phrase);
 }
 
