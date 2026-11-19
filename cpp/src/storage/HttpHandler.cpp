@@ -25,8 +25,6 @@ bool handle_search(const Request& request, Response& response) {
         return false;
     }
 
-    // const auto search_hash = std::string(uri.substr(data_search.size()));
-
     response.set_status_code(ResponseCode::Status::Ok);
     response.headers().set("Content-Type", "application/json");
     response.set_body("{\"matches\": []}\r\n"); // Populate with top matching prefix results

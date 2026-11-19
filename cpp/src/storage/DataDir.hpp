@@ -99,35 +99,3 @@ inline std::filesystem::path DataDir::_path(const Identifier& identifier) const 
 }
 
 } // namespace storage
-
-/*
-
-#include <cstddef>
-#include <filesystem>
-#include <fstream>
-#include <ios>
-#include <stdexcept>
-#include <string>
-#include <vector>
-
-namespace fs = std::filesystem;
-
-void write_file_bytes(const fs::path& path, const std::vector<std::byte>& data) {
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!file) {
-        throw std::runtime_error("Failed to open file for writing: " + path.string());
-    }
-
-    if (!data.empty()) {
-        if (!file.write(reinterpret_cast<const char*>(data.data()),
-                        static_cast<std::streamsize>(data.size()))) {
-            throw std::runtime_error("Failed to write file contents: " + path.string());
-        }
-    }
-
-    file.flush();
-    if (!file) {
-        throw std::runtime_error("Failed to flush file contents: " + path.string());
-    }
-}
-*/
