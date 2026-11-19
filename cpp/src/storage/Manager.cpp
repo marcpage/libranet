@@ -32,8 +32,6 @@ void Manager::add(IDataSource::Ptr source) {
 }
 
 void Manager::scan(const path& directory) {
-    std::error_code error;
-
     if (!std::filesystem::exists(directory)) {
         return;
     }
