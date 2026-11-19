@@ -130,7 +130,7 @@ gcovr
 
 gcovr reads [`gcovr.cfg`](gcovr.cfg): it counts the code under `src/` but
 not the tests, lists the lines no test runs in each file, and exits with
-status 2 when the tests run less than 84% of the lines. Counts add up over
+status 2 when the tests run less than 90% of the lines. Counts add up over
 runs; to start again, delete them with
 `find build/Debug -name '*.gcda' -delete`. CMake remembers the option, so
 the Debug build keeps measuring until configured with

@@ -20,6 +20,7 @@ public:
     ~Server() = default;
 
     void register_handler(std::string_view path, RequestHandler handler);
+    [[nodiscard]] net::Address local_address() const;
     void start(int backlog);
     void stop();
 
