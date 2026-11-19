@@ -166,7 +166,7 @@ TEST_F(ServerTest, HandlerForThePathAnswers) {
 }
 
 // A path no handler is registered for goes to the handler for the longest
-// path it starts with.
+// path it is under: one it starts with, whole segments at a time.
 TEST_F(ServerTest, LongestPathAtTheStartChoosesTheHandler) {
     server().register_handler("/a", answer_with("a"));
     server().register_handler("/a/b", answer_with("a/b"));
@@ -175,6 +175,7 @@ TEST_F(ServerTest, LongestPathAtTheStartChoosesTheHandler) {
     EXPECT_EQ(exchange(address(), "GET /a HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\na");
     EXPECT_EQ(exchange(address(), "GET /a/b/c HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\na/b");
     EXPECT_EQ(exchange(address(), "GET /a/c HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\na");
+    EXPECT_EQ(exchange(address(), "GET /a/bc HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\na");
 }
 
 TEST_F(ServerTest, PathWithNoHandlerIsNotFound) {
@@ -182,6 +183,42 @@ TEST_F(ServerTest, PathWithNoHandlerIsNotFound) {
 
     EXPECT_EQ(exchange(address(), "GET /missing HTTP/1.1\r\n\r\n"),
               "HTTP/1.1 404 Not Found\r\n\r\nNot Found\r\n");
+}
+
+// A URI that only starts with the letters of a path, as /database does with
+// /data, is not under it.
+TEST_F(ServerTest, PathIsNotAPrefixOfALongerName) {
+    server().register_handler("/data", answer_with("data"));
+    start();
+
+    EXPECT_EQ(exchange(address(), "GET /database HTTP/1.1\r\n\r\n"),
+              "HTTP/1.1 404 Not Found\r\n\r\nNot Found\r\n");
+    EXPECT_EQ(exchange(address(), "GET /data-set HTTP/1.1\r\n\r\n"),
+              "HTTP/1.1 404 Not Found\r\n\r\nNot Found\r\n");
+    EXPECT_EQ(exchange(address(), "GET /dat HTTP/1.1\r\n\r\n"),
+              "HTTP/1.1 404 Not Found\r\n\r\nNot Found\r\n");
+}
+
+TEST_F(ServerTest, PathHandlesWhatIsBelowIt) {
+    server().register_handler("/data", answer_with("data"));
+    start();
+
+    EXPECT_EQ(exchange(address(), "GET /data/ HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\ndata");
+    EXPECT_EQ(exchange(address(), "GET /data/abc HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\ndata");
+    EXPECT_EQ(exchange(address(), "GET /data?key=value HTTP/1.1\r\n\r\n"),
+              "HTTP/1.1 200 OK\r\n\r\ndata");
+}
+
+// A path that ends in a slash has every URI that starts with it.
+TEST_F(ServerTest, PathEndingInSlashHandlesEverythingStartingWithIt) {
+    server().register_handler("/", answer_with("root"));
+    server().register_handler("/files/", answer_with("files"));
+    start();
+
+    EXPECT_EQ(exchange(address(), "GET /database HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\nroot");
+    EXPECT_EQ(exchange(address(), "GET /files/abc HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\nfiles");
+    EXPECT_EQ(exchange(address(), "GET /files HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\nroot");
+    EXPECT_EQ(exchange(address(), "GET /filesystem HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\nroot");
 }
 
 TEST_F(ServerTest, HandlerReadsTheHeadersAndBody) {
