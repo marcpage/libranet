@@ -10,7 +10,6 @@
 #include <iostream>
 #include <iterator>
 #include <map>
-#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -23,6 +22,7 @@
 
 namespace types {
 
+// MARK: Interface
 class Json {
 public:
     enum class Type : std::uint8_t {
@@ -110,6 +110,7 @@ public:
     friend std::ostream& operator<<(std::ostream& out_stream, const Json& value);
     friend std::istream& operator>>(std::istream& in_stream, Json& value);
 
+    // MARK: Internals
 private:
     using VariantType = std::variant<
         std::nullptr_t,
@@ -165,6 +166,8 @@ private:
     static void _escape_string(const std::string& text, std::ostringstream& out_stream);
     static void _write_real(double value, std::ostringstream& out_stream);
 };
+
+// MARK: Implementation
 
 inline Json::Json() noexcept
     : m_data(nullptr) {}
@@ -236,21 +239,33 @@ inline Json::Type Json::type() const {
 
         if constexpr (std::is_same_v<T, std::nullptr_t>) {
             return Type::Null;
-        } else if constexpr (std::is_same_v<T, bool>) {
-            return Type::Boolean;
-        } else if constexpr (std::is_same_v<T, int64_t>) {
-            return Type::Integer;
-        } else if constexpr (std::is_same_v<T, double>) {
-            return Type::Real;
-        } else if constexpr (std::is_same_v<T, std::string>) {
-            return Type::String;
-        } else if constexpr (std::is_same_v<T, Array>) {
-            return Type::Array;
-        } else if constexpr (std::is_same_v<T, Object>) {
-            return Type::Object;
-        } else {
-            throw std::logic_error("Json: invalid internal variant state");
         }
+
+        if constexpr (std::is_same_v<T, bool>) {
+            return Type::Boolean;
+        }
+
+        if constexpr (std::is_same_v<T, int64_t>) {
+            return Type::Integer;
+        }
+
+        if constexpr (std::is_same_v<T, double>) {
+            return Type::Real;
+        }
+
+        if constexpr (std::is_same_v<T, std::string>) {
+            return Type::String;
+        }
+
+        if constexpr (std::is_same_v<T, Array>) {
+            return Type::Array;
+        }
+
+        if constexpr (std::is_same_v<T, Object>) {
+            return Type::Object;
+        }
+
+        throw std::logic_error("Json: invalid internal variant state");
     }, m_data);
 }
 

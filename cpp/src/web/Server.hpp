@@ -6,9 +6,9 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "../http/Request.hpp"
-#include "../http/Response.hpp"
-#include "../net/ISocket.hpp"
+#include "http/Request.hpp"
+#include "http/Response.hpp"
+#include "net/ISocket.hpp"
 
 namespace web {
 
