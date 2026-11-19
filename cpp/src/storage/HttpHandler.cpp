@@ -1,5 +1,8 @@
 #include "HttpHandler.hpp"
 
+#include <optional>
+#include <stdexcept>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -12,6 +15,10 @@
 using http::Request;
 using http::Response;
 using http::ResponseCode;
+using std::invalid_argument;
+using std::nullopt;
+using std::optional;
+using std::string;
 using std::string_view;
 using storage::IDataSource;
 using storage::Identifier;
@@ -42,6 +49,16 @@ bool no_identity(const Request& request, Response& response) {
     return true;
 }
 
+// The identifier the text names, or nothing for text that is not a valid
+// identifier, such as one whose algorithm is not supported.
+optional<Identifier> parse_identifier(const string& data_id) {
+    try {
+        return Identifier::from(data_id);
+    } catch (const invalid_argument&) {
+        return nullopt;
+    }
+}
+
 bool data_request(const Request& request, Response& response, const IDataSource::Ptr& source) {
     constexpr string_view data_prefix = "/data/";
     const auto uri = request.uri();
@@ -50,9 +67,15 @@ bool data_request(const Request& request, Response& response, const IDataSource:
         return false;
     }
 
-    const auto data_id = std::string(uri.substr(data_prefix.size()));
-    const auto identifier = Identifier::from(data_id);
-    const auto content = source->get(identifier);
+    const auto identifier = parse_identifier(string(uri.substr(data_prefix.size())));
+
+    if (!identifier.has_value()) {
+        response.set_status_code(ResponseCode::Status::BadRequest);
+        response.set_body("Bad Request: Invalid content identifier\r\n");
+        return true;
+    }
+
+    const auto content = source->get(*identifier);
 
     if (!content.has_value()) {
         response.set_status_code(ResponseCode::Status::ServiceUnavailable);
