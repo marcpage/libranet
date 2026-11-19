@@ -59,5 +59,5 @@ TEST(IdentifierTest, UnsupportedAlgorithmIsRefused) {
     EXPECT_TRUE(refused("/../abcdef"));
     EXPECT_TRUE(refused("md5/abcdef"));
     EXPECT_TRUE(refused("sha2560/abcdef"));
-    EXPECT_THROW(Identifier("..", "abcdef"), invalid_argument);
+    EXPECT_THROW((void)Identifier("..", "abcdef"), invalid_argument);
 }

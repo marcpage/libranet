@@ -53,7 +53,7 @@ public:
         return Identifier::from(data);
     }
 
-    [[nodiscard]] Identifier identifier() const {
+    [[nodiscard]] Identifier held() const {
         return Identifier::from(m_data);
     }
 
@@ -84,7 +84,7 @@ TEST(HttpHandlerTest, HeldDataIsReturned) {
     const auto source = std::make_shared<OneItemSource>("hello");
     const HttpHandler handler(source);
 
-    const auto response = fetch(handler, "/data/" + source->identifier().to_string());
+    const auto response = fetch(handler, "/data/" + source->held().to_string());
 
     EXPECT_EQ(response.status_code(), 200);
     EXPECT_EQ(response.body(), "hello");
@@ -96,7 +96,7 @@ TEST(HttpHandlerTest, UnsupportedAlgorithmIsBadRequest) {
     const auto source = std::make_shared<OneItemSource>("hello");
     const HttpHandler handler(source);
 
-    const auto response = fetch(handler, "/data/../" + source->identifier().hash());
+    const auto response = fetch(handler, "/data/../" + source->held().hash());
 
     EXPECT_EQ(response.status_code(), 400);
     EXPECT_TRUE(source->asked().empty());
