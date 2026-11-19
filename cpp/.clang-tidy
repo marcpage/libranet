@@ -65,10 +65,10 @@ Checks:
   #     return std::visit([](auto&& value) -> Type {
   - '-fuchsia-trailing-return'
 
-  # 5 to clean up (5 in library code, 0 in tests), such as
-  # src/types/Integer.hpp:700: function 'operator&' is within a recursive call
+  # 3 to clean up (3 in library code, 0 in tests), such as
+  # src/types/Json.hpp:726: function '_parse_value' is within a recursive call
   # chain
-  #     inline Integer operator&(const Integer& left, const Integer& righ...
+  #     inline Json Json::Parser::_parse_value() {
   - '-misc-no-recursion'
 
 WarningsAsErrors: '*'
