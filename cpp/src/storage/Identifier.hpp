@@ -35,7 +35,7 @@ private:
 
 inline Identifier Identifier::from(const std::string& identifier_str) {
     std::string_view identifier_view(identifier_str);
-    auto start = identifier_view.find_first_not_of('/');
+    const auto start = identifier_view.find_first_not_of('/');
 
     if (start == std::string_view::npos) {
         throw std::invalid_argument("Invalid identifier format: empty or contains only slashes.");
@@ -43,18 +43,18 @@ inline Identifier Identifier::from(const std::string& identifier_str) {
 
     identifier_view.remove_prefix(start);
 
-    auto first_slash = identifier_view.find('/');
+    const auto first_slash = identifier_view.find('/');
 
     if (first_slash == std::string_view::npos) {
         throw std::invalid_argument("Invalid identifier format: missing hash component.");
     }
 
-    std::string algorithm(identifier_view.substr(0, first_slash));
+    const std::string algorithm(identifier_view.substr(0, first_slash));
 
     identifier_view.remove_prefix(first_slash + 1);
 
-    auto second_slash = identifier_view.find('/');
-    std::string hash(identifier_view.substr(0, second_slash));
+    const auto second_slash = identifier_view.find('/');
+    const std::string hash(identifier_view.substr(0, second_slash));
 
     return Identifier(algorithm, hash);
 }

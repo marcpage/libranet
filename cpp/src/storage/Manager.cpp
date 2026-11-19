@@ -1,9 +1,15 @@
 #include "Manager.hpp"
 
 #include <algorithm>
+#include <filesystem>
+#include <memory>
 #include <optional>
+#include <stdexcept>
+#include <utility>
 
 #include "DataDir.hpp"
+#include "IDataSource.hpp"
+#include "Identifier.hpp"
 
 using std::invalid_argument;
 using std::nullopt;

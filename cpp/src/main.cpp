@@ -1,4 +1,5 @@
 #include <exception>
+#include <functional>
 #include <iostream>
 #include <string>
 
@@ -20,7 +21,7 @@ int main() {
     constexpr auto listen_host = "0.0.0.0";
     constexpr auto listen_port = 8086;
     constexpr auto backlog = 128;
-    auto data = Manager::create();
+    const auto data = Manager::create();
     HttpHandler storage_handler(data);
 
     data->add("storage");

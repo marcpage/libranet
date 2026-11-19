@@ -1,5 +1,6 @@
 #include "HttpHandler.hpp"
 
+#include <memory>
 #include <string_view>
 
 #include "http/Request.hpp"
