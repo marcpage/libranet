@@ -4,6 +4,8 @@
 #include <fstream>
 #include <memory>
 #include <optional>
+#include <stdexcept>
+#include <system_error>
 
 #include "IDataSource.hpp"
 #include "Identifier.hpp"
@@ -72,6 +74,15 @@ inline std::optional<DataDir::Data> DataDir::get(const Identifier& identifier) c
 inline Identifier DataDir::put(const Data& data) const {
     auto identifier = Identifier::from(data);
     const auto path = _path(identifier);
+    std::error_code error;
+
+    std::filesystem::create_directories(path.parent_path(), error);
+
+    if (error) {
+        throw std::runtime_error("Failed to create directory: " + path.parent_path().string() + ": "
+                                 + error.message());
+    }
+
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
 
     if (!file) {
