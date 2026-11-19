@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -176,6 +177,69 @@ TEST(SocketPosixTest, HelpersSendAllAndReadExact) {
 
     const std::string received_payload = as_text(exact_bytes);
     EXPECT_EQ(received_payload, payload);
+
+    client->close();
+    peer->close();
+    server->close();
+}
+
+TEST(SocketPosixTest, ReadExactBeyondWhatArrives) {
+    // A size far past what arrives returns what arrived, without first taking
+    // that much memory.
+    auto bound = bind_ephemeral();
+    ISocket::Ptr server = std::move(bound.first);
+    Address address = bound.second;
+
+    server->listen(1);
+
+    ISocket::Ptr client;
+    std::thread connector([&] {
+        client = SocketPosix::connect(address);
+    });
+
+    auto peer = server->accept();
+    connector.join();
+
+    client->send_all("partial");
+    client->close();
+
+    const std::vector<std::byte> bytes =
+        peer->read_exact(std::numeric_limits<std::size_t>::max());
+
+    EXPECT_EQ(as_text(bytes), "partial");
+
+    peer->close();
+    server->close();
+}
+
+TEST(SocketPosixTest, ReadExactLongerThanOnePiece) {
+    constexpr std::size_t payload_bytes = 200000;
+    const std::string payload(payload_bytes, 'x');
+    auto bound = bind_ephemeral();
+    ISocket::Ptr server = std::move(bound.first);
+    Address address = bound.second;
+
+    server->listen(1);
+
+    ISocket::Ptr client;
+    std::thread connector([&] {
+        client = SocketPosix::connect(address);
+    });
+
+    auto peer = server->accept();
+    connector.join();
+
+    std::thread sender([&] {
+        client->send_all(payload + "extra");
+    });
+
+    const std::vector<std::byte> bytes = peer->read_exact(payload_bytes);
+    const std::vector<std::byte> extra_bytes = peer->read_exact(5);
+
+    sender.join();
+
+    EXPECT_EQ(as_text(bytes), payload);
+    EXPECT_EQ(as_text(extra_bytes), "extra");
 
     client->close();
     peer->close();
