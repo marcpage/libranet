@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -315,4 +316,96 @@ TEST(JsonTest, ControlCharactersEscaped) {
     const Json control(std::string("\x01"));
     EXPECT_EQ(control.dump(), R"("\u0001")");
     EXPECT_EQ(Json::parse(control.dump()), control);
+}
+
+TEST(JsonTest, EscapesWritten) {
+    const Json text(std::string("\"\\\b\f\n\r\t/"));
+
+    EXPECT_EQ(text.dump(), R"("\"\\\b\f\n\r\t/")");
+}
+
+// An escape JSON does not name is read as the character escaped.
+TEST(JsonTest, EscapesRead) {
+    EXPECT_EQ(Json::parse(R"("\"\\\/\b\f\n\r\t")").string(), "\"\\/\b\f\n\r\t");
+    EXPECT_EQ(Json::parse(R"("\x")").string(), "x");
+}
+
+TEST(JsonTest, MalformedTextRefused) {
+    for (const char* text :
+         {
+             "",
+             R"("open)",
+             R"("open\)",
+             "1 2",
+             "@",
+             "nul",
+             "tru",
+             "[1 2]",
+             "[1,",
+             "{1:2}",
+             R"({"a" 1})",
+             R"({"a":1 "b":2})",
+             R"("\ud83d\u0041")",
+         }) {
+        EXPECT_TRUE(refused(text)) << text;
+    }
+}
+
+TEST(JsonTest, EmptyContainers) {
+    const auto object = Json::parse("{}");
+    const auto array = Json::parse("[ ]");
+
+    EXPECT_TRUE(object.is_object());
+    EXPECT_TRUE(object.empty());
+    EXPECT_EQ(object.dump(), "{}");
+    EXPECT_EQ(object.dump(2), "{}");
+    EXPECT_TRUE(array.is_array());
+    EXPECT_EQ(array.dump(), "[]");
+}
+
+// An integer reads as a real too, but no other kind of value does.
+TEST(JsonTest, NumbersAsReals) {
+    constexpr auto number = 7;
+
+    EXPECT_DOUBLE_EQ(Json(number).real(), 7.0);
+    EXPECT_THROW((void)Json("seven").real(), std::domain_error);
+    EXPECT_THROW((void)Json("seven").integer(), std::domain_error);
+}
+
+TEST(JsonTest, WrongKindOfValueRefused) {
+    constexpr auto number = 7;
+    Json value(number);
+    const Json& const_value = value;
+
+    EXPECT_THROW((void)value.array(), std::domain_error);
+    EXPECT_THROW((void)value.object(), std::domain_error);
+    EXPECT_THROW((void)const_value.array(), std::domain_error);
+    EXPECT_THROW((void)const_value.object(), std::domain_error);
+    EXPECT_THROW((void)value.size(), std::domain_error);
+    EXPECT_THROW((void)value.empty(), std::domain_error);
+    EXPECT_THROW((void)const_value.at(0), std::domain_error);
+    EXPECT_THROW((void)value.at(0), std::domain_error);
+    EXPECT_FALSE(value.has("key"));
+}
+
+// Indexing past the end of an array, or into null, grows it with nulls.
+TEST(JsonTest, IndexingGrowsAnArray) {
+    constexpr std::size_t third = 2;
+    constexpr auto number = 7;
+    Json value;
+
+    value[third] = number;
+
+    ASSERT_TRUE(value.is_array());
+    EXPECT_EQ(value.size(), 3U);
+    EXPECT_TRUE(value[0].is_null());
+    EXPECT_EQ(value[third].integer(), number);
+}
+
+TEST(JsonTest, NonFiniteRealsNotWritten) {
+    const Json infinite(std::numeric_limits<double>::infinity());
+    const Json not_a_number(std::numeric_limits<double>::quiet_NaN());
+
+    EXPECT_THROW((void)infinite.dump(), std::domain_error);
+    EXPECT_THROW((void)not_a_number.dump(), std::domain_error);
 }

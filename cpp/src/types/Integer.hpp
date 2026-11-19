@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <iterator>
 #include <limits>
@@ -120,6 +121,13 @@ private:
                                             std::size_t divisor_size,
                                             std::vector<word_t>& quotient,
                                             std::vector<word_t>& remainder);
+    static void _negate_twos_complement(std::vector<word_t>& words) noexcept;
+    [[nodiscard]] std::vector<word_t> _to_twos_complement(std::size_t word_count) const;
+    static Integer _from_twos_complement(std::vector<word_t> words);
+    template<typename Operation>
+    static Integer _twos_complement_bitwise(const Integer& left,
+                                            const Integer& right,
+                                            Operation operation);
 };
 
 inline void Integer::_normalize() {
@@ -709,9 +717,62 @@ inline Integer operator%(Integer left, const Integer& right) {
     return left;
 }
 
+// -x == ~x + 1, where the 1 carries up through each word that was zero.
+inline void Integer::_negate_twos_complement(std::vector<word_t>& words) noexcept {
+    bool carry = true;
+
+    for (word_t& word : words) {
+        const bool next_carry = carry && 0U == word;
+
+        word = ~word + static_cast<word_t>(carry);
+        carry = next_carry;
+    }
+}
+
+inline std::vector<Integer::word_t> Integer::_to_twos_complement(std::size_t word_count) const {
+    auto words = m_magnitude;
+
+    words.resize(word_count, 0);
+
+    if (m_negative) {
+        _negate_twos_complement(words);
+    }
+
+    return words;
+}
+
+inline Integer Integer::_from_twos_complement(std::vector<word_t> words) {
+    Integer result;
+
+    result.m_negative = !words.empty() && (words.back() >> (word_bits - 1U)) != 0U;
+
+    if (result.m_negative) {
+        _negate_twos_complement(words);
+    }
+
+    result.m_magnitude = std::move(words);
+    result._normalize();
+    return result;
+}
+
+// Applies operation to the infinite two's complement forms of left and right.
+// One word more than the wider operand leaves room for the sign, so each top
+// word is all zeros or all ones, as is the top word of the result.
+template<typename Operation>
+inline Integer Integer::_twos_complement_bitwise(const Integer& left,
+                                                 const Integer& right,
+                                                 Operation operation) {
+    const auto word_count = std::max(left.m_magnitude.size(), right.m_magnitude.size()) + 1U;
+    auto words = left._to_twos_complement(word_count);
+    const auto right_words = right._to_twos_complement(word_count);
+
+    std::transform(words.begin(), words.end(), right_words.begin(), words.begin(), operation);
+    return _from_twos_complement(std::move(words));
+}
+
 inline Integer operator&(const Integer& left, const Integer& right) {
     if (left.m_negative || right.m_negative) {
-        return ~(~left | ~right); // left & right = ~(~left | ~right)
+        return Integer::_twos_complement_bitwise(left, right, std::bit_and<>());
     }
 
     Integer result;
@@ -732,7 +793,7 @@ inline Integer operator&(const Integer& left, const Integer& right) {
 
 inline Integer operator|(const Integer& left, const Integer& right) {
     if (left.m_negative || right.m_negative) {
-        return ~(~left & ~right);
+        return Integer::_twos_complement_bitwise(left, right, std::bit_or<>());
     }
 
     Integer result;
@@ -759,7 +820,7 @@ inline Integer operator|(const Integer& left, const Integer& right) {
 
 inline Integer operator^(const Integer& left, const Integer& right) {
     if (left.m_negative || right.m_negative) {
-        return (left | right) & ~(left & right);
+        return Integer::_twos_complement_bitwise(left, right, std::bit_xor<>());
     }
 
     Integer result;

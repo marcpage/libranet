@@ -1,7 +1,12 @@
 #include <gtest/gtest.h>
+#include <cstddef>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "http/Headers.hpp"
 
@@ -158,3 +163,70 @@ TEST(HeadersTest, ContinuationAddsNoSpaces) {
 }
 
 // NOLINTEND(bugprone-unchecked-optional-access)
+
+TEST(HeadersTest, MissingHeaderIsNothing) {
+    const Headers headers;
+
+    EXPECT_EQ(headers.get("Host"), std::nullopt);
+}
+
+TEST(HeadersTest, MovedHeadersKeepTheirValues) {
+    Headers headers;
+    headers.set("Host", "localhost");
+
+    const Headers moved(std::move(headers));
+
+    EXPECT_EQ(moved.get("host"), "localhost");
+}
+
+// Headers of the same size differ by a key or by a value.
+TEST(HeadersTest, UnequalKeysOrValues) {
+    Headers headers;
+    headers.set("Host", "localhost");
+    Headers other_key;
+    other_key.set("Server", "localhost");
+    Headers other_value;
+    other_value.set("Host", "example.com");
+
+    EXPECT_NE(headers, other_key);
+    EXPECT_NE(headers, other_value);
+}
+
+TEST(HeadersTest, WrittenToAStream) {
+    Headers headers;
+    headers.set("Host", "localhost");
+    std::ostringstream out_stream;
+
+    out_stream << headers;
+
+    EXPECT_EQ(out_stream.str(), "Host: localhost\r\n\r\n");
+}
+
+TEST(HeadersTest, ProcessHeaderLine) {
+    Headers headers;
+
+    EXPECT_EQ(Headers::process_header_line("", "Host", headers), "");
+    EXPECT_EQ(Headers::process_header_line("Host: localhost", "", headers), "Host");
+    EXPECT_EQ(Headers::process_header_line(" more", "Host", headers), "Host");
+    EXPECT_EQ(headers.get("host"), "localhost more");
+}
+
+// A continuation is refused when the header it continues is not there.
+TEST(HeadersTest, ContinuationOfAMissingHeaderIsRefused) {
+    Headers headers;
+
+    EXPECT_THROW((void)Headers::process_header_line(" more", "Host", headers),
+                 std::invalid_argument);
+}
+
+// The last field holds the rest of the text, spaces and all.
+TEST(HeadersTest, SplitSpaces) {
+    constexpr std::size_t three_fields = 3;
+    using Fields = std::vector<std::string_view>;
+
+    EXPECT_EQ(Headers::split_spaces("GET / HTTP/1.1 extra", three_fields),
+              (Fields{"GET", "/", "HTTP/1.1 extra"}));
+    EXPECT_EQ(Headers::split_spaces("GET   ", three_fields), (Fields{"GET"}));
+    EXPECT_EQ(Headers::split_spaces("", three_fields), Fields{});
+    EXPECT_EQ(Headers::split_spaces("GET / HTTP/1.1", 0), Fields{});
+}
