@@ -128,3 +128,65 @@ TEST(RequestTest, Serialization) {
 
     EXPECT_EQ(serialized, expected);
 }
+
+TEST(RequestTest, HeadersOfAConstRequest) {
+    Request request;
+    request.headers().set("Host", "localhost");
+
+    const Request& const_request = request;
+
+    EXPECT_EQ(const_request.headers().get("host"), "localhost");
+}
+
+TEST(RequestTest, StreamWithoutARequestLineFails) {
+    std::istringstream empty_stream("");
+    std::istringstream bad_line_stream("GET\r\n\r\n");
+    Request request;
+
+    empty_stream >> request;
+    bad_line_stream >> request;
+
+    EXPECT_TRUE(empty_stream.fail());
+    EXPECT_TRUE(bad_line_stream.fail());
+}
+
+// The headers end with an empty line, which this stream never reaches.
+TEST(RequestTest, StreamEndingInTheHeadersFails) {
+    std::istringstream in_stream("GET / HTTP/1.1\r\nHost: localhost\r\n");
+    Request request;
+
+    in_stream >> request;
+
+    EXPECT_TRUE(in_stream.fail());
+}
+
+TEST(RequestTest, StreamWithContentLengthNotANumberFails) {
+    std::istringstream in_stream("POST / HTTP/1.1\r\nContent-Length: five\r\n\r\nhello");
+    Request request;
+
+    in_stream >> request;
+
+    EXPECT_TRUE(in_stream.fail());
+}
+
+TEST(RequestTest, StreamWithContentLengthOutOfRangeFails) {
+    std::istringstream in_stream(
+        "POST / HTTP/1.1\r\nContent-Length: 99999999999999999999999\r\n\r\nhello");
+    Request request;
+
+    in_stream >> request;
+
+    EXPECT_TRUE(in_stream.fail());
+}
+
+// With no Content-Length, nothing after the headers is the body.
+TEST(RequestTest, StreamWithoutContentLengthHasNoBody) {
+    std::istringstream in_stream("GET / HTTP/1.1\r\n\r\nnot the body");
+    Request request;
+    request.set_body("old body");
+
+    in_stream >> request;
+
+    EXPECT_FALSE(in_stream.fail());
+    EXPECT_EQ(request.body(), "");
+}
