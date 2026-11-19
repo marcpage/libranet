@@ -1,6 +1,9 @@
 #include "Manager.hpp"
-#include "DataDir.hpp"
+
+#include <algorithm>
 #include <optional>
+
+#include "DataDir.hpp"
 
 using std::invalid_argument;
 using std::nullopt;
