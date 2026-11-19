@@ -46,6 +46,25 @@ void file_not_found([[maybe_unused]] const Request& request, Response& response)
     set_error_response(response, ResponseCode::Status::NotFound);
 }
 
+// Whether the URI is under the path a handler was registered for: it starts
+// with the path, and where the path stops, so does a segment of the URI. A
+// handler for /data has /data, /data/, /data/x, and /data?x, but not
+// /database. One for a path that ends in a slash, such as /, has every URI
+// that starts with it.
+bool is_under(string_view uri, string_view path) {
+    if (uri.substr(0, path.size()) != path) {
+        return false;
+    }
+
+    if (uri.size() == path.size() || (!path.empty() && path.back() == '/')) {
+        return true;
+    }
+
+    const char next = uri.at(path.size());
+
+    return next == '/' || next == '?';
+}
+
 string read_body(ISocket::Ptr& client, size_t bytes) {
     const auto body = client->read_exact(bytes);
 
@@ -97,6 +116,14 @@ Server::Server(Address address) : m_address(std::move(address)) {
 
 void Server::register_handler(string_view path, RequestHandler handler) {
     m_handlers[string(path)] = std::move(handler);
+}
+
+Address Server::local_address() const {
+    if (!m_listener) {
+        throw runtime_error("Failed to bind socket on the given address.");
+    }
+
+    return m_listener->local_address();
 }
 
 void Server::start(int backlog) {
@@ -153,7 +180,7 @@ Server::RequestHandler Server::_find_handler(string_view uri) const {
     RequestHandler best_handler = file_not_found;
 
     for (const auto& [prefix, handler] : m_handlers) {
-        if (uri_str.rfind(prefix, 0) == 0 && prefix.size() > best_prefix.size()) {
+        if (is_under(uri_str, prefix) && prefix.size() > best_prefix.size()) {
             best_prefix = prefix;
             best_handler = handler;
         }
