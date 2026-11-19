@@ -119,10 +119,6 @@ void Server::register_handler(string_view path, RequestHandler handler) {
 }
 
 Address Server::local_address() const {
-    if (!m_listener) {
-        throw runtime_error("Failed to bind socket on the given address.");
-    }
-
     return m_listener->local_address();
 }
 
