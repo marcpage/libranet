@@ -4,8 +4,10 @@
 #include <string>
 
 #include "http/Response.hpp"
+#include "http/ResponseCode.hpp"
 
 using http::Response;
+using http::ResponseCode;
 
 TEST(ResponseTest, ConstructorsAndAccessors) {
     constexpr auto not_found_code = 404;
@@ -138,4 +140,72 @@ TEST(ResponseTest, Serialization) {
         "\r\n";
 
     EXPECT_EQ(serialized, expected);
+}
+
+TEST(ResponseTest, StatusCodeFromAStatus) {
+    Response response;
+
+    response.set_status_code(ResponseCode::Status::NotFound);
+
+    EXPECT_EQ(response.status_code(), 404);
+    EXPECT_EQ(response.reason_phrase(), "Not Found");
+}
+
+TEST(ResponseTest, StatusCodeOutOfRangeIsRefused) {
+    Response response;
+
+    EXPECT_FALSE(response.parse_status_line("HTTP/1.1 99999999999999999999 OK"));
+}
+
+TEST(ResponseTest, StreamWithoutAStatusLineFails) {
+    std::istringstream empty_stream("");
+    std::istringstream bad_line_stream("HTTP/1.1\r\n\r\n");
+    Response response;
+
+    empty_stream >> response;
+    bad_line_stream >> response;
+
+    EXPECT_TRUE(empty_stream.fail());
+    EXPECT_TRUE(bad_line_stream.fail());
+}
+
+// The headers end with an empty line, which this stream never reaches.
+TEST(ResponseTest, StreamEndingInTheHeadersFails) {
+    std::istringstream in_stream("HTTP/1.1 200 OK\r\nConnection: close\r\n");
+    Response response;
+
+    in_stream >> response;
+
+    EXPECT_TRUE(in_stream.fail());
+}
+
+TEST(ResponseTest, StreamWithContentLengthNotANumberFails) {
+    std::istringstream in_stream("HTTP/1.1 200 OK\r\nContent-Length: five\r\n\r\nhello");
+    Response response;
+
+    in_stream >> response;
+
+    EXPECT_TRUE(in_stream.fail());
+}
+
+TEST(ResponseTest, StreamWithContentLengthOutOfRangeFails) {
+    std::istringstream in_stream(
+        "HTTP/1.1 200 OK\r\nContent-Length: 99999999999999999999999\r\n\r\nhello");
+    Response response;
+
+    in_stream >> response;
+
+    EXPECT_TRUE(in_stream.fail());
+}
+
+// With no Content-Length, nothing after the headers is the body.
+TEST(ResponseTest, StreamWithoutContentLengthHasNoBody) {
+    std::istringstream in_stream("HTTP/1.1 200 OK\r\n\r\nnot the body");
+    Response response;
+    response.set_body("old body");
+
+    in_stream >> response;
+
+    EXPECT_FALSE(in_stream.fail());
+    EXPECT_EQ(response.body(), "");
 }
