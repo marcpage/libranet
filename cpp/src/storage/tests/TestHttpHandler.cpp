@@ -1,18 +1,23 @@
 #include <gtest/gtest.h>
+#include <filesystem>
 #include <memory>
 #include <string>
 
 #include "Fixtures.hpp"
 #include "http/Request.hpp"
 #include "http/Response.hpp"
+#include "storage/DataDir.hpp"
 #include "storage/HttpHandler.hpp"
 
 using fixtures::bytes_of;
 using fixtures::hello;
 using fixtures::hello_hash;
 using fixtures::MemorySource;
+using fixtures::ScratchDirectory;
+using fixtures::write_file;
 using http::Request;
 using http::Response;
+using storage::DataDir;
 using storage::HttpHandler;
 
 namespace {
@@ -85,6 +90,30 @@ TEST(HttpHandlerTest, DataNotHeldIsUnavailable) {
 
     EXPECT_EQ(response.status_code(), 503);
     EXPECT_EQ(response.body(), "Service Unavailable: Fetching content from other nodes\r\n");
+}
+
+// ".." as the algorithm named the directory above the store, so the file
+// there was served (issue #782).
+TEST(HttpHandlerTest, UnsupportedAlgorithmIsBadRequest) {
+    const ScratchDirectory directory;
+    const HttpHandler handler(DataDir::create(directory.path() / "store"));
+
+    std::filesystem::create_directories(directory.path() / "store");
+    write_file(directory.path() / "2cf" / hello_hash, hello);
+
+    const auto response = answer(handler, signed_get(std::string("/data/../") + hello_hash));
+
+    EXPECT_EQ(response.status_code(), 400);
+    EXPECT_EQ(response.body(), "Bad Request: Invalid content identifier\r\n");
+}
+
+TEST(HttpHandlerTest, DataWithoutAHashIsBadRequest) {
+    const HttpHandler handler(std::make_shared<MemorySource>());
+
+    const auto response = answer(handler, signed_get("/data/sha256"));
+
+    EXPECT_EQ(response.status_code(), 400);
+    EXPECT_EQ(response.body(), "Bad Request: Invalid content identifier\r\n");
 }
 
 // The handler is registered for /data, so it sees whatever starts with it.

@@ -63,6 +63,17 @@ TEST(IdentifierTest, TextWithoutAHashIsRefused) {
     EXPECT_TRUE(refused("/sha256"));
 }
 
+// An algorithm names a directory in a store, so ".." would reach the
+// directory above it (issue #782).
+TEST(IdentifierTest, UnsupportedAlgorithmIsRefused) {
+    EXPECT_TRUE(refused("../abcdef"));
+    EXPECT_TRUE(refused("./abcdef"));
+    EXPECT_TRUE(refused("/../abcdef"));
+    EXPECT_TRUE(refused("md5/abcdef"));
+    EXPECT_TRUE(refused("sha2560/abcdef"));
+    EXPECT_THROW((void)Identifier("..", "abcdef"), std::invalid_argument);
+}
+
 // The SHA-256 digests are those `shasum -a 256` gives for the same bytes.
 TEST(IdentifierTest, FromDataIsItsSha256) {
     const auto identifier = Identifier::from(bytes_of("hello"));
