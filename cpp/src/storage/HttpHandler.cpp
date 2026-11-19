@@ -74,7 +74,7 @@ namespace storage {
 HttpHandler::HttpHandler(IDataSource::Ptr source)
     : m_source(std::move(source)) {}
 
-void HttpHandler::operator()(const Request& request, Response& response) {
+void HttpHandler::operator()(const Request& request, Response& response) const {
     if (handle_search(request, response)) {
         return;
     }

@@ -29,6 +29,7 @@ int main() {
         Server server(bind_address);
 
         data->add("storage");
+        data->scan("incoming");
         server.register_handler("/data", std::ref(storage_handler));
         cout << "Starting Libranet web server on port " << listen_port << "...\n";
         server.start(backlog);

@@ -32,6 +32,11 @@ void Manager::add(IDataSource::Ptr source) {
 }
 
 void Manager::scan(const path& directory) {
+    std::error_code error;
+
+    if (!std::filesystem::exists(directory)) {
+        return;
+    }
 
     for (auto const& dir_entry : directory_iterator(directory)) {
         if (dir_entry.is_directory()) {

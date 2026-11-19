@@ -11,7 +11,7 @@ public:
     explicit HttpHandler(IDataSource::Ptr source);
     ~HttpHandler() = default;
 
-    void operator()(const http::Request& request, http::Response& response);
+    void operator()(const http::Request& request, http::Response& response) const;
 
     HttpHandler(HttpHandler&&) = default;
     HttpHandler& operator=(HttpHandler&&) = default;
