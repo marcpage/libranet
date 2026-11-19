@@ -6,7 +6,6 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>

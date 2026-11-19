@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <climits>
 #include <cstdint>
 #include <iostream>
 #include <iterator>
@@ -10,7 +9,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
 

@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 
-#include "storage/IDataSource.hpp"
+#include "IDataSource.hpp"
 
 namespace storage {
 

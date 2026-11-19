@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-#include "../crypto/IHasher.hpp"
+#include "crypto/IHasher.hpp"
 
 namespace storage {
 

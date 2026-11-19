@@ -3,7 +3,6 @@
 #if __APPLE__
 
 #include <cstdint>
-#include <utility>
 
 #include <CoreFoundation/CoreFoundation.h>
 
