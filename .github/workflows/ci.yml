@@ -352,10 +352,12 @@ jobs:
         env:
           GCOV: ${{ runner.os == 'macOS' && 'xcrun llvm-cov gcov' || 'gcov' }}
         run: >-
-          gcovr --txt --cobertura coverage.xml
-          --markdown-summary coverage.md
-          --markdown-title "C++ coverage (${{ matrix.os }})"
-
+          gcovr 
+            --gcov-ignore-parse-errors=negative_hits.warn_once_per_file
+            --txt 
+            --cobertura coverage.xml
+            --markdown-summary coverage.md
+            --markdown-title "C++ coverage (${{ matrix.os }})"
       - name: Coverage summary
         if: ${{ !cancelled() && hashFiles('cpp/coverage.md') != '' }}
         run: cat coverage.md >> "$GITHUB_STEP_SUMMARY"
