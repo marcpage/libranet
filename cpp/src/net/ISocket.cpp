@@ -1,5 +1,6 @@
 #include "ISocket.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <stdexcept>
 #include <string>
@@ -40,14 +41,15 @@ void ISocket::send_all(std::string_view data) {
     }
 }
 
+// Reads size bytes a piece at a time, so that a size larger than what the
+// peer sends takes no more memory than the peer sends.
 std::vector<std::byte> ISocket::read_exact(std::size_t size) {
+    constexpr std::size_t piece_bytes = 65536;
     std::vector<std::byte> total_buffer;
-
-    total_buffer.reserve(size);
+    std::vector<std::byte> chunk;
 
     while (total_buffer.size() < size) {
-        const auto remaining = size - total_buffer.size();
-        std::vector<std::byte> chunk(remaining);
+        chunk.resize(std::min(piece_bytes, size - total_buffer.size()));
 
         const auto success = receive(chunk);
 
