@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <iterator>
 #include <stdexcept>
@@ -16,6 +17,7 @@
 using net::Address;
 using net::ISocket;
 using net::SocketPosix;
+using std::chrono_literals::operator""ms;
 
 namespace {
 
@@ -47,6 +49,27 @@ std::pair<ISocket::Ptr, Address> bind_ephemeral() {
     EXPECT_NE(local.port(), 0);
 
     return {std::move(server), local};
+}
+
+// A listening socket, a client connected to it, and the peer the listening
+// socket accepted for the client. The client connects on this thread: the
+// system completes the connection to a listening socket before accept().
+struct Connection {
+    ISocket::Ptr server;
+    ISocket::Ptr client;
+    ISocket::Ptr peer;
+};
+
+// A Connection on the loopback address.
+Connection connect_ephemeral() {
+    auto [server, address] = bind_ephemeral();
+
+    server->listen(1);
+
+    auto client = SocketPosix::connect(address);
+    auto peer = server->accept();
+
+    return {std::move(server), std::move(client), std::move(peer)};
 }
 
 } // namespace
@@ -210,4 +233,72 @@ TEST(SocketPosixTest, OperationsOnClosedSocket) {
     std::vector<std::byte> buffer(buffer_bytes);
     EXPECT_THROW((void)server->receive(buffer), std::logic_error);
     EXPECT_THROW((void)server->local_address(), std::logic_error);
+}
+
+TEST(SocketPosixTest, RemoteAddressIsThePeers) {
+    const auto connection = connect_ephemeral();
+
+    EXPECT_EQ(connection.client->remote_address().port(),
+              connection.server->local_address().port());
+    EXPECT_EQ(connection.peer->remote_address().port(),
+              connection.client->local_address().port());
+}
+
+// The port is free once the socket bound to it is closed. A port bound but
+// not listening would not do: macOS neither refuses nor answers a connection
+// to it, which times out after some seconds.
+TEST(SocketPosixTest, ConnectWhereNoneListensIsRefused) {
+    auto [server, address] = bind_ephemeral();
+
+    server->close();
+
+    EXPECT_THROW((void)SocketPosix::connect(address), std::system_error);
+}
+
+TEST(SocketPosixTest, SendNothingSendsNothing) {
+    const auto connection = connect_ephemeral();
+
+    EXPECT_EQ(connection.client->send(""), 0U);
+}
+
+TEST(SocketPosixTest, ReceiveWithNoRoomReadsNothing) {
+    const auto connection = connect_ephemeral();
+    std::vector<std::byte> buffer;
+
+    EXPECT_FALSE(connection.peer->receive(buffer));
+}
+
+// A timeout of 0 waits forever; the others are seconds and milliseconds.
+TEST(SocketPosixTest, Timeouts) {
+    constexpr auto both = 250ms;
+    constexpr auto receive = 1500ms;
+    const auto connection = connect_ephemeral();
+
+    EXPECT_NO_THROW(connection.client->set_timeout(both));
+    EXPECT_NO_THROW(connection.client->set_receive_timeout(receive));
+    EXPECT_NO_THROW(connection.client->set_send_timeout(0ms));
+    EXPECT_THROW(connection.client->set_receive_timeout(-1ms), std::invalid_argument);
+    EXPECT_THROW(connection.client->set_send_timeout(-1ms), std::invalid_argument);
+}
+
+// With nothing sent to it, receive() gives up once its timeout has passed.
+TEST(SocketPosixTest, ReceiveTimesOut) {
+    constexpr auto timeout = 50ms;
+    constexpr std::size_t buffer_bytes = 10;
+    const auto connection = connect_ephemeral();
+    std::vector<std::byte> buffer(buffer_bytes);
+
+    connection.peer->set_receive_timeout(timeout);
+
+    EXPECT_THROW((void)connection.peer->receive(buffer), std::system_error);
+}
+
+TEST(SocketPosixTest, ClosedSocketHasNoPeerOrTimeouts) {
+    auto connection = connect_ephemeral();
+
+    connection.client->close();
+
+    EXPECT_THROW((void)connection.client->remote_address(), std::logic_error);
+    EXPECT_THROW(connection.client->set_receive_timeout(0ms), std::logic_error);
+    EXPECT_THROW(connection.client->set_send_timeout(0ms), std::logic_error);
 }

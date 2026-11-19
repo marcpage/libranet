@@ -99,6 +99,10 @@ void Server::register_handler(string_view path, RequestHandler handler) {
     m_handlers[string(path)] = std::move(handler);
 }
 
+Address Server::local_address() const {
+    return m_listener->local_address();
+}
+
 void Server::start(int backlog) {
     if (!m_listener) {
         throw runtime_error("Failed to bind socket on the given address.");

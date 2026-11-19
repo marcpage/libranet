@@ -10,7 +10,10 @@ target_link_libraries(libranet_storage PUBLIC
 
 if(BUILD_TESTING)
     add_executable(storage_tests
-        tests/TestDataDir.cpp)
+        tests/TestDataDir.cpp
+        tests/TestHttpHandler.cpp
+        tests/TestIdentifier.cpp
+        tests/TestManager.cpp)
     target_link_libraries(storage_tests PRIVATE libranet::storage GTest::gtest_main)
     gtest_discover_tests(storage_tests)
 endif()
