@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <exception>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -24,6 +25,7 @@ using http::ResponseCode;
 using net::Address;
 using net::ISocket;
 using std::atomic;
+using std::exception;
 using std::invalid_argument;
 using std::nullopt;
 using std::out_of_range;
@@ -68,7 +70,13 @@ std::optional<Request> read(ISocket::Ptr& client, const atomic<bool>& running) {
             break;
         }
 
-        last_key = Headers::process_header_line(line, last_key, request.headers());
+        try {
+            last_key = Headers::process_header_line(line, last_key, request.headers());
+        } catch (const runtime_error&) {
+            return nullopt;
+        } catch (const invalid_argument&) {
+            return nullopt;
+        }
     }
 
     const auto content_length = request.headers().get("Content-Length");
@@ -85,6 +93,17 @@ std::optional<Request> read(ISocket::Ptr& client, const atomic<bool>& running) {
 
     request.set_body(read_body(client, body_length));
     return request;
+}
+
+// A handler that throws is answered with an Internal Server Error, and the
+// server goes on to the next client.
+void respond(const Server::RequestHandler& handler, const Request& request, Response& response) {
+    try {
+        handler(request, response);
+    } catch (const exception&) {
+        response = Response();
+        set_error_response(response, ResponseCode::Status::InternalServerError);
+    }
 }
 
 } // namespace
@@ -114,22 +133,23 @@ void Server::start(int backlog) {
             continue;
         }
 
-        const auto request = read(client, m_running);
+        try {
+            const auto request = read(client, m_running);
+            Response response;
 
-        if (!request.has_value()) {
-            Response bad_req;
+            if (request.has_value()) {
+                respond(_find_handler(request->uri()), *request, response);
+            } else {
+                set_error_response(response, ResponseCode::Status::BadRequest);
+            }
 
-            set_error_response(bad_req, ResponseCode::Status::BadRequest);
-            client->send_all(bad_req.to_string());
+            client->send_all(response.to_string());
             client->close();
-            continue;
+        } catch (const exception&) {
+            // The client left, or its connection failed, before its reply was
+            // sent. Only that connection ends; the server goes on.
+            client.reset();
         }
-
-        Response response;
-
-        _find_handler(request->uri())(*request, response);
-        client->send_all(response.to_string());
-        client->close();
     }
 }
 
