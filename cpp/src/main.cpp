@@ -21,15 +21,14 @@ int main() {
     constexpr auto listen_host = "0.0.0.0";
     constexpr auto listen_port = 8086;
     constexpr auto backlog = 128;
-    const auto data = Manager::create();
-    HttpHandler storage_handler(data);
-
-    data->add("storage");
 
     try {
+        const auto data = Manager::create();
+        HttpHandler storage_handler(data);
         const Address bind_address(listen_host, listen_port);
         Server server(bind_address);
 
+        data->add("storage");
         server.register_handler("/data", std::ref(storage_handler));
         cout << "Starting Libranet web server on port " << listen_port << "...\n";
         server.start(backlog);
