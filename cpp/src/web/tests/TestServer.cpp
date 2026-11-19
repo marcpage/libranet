@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <future>
 #include <iterator>
 #include <stdexcept>
 #include <string>
@@ -85,6 +86,12 @@ Server::RequestHandler answer_with(std::string body) {
     return [body = std::move(body)](const Request& /*request*/, Response& response) {
         response.set_body(body);
     };
+}
+
+// A handler that throws, as storage's does for a signed request for /data/x,
+// whose identifier has no hash.
+void throw_invalid_identifier(const Request& /*request*/, Response& /*response*/) {
+    throw std::invalid_argument("Invalid identifier format: missing hash component.");
 }
 
 // A server on the loopback address, at a port the system picks, which a test
@@ -223,4 +230,52 @@ TEST_F(ServerTest, StartAfterStopIsRefused) {
     server().stop();
 
     EXPECT_THROW(server().start(backlog), std::logic_error);
+}
+
+// A handler that throws is answered with an Internal Server Error, and the
+// server goes on to answer the next request.
+TEST_F(ServerTest, HandlerThatThrowsIsInternalServerError) {
+    server().register_handler("/data", throw_invalid_identifier);
+    server().register_handler("/hello", answer_with("Hello"));
+    start();
+
+    EXPECT_EQ(exchange(address(), "GET /data/x HTTP/1.1\r\n\r\n"),
+              "HTTP/1.1 500 Internal Server Error\r\n\r\nInternal Server Error\r\n");
+    EXPECT_EQ(exchange(address(), "GET /hello HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\nHello");
+}
+
+// The server answers as soon as it reads the header line, so the request
+// ends there, leaving nothing unread.
+TEST_F(ServerTest, HeaderWithoutColonIsBadRequest) {
+    server().register_handler("/hello", answer_with("Hello"));
+    start();
+
+    EXPECT_EQ(exchange(address(), "GET /hello HTTP/1.1\r\nNo colon here\r\n"),
+              "HTTP/1.1 400 Bad Request\r\n\r\nBad Request\r\n");
+    EXPECT_EQ(exchange(address(), "GET /hello HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\nHello");
+}
+
+// A client that leaves before its answer is sent ends only its own
+// connection, and the server goes on to answer the next request.
+TEST_F(ServerTest, ClientThatLeavesBeforeItsAnswerDoesNotStopTheServer) {
+    // More than a connection holds unsent, so sending it fails once the
+    // client is gone.
+    constexpr std::size_t large_body_bytes = 16UL * 1024UL * 1024UL;
+    std::promise<void> client_left;
+    const auto left = client_left.get_future().share();
+
+    server().register_handler("/large", [left](const Request& /*request*/, Response& response) {
+        left.wait();
+        response.set_body(std::string(large_body_bytes, 'x'));
+    });
+    server().register_handler("/hello", answer_with("Hello"));
+    start();
+
+    const auto connection = connect_when_listening(address());
+
+    connection->send_all("GET /large HTTP/1.1\r\n\r\n");
+    connection->close();
+    client_left.set_value();
+
+    EXPECT_EQ(exchange(address(), "GET /hello HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\nHello");
 }
