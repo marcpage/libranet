@@ -11,6 +11,7 @@ target_link_libraries(libranet_storage PUBLIC
 if(BUILD_TESTING)
     add_executable(storage_tests
         tests/TestDataDir.cpp
+        tests/TestHashPrefix.cpp
         tests/TestHttpHandler.cpp
         tests/TestIdentifier.cpp
         tests/TestManager.cpp)

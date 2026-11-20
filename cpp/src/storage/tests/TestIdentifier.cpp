@@ -151,6 +151,11 @@ TEST(IdentifierTest, HashThatIsNotHexOfTheDigestsLengthIsRefused) {
     EXPECT_THROW((void)Identifier("sha256", ".."), std::invalid_argument);
 }
 
+// SHA-256, the only algorithm supported, has the longest hash.
+TEST(IdentifierTest, LongestHashIsSha256s) {
+    EXPECT_EQ(Identifier::longest_hash_digits(), 64U);
+}
+
 // Hashes should be in lower case, but upper and mixed case are taken, and
 // kept in lower case (HttpApi §5.4).
 TEST(IdentifierTest, HashInUpperOrMixedCaseIsKeptInLowerCase) {
