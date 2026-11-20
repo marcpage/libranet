@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <exception>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -30,6 +31,7 @@ using std::invalid_argument;
 using std::nullopt;
 using std::out_of_range;
 using std::runtime_error;
+using std::scoped_lock;
 using std::size_t;
 using std::string;
 using std::string_view;
@@ -114,6 +116,26 @@ std::optional<Request> read(ISocket::Ptr& client, const atomic<bool>& running) {
     return request;
 }
 
+// Where to connect to the listener, to wake a thread waiting in accept():
+// the loopback address, for a listener bound to every address.
+Address wake_address(const ISocket::Ptr& listener) {
+    if (!listener) {
+        throw runtime_error("Failed to bind socket on the given address.");
+    }
+
+    auto bound = listener->local_address();
+
+    if ("0.0.0.0" == bound.host()) {
+        return {"127.0.0.1", bound.port()};
+    }
+
+    if ("::" == bound.host()) {
+        return {"::1", bound.port()};
+    }
+
+    return bound;
+}
+
 // A handler that throws is answered with an Internal Server Error, and the
 // server goes on to the next client.
 void respond(const Server::RequestHandler& handler, const Request& request, Response& response) {
@@ -129,9 +151,10 @@ void respond(const Server::RequestHandler& handler, const Request& request, Resp
 
 namespace web {
 
-Server::Server(Address address) : m_address(std::move(address)) {
-    m_listener = net::ISocket::bind(m_address);
-}
+Server::Server(Address address)
+    : m_address(std::move(address))
+    , m_listener(net::ISocket::bind(m_address))
+    , m_wake_address(wake_address(m_listener)) {}
 
 void Server::register_handler(string_view path, RequestHandler handler) {
     m_handlers[string(path)] = std::move(handler);
@@ -142,12 +165,9 @@ Address Server::local_address() const {
 }
 
 void Server::start(int backlog) {
-    if (!m_listener) {
-        throw runtime_error("Failed to bind socket on the given address.");
+    if (!_listen(backlog)) {
+        return;
     }
-
-    m_listener->listen(backlog);
-    m_running = true;
 
     while (m_running) {
         auto client = m_listener->accept();
@@ -156,31 +176,49 @@ void Server::start(int backlog) {
             continue;
         }
 
-        try {
-            const auto request = read(client, m_running);
-            Response response;
-
-            if (request.has_value()) {
-                respond(_find_handler(request->uri()), *request, response);
-            } else {
-                set_error_response(response, ResponseCode::Status::BadRequest);
-            }
-
-            client->send_all(response.to_string());
-            client->close();
-        } catch (const exception&) {
-            // The client left, or its connection failed, before its reply was
-            // sent. Only that connection ends; the server goes on.
-            client.reset();
+        if (!_serve(client.get())) {
+            break;
         }
+
+        _answer(client);
+
+        const scoped_lock lock(m_lock);
+
+        m_client = nullptr;
     }
+
+    const scoped_lock lock(m_lock);
+
+    m_listening = false;
+    m_listener->close();
 }
 
 void Server::stop() {
-    m_running = false;
+    bool listening = false;
 
-    if (m_listener) {
-        m_listener->close();
+    {
+        const scoped_lock lock(m_lock);
+
+        m_running = false;
+        listening = m_listening;
+
+        if (nullptr != m_client) {
+            m_client->shutdown();
+        }
+    }
+
+    if (!listening) {
+        return;
+    }
+
+    try {
+        // accept() returns this connection, and start() then sees that it
+        // is to stop.
+        (void)ISocket::connect(m_wake_address);
+        // start() may have stopped listening since, which leaves nothing to
+        // wake.
+        // NOLINTNEXTLINE(bugprone-empty-catch)
+    } catch (const exception&) {
     }
 }
 
@@ -203,6 +241,53 @@ Server::RequestHandler Server::_find_handler(string_view uri) const {
     }
 
     return best_handler;
+}
+
+// Listens, unless stop() has been called. stop() wakes accept() only once
+// the listener listens, so the two are ordered by m_lock.
+bool Server::_listen(int backlog) {
+    const scoped_lock lock(m_lock);
+
+    if (!m_running) {
+        m_listener->close();
+        return false;
+    }
+
+    m_listener->listen(backlog);
+    m_listening = true;
+    return true;
+}
+
+// Makes client the one being answered, which stop() ends, unless stop() has
+// been called.
+bool Server::_serve(ISocket* client) {
+    const scoped_lock lock(m_lock);
+
+    if (!m_running) {
+        return false;
+    }
+
+    m_client = client;
+    return true;
+}
+
+void Server::_answer(ISocket::Ptr& client) const {
+    try {
+        const auto request = read(client, m_running);
+        Response response;
+
+        if (request.has_value()) {
+            respond(_find_handler(request->uri()), *request, response);
+        } else {
+            set_error_response(response, ResponseCode::Status::BadRequest);
+        }
+
+        client->send_all(response.to_string());
+        // The client may leave, or its connection fail, before its reply is
+        // sent. Only that connection ends; the server goes on.
+        // NOLINTNEXTLINE(bugprone-empty-catch)
+    } catch (const exception&) {
+    }
 }
 
 } // namespace web

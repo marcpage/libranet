@@ -109,6 +109,8 @@ protected:
 
     void start();
     void stop();
+    // Waits for start() to return, once stop() has been called.
+    void join();
 
 private:
     Server m_server;
@@ -148,6 +150,10 @@ void ServerTest::stop() {
     }
 
     (void)exchange(m_address, "GET /stop HTTP/1.1\r\n\r\n");
+    m_thread.join();
+}
+
+void ServerTest::join() {
     m_thread.join();
 }
 
@@ -263,10 +269,46 @@ TEST_F(ServerTest, StopEndsStart) {
     EXPECT_THROW((void)ISocket::connect(address()), std::system_error);
 }
 
-TEST_F(ServerTest, StartAfterStopIsRefused) {
+// A server stopped before it starts never listens.
+TEST_F(ServerTest, StartAfterStopReturnsAtOnce) {
     server().stop();
 
-    EXPECT_THROW(server().start(backlog), std::logic_error);
+    server().start(backlog);
+
+    EXPECT_THROW((void)ISocket::connect(address()), std::system_error);
+}
+
+// stop() ends start() from another thread, while it waits for a client.
+TEST_F(ServerTest, StopFromAnotherThread) {
+    server().register_handler("/hello", answer_with("Hello"));
+    start();
+    ASSERT_EQ(exchange(address(), "GET /hello HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\nHello");
+
+    server().stop();
+    join();
+
+    EXPECT_THROW((void)ISocket::connect(address()), std::system_error);
+}
+
+// A client that connects and sends nothing does not keep the server from
+// stopping: its connection is ended.
+TEST_F(ServerTest, StopWithAClientSendingNothing) {
+    // Time for the server to take the client and wait for its request. The
+    // test passes without it, but then may not stop the server mid-request.
+    constexpr auto reading = std::chrono::milliseconds(100);
+
+    server().register_handler("/hello", answer_with("Hello"));
+    start();
+    ASSERT_EQ(exchange(address(), "GET /hello HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\nHello");
+
+    const auto client = ISocket::connect(address());
+
+    client->send_all("GET /hello HTTP/1.1\r\n");
+    std::this_thread::sleep_for(reading);
+    server().stop();
+    join();
+
+    EXPECT_THROW((void)ISocket::connect(address()), std::system_error);
 }
 
 // A handler that throws is answered with an Internal Server Error, and the
