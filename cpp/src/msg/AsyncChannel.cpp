@@ -10,7 +10,6 @@
 #include "Channel.hpp"
 #include "IMessage.hpp"
 
-
 using std::exception;
 using std::invalid_argument;
 using std::string;
