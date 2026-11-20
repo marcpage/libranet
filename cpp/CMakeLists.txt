@@ -114,6 +114,7 @@ add_subdirectory(src/net)
 add_subdirectory(src/web)
 add_subdirectory(src/crypto)
 add_subdirectory(src/storage)
+add_subdirectory(src/protocol)
 add_subdirectory(src/node)
 add_subdirectory(src/logger)
 

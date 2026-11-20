@@ -38,6 +38,10 @@ public:
     [[nodiscard]] std::string to_string() const;
     // How many hex digits the longest hash of a supported algorithm has.
     [[nodiscard]] static std::size_t longest_hash_digits();
+    // Whether an identifier may name algorithm, so that one under an
+    // algorithm the node does not know can be told from one that is not
+    // valid without being refused.
+    [[nodiscard]] static bool is_supported(std::string_view algorithm) noexcept;
 
 private:
     // The only hash algorithm supported (HttpApi §5.4: an unknown one is
@@ -86,7 +90,7 @@ inline Identifier::Identifier(std::string algorithm, std::string hash)
     : m_algorithm(std::move(algorithm)), m_hash(std::move(hash)) {
     constexpr std::string_view hex_digits = "0123456789abcdefABCDEF";
 
-    if (sha256 != m_algorithm) {
+    if (!is_supported(m_algorithm)) {
         _warn_unsupported(m_algorithm);
         throw std::invalid_argument("Invalid identifier format: unsupported algorithm");
     }
@@ -117,6 +121,10 @@ inline std::string Identifier::to_string() const {
 // SHA-256 is the only algorithm supported, so its hash is the longest.
 inline std::size_t Identifier::longest_hash_digits() {
     return _sha256_digits();
+}
+
+inline bool Identifier::is_supported(std::string_view algorithm) noexcept {
+    return sha256 == algorithm;
 }
 
 // How many hex digits a SHA-256 hash has: two for each byte of its digest.
