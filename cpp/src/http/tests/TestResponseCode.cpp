@@ -72,6 +72,7 @@ constexpr std::array phrases{
     Phrase{Status::ImATeapot, "I'm a teapot"},
     Phrase{Status::UnprocessableEntity, "Unprocessable Entity"},
     Phrase{Status::TooManyRequests, "Too Many Requests"},
+    Phrase{Status::RequestHeaderFieldsTooLarge, "Request Header Fields Too Large"},
     Phrase{Status::InternalServerError, "Internal Server Error"},
     Phrase{Status::NotImplemented, "Not Implemented"},
     Phrase{Status::BadGateway, "Bad Gateway"},

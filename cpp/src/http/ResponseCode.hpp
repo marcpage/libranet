@@ -59,6 +59,7 @@ public:
         ImATeapot = 418,
         UnprocessableEntity = 422,
         TooManyRequests = 429,
+        RequestHeaderFieldsTooLarge = 431,
 
         // 5xx Server Errors
         InternalServerError = 500,
@@ -237,6 +238,7 @@ inline std::string_view ResponseCode::default_reason_phrase(Status status) noexc
         case Status::ImATeapot: return "I'm a teapot";
         case Status::UnprocessableEntity: return "Unprocessable Entity";
         case Status::TooManyRequests: return "Too Many Requests";
+        case Status::RequestHeaderFieldsTooLarge: return "Request Header Fields Too Large";
 
         // 5xx
         case Status::InternalServerError: return "Internal Server Error";

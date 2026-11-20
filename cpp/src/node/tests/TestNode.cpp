@@ -55,10 +55,11 @@ namespace {
 constexpr auto hello = "hello";
 constexpr auto hello_hash = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
 
-// A request for hello, signed as storage asks, by any signature.
+// A request for hello, signed as storage asks, by any signature, on a
+// connection the node closes once it answers.
 string get_hello() {
     return string("GET /data/sha256/") + hello_hash
-           + " HTTP/1.1\r\nX-Node-Signature: test\r\n\r\n";
+           + " HTTP/1.1\r\nConnection: close\r\nX-Node-Signature: test\r\n\r\n";
 }
 
 // How long to wait, at most, for the node to listen, and how long between

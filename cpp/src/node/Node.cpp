@@ -66,7 +66,7 @@ constexpr auto default_listen_address = "::";
 constexpr auto default_listen_port = "8080";
 constexpr auto default_log_level = "INFO";
 
-// The connections the system queues while the web server answers one.
+// The connections the system queues until the web server takes them.
 constexpr int backlog = 128;
 
 // The value of the setting name, or fallback when the settings do not give
