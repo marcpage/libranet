@@ -10,21 +10,15 @@
 
 namespace logger {
 
-// Writes each line to a C stream, and flushes it, so that a line is not lost
-// if the program then stops.
 class StreamOutput : public ILogOutput {
 public:
-    // Whether the output closes the stream when it is done with it: a file
-    // opened for it is closed, and stdout and stderr are left open.
     enum class Closing : std::uint8_t {
         Close,
         LeaveOpen,
     };
 
-    // name says which stream it is, in what is thrown.
     StreamOutput(std::FILE* stream, std::string name, Closing closing);
 
-    // Throws std::system_error when the stream cannot be written.
     void log(std::string_view line) override;
 
 private:
