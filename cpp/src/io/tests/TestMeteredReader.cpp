@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <iterator>
 #include <memory>
@@ -18,6 +19,7 @@ using io::MeteredReader;
 
 namespace {
 
+// The bytes as text, a char for each.
 std::string as_text(const std::vector<std::byte>& bytes) {
     std::string text;
 
@@ -28,36 +30,42 @@ std::string as_text(const std::vector<std::byte>& bytes) {
     return text;
 }
 
+// A reader of the text it is given, as much as fits each read.
 class StringReader final : public IReader {
 public:
     explicit StringReader(std::string data)
         : m_data(std::move(data)) {}
 
-    std::optional<std::size_t> read_some(std::byte* data, std::size_t size) override {
-        if (m_pos >= m_data.size()) {
+    [[nodiscard]] std::optional<std::size_t> read_some(std::byte* data,
+                                                       std::size_t size) override {
+        if (m_position >= m_data.size()) {
             return std::nullopt;
         }
 
-        const auto count = std::min(size, m_data.size() - m_pos);
-        const auto first = m_data.begin() + static_cast<std::string::difference_type>(m_pos);
+        const auto count = std::min(size, m_data.size() - m_position);
+        const auto first = m_data.begin() + static_cast<std::string::difference_type>(m_position);
 
         std::transform(first, first + static_cast<std::string::difference_type>(count), data,
                        [](char single_byte) {
             return static_cast<std::byte>(single_byte);
         });
-        m_pos += count;
+        m_position += count;
         return count;
     }
 
 private:
     std::string m_data;
-    std::size_t m_pos{0};
+    std::size_t m_position{0};
 };
 
 } // namespace
 
 TEST(MeteredReaderTest, RejectsNullUpstream) {
-    EXPECT_THROW(MeteredReader(nullptr, 10), std::invalid_argument);
+    constexpr auto byte_limit = 10;
+
+    // Made only to see its constructor throw.
+    // cppcheck-suppress unusedScopedObject
+    EXPECT_THROW(MeteredReader(nullptr, byte_limit), std::invalid_argument);
 }
 
 TEST(MeteredReaderTest, TracksBytesReadAndRemaining) {
@@ -92,5 +100,17 @@ TEST(MeteredReaderTest, ResetRestoresBudgetAndClearsCount) {
     reader.reset(new_byte_limit);
     EXPECT_EQ(reader.bytes_read(), 0U);
     EXPECT_EQ(reader.remaining(), 12U);
-    EXPECT_EQ(as_text(reader.read_exact(12)), "body-payload");
+    EXPECT_EQ(as_text(reader.read_exact(new_byte_limit)), "body-payload");
+}
+
+// The end of the input, before the limit, is not counted against it.
+TEST(MeteredReaderTest, EndOfInputBeforeTheLimitGivesNothing) {
+    constexpr auto byte_limit = 6;
+    MeteredReader reader(std::make_unique<StringReader>("ab"), byte_limit);
+    std::array<std::byte, 4> data{};
+
+    EXPECT_EQ(reader.read_some(data.data(), 0), 0U);
+    EXPECT_EQ(reader.read_some(data.data(), data.size()), 2U);
+    EXPECT_FALSE(reader.read_some(data.data(), 2).has_value());
+    EXPECT_EQ(reader.bytes_read(), 2U);
 }
