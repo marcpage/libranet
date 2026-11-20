@@ -1,8 +1,7 @@
 # Messages, and the channels that carry them.
 add_library(libranet_msg STATIC
     AsyncChannel.cpp
-    Channel.cpp
-    Timer.cpp)
+    Channel.cpp)
 add_library(libranet::msg ALIAS libranet_msg)
 target_include_directories(libranet_msg PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(libranet_msg PUBLIC libranet::types Threads::Threads)
