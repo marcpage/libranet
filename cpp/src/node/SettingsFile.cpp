@@ -205,8 +205,10 @@ std::size_t count_of(const Value& value) {
     return nullptr == list ? 1 : list->size();
 }
 
-// Writes a setting's value, or its list, as YAML.
-void write_value(YAML::Emitter& out, const Value& value) {
+// Writes a setting's value, or its list, as YAML. The emitter comes after the
+// value: CodeQL reads the code without yaml-cpp's headers, and takes a
+// declaration whose first parameter starts with YAML:: for a variable.
+void write_value(const Value& value, YAML::Emitter& out) {
     if (const auto* text = std::get_if<std::string>(&value); nullptr != text) {
         out << *text;
         return;
@@ -363,7 +365,7 @@ std::string SettingsFile::to_string() const {
         }
 
         out << YAML::Key << name.substr(dot + 1) << YAML::Value;
-        write_value(out, setting);
+        write_value(setting, out);
     }
 
     if (!section.empty()) {
