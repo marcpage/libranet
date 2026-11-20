@@ -12,7 +12,7 @@
 #include <thread>
 #include <unordered_map>
 
-#include "Connection.hpp"
+#include "ConnectionInfo.hpp"
 #include "http/Request.hpp"
 #include "http/Response.hpp"
 #include "net/Address.hpp"
@@ -24,15 +24,15 @@ namespace web {
 // to a limit, and keeps it open after each answer for the next request, so
 // that requests sent without waiting for their answers are answered in the
 // order they came. It closes a connection that sends nothing for a while;
-// after an answer, when the request or the answer says Connection: close, the
-// request is HTTP/1.0, or the handler had the Connection closed; and after
+// after an answer, when the request or the answer says ConnectionInfo: close, the
+// request is HTTP/1.0, or the handler had the ConnectionInfo closed; and after
 // answering a request it cannot read, which leaves where the next one starts
 // in doubt. Each answer gives the length of its body, and names the request
 // it answers, its path and query, in X-Request-Path.
 class Server {
 public:
     using RequestHandler = std::function<void(const http::Request& req, http::Response& res,
-                                              Connection& connection)>;
+                                              ConnectionInfo& connection)>;
 
     // Each limit's default: four times the 32 connections a Python node keeps
     // to its peers; a minute, longer than a peer waits between reads of the
@@ -67,7 +67,7 @@ public:
     ~Server() = default;
 
     // Handlers are registered before start(), and are called from the threads
-    // serving connections, several at once. Each is given the Connection the
+    // serving connections, several at once. Each is given the ConnectionInfo the
     // request came on, which only the thread serving it uses.
     void register_handler(std::string_view path, RequestHandler handler);
     [[nodiscard]] net::Address local_address() const;
@@ -111,7 +111,7 @@ private:
     [[nodiscard]] bool _wait_for_room();
     void _serve(net::ISocket::Ptr client);
     void _converse(Client& client);
-    [[nodiscard]] bool _answer(net::ISocket& client, Connection& connection) const;
+    [[nodiscard]] bool _answer(net::ISocket& client, ConnectionInfo& connection) const;
     void _end_all();
 };
 

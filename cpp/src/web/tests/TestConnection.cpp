@@ -4,11 +4,11 @@
 
 #include "net/Address.hpp"
 #include "storage/Identifier.hpp"
-#include "web/Connection.hpp"
+#include "web/ConnectionInfo.hpp"
 
 using net::Address;
 using storage::Identifier;
-using web::Connection;
+using web::ConnectionInfo;
 
 namespace {
 
@@ -25,12 +25,12 @@ constexpr std::string_view second_node =
     "sha256/ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
 // A connection from remote_host and remote_port.
-Connection from_remote() {
-    return Connection(Address(remote_host, remote_port));
+ConnectionInfo from_remote() {
+    return ConnectionInfo(Address(remote_host, remote_port));
 }
 
 // The id of the node the connection knows, or "" when it knows none.
-std::string node_of(const Connection& connection) {
+std::string node_of(const ConnectionInfo& connection) {
     const auto& node = connection.node();
 
     return node.has_value() ? node->to_string() : "";
@@ -50,11 +50,11 @@ TEST(ConnectionTest, CountsEachRequest) {
 
     EXPECT_EQ(connection.requests(), 0U);
 
-    connection.count_request();
+    connection.add_a_request();
     EXPECT_EQ(connection.requests(), 1U);
 
-    connection.count_request();
-    connection.count_request();
+    connection.add_a_request();
+    connection.add_a_request();
     EXPECT_EQ(connection.requests(), 3U);
 }
 

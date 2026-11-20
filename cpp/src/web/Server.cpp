@@ -1,7 +1,6 @@
 #include "Server.hpp"
 
 #include <algorithm>
-#include <atomic>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -18,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-#include "Connection.hpp"
+#include "ConnectionInfo.hpp"
 #include "http/Headers.hpp"
 #include "http/Problem.hpp"
 #include "http/Request.hpp"
@@ -51,7 +50,7 @@ using std::system_error;
 using std::thread;
 using std::unique_lock;
 using std::vector;
-using web::Connection;
+using web::ConnectionInfo;
 using web::Server;
 using Status = http::ResponseCode::Status;
 
@@ -61,7 +60,7 @@ namespace {
 constexpr auto request_path_header = "X-Request-Path";
 
 void file_not_found([[maybe_unused]] const Request& request, Response& response,
-                    [[maybe_unused]] Connection& connection) {
+                    [[maybe_unused]] ConnectionInfo& connection) {
     Problem(ResponseCode::Status::NotFound, "No resource exists at this path.").answer(response);
 }
 
@@ -276,7 +275,7 @@ bool header_equals(std::string_view left, std::string_view right) {
     return !less(left, right) && !less(right, left);
 }
 
-// Whether the headers' Connection names option, as one of a list.
+// Whether the headers' ConnectionInfo names option, as one of a list.
 bool has_connection_option(const Headers& headers, string_view option) {
     auto options = headers.get("Connection", "");
 
@@ -295,10 +294,10 @@ bool has_connection_option(const Headers& headers, string_view option) {
 }
 
 // Whether the connection is closed once the request is answered with the
-// response (RFC 9112 §9.3): when either says Connection: close, when the
+// response (RFC 9112 §9.3): when either says ConnectionInfo: close, when the
 // request is HTTP/1.0, which closes by default, when it was refused, and when
 // its handler had the connection closed.
-bool closes(const Received& received, const Response& response, const Connection& connection) {
+bool closes(const Received& received, const Response& response, const ConnectionInfo& connection) {
     return received.refusal.has_value() || connection.is_closing()
            || has_connection_option(received.request.headers(), "close")
            || has_connection_option(response.headers(), "close")
@@ -361,7 +360,7 @@ Address wake_address(const ISocket::Ptr& listener) {
 // A handler that throws is answered with an Internal Server Error, and the
 // server goes on to the next request.
 void respond(const Server::RequestHandler& handler, const Request& request, Response& response,
-             Connection& connection) {
+             ConnectionInfo& connection) {
     try {
         handler(request, response, connection);
     } catch (const exception&) {
@@ -574,7 +573,7 @@ void Server::_converse(Client& client) {
     try {
         // Only this thread changes client.socket, so it reads it unguarded.
         auto& socket = *client.socket;
-        Connection connection(socket.remote_address());
+        ConnectionInfo connection(socket.remote_address());
 
         while (m_running && _answer(socket, connection)) {
         }
@@ -592,14 +591,14 @@ void Server::_converse(Client& client) {
 
 // Reads the next request on the connection and answers it. Returns whether
 // the connection stays open for another.
-bool Server::_answer(ISocket& client, Connection& connection) const {
+bool Server::_answer(ISocket& client, ConnectionInfo& connection) const {
     const auto received = read_request(client, m_limits);
 
     if (!received.has_value()) {
         return false;
     }
 
-    connection.count_request();
+    connection.add_a_request();
 
     Response response;
 

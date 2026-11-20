@@ -21,7 +21,7 @@
 #include "net/Address.hpp"
 #include "node/SettingsFile.hpp"
 #include "storage/Manager.hpp"
-#include "web/Connection.hpp"
+#include "web/ConnectionInfo.hpp"
 
 using http::Request;
 using http::Response;
@@ -48,7 +48,7 @@ using std::to_string;
 using std::filesystem::create_directories;
 using std::filesystem::path;
 using storage::Manager;
-using web::Connection;
+using web::ConnectionInfo;
 
 namespace {
 
@@ -289,7 +289,7 @@ Node::Node(const SettingsFile& settings)
     lInfo << "Listening on" << m_local_address.to_string();
 
     m_server.register_handler(
-        "/data", [this](const Request& request, Response& response, Connection& /*connection*/) {
+        "/data", [this](const Request& request, Response& response, ConnectionInfo& /*connection*/) {
         m_data_handler(request, response);
     });
     m_server_thread = thread([this] {

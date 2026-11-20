@@ -12,9 +12,9 @@ namespace web {
 // What a handler knows of the connection a request came on. The server makes
 // one as it takes a connection, and hands it to each handler with the request
 // and the response, on the thread serving that connection alone.
-class Connection {
+class ConnectionInfo {
 public:
-    explicit Connection(net::Address remote_address);
+    explicit ConnectionInfo(net::Address remote_address);
 
     // Where the connection came from, which resolving localhost needs
     // (HTTP API §10.2).
@@ -25,7 +25,7 @@ public:
     [[nodiscard]] std::size_t requests() const noexcept;
     // Counts a request read from the connection, as the server does before
     // it answers each.
-    void count_request() noexcept;
+    void add_a_request() noexcept;
 
     // The node whose signature the connection carries, once verified
     // (HTTP API §11), and nothing before.
@@ -36,7 +36,7 @@ public:
     // sent.
     [[nodiscard]] bool is_closing() const noexcept;
     // Has the server close the connection once the answer being made is
-    // sent, saying so in its Connection header.
+    // sent, saying so in its ConnectionInfo header.
     void close_after_answer() noexcept;
 
 private:
@@ -46,34 +46,34 @@ private:
     bool m_closing = false;
 };
 
-inline Connection::Connection(net::Address remote_address)
+inline ConnectionInfo::ConnectionInfo(net::Address remote_address)
     : m_remote_address(std::move(remote_address)) {}
 
-inline const net::Address& Connection::remote_address() const noexcept {
+inline const net::Address& ConnectionInfo::remote_address() const noexcept {
     return m_remote_address;
 }
 
-inline std::size_t Connection::requests() const noexcept {
+inline std::size_t ConnectionInfo::requests() const noexcept {
     return m_requests;
 }
 
-inline void Connection::count_request() noexcept {
+inline void ConnectionInfo::add_a_request() noexcept {
     ++m_requests;
 }
 
-inline const std::optional<storage::Identifier>& Connection::node() const noexcept {
+inline const std::optional<storage::Identifier>& ConnectionInfo::node() const noexcept {
     return m_node;
 }
 
-inline void Connection::set_node(storage::Identifier new_node) {
+inline void ConnectionInfo::set_node(storage::Identifier new_node) {
     m_node = std::move(new_node);
 }
 
-inline bool Connection::is_closing() const noexcept {
+inline bool ConnectionInfo::is_closing() const noexcept {
     return m_closing;
 }
 
-inline void Connection::close_after_answer() noexcept {
+inline void ConnectionInfo::close_after_answer() noexcept {
     m_closing = true;
 }
 

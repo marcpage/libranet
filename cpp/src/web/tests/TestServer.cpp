@@ -19,7 +19,7 @@
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
 #include "storage/Identifier.hpp"
-#include "web/Connection.hpp"
+#include "web/ConnectionInfo.hpp"
 #include "web/Server.hpp"
 
 using http::Request;
@@ -28,7 +28,7 @@ using http::ResponseCode;
 using net::Address;
 using net::ISocket;
 using storage::Identifier;
-using web::Connection;
+using web::ConnectionInfo;
 using web::Server;
 
 namespace {
@@ -220,7 +220,7 @@ std::string refusal(std::string_view status, std::string_view target,
 // A handler that answers with body.
 Server::RequestHandler answer_with(std::string body) {
     return [body = std::move(body)](const Request& /*request*/, Response& response,
-                                    Connection& /*connection*/) {
+                                    ConnectionInfo& /*connection*/) {
         response.set_body(body);
     };
 }
@@ -228,38 +228,38 @@ Server::RequestHandler answer_with(std::string body) {
 // A handler that throws, as storage's does for a signed request for /data/x,
 // whose identifier has no hash.
 void throw_invalid_identifier(const Request& /*request*/, Response& /*response*/,
-                              Connection& /*connection*/) {
+                              ConnectionInfo& /*connection*/) {
     throw std::invalid_argument("Invalid identifier format: missing hash component.");
 }
 
 // A handler that answers with where the connection came from.
 void answer_with_remote_address(const Request& /*request*/, Response& response,
-                                Connection& connection) {
+                                ConnectionInfo& connection) {
     response.set_body(connection.remote_address().to_string());
 }
 
 // A handler that answers with how many requests the connection has carried.
 void answer_with_requests(const Request& /*request*/, Response& response,
-                          Connection& connection) {
+                          ConnectionInfo& connection) {
     response.set_body(std::to_string(connection.requests()));
 }
 
 // A handler that has the connection carry node_id's signature, as one
 // checking signatures will once it has verified one.
-void sign_as_node(const Request& /*request*/, Response& /*response*/, Connection& connection) {
+void sign_as_node(const Request& /*request*/, Response& /*response*/, ConnectionInfo& connection) {
     connection.set_node(Identifier::from(std::string(node_id)));
 }
 
 // A handler that answers with the node whose signature the connection
 // carries, or "none".
-void answer_with_node(const Request& /*request*/, Response& response, Connection& connection) {
+void answer_with_node(const Request& /*request*/, Response& response, ConnectionInfo& connection) {
     const auto& node = connection.node();
 
     response.set_body(node.has_value() ? node->to_string() : "none");
 }
 
 // A handler that has the connection closed once it is answered with "Bye".
-void close_after_bye(const Request& /*request*/, Response& response, Connection& connection) {
+void close_after_bye(const Request& /*request*/, Response& response, ConnectionInfo& connection) {
     connection.close_after_answer();
     response.set_body("Bye");
 }
@@ -267,7 +267,7 @@ void close_after_bye(const Request& /*request*/, Response& response, Connection&
 // A handler that stops server.
 Server::RequestHandler stopping(Server& server) {
     return [&server](const Request& /*request*/, Response& /*response*/,
-                     Connection& /*connection*/) {
+                     ConnectionInfo& /*connection*/) {
         server.stop();
     };
 }
@@ -415,7 +415,7 @@ TEST_F(ServerTest, PathEndingInSlashHandlesEverythingStartingWithIt) {
 
 TEST_F(ServerTest, HandlerReadsTheHeadersAndBody) {
     server().register_handler("/echo", [](const Request& request, Response& response,
-                                          Connection& /*connection*/) {
+                                          ConnectionInfo& /*connection*/) {
         response.headers().set("X-Test", std::string(request.headers().get("X-Test", "")));
         response.set_body(std::string(request.method()) + " " + std::string(request.body()));
     });
@@ -447,7 +447,7 @@ TEST_F(ServerTest, RequestsSentWithoutWaitingAreAnsweredInOrder) {
     constexpr auto slow = std::chrono::milliseconds(50);
 
     server().register_handler("/slow", [slow](const Request& /*request*/, Response& response,
-                                              Connection& /*connection*/) {
+                                              ConnectionInfo& /*connection*/) {
         std::this_thread::sleep_for(slow);
         response.set_body("slow");
     });
@@ -462,7 +462,7 @@ TEST_F(ServerTest, RequestsSentWithoutWaitingAreAnsweredInOrder) {
     EXPECT_EQ(read_answer(*connection), answer("200 OK", "/slow?again", "slow"));
 }
 
-// A request saying Connection: close, alone or in a list, in any case, is
+// A request saying ConnectionInfo: close, alone or in a list, in any case, is
 // answered so, and its connection then closed.
 TEST_F(ServerTest, RequestSayingCloseClosesTheConnection) {
     server().register_handler("/hello", answer_with("Hello"));
@@ -479,7 +479,7 @@ TEST_F(ServerTest, RequestSayingCloseClosesTheConnection) {
 
 TEST_F(ServerTest, HandlerSayingCloseClosesTheConnection) {
     server().register_handler("/bye", [](const Request& /*request*/, Response& response,
-                                         Connection& /*connection*/) {
+                                         ConnectionInfo& /*connection*/) {
         response.headers().set("Connection", "close");
         response.set_body("Bye");
     });
@@ -505,7 +505,7 @@ TEST_F(ServerTest, HandlerClosingTheConnectionClosesIt) {
 // the Internal Server Error it is answered with.
 TEST_F(ServerTest, HandlerClosingTheConnectionThenThrowingClosesIt) {
     server().register_handler("/bye", [](const Request& request, Response& response,
-                                         Connection& connection) {
+                                         ConnectionInfo& connection) {
         connection.close_after_answer();
         throw_invalid_identifier(request, response, connection);
     });
@@ -543,7 +543,7 @@ TEST_F(ServerTest, HeadIsAnsweredWithTheLengthAlone) {
 // gave one.
 TEST_F(ServerTest, NoContentIsAnsweredWithoutABody) {
     server().register_handler("/empty", [](const Request& /*request*/, Response& response,
-                                           Connection& /*connection*/) {
+                                           ConnectionInfo& /*connection*/) {
         response.set_status_code(ResponseCode::Status::NoContent);
         response.set_body("ignored");
     });
@@ -594,7 +594,7 @@ TEST_F(ServerTest, BodyPastTheLimitIsPayloadTooLarge) {
     limits.body_bytes = most_bytes;
     limit(limits);
     server().register_handler("/echo", [](const Request& request, Response& response,
-                                          Connection& /*connection*/) {
+                                          ConnectionInfo& /*connection*/) {
         response.set_body(std::string(request.body()));
     });
     start();
@@ -800,7 +800,7 @@ TEST_F(ServerTest, ClientThatLeavesBeforeItsAnswerDoesNotStopTheServer) {
     const auto left = client_left.get_future().share();
 
     server().register_handler("/large", [left](const Request& /*request*/, Response& response,
-                                               Connection& /*connection*/) {
+                                               ConnectionInfo& /*connection*/) {
         left.wait();
         response.set_body(std::string(large_body_bytes, 'x'));
     });
