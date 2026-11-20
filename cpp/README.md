@@ -118,7 +118,8 @@ Apple's Clang uses. CI runs the tests in Debug builds.
 
 Coverage shows how much of the code the tests run. Configuring with
 `-DLIBRANET_COVERAGE=ON` builds every target with `--coverage`, so that
-running the tests writes the counts, and
+running the tests writes the counts, and with `-fprofile-update=atomic`, so
+that tests running code from many threads at once count every line, and
 [gcovr](https://gcovr.com/) reports them. Install it with uv:
 
 ```bash
