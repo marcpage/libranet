@@ -135,8 +135,11 @@ std::string read_file(const std::filesystem::path& path) {
     return text;
 }
 
-// The one document text holds, or a null node if it holds none.
-YAML::Node only_document(std::string_view text) {
+// The one document text holds, or a null node if it holds none. Its type,
+// YAML::Node, is deduced: CodeQL reads the code without yaml-cpp's headers,
+// and takes a declaration that starts with YAML::Node for a variable named
+// YAML.
+auto only_document(std::string_view text) {
     std::vector<YAML::Node> documents;
 
     try {
