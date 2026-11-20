@@ -1,4 +1,3 @@
-# Messages, and the channels that carry them.
 add_library(libranet_storage STATIC
     HttpHandler.cpp
     Manager.cpp)
