@@ -5,7 +5,8 @@ add_library(libranet::storage ALIAS libranet_storage)
 target_include_directories(libranet_storage PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(libranet_storage PUBLIC 
     libranet::http
-    libranet::crypto)
+    libranet::crypto
+    libranet::logger)
 
 if(BUILD_TESTING)
     add_executable(storage_tests
