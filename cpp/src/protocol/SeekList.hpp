@@ -227,7 +227,7 @@ inline SeekList::Data SeekList::_longest_within(std::size_t too_many, std::size_
     }
 
     while (too_many - fitting > 1) {
-        const auto count = fitting + (too_many - fitting) / 2;
+        const auto count = fitting + ((too_many - fitting) / 2);
         auto candidate = _body(count, limit);
 
         if (candidate.size() < limit) {
