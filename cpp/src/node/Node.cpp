@@ -8,7 +8,6 @@
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
-#include <functional>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -16,17 +15,21 @@
 #include <system_error>
 #include <thread>
 
+#include "http/Request.hpp"
+#include "http/Response.hpp"
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
 #include "node/SettingsFile.hpp"
 #include "storage/Manager.hpp"
+#include "web/Connection.hpp"
 
+using http::Request;
+using http::Response;
 using logger::Logger;
 using net::Address;
 using node::Node;
 using node::SettingsFile;
 using std::array;
-using std::cref;
 using std::domain_error;
 using std::exception;
 using std::find;
@@ -45,6 +48,7 @@ using std::to_string;
 using std::filesystem::create_directories;
 using std::filesystem::path;
 using storage::Manager;
+using web::Connection;
 
 namespace {
 
@@ -284,7 +288,10 @@ Node::Node(const SettingsFile& settings)
     warn_of_unused(settings);
     lInfo << "Listening on" << m_local_address.to_string();
 
-    m_server.register_handler("/data", cref(m_data_handler));
+    m_server.register_handler(
+        "/data", [this](const Request& request, Response& response, Connection& /*connection*/) {
+        m_data_handler(request, response);
+    });
     m_server_thread = thread([this] {
         _serve();
     });
