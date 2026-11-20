@@ -283,7 +283,7 @@ SettingsFile SettingsFile::parse(std::string_view text) {
         throw std::invalid_argument("Settings must be a mapping of sections");
     }
 
-    SectionReader reader;
+    SectionReader reader{};
 
     for (const auto& section : document) {
         reader.read(section.first, section.second);
