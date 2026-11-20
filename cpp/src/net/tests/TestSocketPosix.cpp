@@ -297,6 +297,7 @@ TEST(SocketPosixTest, OperationsOnClosedSocket) {
     std::vector<std::byte> buffer(buffer_bytes);
     EXPECT_THROW((void)server->receive(buffer), std::logic_error);
     EXPECT_THROW((void)server->local_address(), std::logic_error);
+    EXPECT_THROW(server->shutdown(), std::logic_error);
 }
 
 TEST(SocketPosixTest, RemoteAddressIsThePeers) {
@@ -355,6 +356,45 @@ TEST(SocketPosixTest, ReceiveTimesOut) {
     connection.peer->set_receive_timeout(timeout);
 
     EXPECT_THROW((void)connection.peer->receive(buffer), std::system_error);
+}
+
+// A thread waiting to read a connection reads its end once the connection
+// is shut down from another thread, with the socket still open.
+TEST(SocketPosixTest, ShutdownWakesAThreadReading) {
+    constexpr std::size_t buffer_bytes = 10;
+    const auto connection = connect_ephemeral();
+    std::vector<std::byte> buffer(buffer_bytes);
+    bool received = true;
+    std::thread reader([&] {
+        received = connection.peer->receive(buffer);
+    });
+
+    connection.peer->shutdown();
+    reader.join();
+
+    EXPECT_FALSE(received);
+    EXPECT_TRUE(connection.peer->is_open());
+}
+
+// The peer reads the end of the connection, and nothing more can be sent.
+TEST(SocketPosixTest, ShutdownEndsTheConnectionBothWays) {
+    constexpr std::size_t buffer_bytes = 10;
+    const auto connection = connect_ephemeral();
+    std::vector<std::byte> buffer(buffer_bytes);
+
+    connection.peer->shutdown();
+
+    EXPECT_FALSE(connection.client->receive(buffer));
+    EXPECT_THROW((void)connection.peer->send("test"), std::system_error);
+}
+
+TEST(SocketPosixTest, ShutdownOnceThePeerHasGone) {
+    const auto connection = connect_ephemeral();
+
+    connection.client->close();
+
+    EXPECT_NO_THROW(connection.peer->shutdown());
+    EXPECT_NO_THROW(connection.peer->shutdown());
 }
 
 TEST(SocketPosixTest, ClosedSocketHasNoPeerOrTimeouts) {

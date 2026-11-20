@@ -27,6 +27,7 @@ public:
     [[nodiscard]] bool is_open() const noexcept override;
     void set_receive_timeout(ISocket::Milliseconds timeout) override;
     void set_send_timeout(ISocket::Milliseconds timeout) override;
+    void shutdown() override;
     void close() override;
 
 private:
