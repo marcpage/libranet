@@ -29,7 +29,8 @@ std::string as_text(const std::vector<std::byte>& bytes) {
 
 class StringReader final : public IReader {
 public:
-    explicit StringReader(std::string data, std::size_t max_chunk = 64)
+    static constexpr auto chunk_size = 64;
+    explicit StringReader(std::string data, std::size_t max_chunk = chunk_size)
         : m_data(std::move(data))
         , m_max_chunk(max_chunk) {}
 
@@ -37,7 +38,6 @@ public:
         return m_reads;
     }
 
-protected:
     std::optional<std::size_t> read_some(std::byte* data, std::size_t size) override {
         ++m_reads;
 
@@ -49,8 +49,8 @@ protected:
         const auto first = m_data.begin() + static_cast<std::string::difference_type>(m_pos);
 
         std::transform(first, first + static_cast<std::string::difference_type>(count), data,
-                       [](char ch) {
-            return static_cast<std::byte>(ch);
+                       [](char single_byte) {
+            return static_cast<std::byte>(single_byte);
         });
         m_pos += count;
         return count;
@@ -71,9 +71,11 @@ TEST(BufferedReaderTest, RejectsNullUpstreamOrZeroBufferSize) {
 }
 
 TEST(BufferedReaderTest, BuffersUpstreamReadsAndTracksBufferedBytes) {
-    auto upstream = std::make_unique<StringReader>("hello world", 64);
+    constexpr auto chunk_size = 64;
+    constexpr auto buffer_size = 16;
+    auto upstream = std::make_unique<StringReader>("hello world", chunk_size);
     const auto* raw_upstream = upstream.get();
-    BufferedReader reader(std::move(upstream), 16);
+    BufferedReader reader(std::move(upstream), buffer_size);
 
     EXPECT_EQ(as_text(reader.read_exact(5)), "hello");
     EXPECT_EQ(raw_upstream->reads(), 1U);
@@ -91,7 +93,8 @@ TEST(BufferedReaderTest, ReadUntilAcrossBufferRefills) {
 }
 
 TEST(BufferedReaderTest, ReadLineHandlesCrLfAndEof) {
-    BufferedReader reader(std::make_unique<StringReader>("line1\r\nline2\nfinal", 8), 8);
+    constexpr auto chunk_size = 8;
+    BufferedReader reader(std::make_unique<StringReader>("line1\r\nline2\nfinal", chunk_size), chunk_size);
 
     EXPECT_EQ(reader.read_line(), "line1");
     EXPECT_EQ(reader.read_line(), "line2");

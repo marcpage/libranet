@@ -15,13 +15,13 @@ public:
     virtual ~IReader() = default;
 
     // Reads up to `size` bytes, stopping early only on EOF.
-    [[nodiscard]] std::vector<std::byte> read_exact(std::size_t size);
+    [[nodiscard]] virtual std::vector<std::byte> read_exact(std::size_t size);
 
     // Reads up to and including `delimiter`, or until EOF.
-    [[nodiscard]] std::string read_until(char delimiter);
+    [[nodiscard]] virtual std::string read_until(char delimiter);
 
     // Reads a line ending at '\n' (or EOF), stripping '\r' and '\n'.
-    [[nodiscard]] std::string read_line();
+    [[nodiscard]] virtual std::string read_line();
 
     IReader(const IReader&) = delete;
     IReader& operator=(const IReader&) = delete;

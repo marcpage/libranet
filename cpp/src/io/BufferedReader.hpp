@@ -19,15 +19,14 @@ public:
     explicit BufferedReader(IReader::Ptr upstream,
                             std::size_t buffer_size = default_buffer_size);
 
-    [[nodiscard]] std::string read_until(char delimiter);
-    [[nodiscard]] std::string read_line();
+    [[nodiscard]] std::string read_until(char delimiter) override;
+    [[nodiscard]] std::string read_line() override;
     [[nodiscard]] std::size_t buffered_bytes() const noexcept;
 
-protected:
     std::optional<std::size_t> read_some(std::byte* data, std::size_t size) override;
 
 private:
-    bool refill();
+    bool _refill();
 
     IReader::Ptr m_upstream;
     std::vector<std::byte> m_buffer;
@@ -51,7 +50,7 @@ inline std::size_t BufferedReader::buffered_bytes() const noexcept {
     return m_end - m_pos;
 }
 
-inline bool BufferedReader::refill() {
+inline bool BufferedReader::_refill() {
     m_pos = 0;
     m_end = 0;
 
@@ -71,13 +70,10 @@ inline std::optional<std::size_t> BufferedReader::read_some(std::byte* data, std
     }
 
     if (m_pos < m_end) {
-        const std::size_t avail = m_end - m_pos;
-        const std::size_t to_copy = std::min(size, avail);
+        const std::size_t to_copy = std::min(size, m_end - m_pos);
+        const auto first = m_buffer.begin() + static_cast<std::vector<std::byte>::difference_type>(m_pos);
 
-        for (std::size_t i = 0; i < to_copy; ++i) {
-            data[i] = m_buffer[m_pos + i];
-        }
-
+        std::copy_n(first, to_copy, data);
         m_pos += to_copy;
         return to_copy;
     }
@@ -86,16 +82,14 @@ inline std::optional<std::size_t> BufferedReader::read_some(std::byte* data, std
         return m_upstream->read_some(data, size);
     }
 
-    if (!refill()) {
+    if (!_refill()) {
         return std::nullopt;
     }
 
     const std::size_t to_copy = std::min(size, m_end - m_pos);
+    const auto first = m_buffer.begin() + static_cast<std::vector<std::byte>::difference_type>(m_pos);
 
-    for (std::size_t i = 0; i < to_copy; ++i) {
-        data[i] = m_buffer[m_pos + i];
-    }
-
+    std::copy_n(first, to_copy, data);
     m_pos += to_copy;
     return to_copy;
 }
@@ -105,18 +99,29 @@ inline std::string BufferedReader::read_until(char delimiter) {
     const auto target = static_cast<std::byte>(delimiter);
 
     while (true) {
-        if (m_pos == m_end && !refill()) {
+        if (m_pos == m_end && !_refill()) {
             break;
         }
 
-        while (m_pos < m_end) {
-            const std::byte ch = m_buffer[m_pos++];
-            result.push_back(static_cast<char>(ch));
+        const auto begin = m_buffer.begin();
+        const auto start = begin + static_cast<std::vector<std::byte>::difference_type>(m_pos);
+        const auto end = begin + static_cast<std::vector<std::byte>::difference_type>(m_end);
+        const auto found = std::find(start, end, target);
 
-            if (ch == target) {
-                return result;
-            }
+        if (found != end) {
+            const auto inclusive_end = std::next(found);
+
+            std::transform(start, inclusive_end, std::back_inserter(result), [](std::byte byte) {
+                return static_cast<char>(std::to_integer<unsigned char>(byte));
+            });
+            m_pos += static_cast<std::size_t>(std::distance(start, inclusive_end));
+            return result;
         }
+
+        std::transform(start, end, std::back_inserter(result), [](std::byte byte) {
+            return static_cast<char>(std::to_integer<unsigned char>(byte));
+        });
+        m_pos = m_end;
     }
 
     return result;
