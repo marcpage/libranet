@@ -1,7 +1,8 @@
 # Libranet in C++
 
 A reference node of [Libranet](../README.md), written in C++17. It is only
-begun: five libraries, their tests, and a program that prints a greeting.
+begun: a node that serves the content it holds from `/data`, the libraries it
+is made of, and their tests.
 What every node must do is in the specifications, in
 [`docs/specs/`](../docs/specs/).
 
@@ -25,6 +26,11 @@ conan profile detect --exist-ok
 conan build . --build=missing
 ./build/Release/libranet
 ```
+
+The node runs until Ctrl-C or `SIGTERM`. Its settings are in a YAML file laid
+out as the Python node's `libranet.yaml` is, given with `--config PATH`; without
+one, it uses the Python node's defaults. `libranet --help` says more, and
+[`src/node/Node.hpp`](src/node/Node.hpp) lists the settings it uses.
 
 Conan needs a default profile, which names your compiler and its settings.
 `conan profile detect` writes one the first time, and with `--exist-ok`
@@ -65,7 +71,7 @@ parsers in `fuzz/`:
 | [`src/msg/`](src/msg/) | `libranet::msg` | Messages, and the channels that carry them; uses `types` |
 | [`src/net/`](src/net/) | `libranet::net` | Addresses and sockets, on POSIX systems |
 | [`src/crypto/`](src/crypto/) | `libranet::crypto` | Hashing, encrypting, and signing: SHA-256, AES, RSA, Ed25519, and Argon2id with OpenSSL; on macOS, SHA-256, AES, and RSA with Apple's frameworks instead |
-| [`src/node/`](src/node/) | `libranet::node` | The node's settings file, in YAML, read with yaml-cpp |
+| [`src/node/`](src/node/) | `libranet::node` | The node, which makes its parts and runs them, and its settings file, in YAML, read with yaml-cpp |
 | [`src/logger/`](src/logger/) | `libranet::logger` | The log: lines at levels, from any thread, to stderr, stdout, a file, or the system log |
 
 Headers are included from `src/`, as in

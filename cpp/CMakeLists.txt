@@ -114,6 +114,4 @@ add_subdirectory(src/node)
 add_subdirectory(src/logger)
 
 add_executable(libranet src/main.cpp)
-target_link_libraries(libranet PUBLIC 
-    libranet::web
-    libranet::storage)
+target_link_libraries(libranet PRIVATE libranet::node)
