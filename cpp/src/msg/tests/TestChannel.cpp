@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 #include <atomic>
 #include <chrono>
+#include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "msg/Channel.hpp"
 
@@ -169,6 +171,53 @@ TEST(ChannelTest, MultipleMessagesFifoOrder) {
     EXPECT_EQ(channel.next<int>(), second_value);
     EXPECT_EQ(channel.next<int>(), third_value);
     EXPECT_TRUE(channel.empty());
+}
+
+TEST(ChannelTest, ListensOnSeveralNames) {
+    Channel channel(std::vector<std::string>{"test.several.a", "test.several.b"});
+    const Channel other_channel("test.several.b");
+
+    constexpr auto first_value = 1;
+    constexpr auto second_value = 2;
+    Channel::post("test.several.a", first_value);
+    Channel::post("test.several.b", second_value);
+
+    EXPECT_EQ(channel.size(), 2U);
+    EXPECT_EQ(other_channel.size(), 1U);
+    EXPECT_EQ(channel.next<int>(), first_value);
+    EXPECT_EQ(channel.next<int>(), second_value);
+}
+
+TEST(ChannelTest, NameListedTwiceDeliversOnce) {
+    const Channel channel(std::vector<std::string>{"test.twice", "test.other.twice", "test.twice"});
+
+    Channel::post("test.twice", 1);
+
+    EXPECT_EQ(channel.size(), 1U);
+}
+
+TEST(ChannelTest, DestructorLeavesEveryName) {
+    const Channel staying("test.leaving.a");
+
+    {
+        const Channel leaving(std::vector<std::string>{"test.leaving.a", "test.leaving.b"});
+    } // leaving destroyed here
+
+    // Posting under either name must not reach the channel destroyed, and the
+    // channel still listening on one of them must still get its messages.
+    Channel::post("test.leaving.a", 1);
+    Channel::post("test.leaving.b", 2);
+
+    EXPECT_EQ(staying.size(), 1U);
+
+    const Channel fresh("test.leaving.b");
+    EXPECT_TRUE(fresh.empty());
+}
+
+TEST(ChannelTest, NoNamesIsRefused) {
+    const std::vector<std::string> no_names;
+
+    EXPECT_THROW(const Channel channel(no_names), std::invalid_argument);
 }
 
 TEST(ChannelTest, MixedTypesAndToString) {
