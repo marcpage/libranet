@@ -103,6 +103,7 @@ std::vector<Entry> first(const std::vector<Entry>& entries, std::size_t count) {
 // count identifiers, each different: those of the text of 0, 1, 2, and on.
 std::vector<Identifier> identifiers(std::size_t count) {
     std::vector<Identifier> result;
+    result.reserve(count);
 
     for (std::size_t index = 0; index < count; ++index) {
         result.push_back(Identifier::from(bytes_of(std::to_string(index))));
