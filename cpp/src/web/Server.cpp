@@ -250,16 +250,21 @@ optional<Received> read_request(ISocket& client, const Server::Limits& limits) {
     return received;
 }
 
+bool header_equals(std::string_view left, std::string_view right) {
+    const Headers::CaseInsensitiveLess less;
+
+    return !less(left, right) && !less(right, left);
+}
+
 // Whether the headers' Connection names option, as one of a list.
 bool has_connection_option(const Headers& headers, string_view option) {
-    const Headers::CaseInsensitiveLess less;
     auto options = headers.get("Connection", "");
 
     while (!options.empty()) {
         const auto comma = options.find(',');
         const auto named = Headers::trim_whitespace(options.substr(0, comma));
 
-        if (!less(named, option) && !less(option, named)) {
+        if (header_equals(named, option)) {
             return true;
         }
 
