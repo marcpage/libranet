@@ -509,7 +509,7 @@ inline StructuredField StructuredField::Parser::parse() {
 
     while (!_at_end()) {
         auto key = _parse_key();
-        auto value = _consume('=') ? _parse_member() : Member(Item{true, _parse_parameters()});
+        auto value = _parse_member();
 
         dictionary.set(std::move(key), std::move(value));
         _skip_whitespace();
@@ -596,7 +596,15 @@ inline std::string StructuredField::Parser::_parse_key() {
     return std::string(_take_while(key_spelling.rest));
 }
 
+// What follows a key: "=" and an item or inner list, or, for an item that is
+// true, its parameters alone (RFC 8941 §4.2.2).
 inline StructuredField::Member StructuredField::Parser::_parse_member() {
+    if (!_consume('=')) {
+        auto parameters = _parse_parameters();
+
+        return Item{true, std::move(parameters)};
+    }
+
     if ('(' == _peek()) {
         return _parse_inner_list();
     }
