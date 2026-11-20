@@ -26,6 +26,9 @@ constexpr auto tick_timeout = 5s;
 // An interval no test runs long enough to see the end of.
 constexpr auto never = std::chrono::hours(1);
 
+// How long a test watches for a tick that should not come.
+constexpr auto quiet_time = 20ms;
+
 } // namespace
 
 // The tests read optionals after ASSERT_TRUE(x.has_value()), which this
@@ -62,7 +65,7 @@ TEST(TimerTest, NoTickBeforeTheInterval) {
     const Channel channel("test.timer.early");
     const Timer timer("test.timer.early", never);
 
-    std::this_thread::sleep_for(20ms);
+    std::this_thread::sleep_for(quiet_time);
     EXPECT_TRUE(channel.empty());
 }
 
@@ -94,7 +97,7 @@ TEST(TimerTest, NoTicksOnceStopped) {
         static_cast<void>(channel.next_message());
     }
 
-    std::this_thread::sleep_for(20ms);
+    std::this_thread::sleep_for(quiet_time);
     EXPECT_TRUE(channel.empty());
 }
 
@@ -117,7 +120,7 @@ TEST(TimerTest, DestructorStops) {
         static_cast<void>(channel.next_message());
     }
 
-    std::this_thread::sleep_for(20ms);
+    std::this_thread::sleep_for(quiet_time);
     EXPECT_TRUE(channel.empty());
 }
 

@@ -28,7 +28,7 @@ public:
         explicit operator std::string() const;
     };
 
-    Timer(const std::string& name, Milliseconds interval);
+    Timer(std::string name, Milliseconds interval);
     ~Timer();
     // Its thread holds this object, so it is neither copied nor moved.
     Timer(const Timer&) = delete;

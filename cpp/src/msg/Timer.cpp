@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 
 #include "Channel.hpp"
 
@@ -16,12 +17,12 @@ Timer::Tick::operator std::string() const {
     return name + " tick " + std::to_string(count);
 }
 
-Timer::Timer(const std::string& name, Milliseconds interval) {
+Timer::Timer(std::string name, Milliseconds interval) {
     if (interval <= Milliseconds::zero()) {
         throw std::invalid_argument("A timer's interval must be more than zero");
     }
 
-    m_thread = std::thread([this, name, interval] {
+    m_thread = std::thread([this, name = std::move(name), interval] {
         using Clock = std::chrono::steady_clock;
         auto due = Clock::now() + interval;
         std::uint64_t count = 0;
