@@ -35,8 +35,11 @@ inline std::optional<std::size_t> SocketReader::read_some(std::byte* data, std::
         return std::nullopt;
     }
 
-    std::copy_n(chunk.begin(), chunk.size(), data);
-    return chunk.size();
+    // No more than data holds, whatever size receive() left chunk.
+    const auto received = std::min(chunk.size(), size);
+
+    std::copy_n(chunk.begin(), received, data);
+    return received;
 }
 
 } // namespace io
