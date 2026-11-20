@@ -83,8 +83,10 @@ CheckOptions:
   # linux/), which differ between systems. So it checks only C++ and project
   # includes, and leaves the POSIX ones as written. It also never suggests a
   # standard library's private headers (libc++'s __chrono/..., libstdc++'s
-  # bits/...).
-  misc-include-cleaner.IgnoreHeaders: '__.*;bits/.*;asm/.*\.h$;asm-generic/.*\.h$;linux/.*\.h$;sys/.*\.h$;net/.*\.h$;netinet/.*\.h$;arpa/.*\.h$;netdb\.h$;unistd\.h$;ifaddrs\.h$;fcntl\.h$'
+  # bits/...). POSIX's own calls in a C header, such as gmtime_r() in time.h
+  # and fdopen() in stdio.h, are left as written too: C++ code includes those
+  # headers as <ctime> and <cstdio>, so they are never asked for.
+  misc-include-cleaner.IgnoreHeaders: '__.*;bits/.*;asm/.*\.h$;asm-generic/.*\.h$;linux/.*\.h$;sys/.*\.h$;net/.*\.h$;netinet/.*\.h$;arpa/.*\.h$;netdb\.h$;unistd\.h$;ifaddrs\.h$;fcntl\.h$;stdio\.h$;time\.h$'
   # Json's operator[] checks its own bounds: on a Json that is not const, it
   # grows the array or adds the member, and on a const Json it throws, as
   # at() does. Like std::map's, which the check leaves out by default, it is
