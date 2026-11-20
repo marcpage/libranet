@@ -1,5 +1,6 @@
 #include "Directories.hpp"
 
+#include <cstdlib>
 #include <filesystem>
 #include <optional>
 #include <string>
