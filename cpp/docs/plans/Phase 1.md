@@ -68,36 +68,39 @@ in the GitHub **C++ Phase 1 MVP** milestone.
 
 ## 2. Architecture at a Glance
 
-A node is one process. Its parts are **modules**, each a `msg::Module`
-(Step 1): a thread of its own, waiting on one channel that listens on the
-names of the events the module takes, with a handler for each kind of
-event, and ticks from a timer for work it does every so often. A module
-tells the others what happened by posting an event under its name. An event
-is a plain struct with an `explicit operator std::string() const`, which
-`msg::Message` uses to say what it holds. The names follow the Python node's
+A node is one process, and each library under `cpp/src/` is a part of it of
+its own. A part with work to do beyond the calls made on it starts the
+threads it needs as it is made, and stops and joins them as it goes. No
+base class or framework does this for it. Threads tell each other what
+happened by posting an event on a `msg::Channel` under a name. A thread
+waits for the events it takes on a channel that listens on their names,
+with a `msg::Timer`'s name among them for work it does every so often, and
+handles each by its type. An event is a plain struct with an
+`explicit operator std::string() const`, which `msg::Message` uses to say
+what it holds. The names follow the Python node's
 [Module System §7](../../../python/docs/Module%20System.md#7-event-catalog)
 wherever the Python node has the same event: `data.stored`,
 `data.not_found`, `nodes.received`, `nodes.updated`, `peers.connected`,
 `data.search_requested`, `data.search_answered`, `data.deleted`, and so on.
 
-What several modules use at once, and that does not belong to any one of
-them, is made once by `node::Node` and handed to each module that needs it,
+What several parts use at once, and that does not belong to any one of
+them, is made once by `node::Node` and handed to each part that needs it,
 safe to use from any thread: the store (`storage::Manager`), the node's
 identity (`identity::NodeIdentity`), the keys of other nodes
 (`identity::KnownKeys`), the log (`logging::Logger`), and the settings
 (`node::Settings`).
 
-The modules:
+The parts that run threads of their own:
 
-| Module | Class | Job |
+| Part | Class | Job |
 | --- | --- | --- |
-| Web | `api::WebModule` | Runs `web::Server` and the `/data` handlers, checks each upload as it arrives, and keeps the latest lists the stats module derives |
-| Stats | `stats::StatsModule` | The only one that opens `libranet.sqlite3`; records the addresses of nodes and how content is used; derives the node, candidate, and seek lists; ranks content for eviction |
-| Connections | `peer::ConnectionsModule` | Owns every outgoing connection and keeps up the peer mix; makes first contact; fetches, searches peers, fulfils their seek lists, pushes new content, and hands content off |
-| Eviction | `eviction::EvictionModule` | Keeps storage within its limits |
+| Web | `api::Service` | Runs `web::Server` and the `/data` handlers, checks each upload as it arrives, and keeps the latest lists `stats::Recorder` derives |
+| Stats | `stats::Recorder` | The only one that opens `libranet.sqlite3`; records the addresses of nodes and how content is used; derives the node, candidate, and seek lists; ranks content for eviction |
+| Connections | `peer::Connections` | Owns every outgoing connection and keeps up the peer mix; makes first contact; fetches, searches peers, fulfils their seek lists, pushes new content, and hands content off |
+| Eviction | `eviction::Evictor` | Keeps storage within its limits |
 
 The Python node checks an upload in a validator process of its own. Here
-the web module checks it before answering, as the body is already in
+`api::Service` checks it before answering, as the body is already in
 memory and no larger than 1 MiB.
 
 The data directory holds `cas/`, the content the node holds; `incoming/`,
@@ -137,8 +140,8 @@ it within 5 seconds, even with a client connected.
 
 ### 1.1 `msg::Channel` listens on several names
 
-A refactor. A channel is registered under one name, so a module that takes
-several events would need a thread for each. A channel takes the list of
+A refactor. A channel is registered under one name, so a thread that takes
+several events would need a channel for each. A channel takes the list of
 names it listens on, and gets one copy of each message posted under any of
 them.
 
@@ -154,23 +157,13 @@ stopped, and stops at once rather than at the end of an interval.
 
 ### 1.3 `logging::Logger`
 
-Writes a line for each message, with its time, level, and the module that
+Writes a line for each message, with its time, level, and the part that
 wrote it, from any thread without lines mixing, at or above the level set.
 
 **Issue:** not yet created. **Depends on:** nothing. **Python:**
 `logging_setup.py`.
 
-### 1.4 `msg::Module`
-
-The base of every module: a thread, a channel on the names the module
-subscribes to (1.1), a handler for each type of event, and ticks (1.2). An
-event of a type it has no handler for is logged (1.3), never dropped
-silently. Stopping it finishes the event in hand and returns.
-
-**Issue:** not yet created. **Depends on:** 1.1, 1.2, 1.3. **Python:**
-`ModuleBase`, Phase 1 Step 3.
-
-### 1.5 `node::Settings`
+### 1.4 `node::Settings`
 
 The node's settings, from its command line: `--data-dir`, `--host`,
 `--port`, `--log-level`, `--seed URL[=ID]`, which may be given more than
@@ -182,14 +175,14 @@ is refused, naming it.
 **Issue:** not yet created. **Depends on:** nothing. **Python:** `cli.py`
 and `config/models.py`.
 
-### 1.6 `node::Node`
+### 1.5 `node::Node`
 
-Lays out the data directory (§2), makes what the modules share, starts the
-modules in order, and on `SIGINT` or `SIGTERM` stops them, last started
-first, each within 5 seconds. `main.cpp` becomes reading the settings and
-running a node.
+Lays out the data directory (§2), makes what the parts share, then makes
+the parts that run threads, in order. On `SIGINT` or `SIGTERM` it lets them
+go, last made first, each stopping its threads within 5 seconds.
+`main.cpp` becomes reading the settings and running a node.
 
-**Issue:** not yet created. **Depends on:** 1.3, 1.4, 1.5. **Python:**
+**Issue:** not yet created. **Depends on:** 1.3, 1.4. **Python:**
 Phase 1 Steps 4 and 33.
 
 ## Step 2 — Serving Many Clients at Once
@@ -466,7 +459,7 @@ a `POST /data/search/{prefix}` has the same form. It comes with a fuzzer.
 
 ### 5.4 `api::NodesHandler`
 
-`GET /data/nodes` is the node list the stats module last derived; until
+`GET /data/nodes` is the node list `stats::Recorder` last derived; until
 Step 6, the node's own endpoints alone. `POST /data/nodes` is answered
 `202` and posts `nodes.received`, the list resolved by the address of the
 connection it came on, or `400` with the problem type `invalid-list`
@@ -519,7 +512,7 @@ named.
 
 A connection to an SQLite database, which `conanfile.py` adds: opening it,
 making its tables if they are missing, and transactions. One thread uses
-it, the stats module's.
+it, `stats::Recorder`'s.
 
 **Issue:** not yet created. **Depends on:** nothing. **Python:** Phase 1
 Step 8.
@@ -546,23 +539,25 @@ and the candidates to dial.
 **Issue:** not yet created. **Depends on:** 6.2, 5.1. **Python:** Phase 2
 Steps 23 and 26.
 
-### 6.4 `stats::StatsModule`
+### 6.4 `stats::Recorder`
 
-Owns the database. It records each `nodes.received` and each dial's outcome,
-and every `stats.derive_interval_seconds` derives the node list and the
-candidates, posting each when it has changed, and the entries the node list
-names that it did not before, for Step 7.
+Owns the database, from a thread of its own. It records each
+`nodes.received` and each dial's outcome, and every
+`stats.derive_interval_seconds` derives the node list and the candidates,
+posting each when it has changed, and the entries the node list names that
+it did not before, for Step 7.
 
-**Issue:** not yet created. **Depends on:** 1.4, 6.3. **Python:** Phase 1
-Step 8.
+**Issue:** not yet created. **Depends on:** 1.1, 1.2, 1.3, 6.3.
+**Python:** Phase 1 Step 8.
 
-### 6.5 `api::WebModule`
+### 6.5 `api::Service`
 
-The web server as a module: it runs `web::Server` with the handlers, and
-keeps the lists the stats module derives, the node list now and the seek
-list from Step 8, for the handlers to serve.
+The web server and what it serves: it runs `web::Server` with the handlers,
+and keeps, from a thread listening for them, the lists `stats::Recorder`
+derives, the node list now and the seek list from Step 8, for the handlers
+to serve.
 
-**Issue:** not yet created. **Depends on:** 1.4, 5.4, 5.5, 5.7.
+**Issue:** not yet created. **Depends on:** 1.1, 1.3, 5.4, 5.5, 5.7.
 
 ## Step 7 — Dialing Python Nodes
 
@@ -646,11 +641,11 @@ peer it has a connection to, leaving out the entry naming that peer
 **Issue:** not yet created. **Depends on:** 5.1, 7.3. **Python:** Phase 5
 Step 114.
 
-### 7.8 `peer::ConnectionsModule`
+### 7.8 `peer::Connections`
 
 Owns the outgoing connections. It dials as the plan says (7.6) whenever the
 candidates change or a connection opens, fails, or closes; makes first
-contact on each; posts how each dial came out for the stats module, and
+contact on each; posts how each dial came out for `stats::Recorder`, and
 `peers.connected` whenever the peers connected change. It dials the seeds,
 from `--seed` or `peers.seed_file`, only while it knows no node.
 
@@ -695,8 +690,8 @@ Step 27.
 What the node seeks: identifiers it is fetching, prefixes it is searching,
 and identifiers peers named that it lacks and wants
 ([HTTP API §10.7.2](../../../docs/specs/HttpApi.md#1072-fulfilling-seek-list-entries)),
-each until found or `stats.seek_entry_ttl_seconds` have passed. The stats
-module derives the seek list from it.
+each until found or `stats.seek_entry_ttl_seconds` have passed.
+`stats::Recorder` derives the seek list from it.
 
 **Issue:** not yet created. **Depends on:** 5.2, 6.4. **Python:** Phase 1
 Step 8.
@@ -776,11 +771,11 @@ while one does not take it, until one does or none is left, and says which.
 **Issue:** not yet created. **Depends on:** 7.8. **Python:** Phase 2
 Step 46.
 
-### 10.4 `eviction::EvictionModule`
+### 10.4 `eviction::Evictor`
 
 After each `data.stored`, checks storage against
 `storage.max_storage_bytes` and `storage.min_free_bytes`, starting short of
-each by `storage.max_hand_offs` objects. It asks the stats module for the
+each by `storage.max_hand_offs` objects. It asks `stats::Recorder` for the
 objects to let go of first (10.2), passes over this node's key, the keys of
 nodes connected either way, and what was stored in the last
 `storage.stored_grace_seconds`, hands each off (10.3), deletes it once a
