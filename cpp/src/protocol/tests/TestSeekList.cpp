@@ -113,12 +113,13 @@ std::vector<Identifier> identifiers(std::size_t count) {
 
 // count prefixes, each different: the whole hashes of identifiers(count).
 std::vector<HashPrefix> prefixes(std::size_t count) {
+    const auto hashed = identifiers(count);
     std::vector<HashPrefix> result;
 
-    for (const auto& identifier : identifiers(count)) {
-        result.push_back(HashPrefix::parse(identifier.hash()));
-    }
-
+    std::transform(hashed.begin(), hashed.end(), std::back_inserter(result),
+                   [](const Identifier& identifier) {
+        return HashPrefix::parse(identifier.hash());
+    });
     return result;
 }
 
@@ -282,6 +283,12 @@ TEST(SeekListTest, WrittenAsCompactJson) {
               R"({"data":[)" + quoted(hello_hash) + R"(],"search":["2cf2"]})");
 }
 
+// Mistaken: cppcheck takes the prefixes given to SeekList's constructor for
+// a view the list keeps of them, and so the list made from prefixes(count)
+// for one that outlives them. The constructor takes each vector by value,
+// and the list keeps its own.
+// cppcheck-suppress-begin danglingTemporaryLifetime
+
 // What is written reads back as the same list, in the same order.
 TEST(SeekListTest, WhatIsWrittenReadsBack) {
     constexpr std::size_t count = 10;
@@ -352,6 +359,8 @@ TEST(SeekListTest, LimitTooSmallForAnEmptyListIsRefused) {
     EXPECT_THROW((void)list.write(empty_list_size), std::invalid_argument);
     EXPECT_EQ(text_of(list.write(empty_list_size + 1)), R"({"data":[],"search":[]})");
 }
+
+// cppcheck-suppress-end danglingTemporaryLifetime
 
 // A list is sent in less than 1 MiB unless told otherwise. One of 20,000
 // identifiers is about 1.4 MiB as JSON, and half that compressed.
