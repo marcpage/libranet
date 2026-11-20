@@ -1,14 +1,20 @@
 #include "Server.hpp"
 
+#include <algorithm>
 #include <atomic>
+#include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <exception>
-#include <memory>
+#include <iterator>
+#include <list>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -27,19 +33,30 @@ using http::Response;
 using http::ResponseCode;
 using net::Address;
 using net::ISocket;
-using std::atomic;
+using std::byte;
 using std::exception;
 using std::invalid_argument;
+using std::list;
+using std::mutex;
 using std::nullopt;
+using std::optional;
 using std::out_of_range;
 using std::runtime_error;
 using std::scoped_lock;
 using std::size_t;
 using std::string;
 using std::string_view;
+using std::system_error;
+using std::thread;
+using std::unique_lock;
+using std::vector;
 using web::Server;
+using Status = http::ResponseCode::Status;
 
 namespace {
+
+// The header that names the request an answer answers.
+constexpr auto request_path_header = "X-Request-Path";
 
 void file_not_found([[maybe_unused]] const Request& request, Response& response) {
     Problem(ResponseCode::Status::NotFound, "No resource exists at this path.").answer(response);
@@ -64,51 +81,257 @@ bool is_under(string_view uri, string_view path) {
     return next == '/' || next == '?';
 }
 
-string read_body(ISocket::Ptr& client, size_t bytes) {
-    const auto body = client->read_exact(bytes);
+// How reading a line ended.
+enum class Line : std::uint8_t {
+    Read,    // At its end
+    Ended,   // The connection ended first
+    TooLong, // Before its end, as room ran out
+};
 
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-    return string(reinterpret_cast<const char*>(body.data()), body.size());
+// Reads a line, up to its '\n', leaving out each '\r'. It may take room
+// bytes at most, its end included, and those it takes are taken from room.
+// Reads a byte at a time, so that the next request, sent before this one is
+// answered, is left for the next read.
+Line read_line(ISocket& client, string& line, size_t& room) {
+    vector<byte> buffer(1);
+
+    line.clear();
+
+    while (room > 0) {
+        buffer.resize(1);
+
+        if (!client.receive(buffer)) {
+            return Line::Ended;
+        }
+
+        --room;
+
+        const auto character = static_cast<char>(buffer.front());
+
+        if ('\n' == character) {
+            return Line::Read;
+        }
+
+        if ('\r' != character) {
+            line.push_back(character);
+        }
+    }
+
+    return Line::TooLong;
 }
 
-std::optional<Request> read(ISocket::Ptr& client, const atomic<bool>& running) {
+// A request read from a connection, and why it is refused, if it is. A
+// refused request is answered with the problem, without a handler, and its
+// connection closed.
+struct Received {
     Request request;
+    bool line_read{false}; // Whether the request line was read, naming the request
+    optional<Problem> refusal;
+};
+
+// Why a request whose line, headers, or length are not HTTP is refused.
+Problem unreadable() {
+    return {Status::BadRequest, "The request could not be read."};
+}
+
+// Why a request whose body is larger than most_bytes is refused (HTTP API
+// §17.2).
+Problem too_large(size_t most_bytes) {
+    // Mistaken: the problem keeps its own copy of the detail, not a view of
+    // the temporary. cppcheck loses Problem's constructors in a file that
+    // names it with `using http::Problem;` (see Problem.hpp).
+    // cppcheck-suppress returnDanglingLifetime
+    return {Problem::Type::ContentTooLarge, Status::PayloadTooLarge,
+            "The request's body is larger than " + std::to_string(most_bytes)
+                + " bytes, the most the server takes."};
+}
+
+// Reads the request's headers, after its line, into received, noting why
+// they are refused if they are. Returns false if the connection ended first.
+bool read_headers(ISocket& client, size_t& room, Received& received) {
     string line;
     string last_key;
-    size_t body_length = 0;
 
-    if (!client->read_line(line) || !request.parse_request_line(line)) {
+    while (true) {
+        const auto read = read_line(client, line, room);
+
+        if (Line::Ended == read) {
+            return false;
+        }
+
+        if (Line::TooLong == read) {
+            received.refusal = Problem(Status::RequestHeaderFieldsTooLarge,
+                                       "The request's headers are longer than the server reads.");
+            return true;
+        }
+
+        if (line.empty()) {
+            return true;
+        }
+
+        try {
+            last_key = Headers::process_header_line(line, last_key, received.request.headers());
+        } catch (const runtime_error&) {
+            received.refusal = unreadable();
+            return true;
+        } catch (const invalid_argument&) {
+            received.refusal = unreadable();
+            return true;
+        }
+    }
+}
+
+// The length of the body the headers give, or why the request is refused:
+// a length that is not digits alone (RFC 9110 §8.6), or one larger than
+// most_bytes. A body sent in chunks, or otherwise encoded, is not taken, as
+// where it ends would not be known (RFC 9112 §6.1).
+optional<Problem> body_length(const Headers& headers, size_t most_bytes, size_t& length) {
+    length = 0;
+
+    if (headers.has("Transfer-Encoding")) {
+        return Problem(Status::NotImplemented,
+                       "A body sent with a Transfer-Encoding cannot be read.");
+    }
+
+    const auto value = headers.get("Content-Length");
+
+    if (!value.has_value()) {
         return nullopt;
     }
 
-    while (running && client->read_line(line)) {
-        if (line.empty()) {
-            break;
-        }
-
-        try {
-            last_key = Headers::process_header_line(line, last_key, request.headers());
-        } catch (const runtime_error&) {
-            return nullopt;
-        } catch (const invalid_argument&) {
-            return nullopt;
-        }
+    if (value->empty() || string_view::npos != value->find_first_not_of("0123456789")) {
+        return unreadable();
     }
 
-    const auto content_length = request.headers().get("Content-Length");
-
-    if (content_length.has_value()) {
-        try {
-            body_length = std::stoull(std::string(content_length.value()));
-        } catch (const invalid_argument&) {
-            return nullopt;
-        } catch (const out_of_range&) {
-            return nullopt;
-        }
+    try {
+        length = std::stoull(string(*value));
+    } catch (const out_of_range&) {
+        return too_large(most_bytes);
     }
 
-    request.set_body(read_body(client, body_length));
-    return request;
+    if (length > most_bytes) {
+        return too_large(most_bytes);
+    }
+
+    return nullopt;
+}
+
+// The next request on the connection, or nothing if the connection ended
+// before it was all sent, as a client's does once it is done.
+optional<Received> read_request(ISocket& client, const Server::Limits& limits) {
+    Received received;
+    string line;
+    size_t room = limits.head_bytes;
+    const auto read = read_line(client, line, room);
+
+    if (Line::Ended == read) {
+        return nullopt;
+    }
+
+    if (Line::TooLong == read) {
+        received.refusal = Problem(Status::UriTooLong,
+                                   "The request line is longer than the server reads.");
+        return received;
+    }
+
+    if (!received.request.parse_request_line(line)) {
+        received.refusal = unreadable();
+        return received;
+    }
+
+    received.line_read = true;
+
+    if (!read_headers(client, room, received)) {
+        return nullopt;
+    }
+
+    size_t length = 0;
+
+    if (!received.refusal.has_value()) {
+        received.refusal = body_length(received.request.headers(), limits.body_bytes, length);
+    }
+
+    if (received.refusal.has_value()) {
+        return received;
+    }
+
+    const auto body = client.read_exact(length);
+
+    if (body.size() != length) {
+        return nullopt;
+    }
+
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+    received.request.set_body(string(reinterpret_cast<const char*>(body.data()), body.size()));
+    return received;
+}
+
+bool header_equals(std::string_view left, std::string_view right) {
+    const Headers::CaseInsensitiveLess less;
+
+    // NOLINTNEXTLINE(readability-suspicious-call-argument)
+    return !less(left, right) && !less(right, left);
+}
+
+// Whether the headers' Connection names option, as one of a list.
+bool has_connection_option(const Headers& headers, string_view option) {
+    auto options = headers.get("Connection", "");
+
+    while (!options.empty()) {
+        const auto comma = options.find(',');
+        const auto named = Headers::trim_whitespace(options.substr(0, comma));
+
+        if (header_equals(named, option)) {
+            return true;
+        }
+
+        options = string_view::npos == comma ? string_view() : options.substr(comma + 1);
+    }
+
+    return false;
+}
+
+// Whether the connection is closed once the request is answered with the
+// response (RFC 9112 §9.3): when either says Connection: close, when the
+// request is HTTP/1.0, which closes by default, and when it was refused.
+bool closes(const Received& received, const Response& response) {
+    return received.refusal.has_value()
+           || has_connection_option(received.request.headers(), "close")
+           || has_connection_option(response.headers(), "close")
+           || "HTTP/1.0" == received.request.version();
+}
+
+// Whether an answer with the code has no body (RFC 9110 §6.4.1).
+bool is_bodiless(const ResponseCode& code) {
+    return code.is_informational() || code == Status::NoContent || code == Status::NotModified;
+}
+
+// Readies the response to be sent: naming its request, giving its body's
+// length, saying whether the connection closes, and dropping its body when
+// none is sent. The answer to a HEAD gives the length its handler's body
+// has, as a GET's would.
+void make_ready(Response& response, const Received& received, bool closing) {
+    auto& headers = response.headers();
+
+    if (received.line_read) {
+        headers.set(request_path_header, string(received.request.uri()));
+    }
+
+    if (closing) {
+        headers.set("Connection", "close");
+    }
+
+    if (is_bodiless(response.code())) {
+        headers.remove("Content-Length");
+        response.set_body("");
+        return;
+    }
+
+    headers.set("Content-Length", std::to_string(response.body().size()));
+
+    if ("HEAD" == received.request.method()) {
+        response.set_body("");
+    }
 }
 
 // Where to connect to the listener, to wake a thread waiting in accept():
@@ -132,7 +355,7 @@ Address wake_address(const ISocket::Ptr& listener) {
 }
 
 // A handler that throws is answered with an Internal Server Error, and the
-// server goes on to the next client.
+// server goes on to the next request.
 void respond(const Server::RequestHandler& handler, const Request& request, Response& response) {
     try {
         handler(request, response);
@@ -143,12 +366,34 @@ void respond(const Server::RequestHandler& handler, const Request& request, Resp
     }
 }
 
+// Ends the connection, so that the thread serving it stops reading or
+// writing it. A client that has gone has ended it already.
+void end(ISocket& client) noexcept {
+    try {
+        client.shutdown();
+        // NOLINTNEXTLINE(bugprone-empty-catch)
+    } catch (const exception&) {
+    }
+}
+
+Server::Limits checked(const Server::Limits& limits) {
+    if (0 == limits.connections) {
+        throw invalid_argument("A server must take at least one connection.");
+    }
+
+    return limits;
+}
+
 } // namespace
 
 namespace web {
 
 Server::Server(Address address)
+    : Server(std::move(address), Limits{}) {}
+
+Server::Server(Address address, const Limits& limits)
     : m_address(std::move(address))
+    , m_limits(checked(limits))
     , m_listener(net::ISocket::bind(m_address))
     , m_wake_address(wake_address(m_listener)) {}
 
@@ -165,28 +410,16 @@ void Server::start(int backlog) {
         return;
     }
 
-    while (m_running) {
-        auto client = m_listener->accept();
-
-        if (!client || !client->is_open()) {
-            continue;
+    try {
+        while (_wait_for_room()) {
+            _serve(m_listener->accept());
         }
-
-        if (!_serve(client.get())) {
-            break;
-        }
-
-        _answer(client);
-
-        const scoped_lock lock(m_lock);
-
-        m_client = nullptr;
+    } catch (...) {
+        _end_all();
+        throw;
     }
 
-    const scoped_lock lock(m_lock);
-
-    m_listening = false;
-    m_listener->close();
+    _end_all();
 }
 
 void Server::stop() {
@@ -198,9 +431,13 @@ void Server::stop() {
         m_running = false;
         listening = m_listening;
 
-        if (nullptr != m_client) {
-            m_client->shutdown();
+        for (const auto& connection : m_connections) {
+            if (connection.socket) {
+                end(*connection.socket);
+            }
         }
+
+        m_changed.notify_all();
     }
 
     if (!listening) {
@@ -254,37 +491,148 @@ bool Server::_listen(int backlog) {
     return true;
 }
 
-// Makes client the one being answered, which stop() ends, unless stop() has
-// been called.
-bool Server::_serve(ISocket* client) {
+// Waits until fewer connections are served than the limit, and joins the
+// threads of those that have closed. Returns false once stop() has been
+// called.
+bool Server::_wait_for_room() {
+    list<Connection> closed;
+    bool running = false;
+
+    {
+        unique_lock<mutex> lock(m_lock);
+
+        m_changed.wait(lock, [this] {
+            const auto open = std::count_if(m_connections.begin(), m_connections.end(),
+                                            [](const Connection& connection) {
+                return nullptr != connection.socket;
+            });
+
+            return !m_running || static_cast<size_t>(open) < m_limits.connections;
+        });
+        running = m_running;
+
+        for (auto connection = m_connections.begin(); connection != m_connections.end();) {
+            const auto next = std::next(connection);
+
+            if (!connection->socket) {
+                closed.splice(closed.end(), m_connections, connection);
+            }
+
+            connection = next;
+        }
+    }
+
+    for (auto& connection : closed) {
+        connection.thread.join();
+    }
+
+    return running;
+}
+
+// Serves the client on a thread of its own, unless stop() has been called,
+// or the client cannot be served, which closes its connection.
+void Server::_serve(ISocket::Ptr client) {
+    if (!client || !client->is_open()) {
+        return;
+    }
+
+    try {
+        client->set_timeout(m_limits.idle);
+        // The client may have gone already.
+    } catch (const system_error&) {
+        return;
+    }
+
     const scoped_lock lock(m_lock);
 
     if (!m_running) {
-        return false;
+        return;
     }
 
-    m_client = client;
-    return true;
+    auto& connection = m_connections.emplace_back();
+
+    connection.socket = std::move(client);
+
+    try {
+        connection.thread = thread([this, &connection] {
+            _converse(connection);
+        });
+    } catch (const system_error&) {
+        // No thread is left to serve it, which ends only this connection.
+        m_connections.pop_back();
+    }
 }
 
-void Server::_answer(ISocket::Ptr& client) const {
+// Answers the requests on the connection, one at a time in the order they
+// came, until it is to close, and then closes it.
+void Server::_converse(Connection& connection) {
     try {
-        const auto request = read(client, m_running);
-        Response response;
+        // Only this thread changes connection.socket, so it reads it
+        // unguarded.
+        auto& client = *connection.socket;
 
-        if (request.has_value()) {
-            respond(_find_handler(request->uri()), *request, response);
-        } else {
-            Problem(ResponseCode::Status::BadRequest, "The request could not be read.")
-                .answer(response);
+        while (m_running && _answer(client)) {
         }
-
-        client->send_all(response.to_string());
-        // The client may leave, or its connection fail, before its reply is
-        // sent. Only that connection ends; the server goes on.
+        // The client may go, send nothing for too long, or its connection
+        // fail. Only that connection ends; the server goes on.
         // NOLINTNEXTLINE(bugprone-empty-catch)
     } catch (const exception&) {
     }
+
+    const scoped_lock lock(m_lock);
+
+    connection.socket.reset();
+    m_changed.notify_all();
+}
+
+// Reads the next request on the connection and answers it. Returns whether
+// the connection stays open for another.
+bool Server::_answer(ISocket& client) const {
+    const auto received = read_request(client, m_limits);
+
+    if (!received.has_value()) {
+        return false;
+    }
+
+    Response response;
+
+    if (received->refusal.has_value()) {
+        received->refusal->answer(response);
+    } else {
+        respond(_find_handler(received->request.uri()), received->request, response);
+    }
+
+    const auto closing = closes(*received, response);
+
+    make_ready(response, *received, closing);
+    client.send_all(response.to_string());
+    return !closing;
+}
+
+// Stops listening, once start() is to return, and ends every connection,
+// waiting for the threads serving them.
+void Server::_end_all() {
+    list<Connection> connections;
+
+    {
+        const scoped_lock lock(m_lock);
+
+        m_listening = false;
+
+        for (const auto& connection : m_connections) {
+            if (connection.socket) {
+                end(*connection.socket);
+            }
+        }
+
+        connections.splice(connections.end(), m_connections);
+    }
+
+    for (auto& connection : connections) {
+        connection.thread.join();
+    }
+
+    m_listener->close();
 }
 
 } // namespace web
