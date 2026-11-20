@@ -18,6 +18,7 @@ namespace http {
 // (HTTP API §17), written as application/problem+json. A problem with no type
 // is about:blank: its status code describes it fully, and it is titled with
 // the code's reason phrase (RFC 9457 §4.2.1).
+// cppcheck-suppress noConstructor
 class Problem {
 public:
     // The problem types HTTP API §17.2 defines.
@@ -73,6 +74,9 @@ private:
     static constexpr std::string_view type_base = "https://libranet.org/problems/";
 
     std::optional<Type> m_type;
+    // Mistaken: the constructors set m_status. cppcheck loses the class's
+    // constructors in a file that names it with `using http::Problem;`.
+    // cppcheck-suppress uninitMemberVarNoCtor
     ResponseCode::Status m_status;
     std::string m_detail;
 
@@ -139,6 +143,10 @@ inline void Problem::answer_method_not_allowed(const Request& request, std::stri
     const Problem problem(ResponseCode::Status::MethodNotAllowed,
                           std::string(request.method()) + " is not supported for this resource.");
 
+    // Mistaken: problem keeps its own copy of the detail, not a view of the
+    // temporary. Having lost the class's constructors (see m_status),
+    // cppcheck takes the detail to be stored as a view.
+    // cppcheck-suppress danglingTemporaryLifetime
     problem.answer(response);
     response.headers().set("Allow", std::string(allowed));
 }
