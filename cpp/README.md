@@ -66,6 +66,7 @@ parsers in `fuzz/`:
 | [`src/net/`](src/net/) | `libranet::net` | Addresses and sockets, on POSIX systems |
 | [`src/crypto/`](src/crypto/) | `libranet::crypto` | Hashing, encrypting, and signing: SHA-256, AES, RSA, Ed25519, and Argon2id with OpenSSL; on macOS, SHA-256, AES, and RSA with Apple's frameworks instead |
 | [`src/node/`](src/node/) | `libranet::node` | The node's settings file, in YAML, read with yaml-cpp |
+| [`src/logger/`](src/logger/) | `libranet::logger` | The log: lines at levels, from any thread, to stderr, stdout, a file, or the system log |
 
 Headers are included from `src/`, as in
 `#include "types/BlockingQueue.hpp"`. Each directory's `CMakeLists.txt`
