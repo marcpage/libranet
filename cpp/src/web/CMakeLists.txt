@@ -1,4 +1,3 @@
-# Messages, and the channels that carry them.
 add_library(libranet_web STATIC
     Server.cpp)
 add_library(libranet::web ALIAS libranet_web)
