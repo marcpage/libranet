@@ -40,12 +40,13 @@ public:
     virtual void set_timeout(Milliseconds timeout);
     virtual void set_receive_timeout(Milliseconds timeout) = 0;
     virtual void set_send_timeout(Milliseconds timeout) = 0;
+    virtual void close() = 0;
+
     // Ends a connection both ways, so that a thread blocked reading or
     // writing it returns at once. It may be called from another thread while
     // one is, and does nothing once the peer has gone. The socket stays open
     // until close().
     virtual void shutdown() = 0;
-    virtual void close() = 0;
 
 protected:
     ISocket() = default;
