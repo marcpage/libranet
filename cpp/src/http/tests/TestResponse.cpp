@@ -149,6 +149,7 @@ TEST(ResponseTest, StatusCodeFromAStatus) {
 
     EXPECT_EQ(response.status_code(), 404);
     EXPECT_EQ(response.reason_phrase(), "Not Found");
+    EXPECT_EQ(response.code(), ResponseCode::Status::NotFound);
 }
 
 TEST(ResponseTest, StatusCodeOutOfRangeIsRefused) {

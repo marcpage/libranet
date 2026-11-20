@@ -16,7 +16,7 @@ public:
     Response() = default;
 
     [[nodiscard]] std::string_view version() const noexcept;
-    [[nodiscard]] ResponseCode code() const noexcept;
+    [[nodiscard]] const ResponseCode& code() const noexcept;
     [[nodiscard]] int status_code() const noexcept;
     [[nodiscard]] std::string reason_phrase() const;
 
@@ -45,6 +45,10 @@ private:
 
 inline std::string_view Response::version() const noexcept {
     return m_version;
+}
+
+inline const ResponseCode& Response::code() const noexcept {
+    return m_status;
 }
 
 inline int Response::status_code() const noexcept {

@@ -253,6 +253,7 @@ optional<Received> read_request(ISocket& client, const Server::Limits& limits) {
 bool header_equals(std::string_view left, std::string_view right) {
     const Headers::CaseInsensitiveLess less;
 
+    // NOLINTNEXTLINE(readability-suspicious-call-argument)
     return !less(left, right) && !less(right, left);
 }
 
@@ -284,21 +285,16 @@ bool closes(const Received& received, const Response& response) {
            || "HTTP/1.0" == received.request.version();
 }
 
-// Whether an answer with the status code has no body (RFC 9110 §6.4.1).
-bool is_bodiless(int code) {
-    constexpr int informational = 100;
-    constexpr int success = 200;
-
-    return (code >= informational && code < success)
-           || static_cast<int>(Status::NoContent) == code
-           || static_cast<int>(Status::NotModified) == code;
+// Whether an answer with the code has no body (RFC 9110 §6.4.1).
+bool is_bodiless(const ResponseCode& code) {
+    return code.is_informational() || code == Status::NoContent || code == Status::NotModified;
 }
 
 // Readies the response to be sent: naming its request, giving its body's
 // length, saying whether the connection closes, and dropping its body when
 // none is sent. The answer to a HEAD gives the length its handler's body
 // has, as a GET's would.
-void ready(Response& response, const Received& received, bool closing) {
+void make_ready(Response& response, const Received& received, bool closing) {
     auto& headers = response.headers();
 
     if (received.line_read) {
@@ -309,7 +305,7 @@ void ready(Response& response, const Received& received, bool closing) {
         headers.set("Connection", "close");
     }
 
-    if (is_bodiless(response.status_code())) {
+    if (is_bodiless(response.code())) {
         headers.remove("Content-Length");
         response.set_body("");
         return;
@@ -591,7 +587,7 @@ bool Server::_answer(ISocket& client) const {
 
     const auto closing = closes(*received, response);
 
-    ready(response, *received, closing);
+    make_ready(response, *received, closing);
     client.send_all(response.to_string());
     return !closing;
 }
