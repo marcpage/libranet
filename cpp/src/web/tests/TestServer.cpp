@@ -233,16 +233,14 @@ void throw_invalid_identifier(const Request& /*request*/, Response& /*response*/
 }
 
 // A handler that answers with where the connection came from.
-// cppcheck-suppress constParameterCallback
 void answer_with_remote_address(const Request& /*request*/, Response& response,
-                                ConnectionInfo& connection) {
+                                ConnectionInfo& connection) { // cppcheck-suppress constParameterCallback
     response.set_body(connection.remote_address().to_string());
 }
 
 // A handler that answers with how many requests the connection has carried.
-// cppcheck-suppress constParameterCallback
 void answer_with_requests(const Request& /*request*/, Response& response,
-                          ConnectionInfo& connection) {
+                          ConnectionInfo& connection) { // cppcheck-suppress constParameterCallback
     response.set_body(std::to_string(connection.requests()));
 }
 
@@ -254,8 +252,8 @@ void sign_as_node(const Request& /*request*/, Response& /*response*/, Connection
 
 // A handler that answers with the node whose signature the connection
 // carries, or "none".
-// cppcheck-suppress constParameterCallback
-void answer_with_node(const Request& /*request*/, Response& response, ConnectionInfo& connection) {
+void answer_with_node(const Request& /*request*/, Response& response,
+                      ConnectionInfo& connection) { // cppcheck-suppress constParameterCallback
     const auto& node = connection.node();
 
     response.set_body(node.has_value() ? node->to_string() : "none");
