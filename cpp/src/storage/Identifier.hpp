@@ -36,6 +36,8 @@ public:
     [[nodiscard]] const std::string& algorithm() const;
     [[nodiscard]] const std::string& hash() const;
     [[nodiscard]] std::string to_string() const;
+    // How many hex digits the longest hash of a supported algorithm has.
+    [[nodiscard]] static std::size_t longest_hash_digits();
 
 private:
     // The only hash algorithm supported (HttpApi §5.4: an unknown one is
@@ -110,6 +112,11 @@ inline const std::string& Identifier::hash() const {
 
 inline std::string Identifier::to_string() const {
     return m_algorithm + "/" + m_hash;
+}
+
+// SHA-256 is the only algorithm supported, so its hash is the longest.
+inline std::size_t Identifier::longest_hash_digits() {
+    return _sha256_digits();
 }
 
 // How many hex digits a SHA-256 hash has: two for each byte of its digest.
