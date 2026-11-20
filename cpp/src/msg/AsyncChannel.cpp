@@ -3,27 +3,39 @@
 #include <exception>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "Channel.hpp"
 #include "IMessage.hpp"
 
+
+using std::exception;
+using std::invalid_argument;
+using std::string;
+using std::terminate;
+using std::thread;
+using std::vector;
+
 namespace {
-void noop(const std::string& /*unused*/) {}
+void noop(const string& /*unused*/) {}
 } // namespace
 
 namespace msg {
 
-AsyncChannel::AsyncChannel(const std::string& name, const Callback& callback, const Logger& logger)
-    : Channel(name)
+AsyncChannel::AsyncChannel(const string& name, const Callback& callback, const Logger& logger)
+    : AsyncChannel(vector<string>{name}, callback, logger) {}
+
+AsyncChannel::AsyncChannel(vector<string> names, const Callback& callback, const Logger& logger)
+    : Channel(std::move(names))
     , m_logger(nullptr == logger ? noop : logger)
     , m_running(true)
     , m_callback(callback) {
 
     if (nullptr == callback) {
-        throw std::invalid_argument("You must pass a callback");
+        throw invalid_argument("You must pass a callback");
     }
 
-    m_thread = std::thread([this] {
+    m_thread = thread([this] {
         while (m_running) {
             auto message = next_message();
 
@@ -33,8 +45,8 @@ AsyncChannel::AsyncChannel(const std::string& name, const Callback& callback, co
 
             try {
                 m_callback(message.value());
-            } catch (const std::exception& error) {
-                m_logger(std::string("AsyncChannel call error: ") + error.what());
+            } catch (const exception& error) {
+                m_logger(string("AsyncChannel call error: ") + error.what());
             }
         }
     });
@@ -43,11 +55,11 @@ AsyncChannel::AsyncChannel(const std::string& name, const Callback& callback, co
 AsyncChannel::~AsyncChannel() {
     // Ensure thread is stopped before destruction. A worker that cannot be
     // stopped would outlive this object, so then nothing is safe but to end
-    // the program, as std::thread's destructor would.
+    // the program, as thread's destructor would.
     try {
         stop();
     } catch (...) {
-        std::terminate();
+        terminate();
     }
 }
 
