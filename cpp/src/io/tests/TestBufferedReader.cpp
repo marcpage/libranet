@@ -74,8 +74,6 @@ private:
 TEST(BufferedReaderTest, RejectsNullUpstreamOrZeroBufferSize) {
     constexpr auto buffer_size = 16;
 
-    // Made only to see its constructor throw.
-    // cppcheck-suppress unusedScopedObject
     EXPECT_THROW(BufferedReader(nullptr, buffer_size), std::invalid_argument);
     EXPECT_THROW(BufferedReader(std::make_unique<StringReader>("abc"), 0), std::invalid_argument);
 }

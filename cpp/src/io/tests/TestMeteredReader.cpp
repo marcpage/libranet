@@ -63,8 +63,6 @@ private:
 TEST(MeteredReaderTest, RejectsNullUpstream) {
     constexpr auto byte_limit = 10;
 
-    // Made only to see its constructor throw.
-    // cppcheck-suppress unusedScopedObject
     EXPECT_THROW(MeteredReader(nullptr, byte_limit), std::invalid_argument);
 }
 
