@@ -72,8 +72,9 @@ A node is one process. Its parts are **modules**, each a `msg::Module`
 (Step 1): a thread of its own, waiting on one channel that listens on the
 names of the events the module takes, with a handler for each kind of
 event, and ticks from a timer for work it does every so often. A module
-tells the others what happened by posting an event, a plain struct, under
-its name. The names follow the Python node's
+tells the others what happened by posting an event under its name. An event
+is a plain struct with an `explicit operator std::string() const`, which
+`msg::Message` uses to say what it holds. The names follow the Python node's
 [Module System §7](../../../python/docs/Module%20System.md#7-event-catalog)
 wherever the Python node has the same event: `data.stored`,
 `data.not_found`, `nodes.received`, `nodes.updated`, `peers.connected`,
@@ -134,17 +135,7 @@ it listens on. `--help` lists every option. An option it does not know, or a
 value it cannot use, stops it with exit status 2 and says which. Ctrl-C stops
 it within 5 seconds, even with a client connected.
 
-### 1.1 `msg::Message` carries any event type
-
-A refactor. `Message<Type>::to_string` compiles only for a type that is a
-number or converts to a string, so no module can post an event struct. It
-says what any type holds: a `to_string()` of the type's own when it has one,
-or else the type's name.
-
-**Issue:** not yet created. **Depends on:** nothing. **Python:** Phase 1
-Step 3.
-
-### 1.2 `msg::Channel` listens on several names
+### 1.1 `msg::Channel` listens on several names
 
 A refactor. A channel is registered under one name, so a module that takes
 several events would need a thread for each. A channel takes the list of
@@ -154,14 +145,14 @@ them.
 **Issue:** not yet created. **Depends on:** nothing. **Python:** Phase 1
 Step 3; Phase 2 Step 61.
 
-### 1.3 `msg::Timer`
+### 1.2 `msg::Timer`
 
 Posts a tick to a channel every interval, from a thread of its own, until
 stopped, and stops at once rather than at the end of an interval.
 
-**Issue:** not yet created. **Depends on:** 1.1.
+**Issue:** not yet created. **Depends on:** nothing.
 
-### 1.4 `logging::Logger`
+### 1.3 `logging::Logger`
 
 Writes a line for each message, with its time, level, and the module that
 wrote it, from any thread without lines mixing, at or above the level set.
@@ -169,17 +160,17 @@ wrote it, from any thread without lines mixing, at or above the level set.
 **Issue:** not yet created. **Depends on:** nothing. **Python:**
 `logging_setup.py`.
 
-### 1.5 `msg::Module`
+### 1.4 `msg::Module`
 
 The base of every module: a thread, a channel on the names the module
-subscribes to (1.2), a handler for each type of event, and ticks (1.3). An
-event of a type it has no handler for is logged (1.4), never dropped
+subscribes to (1.1), a handler for each type of event, and ticks (1.2). An
+event of a type it has no handler for is logged (1.3), never dropped
 silently. Stopping it finishes the event in hand and returns.
 
-**Issue:** not yet created. **Depends on:** 1.1, 1.2, 1.3, 1.4.
-**Python:** `ModuleBase`, Phase 1 Step 3.
+**Issue:** not yet created. **Depends on:** 1.1, 1.2, 1.3. **Python:**
+`ModuleBase`, Phase 1 Step 3.
 
-### 1.6 `node::Settings`
+### 1.5 `node::Settings`
 
 The node's settings, from its command line: `--data-dir`, `--host`,
 `--port`, `--log-level`, `--seed URL[=ID]`, which may be given more than
@@ -191,14 +182,14 @@ is refused, naming it.
 **Issue:** not yet created. **Depends on:** nothing. **Python:** `cli.py`
 and `config/models.py`.
 
-### 1.7 `node::Node`
+### 1.6 `node::Node`
 
 Lays out the data directory (§2), makes what the modules share, starts the
 modules in order, and on `SIGINT` or `SIGTERM` stops them, last started
 first, each within 5 seconds. `main.cpp` becomes reading the settings and
 running a node.
 
-**Issue:** not yet created. **Depends on:** 1.4, 1.5, 1.6. **Python:**
+**Issue:** not yet created. **Depends on:** 1.3, 1.4, 1.5. **Python:**
 Phase 1 Steps 4 and 33.
 
 ## Step 2 — Serving Many Clients at Once
@@ -562,7 +553,7 @@ and every `stats.derive_interval_seconds` derives the node list and the
 candidates, posting each when it has changed, and the entries the node list
 names that it did not before, for Step 7.
 
-**Issue:** not yet created. **Depends on:** 1.5, 6.3. **Python:** Phase 1
+**Issue:** not yet created. **Depends on:** 1.4, 6.3. **Python:** Phase 1
 Step 8.
 
 ### 6.5 `api::WebModule`
@@ -571,7 +562,7 @@ The web server as a module: it runs `web::Server` with the handlers, and
 keeps the lists the stats module derives, the node list now and the seek
 list from Step 8, for the handlers to serve.
 
-**Issue:** not yet created. **Depends on:** 1.5, 5.4, 5.5, 5.7.
+**Issue:** not yet created. **Depends on:** 1.4, 5.4, 5.5, 5.7.
 
 ## Step 7 — Dialing Python Nodes
 
