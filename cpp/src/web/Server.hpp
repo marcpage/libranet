@@ -12,6 +12,7 @@
 #include <thread>
 #include <unordered_map>
 
+#include "ConnectionInfo.hpp"
 #include "http/Request.hpp"
 #include "http/Response.hpp"
 #include "net/Address.hpp"
@@ -23,14 +24,15 @@ namespace web {
 // to a limit, and keeps it open after each answer for the next request, so
 // that requests sent without waiting for their answers are answered in the
 // order they came. It closes a connection that sends nothing for a while;
-// after an answer, when the request or the answer says Connection: close, or
-// the request is HTTP/1.0; and after answering a request it cannot read,
-// which leaves where the next one starts in doubt. Each answer gives the
-// length of its body, and names the request it answers, its path and query,
-// in X-Request-Path.
+// after an answer, when the request or the answer says ConnectionInfo: close, the
+// request is HTTP/1.0, or the handler had the ConnectionInfo closed; and after
+// answering a request it cannot read, which leaves where the next one starts
+// in doubt. Each answer gives the length of its body, and names the request
+// it answers, its path and query, in X-Request-Path.
 class Server {
 public:
-    using RequestHandler = std::function<void(const http::Request& req, http::Response& res)>;
+    using RequestHandler = std::function<void(const http::Request& req, http::Response& res,
+                                              ConnectionInfo& connection)>;
 
     // Each limit's default: four times the 32 connections a Python node keeps
     // to its peers; a minute, longer than a peer waits between reads of the
@@ -65,7 +67,8 @@ public:
     ~Server() = default;
 
     // Handlers are registered before start(), and are called from the threads
-    // serving connections, several at once.
+    // serving connections, several at once. Each is given the ConnectionInfo the
+    // request came on, which only the thread serving it uses.
     void register_handler(std::string_view path, RequestHandler handler);
     [[nodiscard]] net::Address local_address() const;
     // Listens, and serves the clients that connect, until stop() is called;
@@ -85,8 +88,9 @@ public:
     Server& operator=(Server&&) = delete;
 
 private:
-    // A connection being served, and the thread serving it.
-    struct Connection {
+    // A client being served: the socket of its connection, and the thread
+    // serving it.
+    struct Client {
         net::ISocket::Ptr socket; // Null once the thread has closed it
         std::thread thread;
     };
@@ -94,20 +98,20 @@ private:
     net::Address m_address;
     Limits m_limits;
     net::ISocket::Ptr m_listener;
-    net::Address m_wake_address;         // Where stop() connects, to wake accept()
-    std::atomic<bool> m_running{true};   // False once stop() is called
-    std::mutex m_lock;                   // Orders stop() with start()
-    std::condition_variable m_changed;   // A connection closed, or stop() was called
-    bool m_listening{false};             // Guarded by m_lock
-    std::list<Connection> m_connections; // Guarded by m_lock
+    net::Address m_wake_address;       // Where stop() connects, to wake accept()
+    std::atomic<bool> m_running{true}; // False once stop() is called
+    std::mutex m_lock;                 // Orders stop() with start()
+    std::condition_variable m_changed; // A connection closed, or stop() was called
+    bool m_listening{false};           // Guarded by m_lock
+    std::list<Client> m_connections;   // Guarded by m_lock
     std::unordered_map<std::string, RequestHandler> m_handlers;
 
     [[nodiscard]] RequestHandler _find_handler(std::string_view uri) const;
     [[nodiscard]] bool _listen(int backlog);
     [[nodiscard]] bool _wait_for_room();
     void _serve(net::ISocket::Ptr client);
-    void _converse(Connection& connection);
-    [[nodiscard]] bool _answer(net::ISocket& client) const;
+    void _converse(Client& client);
+    [[nodiscard]] bool _answer(net::ISocket& client, ConnectionInfo& connection) const;
     void _end_all();
 };
 
