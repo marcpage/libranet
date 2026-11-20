@@ -32,7 +32,7 @@ public:
     [[nodiscard]] std::string format(std::string_view message, std::size_t thread,
                                      const Logger& logger) const override;
     // "Exception: " and what the exception says.
-    [[nodiscard]] std::string format(const std::exception& exception) const override;
+    [[nodiscard]] std::string format(const std::exception& error) const override;
 
 private:
     Location m_location;

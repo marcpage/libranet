@@ -12,17 +12,30 @@
 
 #include "Logger.hpp"
 
+using logger::DefaultFormatter;
+using std::exception;
+using std::ostringstream;
+using std::runtime_error;
+using std::size_t;
+using std::string;
+using std::string_view;
+using std::time_t;
+using std::tm;
+using std::chrono::milliseconds;
+using std::chrono::seconds;
+using std::chrono::system_clock;
+
 namespace {
 
 // The calendar time of when, in GMT or local time.
-std::tm calendar_time(std::time_t when, logger::DefaultFormatter::Location location) {
-    std::tm time{};
-    const auto* const converted = logger::DefaultFormatter::Location::Gmt == location
+tm calendar_time(time_t when, DefaultFormatter::Location location) {
+    tm time{};
+    const auto* const converted = DefaultFormatter::Location::Gmt == location
                                       ? ::gmtime_r(&when, &time)
                                       : ::localtime_r(&when, &time);
 
     if (nullptr == converted) {
-        throw std::runtime_error("Cannot convert the time to a calendar time");
+        throw runtime_error("Cannot convert the time to a calendar time");
     }
 
     return time;
@@ -30,17 +43,17 @@ std::tm calendar_time(std::time_t when, logger::DefaultFormatter::Location locat
 
 // The time now, as "2026-11-19 22:03:07.042 (Thu)" in GMT, or with its
 // offset from GMT, as "2026-11-19 14:03:07.042 -0800 (Thu)", in local time.
-std::string timestamp(logger::DefaultFormatter::Location location) {
-    const auto now = std::chrono::system_clock::now();
-    const auto time = calendar_time(std::chrono::system_clock::to_time_t(now), location);
-    const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now.time_since_epoch() % std::chrono::seconds(1));
-    std::ostringstream text;
+string timestamp(DefaultFormatter::Location location) {
+    const auto now = system_clock::now();
+    const auto time = calendar_time(system_clock::to_time_t(now), location);
+    const auto past_second =
+        std::chrono::duration_cast<milliseconds>(now.time_since_epoch() % seconds(1));
+    ostringstream text;
 
     text << std::put_time(&time, "%Y-%m-%d %H:%M:%S") << '.' << std::setfill('0') << std::setw(3)
-         << milliseconds.count();
+         << past_second.count();
 
-    if (logger::DefaultFormatter::Location::Local == location) {
+    if (DefaultFormatter::Location::Local == location) {
         text << std::put_time(&time, " %z");
     }
 
@@ -52,7 +65,7 @@ std::string timestamp(logger::DefaultFormatter::Location location) {
 
 namespace logger {
 
-std::string_view DefaultFormatter::level_string(Logger::Level level) {
+string_view DefaultFormatter::level_string(Logger::Level level) {
     switch (level) {
         case Logger::Level::Fatal: return "FTL";
         case Logger::Level::Log: return "LOG";
@@ -72,9 +85,9 @@ DefaultFormatter::DefaultFormatter(Location location)
     : m_location(location) {
 }
 
-std::string DefaultFormatter::format(std::string_view message, std::size_t thread,
-                                     const Logger& logger) const {
-    std::ostringstream line;
+string DefaultFormatter::format(string_view message, size_t thread,
+                                const Logger& logger) const {
+    ostringstream line;
 
     line << '[' << timestamp(m_location) << "][" << thread << "][" << level_string(logger.level())
          << ']';
@@ -95,8 +108,8 @@ std::string DefaultFormatter::format(std::string_view message, std::size_t threa
     return line.str();
 }
 
-std::string DefaultFormatter::format(const std::exception& exception) const {
-    return std::string("Exception: ") + exception.what();
+string DefaultFormatter::format(const exception& error) const {
+    return string("Exception: ") + error.what();
 }
 
 } // namespace logger

@@ -5,10 +5,13 @@
 
 #include <syslog.h>
 
+using std::string;
+using std::string_view;
+
 namespace logger {
 
-void SysLogOutput::log(std::string_view line) {
-    const std::string text(line);
+void SysLogOutput::log(string_view line) {
+    const string text(line);
 
     // syslog() takes C's variable arguments, as printf() does.
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg)

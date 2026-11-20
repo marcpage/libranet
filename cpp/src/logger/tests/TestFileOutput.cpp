@@ -8,6 +8,8 @@
 using fixtures::read_file;
 using fixtures::ScratchFile;
 using logger::FileOutput;
+using std::errc;
+using std::system_error;
 
 TEST(FileOutputTest, MakesTheFile) {
     const ScratchFile file;
@@ -33,7 +35,7 @@ TEST(FileOutputTest, FileThatCannotBeOpenedThrows) {
     try {
         const FileOutput output(path.string());
         FAIL() << "Opened a file in a directory that is not there";
-    } catch (const std::system_error& error) {
-        EXPECT_EQ(error.code(), std::errc::no_such_file_or_directory);
+    } catch (const system_error& error) {
+        EXPECT_EQ(error.code(), errc::no_such_file_or_directory);
     }
 }

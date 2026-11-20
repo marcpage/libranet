@@ -10,13 +10,18 @@
 
 using logger::DefaultFormatter;
 using logger::Logger;
+using std::regex;
+using std::runtime_error;
+using std::size_t;
+using std::string;
+using std::uint32_t;
 
 namespace {
 
 // The pattern of the time a line starts with: in local time, with its offset
 // from GMT, or in GMT.
-std::string time_pattern(DefaultFormatter::Location location) {
-    std::string pattern = R"(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})";
+string time_pattern(DefaultFormatter::Location location) {
+    string pattern = R"(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})";
 
     if (DefaultFormatter::Location::Local == location) {
         pattern += R"( [+-]\d{4})";
@@ -26,8 +31,8 @@ std::string time_pattern(DefaultFormatter::Location location) {
 }
 
 // Whether text is all that pattern matches, as ECMAScript reads it.
-bool matches(const std::string& text, const std::string& pattern) {
-    return std::regex_match(text, std::regex(pattern));
+bool matches(const string& text, const string& pattern) {
+    return std::regex_match(text, regex(pattern));
 }
 
 } // namespace
@@ -44,14 +49,14 @@ TEST(DefaultFormatterTest, LevelStrings) {
 }
 
 TEST(DefaultFormatterTest, LineInLocalTime) {
-    constexpr std::uint32_t line_number = 88;
-    constexpr std::size_t thread = 3;
+    constexpr uint32_t line_number = 88;
+    constexpr size_t thread = 3;
     const DefaultFormatter formatter;
     const Logger source(Logger::Level::Warning, "src/net/Socket.cpp", line_number, "send");
 
     const auto line = formatter.format("Peer gone", thread, source);
 
-    const std::string rest = R"(\[3\]\[WRN\]\[src/net/Socket\.cpp:88\]\[send\] Peer gone\n)";
+    const string rest = R"(\[3\]\[WRN\]\[src/net/Socket\.cpp:88\]\[send\] Peer gone\n)";
 
     EXPECT_TRUE(matches(line, time_pattern(DefaultFormatter::Location::Local) + rest)) << line;
 }
@@ -62,7 +67,7 @@ TEST(DefaultFormatterTest, LineInGmt) {
 
     const auto line = formatter.format("Started", 0, source);
 
-    const std::string rest = R"(\[0\]\[NFO\] Started\n)";
+    const string rest = R"(\[0\]\[NFO\] Started\n)";
 
     EXPECT_TRUE(matches(line, time_pattern(DefaultFormatter::Location::Gmt) + rest)) << line;
 }
@@ -73,7 +78,7 @@ TEST(DefaultFormatterTest, LineWithItsCondition) {
 
     const auto line = formatter.format("No room", 1, source);
 
-    const std::string rest = R"(\[1\]\[ERR\]\[Store\.cpp:1\]\[put\]\[disk_full\] No room\n)";
+    const string rest = R"(\[1\]\[ERR\]\[Store\.cpp:1\]\[put\]\[disk_full\] No room\n)";
 
     EXPECT_TRUE(matches(line, time_pattern(DefaultFormatter::Location::Local) + rest)) << line;
 }
@@ -81,5 +86,5 @@ TEST(DefaultFormatterTest, LineWithItsCondition) {
 TEST(DefaultFormatterTest, Exception) {
     const DefaultFormatter formatter;
 
-    EXPECT_EQ(formatter.format(std::runtime_error("Disk full")), "Exception: Disk full");
+    EXPECT_EQ(formatter.format(runtime_error("Disk full")), "Exception: Disk full");
 }

@@ -9,23 +9,26 @@
 using fixtures::read_file;
 using fixtures::ScratchFile;
 using logger::StreamOutput;
+using std::FILE;
+using std::system_error;
+using std::unique_ptr;
 
 namespace {
 
 // Closes a stream that a test opened and kept.
 struct StreamCloser {
-    void operator()(std::FILE* stream) const noexcept {
-        // This is the deleter of the std::unique_ptr that owns the stream.
+    void operator()(FILE* stream) const noexcept {
+        // This is the deleter of the unique_ptr that owns the stream.
         // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
         (void)std::fclose(stream);
     }
 };
 
-using Stream = std::unique_ptr<std::FILE, StreamCloser>;
+using Stream = unique_ptr<FILE, StreamCloser>;
 
 // Opens the scratch file with mode, as fopen() takes it.
 Stream open_stream(const ScratchFile& file, const char* mode) {
-    // The stream goes straight into a std::unique_ptr, which closes it.
+    // The stream goes straight into a unique_ptr, which closes it.
     // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
     return Stream(std::fopen(file.path().c_str(), mode));
 }
@@ -70,5 +73,5 @@ TEST(StreamOutputTest, StreamThatCannotBeWrittenThrows) {
     ASSERT_NE(stream, nullptr);
     StreamOutput output(stream.release(), "read-only file", StreamOutput::Closing::Close);
 
-    EXPECT_THROW(output.log("refused\n"), std::system_error);
+    EXPECT_THROW(output.log("refused\n"), system_error);
 }

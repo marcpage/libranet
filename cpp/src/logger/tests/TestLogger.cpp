@@ -21,61 +21,76 @@
 using logger::ILogFormatter;
 using logger::ILogOutput;
 using logger::Logger;
+using std::exception;
+using std::mutex;
+using std::numeric_limits;
+using std::ostringstream;
+using std::runtime_error;
+using std::scoped_lock;
+using std::set;
+using std::shared_ptr;
+using std::size_t;
+using std::string;
+using std::string_view;
+using std::thread;
+using std::uint32_t;
+using std::uint64_t;
+using std::vector;
 
 namespace {
 
-using Lines = std::vector<std::string>;
+using Lines = vector<string>;
 
 // The lines an output was given, where a test can read them while the Logger
 // owns the output.
 class KeptLines {
 public:
-    void add(std::string_view line) {
-        const std::scoped_lock lock(m_mutex);
+    void add(string_view line) {
+        const scoped_lock lock(m_mutex);
 
         m_lines.emplace_back(line);
     }
 
     [[nodiscard]] Lines all() const {
-        const std::scoped_lock lock(m_mutex);
+        const scoped_lock lock(m_mutex);
 
         return m_lines;
     }
 
 private:
-    mutable std::mutex m_mutex;
+    mutable mutex m_mutex;
     Lines m_lines;
 };
 
 // Keeps each line it is given.
 class KeepingOutput : public ILogOutput {
 public:
-    explicit KeepingOutput(std::shared_ptr<KeptLines> lines)
+    explicit KeepingOutput(shared_ptr<KeptLines> lines)
         : m_lines(std::move(lines)) {
     }
 
-    void log(std::string_view line) override {
+    void log(string_view line) override {
         m_lines->add(line);
     }
 
 private:
-    std::shared_ptr<KeptLines> m_lines;
+    shared_ptr<KeptLines> m_lines;
 };
 
 // Keeps each line it is asked to write, then fails to write it.
 class FailingOutput : public ILogOutput {
 public:
-    explicit FailingOutput(std::shared_ptr<KeptLines> attempts)
+    explicit FailingOutput(shared_ptr<KeptLines> attempts)
         : m_attempts(std::move(attempts)) {
     }
 
-    void log(std::string_view line) override {
+    void log(string_view line) override {
         m_attempts->add(line);
-        throw std::runtime_error("Disk full");
+        throw runtime_error("Disk full");
     }
 
 private:
-    std::shared_ptr<KeptLines> m_attempts;
+    shared_ptr<KeptLines> m_attempts;
 };
 
 // What the Logger writes, with a MessageFormatter, when a FailingOutput
@@ -87,21 +102,21 @@ constexpr auto failure_report =
 // that a test can say all that a line holds.
 class MessageFormatter : public ILogFormatter {
 public:
-    [[nodiscard]] std::string format(std::string_view message, [[maybe_unused]] std::size_t thread,
-                                     [[maybe_unused]] const Logger& logger) const override {
-        return std::string(message);
+    [[nodiscard]] string format(string_view message, [[maybe_unused]] size_t thread,
+                                [[maybe_unused]] const Logger& logger) const override {
+        return string(message);
     }
 
-    [[nodiscard]] std::string format(const std::exception& exception) const override {
-        return std::string("caught ") + exception.what();
+    [[nodiscard]] string format(const exception& error) const override {
+        return string("caught ") + error.what();
     }
 };
 
 // Writes only the index of the thread.
 class ThreadFormatter : public MessageFormatter {
 public:
-    [[nodiscard]] std::string format([[maybe_unused]] std::string_view message, std::size_t thread,
-                                     [[maybe_unused]] const Logger& logger) const override {
+    [[nodiscard]] string format([[maybe_unused]] string_view message, size_t thread,
+                                [[maybe_unused]] const Logger& logger) const override {
         return std::to_string(thread);
     }
 
@@ -132,12 +147,12 @@ protected:
     }
 
 private:
-    std::shared_ptr<KeptLines> m_kept = std::make_shared<KeptLines>();
+    shared_ptr<KeptLines> m_kept = std::make_shared<KeptLines>();
 };
 
 // Whether a Debug line from file is shown, when pattern is all that shows
 // Debug lines.
-bool shown_by(const std::string& pattern, std::string_view file) {
+bool shown_by(const string& pattern, string_view file) {
     Logger::reset_levels(Logger::Level::Fatal);
     Logger::set_level(Logger::Level::Debug, pattern);
     return Logger::is_shown(Logger::Level::Debug, file);
@@ -176,7 +191,7 @@ TEST_F(LoggerTest, ValuesAsIs) {
 
 TEST_F(LoggerTest, Numbers) {
     constexpr auto negative = -12;
-    constexpr auto largest = std::numeric_limits<std::uint64_t>::max();
+    constexpr auto largest = numeric_limits<uint64_t>::max();
     constexpr auto half = 0.5;
     constexpr auto quarter = 0.25F;
 
@@ -186,8 +201,8 @@ TEST_F(LoggerTest, Numbers) {
 }
 
 TEST_F(LoggerTest, TextOfEachKind) {
-    const std::string text = "string";
-    constexpr std::string_view view = "view";
+    const string text = "string";
+    constexpr string_view view = "view";
     const char* const missing = nullptr;
 
     lInfo << text << view << "literal" << missing;
@@ -197,7 +212,7 @@ TEST_F(LoggerTest, TextOfEachKind) {
 
 TEST_F(LoggerTest, PointerAsAStreamWritesIt) {
     constexpr auto value = 1;
-    std::ostringstream expected;
+    ostringstream expected;
 
     expected << static_cast<const void*>(&value);
     lInfo << &value;
@@ -206,7 +221,7 @@ TEST_F(LoggerTest, PointerAsAStreamWritesIt) {
 }
 
 TEST_F(LoggerTest, ExceptionAsTheFormatterWritesIt) {
-    lErr << "Cannot save:" << std::runtime_error("Disk full");
+    lErr << "Cannot save:" << runtime_error("Disk full");
 
     EXPECT_EQ(lines(), Lines{"Cannot save: caught Disk full"});
 }
@@ -327,7 +342,7 @@ TEST_F(LoggerTest, ConditionalLinesOnlyWhenTheConditionIsTrue) {
 }
 
 TEST_F(LoggerTest, SaysWhereItWasMade) {
-    constexpr std::uint32_t line = 88;
+    constexpr uint32_t line = 88;
 
     const Logger made(Logger::Level::Warning, "src/net/Socket.cpp", line, "send", true, "full");
 
@@ -347,9 +362,9 @@ TEST_F(LoggerTest, MacrosSayWhereTheLineWasLogged) {
 
     const auto written = lines();
     ASSERT_EQ(written.size(), 1U);
-    EXPECT_NE(written.at(0).find("[WRN]"), std::string::npos) << written.at(0);
+    EXPECT_NE(written.at(0).find("[WRN]"), string::npos) << written.at(0);
     const auto where = "TestLogger.cpp:" + std::to_string(line) + "][TestBody][full] Disk\n";
-    EXPECT_NE(written.at(0).find(where), std::string::npos) << written.at(0);
+    EXPECT_NE(written.at(0).find(where), string::npos) << written.at(0);
 }
 
 TEST_F(LoggerTest, NullOutputIsLeftOut) {
@@ -389,7 +404,7 @@ TEST_F(LoggerTest, AfterEveryOutputFailsLinesGoToStderr) {
     lInfo << "lost";
     lInfo << "to stderr";
 
-    EXPECT_EQ(testing::internal::GetCapturedStderr(), std::string(failure_report) + "to stderr");
+    EXPECT_EQ(testing::internal::GetCapturedStderr(), string(failure_report) + "to stderr");
 }
 
 TEST_F(LoggerTest, EachThreadHasAnIndexOfItsOwn) {
@@ -397,7 +412,7 @@ TEST_F(LoggerTest, EachThreadHasAnIndexOfItsOwn) {
 
     lInfo << "first";
     lInfo << "second";
-    std::thread other([] { lInfo << "other"; });
+    thread other([] { lInfo << "other"; });
     other.join();
 
     const auto written = lines();
@@ -409,28 +424,28 @@ TEST_F(LoggerTest, EachThreadHasAnIndexOfItsOwn) {
 TEST_F(LoggerTest, EveryLineFromManyThreadsIsWrittenWhole) {
     constexpr auto thread_count = 8;
     constexpr auto lines_each = 100;
-    std::vector<std::thread> threads;
-    std::set<std::string> expected;
+    vector<thread> threads;
+    set<string> expected;
 
-    for (auto thread = 0; thread < thread_count; ++thread) {
+    for (auto number = 0; number < thread_count; ++number) {
         for (auto line = 0; line < lines_each; ++line) {
-            expected.insert("thread " + std::to_string(thread) + " line " + std::to_string(line));
+            expected.insert("thread " + std::to_string(number) + " line " + std::to_string(line));
         }
 
-        threads.emplace_back([thread] {
+        threads.emplace_back([number] {
             for (auto line = 0; line < lines_each; ++line) {
-                lInfo << "thread" << thread << "line" << line;
+                lInfo << "thread" << number << "line" << line;
             }
         });
     }
 
-    for (auto& thread : threads) {
-        thread.join();
+    for (auto& writer : threads) {
+        writer.join();
     }
 
     const auto written = lines();
     EXPECT_EQ(written.size(), expected.size());
-    EXPECT_EQ(std::set<std::string>(written.begin(), written.end()), expected);
+    EXPECT_EQ(set<string>(written.begin(), written.end()), expected);
 }
 
 TEST(LoggerDeathTest, FatalLineEndsTheProgram) {

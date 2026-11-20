@@ -19,7 +19,7 @@ public:
     [[nodiscard]] virtual std::string format(std::string_view message, std::size_t thread,
                                              const Logger& logger) const = 0;
     // The text written for an exception logged as a value.
-    [[nodiscard]] virtual std::string format(const std::exception& exception) const = 0;
+    [[nodiscard]] virtual std::string format(const std::exception& error) const = 0;
 
     virtual ~ILogFormatter() = default;
     ILogFormatter(const ILogFormatter&) = delete;

@@ -23,19 +23,37 @@
 #include "ILogOutput.hpp"
 #include "StdErrOutput.hpp"
 
+using logger::DefaultFormatter;
+using logger::ILogFormatter;
+using logger::ILogOutput;
+using logger::Logger;
+using logger::StdErrOutput;
+using std::atomic;
+using std::exception;
+using std::map;
+using std::mutex;
+using std::ostringstream;
+using std::scoped_lock;
+using std::size_t;
+using std::string;
+using std::string_view;
+using std::thread;
+using std::uint32_t;
+using std::vector;
+
 namespace {
 
 // What every Logger shares: where lines go, how they are written, which are
 // shown, and the threads that have logged, in the order they first did. The
-// mutex guards all but the spacing, and is held while a line is written, so
-// that lines from different threads do not mix.
+// guard is held to read or change any of them but the spacing, and while a
+// line is written, so that lines from different threads do not mix.
 struct Shared {
-    std::mutex mutex;
-    std::vector<logger::ILogOutput::Ptr> outputs;
-    logger::ILogFormatter::Ptr formatter = std::make_unique<logger::DefaultFormatter>();
-    std::map<logger::Logger::Level, std::string> levels;
-    std::vector<std::thread::id> threads;
-    std::atomic<logger::Logger::InserterSpacing> spacing{logger::Logger::InserterSpacing::Pad};
+    mutex guard;
+    vector<ILogOutput::Ptr> outputs;
+    ILogFormatter::Ptr formatter = std::make_unique<DefaultFormatter>();
+    map<Logger::Level, string> levels;
+    vector<thread::id> threads;
+    atomic<Logger::InserterSpacing> spacing{Logger::InserterSpacing::Pad};
 };
 
 // Made when first used, so that it is ready for a line logged while another
@@ -46,16 +64,16 @@ Shared& shared() {
 }
 
 // Whether file matches pattern, as Logger::set_level() says.
-bool file_matches(std::string_view file, std::string_view pattern) {
+bool file_matches(string_view file, string_view pattern) {
     auto has_inclusions = false;
     auto included = false;
-    std::size_t start = 0;
+    size_t start = 0;
 
     while (start <= pattern.size()) {
         const auto end = std::min(pattern.find(';', start), pattern.size());
         const auto part = pattern.substr(start, end - start);
         const auto excludes = !part.empty() && '-' == part.front();
-        const auto contained = std::string_view::npos != file.find(part.substr(excludes ? 1 : 0));
+        const auto contained = string_view::npos != file.find(part.substr(excludes ? 1 : 0));
 
         if (excludes && contained) {
             return false;
@@ -75,21 +93,21 @@ bool file_matches(std::string_view file, std::string_view pattern) {
 // Whether a line at level, from file, is shown. A level shows its lines and
 // those of every level more severe, which sort before it, so the levels that
 // can show the line are this one and those after it. The caller holds the
-// shared mutex.
-bool shown(const std::map<logger::Logger::Level, std::string>& levels,
-           logger::Logger::Level level, std::string_view file) {
+// shared guard.
+bool shown(const map<Logger::Level, string>& levels,
+           Logger::Level level, string_view file) {
     return std::any_of(levels.lower_bound(level), levels.end(),
                        [file](const auto& entry) { return file_matches(file, entry.second); });
 }
 
 // The index of the calling thread among those that have logged, in the order
-// they first did. The caller holds the shared mutex.
-std::size_t thread_index(std::vector<std::thread::id>& threads) {
+// they first did. The caller holds the shared guard.
+size_t thread_index(vector<thread::id>& threads) {
     const auto this_thread = std::this_thread::get_id();
     const auto found = std::find(threads.begin(), threads.end(), this_thread);
 
     if (found != threads.end()) {
-        return static_cast<std::size_t>(std::distance(threads.begin(), found));
+        return static_cast<size_t>(std::distance(threads.begin(), found));
     }
 
     threads.push_back(this_thread);
@@ -98,19 +116,19 @@ std::size_t thread_index(std::vector<std::thread::id>& threads) {
 
 // Writes the line to each output, or to stderr if there are none. An output
 // that fails is removed, and what the formatter makes of what it threw is
-// returned. The caller holds the shared mutex.
-std::vector<std::string> write_to_outputs(Shared& state, std::string_view line) {
-    std::vector<std::string> failures;
+// returned. The caller holds the shared guard.
+vector<string> write_to_outputs(Shared& state, string_view line) {
+    vector<string> failures;
 
     if (state.outputs.empty()) {
-        state.outputs.push_back(std::make_unique<logger::StdErrOutput>());
+        state.outputs.push_back(std::make_unique<StdErrOutput>());
     }
 
     for (auto output = state.outputs.begin(); output != state.outputs.end();) {
         try {
             (*output)->log(line);
             ++output;
-        } catch (const std::exception& error) {
+        } catch (const exception& error) {
             failures.push_back(state.formatter->format(error));
             output = state.outputs.erase(output);
         }
@@ -129,14 +147,14 @@ void Logger::add_output(ILogOutput::Ptr output) {
     }
 
     auto& state = shared();
-    const std::scoped_lock lock(state.mutex);
+    const scoped_lock lock(state.guard);
 
     state.outputs.push_back(std::move(output));
 }
 
 void Logger::remove_all_outputs() {
     auto& state = shared();
-    const std::scoped_lock lock(state.mutex);
+    const scoped_lock lock(state.guard);
 
     state.outputs.clear();
 }
@@ -147,14 +165,14 @@ void Logger::set_formatter(ILogFormatter::Ptr new_formatter) {
     }
 
     auto& state = shared();
-    const std::scoped_lock lock(state.mutex);
+    const scoped_lock lock(state.guard);
 
     state.formatter = std::move(new_formatter);
 }
 
-void Logger::set_level(Level level, std::string pattern) {
+void Logger::set_level(Level level, string pattern) {
     auto& state = shared();
-    const std::scoped_lock lock(state.mutex);
+    const scoped_lock lock(state.guard);
 
     // Left at a more detailed level, the pattern would still show its files'
     // lines at that level.
@@ -167,15 +185,15 @@ void Logger::set_level(Level level, std::string pattern) {
 
 void Logger::reset_levels(Level level) {
     auto& state = shared();
-    const std::scoped_lock lock(state.mutex);
+    const scoped_lock lock(state.guard);
 
     state.levels.clear();
     state.levels[level] = "";
 }
 
-bool Logger::is_shown(Level level, std::string_view file) {
+bool Logger::is_shown(Level level, string_view file) {
     auto& state = shared();
-    const std::scoped_lock lock(state.mutex);
+    const scoped_lock lock(state.guard);
 
     return shown(state.levels, level, file);
 }
@@ -184,8 +202,8 @@ void Logger::set_inserter_spacing(InserterSpacing new_spacing) {
     shared().spacing = new_spacing;
 }
 
-Logger::Logger(Level level, std::string_view file, std::uint32_t line, std::string_view function,
-               bool condition_met, std::string_view condition)
+Logger::Logger(Level level, string_view file, uint32_t line, string_view function,
+               bool condition_met, string_view condition)
     : m_level(level)
     , m_file(file)
     , m_line(line)
@@ -205,7 +223,7 @@ Logger::~Logger() {
         if (Level::Fatal == m_level || !m_text.empty()) {
             _write();
         }
-    } catch (const std::exception& error) {
+    } catch (const exception& error) {
         (void)std::fputs("Cannot write a line of the log: ", stderr);
         (void)std::fputs(error.what(), stderr);
         (void)std::fputs("\n", stderr);
@@ -220,23 +238,23 @@ Logger::Level Logger::level() const noexcept {
     return m_level;
 }
 
-std::string_view Logger::file() const noexcept {
+string_view Logger::file() const noexcept {
     return m_file;
 }
 
-std::uint32_t Logger::line() const noexcept {
+uint32_t Logger::line() const noexcept {
     return m_line;
 }
 
-std::string_view Logger::function() const noexcept {
+string_view Logger::function() const noexcept {
     return m_function;
 }
 
-std::string_view Logger::condition() const noexcept {
+string_view Logger::condition() const noexcept {
     return m_condition;
 }
 
-Logger& Logger::operator<<(std::string_view value) {
+Logger& Logger::operator<<(string_view value) {
     return _append(value);
 }
 
@@ -249,27 +267,27 @@ Logger& Logger::operator<<(const char* value) {
 }
 
 Logger& Logger::operator<<(const void* value) {
-    std::ostringstream text;
+    ostringstream text;
 
     text << value;
     return _append(text.str());
 }
 
 Logger& Logger::operator<<(double value) {
-    std::ostringstream text;
+    ostringstream text;
 
     text << value;
     return _append(text.str());
 }
 
-Logger& Logger::operator<<(const std::exception& value) {
+Logger& Logger::operator<<(const exception& value) {
     auto& state = shared();
-    const std::scoped_lock lock(state.mutex);
+    const scoped_lock lock(state.guard);
 
     return _append(state.formatter->format(value));
 }
 
-Logger& Logger::_append(std::string_view value) {
+Logger& Logger::_append(string_view value) {
     if (InserterSpacing::Pad == shared().spacing && !m_text.empty()) {
         m_text += ' ';
     }
@@ -280,21 +298,21 @@ Logger& Logger::_append(std::string_view value) {
 
 void Logger::_write() const {
     auto& state = shared();
-    const std::scoped_lock lock(state.mutex);
+    const scoped_lock lock(state.guard);
 
     if (!shown(state.levels, m_level, m_file)) {
         return;
     }
 
-    const auto thread = thread_index(state.threads);
-    const auto failures = write_to_outputs(state, state.formatter->format(m_text, thread, *this));
+    const auto index = thread_index(state.threads);
+    const auto failures = write_to_outputs(state, state.formatter->format(m_text, index, *this));
 
     // Those left are told of each output that failed. One that fails then is
     // removed too.
     for (const auto& failure : failures) {
         const auto report = "Stopped writing the log to an output that failed: " + failure;
 
-        (void)write_to_outputs(state, state.formatter->format(report, thread, *this));
+        (void)write_to_outputs(state, state.formatter->format(report, index, *this));
     }
 }
 
