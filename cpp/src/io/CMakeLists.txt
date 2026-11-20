@@ -1,10 +1,9 @@
-# Reading bytes: from a socket, through a buffer, and up to a limit. Only
-# headers so far, so an INTERFACE library; it becomes STATIC with its first
-# .cpp file.
-add_library(libranet_io INTERFACE)
+# Reading bytes: from a socket, through a buffer, and up to a limit. 
+add_library(libranet_io STATIC
+    Directories.cpp)
 add_library(libranet::io ALIAS libranet_io)
-target_include_directories(libranet_io INTERFACE ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(libranet_io INTERFACE libranet::net)
+target_include_directories(libranet_io PUBLIC ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(libranet_io PUBLIC libranet::net)
 
 if(BUILD_TESTING)
     add_executable(io_tests
