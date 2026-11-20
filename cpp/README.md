@@ -261,6 +261,7 @@ cannot read:
 | `address_fuzzer` | `Address::parse` | `std::invalid_argument` |
 | `rsa_der_fuzzer` | `RsaDer::pkcs1_from_spki` and `pkcs1_from_pkcs8` | `std::invalid_argument` |
 | `settings_file_fuzzer` | `SettingsFile::parse` | `std::invalid_argument` |
+| `zlib_fuzzer` | `Zlib::decompress` | an empty `optional` |
 
 Anything else a parser does with an input is a fault: crashing, hanging,
 leaking, a finding of AddressSanitizer or UndefinedBehaviorSanitizer, a

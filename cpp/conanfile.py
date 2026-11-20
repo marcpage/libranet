@@ -12,10 +12,12 @@ class LibranetConan(ConanFile):
     generators: str = "CMakeDeps"
 
     def requirements(self) -> None:
-        """OpenSSL, which the crypto library is built on, and yaml-cpp, which
-        reads the node's settings file."""
+        """OpenSSL, which the crypto library is built on; yaml-cpp, which
+        reads the node's settings file; and zlib, which the storage library
+        compresses with."""
         self.requires("openssl/3.5.9")
         self.requires("yaml-cpp/0.9.0")
+        self.requires("zlib/1.3.1")
 
     def build_requirements(self) -> None:
         """GoogleTest, which only the tests use."""
