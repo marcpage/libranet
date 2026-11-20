@@ -1,11 +1,16 @@
 #pragma once
 
+#include <algorithm>
+#include <atomic>
+#include <cctype>
+#include <cstddef>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "crypto/IHasher.hpp"
+#include "logger/Logger.hpp"
 
 namespace storage {
 
@@ -17,7 +22,10 @@ public:
     static Identifier from(const Data& data);
 
     Identifier() = default;
-    // Throws std::invalid_argument for an algorithm that is not supported.
+    // Throws std::invalid_argument for an algorithm that is not supported,
+    // or a hash that is not as many hex digits as the algorithm's digest
+    // has. The hash may be in any case, and is kept in lower case
+    // (HttpApi §5.4).
     Identifier(std::string algorithm, std::string hash);
     ~Identifier() = default;
     Identifier(const Identifier&) = default;
@@ -37,6 +45,9 @@ private:
 
     std::string m_algorithm;
     std::string m_hash;
+
+    [[nodiscard]] static std::size_t _sha256_digits();
+    static void _warn_unsupported(const std::string& algorithm);
 };
 
 inline Identifier Identifier::from(const std::string& identifier_str) {
@@ -71,9 +82,22 @@ inline Identifier Identifier::from(const Data& data) {
 
 inline Identifier::Identifier(std::string algorithm, std::string hash)
     : m_algorithm(std::move(algorithm)), m_hash(std::move(hash)) {
+    constexpr std::string_view hex_digits = "0123456789abcdefABCDEF";
+
     if (sha256 != m_algorithm) {
+        _warn_unsupported(m_algorithm);
         throw std::invalid_argument("Invalid identifier format: unsupported algorithm");
     }
+
+    if (m_hash.size() != _sha256_digits()
+        || m_hash.find_first_not_of(hex_digits) != std::string::npos) {
+        throw std::invalid_argument("Invalid identifier format: hash is not hex digits, as many "
+                                    "as the algorithm's digest has");
+    }
+
+    std::transform(m_hash.begin(), m_hash.end(), m_hash.begin(), [](char digit) {
+        return static_cast<char>(std::tolower(static_cast<unsigned char>(digit)));
+    });
 }
 
 inline const std::string& Identifier::algorithm() const {
@@ -86,6 +110,27 @@ inline const std::string& Identifier::hash() const {
 
 inline std::string Identifier::to_string() const {
     return m_algorithm + "/" + m_hash;
+}
+
+// How many hex digits a SHA-256 hash has: two for each byte of its digest.
+// Found when first asked, so that a hasher is made only once.
+inline std::size_t Identifier::_sha256_digits() {
+    constexpr std::size_t digits_per_byte = 2;
+    static const std::size_t digits = crypto::IHasher::Sha256()->digest_size() * digits_per_byte;
+
+    return digits;
+}
+
+// Warns of the first algorithm refused, from any thread, since content
+// under one the node does not know may mean the node needs updating. Those
+// after it are not logged, so that requests for them cannot fill the log.
+inline void Identifier::_warn_unsupported(const std::string& algorithm) {
+    static std::atomic<bool> warned{false};
+
+    if (!warned.exchange(true)) {
+        lWarn << "The node may need updating: it does not know the hash algorithm" << algorithm
+              << "(only the first unknown algorithm is logged)";
+    }
 }
 
 } // namespace storage
