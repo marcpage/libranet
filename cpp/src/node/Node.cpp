@@ -26,13 +26,23 @@ using net::Address;
 using node::Node;
 using node::SettingsFile;
 using std::array;
+using std::cref;
 using std::domain_error;
 using std::exception;
+using std::find;
+using std::generic_category;
+using std::getenv;
 using std::invalid_argument;
+using std::numeric_limits;
+using std::size_t;
+using std::stoul;
 using std::string;
 using std::string_view;
 using std::system_error;
+using std::terminate;
 using std::thread;
+using std::to_string;
+using std::filesystem::create_directories;
 using std::filesystem::path;
 using storage::Manager;
 
@@ -105,7 +115,7 @@ Logger::Level log_level(const SettingsFile& settings) {
 string environment(const char* name) {
     // Read before the node starts a thread, and never set by the node.
     // NOLINTNEXTLINE(concurrency-mt-unsafe)
-    const char* const value = std::getenv(name);
+    const char* const value = getenv(name);
 
     return nullptr == value ? "" : value;
 }
@@ -134,11 +144,7 @@ path default_data_dir() {
 }
 
 path data_dir(const SettingsFile& settings) {
-    if (!settings.has(data_dir_setting)) {
-        return default_data_dir();
-    }
-
-    auto directory = text(settings, data_dir_setting, "");
+    auto directory = text(settings, data_dir_setting, default_data_dir());
 
     if (directory.empty()) {
         throw invalid_argument(string(data_dir_setting) + ": must not be empty");
@@ -149,19 +155,26 @@ path data_dir(const SettingsFile& settings) {
 
 // A whole number from 0, for a port the system picks, to 65535.
 Address::Port listen_port(const SettingsFile& settings) {
-    constexpr std::size_t most_digits = 5;
+    constexpr size_t most_digits = 5;
     const auto port = text(settings, listen_port_setting, default_listen_port);
 
-    if (!port.empty() && port.size() <= most_digits
-        && string::npos == port.find_first_not_of("0123456789")) {
-        if (const auto number = std::stoul(port);
-            number <= std::numeric_limits<Address::Port>::max()) {
-            return static_cast<Address::Port>(number);
-        }
+    if (port.empty() || port.size() > most_digits
+        || string::npos != port.find_first_not_of("0123456789")) {
+        throw invalid_argument(string(listen_port_setting)
+                               + ": must be a positive whole number, not '" + port + "'");
     }
 
-    throw invalid_argument(string(listen_port_setting)
-                           + ": must be a whole number from 0 to 65535, not '" + port + "'");
+    const auto number = stoul(port);
+    const auto max_port = numeric_limits<Address::Port>::max();
+
+    if (number > max_port) {
+        throw invalid_argument(string(listen_port_setting)
+                               + ": cannot be greater than "
+                               + to_string(max_port)
+                               + ", not '" + port + "'");
+    }
+
+    return static_cast<Address::Port>(number);
 }
 
 Address listen_address(const SettingsFile& settings) {
@@ -176,8 +189,8 @@ Manager::Ptr lay_out(const path& directory) {
     const auto incoming = directory / "incoming";
     auto store = Manager::create();
 
-    std::filesystem::create_directories(cas);
-    std::filesystem::create_directories(incoming);
+    create_directories(cas);
+    create_directories(incoming);
     store->add(cas);
     store->scan(incoming);
     return store;
@@ -187,7 +200,7 @@ Manager::Ptr lay_out(const path& directory) {
 // name would be.
 void warn_of_unused(const SettingsFile& settings) {
     for (const auto& name : settings.names()) {
-        if (std::find(used_settings.begin(), used_settings.end(), name) == used_settings.end()) {
+        if (find(used_settings.begin(), used_settings.end(), name) == used_settings.end()) {
             lWarn << "Setting not used:" << name;
         }
     }
@@ -218,7 +231,7 @@ StopSignals::StopSignals() {
     (void)sigaddset(&m_signals, SIGTERM);
 
     if (const auto error = pthread_sigmask(SIG_BLOCK, &m_signals, &m_previous); 0 != error) {
-        throw system_error(error, std::generic_category(), "pthread_sigmask");
+        throw system_error(error, generic_category(), "pthread_sigmask");
     }
 }
 
@@ -237,7 +250,7 @@ string_view StopSignals::wait() const {
     } while (EINTR == error);
 
     if (0 != error) {
-        throw system_error(error, std::generic_category(), "sigwait");
+        throw system_error(error, generic_category(), "sigwait");
     }
 
     return SIGINT == taken ? "SIGINT" : "SIGTERM";
@@ -271,7 +284,7 @@ Node::Node(const SettingsFile& settings)
     warn_of_unused(settings);
     lInfo << "Listening on" << m_local_address.to_string();
 
-    m_server.register_handler("/data", std::cref(m_data_handler));
+    m_server.register_handler("/data", cref(m_data_handler));
     m_server_thread = thread([this] {
         _serve();
     });
@@ -279,13 +292,13 @@ Node::Node(const SettingsFile& settings)
 
 Node::~Node() {
     // A thread that cannot be stopped would outlive this object, so then
-    // nothing is safe but to end the program, as std::thread's destructor
+    // nothing is safe but to end the program, as thread's destructor
     // would.
     try {
         m_server.stop();
         m_server_thread.join();
     } catch (...) {
-        std::terminate();
+        terminate();
     }
 }
 
