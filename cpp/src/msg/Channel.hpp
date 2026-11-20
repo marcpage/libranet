@@ -21,9 +21,6 @@ public:
     static constexpr Milliseconds wait_forever{-1};
 
     explicit Channel(const std::string& name);
-    // Listens on each of the names, and gets one copy of each message posted
-    // under any of them, however often a name is listed. Throws
-    // std::invalid_argument for no names.
     explicit Channel(std::vector<std::string> names);
     ~Channel();
     Channel(const Channel&) = delete;
