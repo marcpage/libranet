@@ -67,7 +67,7 @@ parsers in `fuzz/`:
 | Directory | Library | What it holds |
 | ------------------------- | ---------------- | ------------------------------------------------------------- |
 | [`src/types/`](src/types/) | `libranet::types` | Data types: `Integer`, `Json`, and `BlockingQueue` |
-| [`src/http/`](src/http/) | `libranet::http` | Parsing and generating HTTP: URLs, queries, headers, requests, responses, and problem details; uses `types` |
+| [`src/http/`](src/http/) | `libranet::http` | Parsing and generating HTTP: URLs, queries, headers, structured fields, requests, responses, and problem details; uses `types` and `crypto` |
 | [`src/msg/`](src/msg/) | `libranet::msg` | Messages, and the channels that carry them; uses `types` |
 | [`src/net/`](src/net/) | `libranet::net` | Addresses and sockets, on POSIX systems |
 | [`src/crypto/`](src/crypto/) | `libranet::crypto` | Hashing, encrypting, and signing: SHA-256, AES, RSA, Ed25519, and Argon2id with OpenSSL; on macOS, SHA-256, AES, and RSA with Apple's frameworks instead |
@@ -258,6 +258,7 @@ cannot read:
 | `headers_fuzzer` | reading `Headers` | `std::runtime_error` or `std::invalid_argument` |
 | `request_fuzzer` | reading a `Request` | a failed stream, or as `Headers` does |
 | `response_fuzzer` | reading a `Response` | a failed stream, or as `Headers` does |
+| `structured_field_fuzzer` | `StructuredField::parse` | `std::invalid_argument` |
 | `address_fuzzer` | `Address::parse` | `std::invalid_argument` |
 | `rsa_der_fuzzer` | `RsaDer::pkcs1_from_spki` and `pkcs1_from_pkcs8` | `std::invalid_argument` |
 | `settings_file_fuzzer` | `SettingsFile::parse` | `std::invalid_argument` |

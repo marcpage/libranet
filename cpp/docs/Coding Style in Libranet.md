@@ -123,9 +123,10 @@ line it is for (§2.1).
 - **Untrusted input (§10.1, §12).** The README's
   [Fuzzing](../README.md#fuzzing) table names each parser and how it turns
   input down. `Json`'s parser nests no deeper than 128,
-  `Headers::read_body()` reads a body 64 KiB at a time, and
+  `Headers::read_body()` reads a body 64 KiB at a time,
   `Zlib::decompress()` stops just past the limit it is given, making room
-  64 KiB at a time.
+  64 KiB at a time, and a `StructuredField` holds no more members, inner
+  list items, or parameters than RFC 8941 asks a parser to take.
 - **Tests (§11).** `crypto/tests/Fixtures.hpp` holds hex helpers, and an RSA
   key with what Python's `cryptography` package signed and encrypted with
   it, as the Python node does, so that the C++ node is checked against the
