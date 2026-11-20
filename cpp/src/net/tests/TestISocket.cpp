@@ -49,6 +49,7 @@ public:
     [[nodiscard]] bool is_open() const noexcept override;
     void set_receive_timeout(Milliseconds timeout) override;
     void set_send_timeout(Milliseconds timeout) override;
+    void shutdown() override;
     void close() override;
 
 private:
@@ -123,6 +124,8 @@ void ScriptedSocket::set_receive_timeout(Milliseconds timeout) {
 void ScriptedSocket::set_send_timeout(Milliseconds timeout) {
     m_send_timeout = timeout;
 }
+
+void ScriptedSocket::shutdown() {}
 
 void ScriptedSocket::close() {}
 

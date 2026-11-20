@@ -361,6 +361,12 @@ void SocketPosix::set_send_timeout(ISocket::Milliseconds timeout) {
                   "setsockopt(SO_SNDTIMEO)");
 }
 
+void SocketPosix::shutdown() {
+    assert_condition<std::logic_error>(is_open(), "Cannot shut down a closed socket");
+    // ENOTCONN: the peer has gone already, which ends the connection too.
+    assert_socket(0 == ::shutdown(m_socket_fd, SHUT_RDWR) || ENOTCONN == errno, "shutdown");
+}
+
 void SocketPosix::close() {
     if (m_socket_fd < 0) {
         return; // calling close twice is safe

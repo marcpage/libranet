@@ -83,10 +83,13 @@ CheckOptions:
   # linux/), which differ between systems. So it checks only C++ and project
   # includes, and leaves the POSIX ones as written. It also never suggests a
   # standard library's private headers (libc++'s __chrono/..., libstdc++'s
-  # bits/...). POSIX's own calls in a C header, such as gmtime_r() in time.h
-  # and fdopen() in stdio.h, are left as written too: C++ code includes those
-  # headers as <ctime> and <cstdio>, so they are never asked for.
-  misc-include-cleaner.IgnoreHeaders: '__.*;bits/.*;asm/.*\.h$;asm-generic/.*\.h$;linux/.*\.h$;sys/.*\.h$;net/.*\.h$;netinet/.*\.h$;arpa/.*\.h$;netdb\.h$;unistd\.h$;ifaddrs\.h$;fcntl\.h$;stdio\.h$;time\.h$'
+  # bits/...). POSIX's own calls in a C header, such as gmtime_r() in time.h,
+  # fdopen() in stdio.h, setenv() in stdlib.h, and sigwait() in signal.h, are
+  # left as written too: C++ code includes those headers as <ctime>,
+  # <cstdio>, <cstdlib>, and <csignal>, so they are never asked for. macOS
+  # declares pthread_sigmask() in pthread.h as well as in signal.h, and it is
+  # asked for from pthread.h there, so pthread.h is left as written too.
+  misc-include-cleaner.IgnoreHeaders: '__.*;bits/.*;asm/.*\.h$;asm-generic/.*\.h$;linux/.*\.h$;sys/.*\.h$;net/.*\.h$;netinet/.*\.h$;arpa/.*\.h$;netdb\.h$;unistd\.h$;ifaddrs\.h$;fcntl\.h$;stdio\.h$;time\.h$;stdlib\.h$;signal\.h$;pthread\.h$'
   # Json's operator[] checks its own bounds: on a Json that is not const, it
   # grows the array or adds the member, and on a const Json it throws, as
   # at() does. Like std::map's, which the check leaves out by default, it is
