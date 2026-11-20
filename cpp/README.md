@@ -67,7 +67,7 @@ parsers in `fuzz/`:
 | Directory | Library | What it holds |
 | ------------------------- | ---------------- | ------------------------------------------------------------- |
 | [`src/types/`](src/types/) | `libranet::types` | Data types: `Integer`, `Json`, and `BlockingQueue` |
-| [`src/http/`](src/http/) | `libranet::http` | Parsing and generating HTTP: URLs, queries, headers, requests, and responses |
+| [`src/http/`](src/http/) | `libranet::http` | Parsing and generating HTTP: URLs, queries, headers, requests, responses, and problem details; uses `types` |
 | [`src/msg/`](src/msg/) | `libranet::msg` | Messages, and the channels that carry them; uses `types` |
 | [`src/net/`](src/net/) | `libranet::net` | Addresses and sockets, on POSIX systems |
 | [`src/crypto/`](src/crypto/) | `libranet::crypto` | Hashing, encrypting, and signing: SHA-256, AES, RSA, Ed25519, and Argon2id with OpenSSL; on macOS, SHA-256, AES, and RSA with Apple's frameworks instead |
@@ -118,7 +118,8 @@ Apple's Clang uses. CI runs the tests in Debug builds.
 
 Coverage shows how much of the code the tests run. Configuring with
 `-DLIBRANET_COVERAGE=ON` builds every target with `--coverage`, so that
-running the tests writes the counts, and
+running the tests writes the counts, and with `-fprofile-update=atomic`, so
+that tests running code from many threads at once count every line, and
 [gcovr](https://gcovr.com/) reports them. Install it with uv:
 
 ```bash

@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "http/Headers.hpp"
+#include "http/Problem.hpp"
 #include "http/Request.hpp"
 #include "http/Response.hpp"
 #include "http/ResponseCode.hpp"
@@ -26,6 +27,7 @@
 #include "net/ISocket.hpp"
 
 using http::Headers;
+using http::Problem;
 using http::Request;
 using http::Response;
 using http::ResponseCode;
@@ -56,15 +58,8 @@ namespace {
 // The header that names the request an answer answers.
 constexpr auto request_path_header = "X-Request-Path";
 
-void set_error_response(Response& response, ResponseCode::Status status) {
-    const string message(ResponseCode::default_reason_phrase(status));
-
-    response.set_status_code(status);
-    response.set_body(message + "\r\n");
-}
-
 void file_not_found([[maybe_unused]] const Request& request, Response& response) {
-    set_error_response(response, ResponseCode::Status::NotFound);
+    Problem(ResponseCode::Status::NotFound, "No resource exists at this path.").answer(response);
 }
 
 // Whether the URI is under the path a handler was registered for: it starts
@@ -126,12 +121,30 @@ Line read_line(ISocket& client, string& line, size_t& room) {
 }
 
 // A request read from a connection, and why it is refused, if it is. A
-// refused request is answered without a handler, and its connection closed.
+// refused request is answered with the problem, without a handler, and its
+// connection closed.
 struct Received {
     Request request;
     bool line_read{false}; // Whether the request line was read, naming the request
-    optional<Status> refusal;
+    optional<Problem> refusal;
 };
+
+// Why a request whose line, headers, or length are not HTTP is refused.
+Problem unreadable() {
+    return {Status::BadRequest, "The request could not be read."};
+}
+
+// Why a request whose body is larger than most_bytes is refused (HTTP API
+// §17.2).
+Problem too_large(size_t most_bytes) {
+    // Mistaken: the problem keeps its own copy of the detail, not a view of
+    // the temporary. cppcheck loses Problem's constructors in a file that
+    // names it with `using http::Problem;` (see Problem.hpp).
+    // cppcheck-suppress returnDanglingLifetime
+    return {Problem::Type::ContentTooLarge, Status::PayloadTooLarge,
+            "The request's body is larger than " + std::to_string(most_bytes)
+                + " bytes, the most the server takes."};
+}
 
 // Reads the request's headers, after its line, into received, noting why
 // they are refused if they are. Returns false if the connection ended first.
@@ -147,7 +160,8 @@ bool read_headers(ISocket& client, size_t& room, Received& received) {
         }
 
         if (Line::TooLong == read) {
-            received.refusal = Status::RequestHeaderFieldsTooLarge;
+            received.refusal = Problem(Status::RequestHeaderFieldsTooLarge,
+                                       "The request's headers are longer than the server reads.");
             return true;
         }
 
@@ -158,10 +172,10 @@ bool read_headers(ISocket& client, size_t& room, Received& received) {
         try {
             last_key = Headers::process_header_line(line, last_key, received.request.headers());
         } catch (const runtime_error&) {
-            received.refusal = Status::BadRequest;
+            received.refusal = unreadable();
             return true;
         } catch (const invalid_argument&) {
-            received.refusal = Status::BadRequest;
+            received.refusal = unreadable();
             return true;
         }
     }
@@ -171,11 +185,12 @@ bool read_headers(ISocket& client, size_t& room, Received& received) {
 // a length that is not digits alone (RFC 9110 §8.6), or one larger than
 // most_bytes. A body sent in chunks, or otherwise encoded, is not taken, as
 // where it ends would not be known (RFC 9112 §6.1).
-optional<Status> body_length(const Headers& headers, size_t most_bytes, size_t& length) {
+optional<Problem> body_length(const Headers& headers, size_t most_bytes, size_t& length) {
     length = 0;
 
     if (headers.has("Transfer-Encoding")) {
-        return Status::NotImplemented;
+        return Problem(Status::NotImplemented,
+                       "A body sent with a Transfer-Encoding cannot be read.");
     }
 
     const auto value = headers.get("Content-Length");
@@ -185,17 +200,17 @@ optional<Status> body_length(const Headers& headers, size_t most_bytes, size_t& 
     }
 
     if (value->empty() || string_view::npos != value->find_first_not_of("0123456789")) {
-        return Status::BadRequest;
+        return unreadable();
     }
 
     try {
         length = std::stoull(string(*value));
     } catch (const out_of_range&) {
-        return Status::PayloadTooLarge;
+        return too_large(most_bytes);
     }
 
     if (length > most_bytes) {
-        return Status::PayloadTooLarge;
+        return too_large(most_bytes);
     }
 
     return nullopt;
@@ -214,12 +229,13 @@ optional<Received> read_request(ISocket& client, const Server::Limits& limits) {
     }
 
     if (Line::TooLong == read) {
-        received.refusal = Status::UriTooLong;
+        received.refusal = Problem(Status::UriTooLong,
+                                   "The request line is longer than the server reads.");
         return received;
     }
 
     if (!received.request.parse_request_line(line)) {
-        received.refusal = Status::BadRequest;
+        received.refusal = unreadable();
         return received;
     }
 
@@ -345,7 +361,8 @@ void respond(const Server::RequestHandler& handler, const Request& request, Resp
         handler(request, response);
     } catch (const exception&) {
         response = Response();
-        set_error_response(response, ResponseCode::Status::InternalServerError);
+        Problem(ResponseCode::Status::InternalServerError, "The request could not be answered.")
+            .answer(response);
     }
 }
 
@@ -580,7 +597,7 @@ bool Server::_answer(ISocket& client) const {
     Response response;
 
     if (received->refusal.has_value()) {
-        set_error_response(response, *received->refusal);
+        received->refusal->answer(response);
     } else {
         respond(_find_handler(received->request.uri()), received->request, response);
     }

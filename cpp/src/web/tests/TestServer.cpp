@@ -46,6 +46,38 @@ constexpr auto answer_timeout = std::chrono::seconds(10);
 // How many bytes to read from a connection at a time.
 constexpr std::size_t read_size = 4096;
 
+// The problem details (HTTP API §17) the server answers with: to a request
+// it cannot read, for a path with no handler, when a handler throws, to a
+// request line or headers past the limit, to a body sent with a
+// Transfer-Encoding, and to a body past the limit, by default and of 4
+// bytes.
+constexpr std::string_view bad_request =
+    R"({"detail":"The request could not be read.","status":400,)"
+    R"("title":"Bad Request","type":"about:blank"})";
+constexpr std::string_view not_found =
+    R"({"detail":"No resource exists at this path.","status":404,)"
+    R"("title":"Not Found","type":"about:blank"})";
+constexpr std::string_view internal_server_error =
+    R"({"detail":"The request could not be answered.","status":500,)"
+    R"("title":"Internal Server Error","type":"about:blank"})";
+constexpr std::string_view uri_too_long =
+    R"({"detail":"The request line is longer than the server reads.","status":414,)"
+    R"("title":"URI Too Long","type":"about:blank"})";
+constexpr std::string_view headers_too_large =
+    R"({"detail":"The request's headers are longer than the server reads.","status":431,)"
+    R"("title":"Request Header Fields Too Large","type":"about:blank"})";
+constexpr std::string_view not_implemented =
+    R"({"detail":"A body sent with a Transfer-Encoding cannot be read.","status":501,)"
+    R"("title":"Not Implemented","type":"about:blank"})";
+constexpr std::string_view too_large =
+    R"({"detail":"The request's body is larger than 1048576 bytes, the most the server takes.",)"
+    R"("status":413,"title":"Content too large",)"
+    R"("type":"https://libranet.org/problems/content-too-large"})";
+constexpr std::string_view too_large_past_4 =
+    R"({"detail":"The request's body is larger than 4 bytes, the most the server takes.",)"
+    R"("status":413,"title":"Content too large",)"
+    R"("type":"https://libranet.org/problems/content-too-large"})";
+
 // A connection to address, once the server there is listening.
 ISocket::Ptr connect_when_listening(const Address& address) {
     const auto deadline = std::chrono::steady_clock::now() + listen_timeout;
@@ -147,6 +179,33 @@ std::string answer(std::string_view status, std::string_view target, std::string
     return "HTTP/1.1 " + std::string(status) + "\r\nContent-Length: "
            + std::to_string(body.size()) + "\r\nX-Request-Path: " + std::string(target)
            + "\r\n\r\n" + std::string(body);
+}
+
+// The server's answer, as status says, with problem details, to a request
+// for target on a connection it keeps open.
+std::string problem(std::string_view status, std::string_view target,
+                    std::string_view details) {
+    return "HTTP/1.1 " + std::string(status) + "\r\nContent-Length: "
+           + std::to_string(details.size())
+           + "\r\nContent-Type: application/problem+json\r\nX-Request-Path: "
+           + std::string(target) + "\r\n\r\n" + std::string(details);
+}
+
+// The server's answer, as status says, with problem details, to a request it
+// refuses, closing the connection after it. A request whose line it cannot
+// read has no target to name, given as "".
+std::string refusal(std::string_view status, std::string_view target,
+                    std::string_view details) {
+    std::string text = "HTTP/1.1 " + std::string(status)
+                       + "\r\nConnection: close\r\nContent-Length: "
+                       + std::to_string(details.size())
+                       + "\r\nContent-Type: application/problem+json\r\n";
+
+    if (!target.empty()) {
+        text += "X-Request-Path: " + std::string(target) + "\r\n";
+    }
+
+    return text + "\r\n" + std::string(details);
 }
 
 // A handler that answers with body.
@@ -274,9 +333,7 @@ TEST_F(ServerTest, LongestPathAtTheStartChoosesTheHandler) {
 TEST_F(ServerTest, PathWithNoHandlerIsNotFound) {
     start();
 
-    EXPECT_EQ(ask(address(), get("/missing")),
-              "HTTP/1.1 404 Not Found\r\nContent-Length: 11\r\nX-Request-Path: /missing\r\n\r\n"
-              "Not Found\r\n");
+    EXPECT_EQ(ask(address(), get("/missing")), problem("404 Not Found", "/missing", not_found));
 }
 
 // A URI that only starts with the letters of a path, as /database does with
@@ -285,11 +342,9 @@ TEST_F(ServerTest, PathIsNotAPrefixOfALongerName) {
     server().register_handler("/data", answer_with("data"));
     start();
 
-    EXPECT_EQ(ask(address(), get("/database")),
-              answer("404 Not Found", "/database", "Not Found\r\n"));
-    EXPECT_EQ(ask(address(), get("/data-set")),
-              answer("404 Not Found", "/data-set", "Not Found\r\n"));
-    EXPECT_EQ(ask(address(), get("/dat")), answer("404 Not Found", "/dat", "Not Found\r\n"));
+    EXPECT_EQ(ask(address(), get("/database")), problem("404 Not Found", "/database", not_found));
+    EXPECT_EQ(ask(address(), get("/data-set")), problem("404 Not Found", "/data-set", not_found));
+    EXPECT_EQ(ask(address(), get("/dat")), problem("404 Not Found", "/dat", not_found));
 }
 
 TEST_F(ServerTest, PathHandlesWhatIsBelowIt) {
@@ -435,9 +490,7 @@ TEST_F(ServerTest, NoContentIsAnsweredWithoutABody) {
 TEST_F(ServerTest, EmptyRequestLineIsBadRequest) {
     start();
 
-    EXPECT_EQ(ask_until_closed(address(), "\r\n"),
-              "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 13\r\n\r\n"
-              "Bad Request\r\n");
+    EXPECT_EQ(ask_until_closed(address(), "\r\n"), refusal("400 Bad Request", "", bad_request));
 }
 
 // A Content-Length is digits alone.
@@ -447,8 +500,7 @@ TEST_F(ServerTest, ContentLengthNotDigitsIsBadRequest) {
     for (const auto* const length : {"five", "-1", "+5", "5 5", ""}) {
         EXPECT_EQ(ask_until_closed(address(), std::string("POST /x HTTP/1.1\r\nContent-Length: ")
                                                   + length + "\r\n\r\n"),
-                  "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 13\r\n"
-                  "X-Request-Path: /x\r\n\r\nBad Request\r\n")
+                  refusal("400 Bad Request", "/x", bad_request))
             << length;
     }
 }
@@ -458,8 +510,7 @@ TEST_F(ServerTest, ContentLengthOutOfRangeIsPayloadTooLarge) {
 
     EXPECT_EQ(ask_until_closed(
                   address(), "POST /x HTTP/1.1\r\nContent-Length: 99999999999999999999999\r\n\r\n"),
-              "HTTP/1.1 413 Payload Too Large\r\nConnection: close\r\nContent-Length: 19\r\n"
-              "X-Request-Path: /x\r\n\r\nPayload Too Large\r\n");
+              refusal("413 Payload Too Large", "/x", too_large));
 }
 
 // A body is taken up to the limit, and one past it is refused unread.
@@ -477,8 +528,7 @@ TEST_F(ServerTest, BodyPastTheLimitIsPayloadTooLarge) {
     EXPECT_EQ(ask(address(), "POST /echo HTTP/1.1\r\nContent-Length: 4\r\n\r\nabcd"),
               answer("200 OK", "/echo", "abcd"));
     EXPECT_EQ(ask_until_closed(address(), "POST /echo HTTP/1.1\r\nContent-Length: 5\r\n\r\n"),
-              "HTTP/1.1 413 Payload Too Large\r\nConnection: close\r\nContent-Length: 19\r\n"
-              "X-Request-Path: /echo\r\n\r\nPayload Too Large\r\n");
+              refusal("413 Payload Too Large", "/echo", too_large_past_4));
 }
 
 // A body sent in chunks has no length to say where the next request starts.
@@ -487,8 +537,7 @@ TEST_F(ServerTest, ChunkedBodyIsNotImplemented) {
 
     EXPECT_EQ(ask_until_closed(address(),
                                "POST /x HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n"),
-              "HTTP/1.1 501 Not Implemented\r\nConnection: close\r\nContent-Length: 17\r\n"
-              "X-Request-Path: /x\r\n\r\nNot Implemented\r\n");
+              refusal("501 Not Implemented", "/x", not_implemented));
 }
 
 // The request line must fit in the limit on a request's line and headers.
@@ -502,8 +551,7 @@ TEST_F(ServerTest, RequestLinePastTheLimitIsUriTooLong) {
     start();
 
     EXPECT_EQ(ask_until_closed(address(), "GET /" + std::string(head_bytes - 5, 'a')),
-              "HTTP/1.1 414 URI Too Long\r\nConnection: close\r\nContent-Length: 14\r\n\r\n"
-              "URI Too Long\r\n");
+              refusal("414 URI Too Long", "", uri_too_long));
 }
 
 // A request's line and headers are taken up to the limit, the blank line
@@ -521,9 +569,7 @@ TEST_F(ServerTest, HeadersPastTheLimitAreTooLarge) {
     EXPECT_EQ(ask(address(), "GET /hello HTTP/1.1\r\nX-A: 12\r\n\r\n"),
               answer("200 OK", "/hello", "Hello"));
     EXPECT_EQ(ask_until_closed(address(), "GET /hello HTTP/1.1\r\nX-A: 123\r\n\r"),
-              "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n"
-              "Content-Length: 33\r\nX-Request-Path: /hello\r\n\r\n"
-              "Request Header Fields Too Large\r\n");
+              refusal("431 Request Header Fields Too Large", "/hello", headers_too_large));
 }
 
 // A connection that sends nothing for the idle limit is closed.
@@ -654,7 +700,7 @@ TEST_F(ServerTest, HandlerThatThrowsIsInternalServerError) {
 
     connection->send_all(get("/data/x"));
     EXPECT_EQ(read_answer(*connection),
-              answer("500 Internal Server Error", "/data/x", "Internal Server Error\r\n"));
+              problem("500 Internal Server Error", "/data/x", internal_server_error));
     connection->send_all(get("/hello"));
     EXPECT_EQ(read_answer(*connection), answer("200 OK", "/hello", "Hello"));
 }
@@ -666,8 +712,7 @@ TEST_F(ServerTest, HeaderWithoutColonIsBadRequest) {
     start();
 
     EXPECT_EQ(ask_until_closed(address(), "GET /hello HTTP/1.1\r\nNo colon here\r\n"),
-              "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 13\r\n"
-              "X-Request-Path: /hello\r\n\r\nBad Request\r\n");
+              refusal("400 Bad Request", "/hello", bad_request));
     EXPECT_EQ(ask(address(), get("/hello")), answer("200 OK", "/hello", "Hello"));
 }
 

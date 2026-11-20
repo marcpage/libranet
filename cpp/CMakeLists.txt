@@ -42,13 +42,17 @@ add_compile_definitions(
 
 # Coverage: configure a Debug build with -DLIBRANET_COVERAGE=ON, run the
 # tests, and gcovr reports which lines they ran. GCC and Clang both write
-# the gcov data gcovr reads.
+# the gcov data gcovr reads. The tests run code from many threads at once,
+# and the counters are not updated atomically unless asked: GCC only does
+# so when compiling with -pthread, which CMake leaves out where the C
+# library has the threads. Counts lost to threads racing make gcov work out
+# negative ones from the rest, and gcovr stops.
 option(LIBRANET_COVERAGE "Instrument the code to measure test coverage" OFF)
 if(LIBRANET_COVERAGE)
     if(MSVC)
         message(FATAL_ERROR "LIBRANET_COVERAGE needs GCC or Clang")
     endif()
-    add_compile_options(--coverage)
+    add_compile_options(--coverage -fprofile-update=atomic)
     add_link_options(--coverage)
 endif()
 
