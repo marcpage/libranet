@@ -29,13 +29,11 @@ What it takes:
   ([§12.4](../../../docs/specs/HttpApi.md#124-keeping-content-offline)).
 - An application's store, `/data/store`
   ([§13.3](../../../docs/specs/HttpApi.md#133-application-store)).
-- Keeping what was just stored, so that eviction does not take it before
-  the network holds it.
 
 What needs someone signed in, such as a drop made from a page, comes in
 [Phase 6](Phase%206.md).
 
 The Python node built the same in
-[Phase 3](../../../python/docs/plans/Phase%203.md) Steps 68–70, 72, and 75,
+[Phase 3](../../../python/docs/plans/Phase%203.md) Steps 68–70 and 72,
 and kept content offline outside its plans, from #422. Its issues are in the
 GitHub **C++ Phase 5 - Adding content from the pages** milestone.
