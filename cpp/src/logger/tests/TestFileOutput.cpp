@@ -10,6 +10,7 @@ using fixtures::ScratchFile;
 using logger::FileOutput;
 using std::errc;
 using std::system_error;
+using std::filesystem::perms;
 
 TEST(FileOutputTest, MakesTheFile) {
     const ScratchFile file;
@@ -17,6 +18,15 @@ TEST(FileOutputTest, MakesTheFile) {
     const FileOutput output(file.path().string());
 
     EXPECT_TRUE(std::filesystem::exists(file.path()));
+}
+
+TEST(FileOutputTest, OnlyTheOwnerCanReadOrWriteAFileItMakes) {
+    const ScratchFile file;
+
+    const FileOutput output(file.path().string());
+
+    EXPECT_EQ(std::filesystem::status(file.path()).permissions(),
+              perms::owner_read | perms::owner_write);
 }
 
 TEST(FileOutputTest, AddsToTheEndOfTheFile) {

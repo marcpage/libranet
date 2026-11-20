@@ -5,6 +5,10 @@
 #include <string>
 #include <system_error>
 
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include "StreamOutput.hpp"
 
 using std::FILE;
@@ -13,16 +17,31 @@ using std::system_error;
 
 namespace {
 
-// Opens the file to add to its end, making it if it is not there. The "e"
-// keeps a program this one starts from inheriting it, on Linux; macOS
-// takes the letter and does not act on it.
+// Opens the file to add to its end. A file it makes can be read and written
+// by its owner only, since a log's lines can name peers and what they asked
+// for. A program this one starts does not inherit it.
 FILE* open_to_append(const string& path) {
-    // StreamOutput holds the stream in a std::unique_ptr, which closes it.
-    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
-    auto* const stream = std::fopen(path.c_str(), "ae");
+    constexpr int flags = O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC;
+    constexpr mode_t owner_read_write = S_IRUSR | S_IWUSR;
+
+    // open() is the POSIX call that sets the mode of a file as it makes it,
+    // and it takes the mode as C's variable arguments.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg)
+    const int descriptor = ::open(path.c_str(), flags, owner_read_write);
+
+    if (descriptor < 0) {
+        throw system_error(errno, std::generic_category(), "Cannot open the log file " + path);
+    }
+
+    // StreamOutput holds the stream in a std::unique_ptr, which closes it,
+    // and the descriptor with it.
+    auto* const stream = ::fdopen(descriptor, "a");
 
     if (nullptr == stream) {
-        throw system_error(errno, std::generic_category(), "Cannot open the log file " + path);
+        const auto error = errno;
+
+        (void)::close(descriptor);
+        throw system_error(error, std::generic_category(), "Cannot open the log file " + path);
     }
 
     return stream;
