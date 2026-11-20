@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "http/Headers.hpp"
+#include "http/Problem.hpp"
 #include "http/Request.hpp"
 #include "http/Response.hpp"
 #include "http/ResponseCode.hpp"
@@ -20,6 +21,7 @@
 #include "net/ISocket.hpp"
 
 using http::Headers;
+using http::Problem;
 using http::Request;
 using http::Response;
 using http::ResponseCode;
@@ -39,15 +41,8 @@ using web::Server;
 
 namespace {
 
-void set_error_response(Response& response, ResponseCode::Status status) {
-    const string message(ResponseCode::default_reason_phrase(status));
-
-    response.set_status_code(status);
-    response.set_body(message + "\r\n");
-}
-
 void file_not_found([[maybe_unused]] const Request& request, Response& response) {
-    set_error_response(response, ResponseCode::Status::NotFound);
+    Problem(ResponseCode::Status::NotFound, "No resource exists at this path.").answer(response);
 }
 
 // Whether the URI is under the path a handler was registered for: it starts
@@ -143,7 +138,8 @@ void respond(const Server::RequestHandler& handler, const Request& request, Resp
         handler(request, response);
     } catch (const exception&) {
         response = Response();
-        set_error_response(response, ResponseCode::Status::InternalServerError);
+        Problem(ResponseCode::Status::InternalServerError, "The request could not be answered.")
+            .answer(response);
     }
 }
 
@@ -279,7 +275,8 @@ void Server::_answer(ISocket::Ptr& client) const {
         if (request.has_value()) {
             respond(_find_handler(request->uri()), *request, response);
         } else {
-            set_error_response(response, ResponseCode::Status::BadRequest);
+            Problem(ResponseCode::Status::BadRequest, "The request could not be read.")
+                .answer(response);
         }
 
         client->send_all(response.to_string());

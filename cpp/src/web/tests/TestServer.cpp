@@ -39,6 +39,21 @@ constexpr auto retry_interval = std::chrono::milliseconds(5);
 // How many bytes to read from a connection at a time.
 constexpr std::size_t read_size = 4096;
 
+// What the server answers, as problem details (HTTP API §17), to a request
+// it cannot read, for a path with no handler, and when a handler throws.
+constexpr std::string_view bad_request =
+    "HTTP/1.1 400 Bad Request\r\nContent-Type: application/problem+json\r\n\r\n"
+    R"({"detail":"The request could not be read.","status":400,)"
+    R"("title":"Bad Request","type":"about:blank"})";
+constexpr std::string_view not_found =
+    "HTTP/1.1 404 Not Found\r\nContent-Type: application/problem+json\r\n\r\n"
+    R"({"detail":"No resource exists at this path.","status":404,)"
+    R"("title":"Not Found","type":"about:blank"})";
+constexpr std::string_view internal_server_error =
+    "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/problem+json\r\n\r\n"
+    R"({"detail":"The request could not be answered.","status":500,)"
+    R"("title":"Internal Server Error","type":"about:blank"})";
+
 // A connection to address, once the server there is listening.
 ISocket::Ptr connect_when_listening(const Address& address) {
     const auto deadline = std::chrono::steady_clock::now() + listen_timeout;
@@ -187,8 +202,7 @@ TEST_F(ServerTest, LongestPathAtTheStartChoosesTheHandler) {
 TEST_F(ServerTest, PathWithNoHandlerIsNotFound) {
     start();
 
-    EXPECT_EQ(exchange(address(), "GET /missing HTTP/1.1\r\n\r\n"),
-              "HTTP/1.1 404 Not Found\r\n\r\nNot Found\r\n");
+    EXPECT_EQ(exchange(address(), "GET /missing HTTP/1.1\r\n\r\n"), not_found);
 }
 
 // A URI that only starts with the letters of a path, as /database does with
@@ -197,12 +211,9 @@ TEST_F(ServerTest, PathIsNotAPrefixOfALongerName) {
     server().register_handler("/data", answer_with("data"));
     start();
 
-    EXPECT_EQ(exchange(address(), "GET /database HTTP/1.1\r\n\r\n"),
-              "HTTP/1.1 404 Not Found\r\n\r\nNot Found\r\n");
-    EXPECT_EQ(exchange(address(), "GET /data-set HTTP/1.1\r\n\r\n"),
-              "HTTP/1.1 404 Not Found\r\n\r\nNot Found\r\n");
-    EXPECT_EQ(exchange(address(), "GET /dat HTTP/1.1\r\n\r\n"),
-              "HTTP/1.1 404 Not Found\r\n\r\nNot Found\r\n");
+    EXPECT_EQ(exchange(address(), "GET /database HTTP/1.1\r\n\r\n"), not_found);
+    EXPECT_EQ(exchange(address(), "GET /data-set HTTP/1.1\r\n\r\n"), not_found);
+    EXPECT_EQ(exchange(address(), "GET /dat HTTP/1.1\r\n\r\n"), not_found);
 }
 
 TEST_F(ServerTest, PathHandlesWhatIsBelowIt) {
@@ -242,14 +253,13 @@ TEST_F(ServerTest, HandlerReadsTheHeadersAndBody) {
 TEST_F(ServerTest, EmptyRequestLineIsBadRequest) {
     start();
 
-    EXPECT_EQ(exchange(address(), "\r\n"), "HTTP/1.1 400 Bad Request\r\n\r\nBad Request\r\n");
+    EXPECT_EQ(exchange(address(), "\r\n"), bad_request);
 }
 
 TEST_F(ServerTest, ContentLengthNotANumberIsBadRequest) {
     start();
 
-    EXPECT_EQ(exchange(address(), "POST /x HTTP/1.1\r\nContent-Length: five\r\n\r\n"),
-              "HTTP/1.1 400 Bad Request\r\n\r\nBad Request\r\n");
+    EXPECT_EQ(exchange(address(), "POST /x HTTP/1.1\r\nContent-Length: five\r\n\r\n"), bad_request);
 }
 
 TEST_F(ServerTest, ContentLengthOutOfRangeIsBadRequest) {
@@ -257,7 +267,7 @@ TEST_F(ServerTest, ContentLengthOutOfRangeIsBadRequest) {
 
     EXPECT_EQ(exchange(address(),
                        "POST /x HTTP/1.1\r\nContent-Length: 99999999999999999999999\r\n\r\n"),
-              "HTTP/1.1 400 Bad Request\r\n\r\nBad Request\r\n");
+              bad_request);
 }
 
 // Once stopped, the server no longer listens.
@@ -318,8 +328,7 @@ TEST_F(ServerTest, HandlerThatThrowsIsInternalServerError) {
     server().register_handler("/hello", answer_with("Hello"));
     start();
 
-    EXPECT_EQ(exchange(address(), "GET /data/x HTTP/1.1\r\n\r\n"),
-              "HTTP/1.1 500 Internal Server Error\r\n\r\nInternal Server Error\r\n");
+    EXPECT_EQ(exchange(address(), "GET /data/x HTTP/1.1\r\n\r\n"), internal_server_error);
     EXPECT_EQ(exchange(address(), "GET /hello HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\nHello");
 }
 
@@ -329,8 +338,7 @@ TEST_F(ServerTest, HeaderWithoutColonIsBadRequest) {
     server().register_handler("/hello", answer_with("Hello"));
     start();
 
-    EXPECT_EQ(exchange(address(), "GET /hello HTTP/1.1\r\nNo colon here\r\n"),
-              "HTTP/1.1 400 Bad Request\r\n\r\nBad Request\r\n");
+    EXPECT_EQ(exchange(address(), "GET /hello HTTP/1.1\r\nNo colon here\r\n"), bad_request);
     EXPECT_EQ(exchange(address(), "GET /hello HTTP/1.1\r\n\r\n"), "HTTP/1.1 200 OK\r\n\r\nHello");
 }
 
