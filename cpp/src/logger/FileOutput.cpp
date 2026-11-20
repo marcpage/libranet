@@ -1,24 +1,35 @@
-#include "FileOutput.h"
-#include <cstring>
+#include "FileOutput.hpp"
+
+#include <cerrno>
+#include <cstdio>
+#include <string>
 #include <system_error>
 
-namespace core {
+#include "StreamOutput.hpp"
 
-FileOutput::FileOutput(const std::string &path)
-    : StreamOutput(_open(path), path, StreamOutput::AutoClose) { }
+namespace {
 
-FILE *FileOutput::_open(const std::string &path) {
-    auto *opened = ::fopen(path.c_str(), "a");
+// Opens the file to add to its end, making it if it is not there. The "e"
+// keeps a program this one starts from inheriting it, on Linux; macOS
+// takes the letter and does not act on it.
+std::FILE* open_to_append(const std::string& path) {
+    // StreamOutput holds the stream in a std::unique_ptr, which closes it.
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
+    auto* const stream = std::fopen(path.c_str(), "ae");
 
-    if (nullptr == opened) {
-        const auto error = errno;
-
-        throw std::system_error(
-            std::error_code(error, std::generic_category()),
-            "Failed to open log '" + path + "': " + ::strerror(error));
+    if (nullptr == stream) {
+        throw std::system_error(errno, std::generic_category(), "Cannot open the log file " + path);
     }
 
-    return opened;
+    return stream;
 }
 
+} // namespace
+
+namespace logger {
+
+FileOutput::FileOutput(const std::string& path)
+    : StreamOutput(open_to_append(path), path, Closing::Close) {
 }
+
+} // namespace logger

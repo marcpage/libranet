@@ -110,6 +110,7 @@ add_subdirectory(src/net)
 add_subdirectory(src/web)
 add_subdirectory(src/crypto)
 add_subdirectory(src/storage)
+add_subdirectory(src/logger)
 
 add_executable(libranet src/main.cpp)
 target_link_libraries(libranet PUBLIC 

@@ -1,319 +1,301 @@
-#include "Logger.h"
-#include "StdErrOutput.h"
+#include "Logger.hpp"
+
 #include <algorithm>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <exception>
+#include <iterator>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <sstream>
-#include "DefaultFormatter.h"
+#include <string>
+#include <string_view>
+#include <thread>
+#include <utility>
+#include <vector>
 
-namespace core {
+#include "DefaultFormatter.hpp"
+#include "ILogFormatter.hpp"
+#include "ILogOutput.hpp"
+#include "StdErrOutput.hpp"
 
-// #MARK: outputs list mutex
+namespace {
 
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-std::vector<Logger::ILogOutputPtr> Logger::_outputs_needsLock;
+// What every Logger shares: where lines go, how they are written, which are
+// shown, and the threads that have logged, in the order they first did. The
+// mutex guards all but the spacing, and is held while a line is written, so
+// that lines from different threads do not mix.
+struct Shared {
+    std::mutex mutex;
+    std::vector<logger::ILogOutput::Ptr> outputs;
+    logger::ILogFormatter::Ptr formatter = std::make_unique<logger::DefaultFormatter>();
+    std::map<logger::Logger::Level, std::string> levels;
+    std::vector<std::thread::id> threads;
+    std::atomic<logger::Logger::InserterSpacing> spacing{logger::Logger::InserterSpacing::Pad};
+};
 
-void Logger::addOutput(ILogOutputPtr method) {
-    if (method != nullptr) {
-        std::lock_guard<std::mutex> lock(_mutex(OutputListMutex));
-
-        _outputs_needsLock.push_back(std::move(method));
-    }
+// Made when first used, so that it is ready for a line logged while another
+// static object is built.
+Shared& shared() {
+    static Shared state;
+    return state;
 }
 
-void Logger::removeAllOutputs() {
-    std::lock_guard<std::mutex> lock(_mutex(OutputListMutex));
+// Whether file matches pattern, as Logger::set_level() says.
+bool file_matches(std::string_view file, std::string_view pattern) {
+    auto has_inclusions = false;
+    auto included = false;
+    std::size_t start = 0;
 
-    _outputs_needsLock.clear();
-}
+    while (start <= pattern.size()) {
+        const auto end = std::min(pattern.find(';', start), pattern.size());
+        const auto part = pattern.substr(start, end - start);
+        const auto excludes = !part.empty() && '-' == part.front();
+        const auto contained = std::string_view::npos != file.find(part.substr(excludes ? 1 : 0));
 
-// MARK: formatter mutex
+        if (excludes && contained) {
+            return false;
+        }
 
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-Logger::ILogFormatterPtr Logger::_formatter_needsLock;
+        if (!excludes) {
+            has_inclusions = true;
+            included = included || contained;
+        }
 
-void Logger::setFormat(ILogFormatterPtr formatter) {
-    std::lock_guard<std::mutex> lock(_mutex(FormatterMutex));
-
-    _formatter_needsLock = std::move(formatter);
-}
-
-Logger &Logger::operator<<(const std::exception &value) {
-    std::lock_guard<std::mutex> lock(_mutex(FormatterMutex));
-
-    return _append(_formatter_needsLock->format(value));
-}
-
-// MARK: outputs list and formatter mutexes
-
-Logger &Logger::_logLineCore(const std::string &logLine) {
-    std::lock_guard<std::mutex> lockOutput(_mutex(OutputListMutex));
-    std::lock_guard<std::mutex> lockFormatter(_mutex(FormatterMutex));
-    using ExceptionLogger = std::pair<std::string, std::string>;
-    using ExceptionList = std::vector<ExceptionLogger>;
-    ExceptionList failed_outputs;
-
-    if (nullptr == _formatter_needsLock) {
-        _formatter_needsLock = std::make_unique<DefaultFormatter>();
-    }
-
-    const auto formatted_line = _formatter_needsLock->format(logLine, _threadIndex(), *this);
-
-    if (_outputs_needsLock.empty()) {
-        _outputs_needsLock.push_back(std::make_unique<StdErrOutput>());
+        start = end + 1;
     }
 
-    for (auto output = _outputs_needsLock.begin(); output != _outputs_needsLock.end();) {
+    return included || !has_inclusions;
+}
+
+// Whether a line at level, from file, is shown. A level shows its lines and
+// those of every level more severe, which sort before it, so the levels that
+// can show the line are this one and those after it. The caller holds the
+// shared mutex.
+bool shown(const std::map<logger::Logger::Level, std::string>& levels,
+           logger::Logger::Level level, std::string_view file) {
+    return std::any_of(levels.lower_bound(level), levels.end(),
+                       [file](const auto& entry) { return file_matches(file, entry.second); });
+}
+
+// The index of the calling thread among those that have logged, in the order
+// they first did. The caller holds the shared mutex.
+std::size_t thread_index(std::vector<std::thread::id>& threads) {
+    const auto this_thread = std::this_thread::get_id();
+    const auto found = std::find(threads.begin(), threads.end(), this_thread);
+
+    if (found != threads.end()) {
+        return static_cast<std::size_t>(std::distance(threads.begin(), found));
+    }
+
+    threads.push_back(this_thread);
+    return threads.size() - 1;
+}
+
+// Writes the line to each output, or to stderr if there are none. An output
+// that fails is removed, and what the formatter makes of what it threw is
+// returned. The caller holds the shared mutex.
+std::vector<std::string> write_to_outputs(Shared& state, std::string_view line) {
+    std::vector<std::string> failures;
+
+    if (state.outputs.empty()) {
+        state.outputs.push_back(std::make_unique<logger::StdErrOutput>());
+    }
+
+    for (auto output = state.outputs.begin(); output != state.outputs.end();) {
         try {
-            (*output)->log(formatted_line);
+            (*output)->log(line);
             ++output;
-        } catch (const std::exception &exception) {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpotentially-evaluated-expression"
-            const auto * const loggerType = *output ? typeid(**output).name() : "";
-#pragma GCC diagnostic pop
-
-            failed_outputs.push_back(ExceptionLogger(_formatter_needsLock->format(exception), loggerType));
-            output = _outputs_needsLock.erase(output);
+        } catch (const std::exception& error) {
+            failures.push_back(state.formatter->format(error));
+            output = state.outputs.erase(output);
         }
     }
 
-    if (_outputs_needsLock.empty()) {
-        _outputs_needsLock.push_back(std::make_unique<StdErrOutput>());
-    }
-
-    if (!failed_outputs.empty()) {
-        for (const auto &exceptionLogger : failed_outputs) {
-            for (auto &sink : _outputs_needsLock) {
-                try {
-                    sink->log(_formatter_needsLock->format("Logger[" + exceptionLogger.second + "]: "
-                            + exceptionLogger.first,
-                        _threadIndex(), *this));
-                } catch (const std::exception &) {
-                    // we tried
-                }
-            }
-        }
-    }
-
-    return *this;
+    return failures;
 }
 
-// MARK: levels mutex
+} // namespace
 
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-std::map<Logger::Level, std::string> Logger::_levels_needsLock;
+namespace logger {
 
-void Logger::setLevel(Level level, const std::string &pattern) {
-    std::lock_guard<std::mutex> lock(_mutex(LevelsMutex));
-    const int start = static_cast<int>(level);
-    const int max = static_cast<int>(Level::Trace);
-
-    for (int index = start; index <= max; ++index) {
-        const auto lvl = static_cast<Level>(index);
-        if (pattern == _levels_needsLock[lvl] && !pattern.empty() && pattern != "-") {
-            _levels_needsLock.erase(lvl);
-        }
-    }
-
-    _levels_needsLock[level] = pattern;
-}
-
-void Logger::resetLevels(Level level) {
-    std::lock_guard<std::mutex> lock(_mutex(LevelsMutex));
-
-    _levels_needsLock.clear();
-    _levels_needsLock[level] = "";
-}
-
-bool Logger::shown(Level loggedLevel, const std::string &file) {
-    // If the file has been set to the requested level or higher, it can be logged.
-    std::lock_guard<std::mutex> lock(_mutex(LevelsMutex));
-    const int start = static_cast<int>(loggedLevel);
-    const int max = static_cast<int>(Level::Trace);
-
-    for (int index = start; index <= max; ++index) {
-        const auto lvl = static_cast<Level>(index);
-        const auto found = _levels_needsLock.find(lvl);
-
-        if (found == _levels_needsLock.end()) {
-            continue; // nothing authorized for this level
-        }
-
-        if (_fileMatches(file, found->second)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-// MARK: spacing
-
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-Logger::InserterSpacing Logger::_spacing;
-
-void Logger::setInserterSpacing(InserterSpacing spacing) {
-    _spacing = spacing;
-}
-
-Logger &Logger::_append(const std::string &value) {
-    if (InserterPad == _spacing && !_stream.empty()) {
-        _stream += ' ';
-    }
-
-    _stream += value;
-    return *this;
-}
-
-// MARK: Con/De strutors
-
-Logger::Logger(Level level, const char *filename, const int lineNumber, const char *functionName, bool doLog, const char *conditionText)
-    : levelRequested(level)
-    , file(filename)
-    , line(lineNumber)
-    , function(functionName)
-    , condition(conditionText)
-    , _doLog(doLog) { }
-
-Logger::~Logger() {
-    if (levelRequested != Level::Fatal && (!_doLog || _stream.empty())) {
+void Logger::add_output(ILogOutput::Ptr output) {
+    if (!output) {
         return;
     }
 
+    auto& state = shared();
+    const std::scoped_lock lock(state.mutex);
+
+    state.outputs.push_back(std::move(output));
+}
+
+void Logger::remove_all_outputs() {
+    auto& state = shared();
+    const std::scoped_lock lock(state.mutex);
+
+    state.outputs.clear();
+}
+
+void Logger::set_formatter(ILogFormatter::Ptr new_formatter) {
+    if (!new_formatter) {
+        new_formatter = std::make_unique<DefaultFormatter>();
+    }
+
+    auto& state = shared();
+    const std::scoped_lock lock(state.mutex);
+
+    state.formatter = std::move(new_formatter);
+}
+
+void Logger::set_level(Level level, std::string pattern) {
+    auto& state = shared();
+    const std::scoped_lock lock(state.mutex);
+
+    // Left at a more detailed level, the pattern would still show its files'
+    // lines at that level.
+    for (auto entry = state.levels.lower_bound(level); entry != state.levels.end();) {
+        entry = pattern == entry->second ? state.levels.erase(entry) : std::next(entry);
+    }
+
+    state.levels[level] = std::move(pattern);
+}
+
+void Logger::reset_levels(Level level) {
+    auto& state = shared();
+    const std::scoped_lock lock(state.mutex);
+
+    state.levels.clear();
+    state.levels[level] = "";
+}
+
+bool Logger::is_shown(Level level, std::string_view file) {
+    auto& state = shared();
+    const std::scoped_lock lock(state.mutex);
+
+    return shown(state.levels, level, file);
+}
+
+void Logger::set_inserter_spacing(InserterSpacing new_spacing) {
+    shared().spacing = new_spacing;
+}
+
+Logger::Logger(Level level, std::string_view file, std::uint32_t line, std::string_view function,
+               bool condition_met, std::string_view condition)
+    : m_level(level)
+    , m_file(file)
+    , m_line(line)
+    , m_function(function)
+    , m_condition_met(condition_met)
+    , m_condition(condition) {
+}
+
+Logger::~Logger() {
+    if (!m_condition_met) {
+        return;
+    }
+
+    // The log is no reason to stop the program, so a line that cannot be
+    // written is only reported, where it can be.
     try {
-        log_line(_stream);
-    } catch (...) {
-        // too late
-    }
-
-    if (_doLog && levelRequested == Level::Fatal) {
-        ::abort();
-    }
-}
-
-// MARK: logging methods
-
-Logger &Logger::log_line(const std::string &logLine) {
-    if (!shown(levelRequested, nullptr == file ? "" : file)) {
-        return *this;
-    }
-
-    return _logLineCore(logLine);
-}
-
-bool Logger::logExpressionBool(const std::string &flow, const std::string &expression, bool result) {
-    log_line(flow + ": " + expression + " => " + (result ? "true" : "false"));
-    return result;
-}
-
-Logger &Logger::operator<<(const std::string &value) {
-    return _append(value);
-}
-
-Logger &Logger::operator<<(const char *value) {
-    return _append(value);
-}
-
-Logger &Logger::operator<<(const void *value) {
-    std::ostringstream oss;
-
-    oss << std::showbase << std::uppercase << std::hex << value;
-    return _append(oss.str());
-}
-
-Logger &Logger::operator<<(float value) {
-    return (*this) << static_cast<double>(value);
-}
-
-Logger &Logger::operator<<(double value) {
-    std::ostringstream oss;
-
-    oss << value;
-    return _append(oss.str());
-}
-
-// MARK: internals
-
-std::mutex &Logger::_mutex(Mutex mutexType) {
-    static std::mutex threadListMutex;
-    static std::mutex outputListMutex;
-    static std::mutex formatterMutex;
-    static std::mutex levelsMutex;
-
-    switch (mutexType) {
-    case ThreadListMutex:
-        return threadListMutex;
-    case OutputListMutex:
-        return outputListMutex;
-    case FormatterMutex:
-        return formatterMutex;
-    case LevelsMutex:
-        return levelsMutex;
-    default:
-        throw std::invalid_argument("Invalid mutex type: " + std::to_string(static_cast<int>(mutexType)));
-    }
-}
-
-bool Logger::_fileMatches(const std::string &file, const std::string &pattern) {
-    /*
-        Rules:
-        1. No files matches a pattern of "-"
-        2. Any file matches an empty pattern (including an empty file)
-        3. All positive patterns are ORed and all negative patterns are ANDed
-
-        Example:
-        - "-" match nothing
-        - "" match everything
-        - "-bin/" match everything except files that contain "bin/"
-        - "src/;-src/include/" match everything that contains "src/"
-                                unless it contains "src/include/"
-        - ".h;.cpp;-main.cpp;-test.cpp" match all files that have ".h" or ".cpp" in them
-                                            but don't match any that contain "main.cpp"
-                                                or "test.cpp"
-    */
-    size_t start = 0;
-    auto good = false;
-
-    if (pattern.empty()) {
-        return true;
-    }
-
-    if (pattern == "-") {
-        return false;
-    }
-
-    while (start < pattern.size()) {
-        const auto end = pattern.find(';', start);
-        const auto part = pattern.substr(start, end - start);
-        const auto negative = part.find('-') == 0;
-        const auto name = part.substr(negative ? 1 : 0);
-        const auto matches = file.find(name) != std::string::npos;
-
-        if (matches) {
-            good = !negative;
+        if (Level::Fatal == m_level || !m_text.empty()) {
+            _write();
         }
-
-        start = end < pattern.size() ? end + 1 : end;
+    } catch (const std::exception& error) {
+        (void)std::fputs("Cannot write a line of the log: ", stderr);
+        (void)std::fputs(error.what(), stderr);
+        (void)std::fputs("\n", stderr);
     }
 
-    return good;
+    if (Level::Fatal == m_level) {
+        std::abort();
+    }
 }
 
-// MARK: threads mutex
+Logger::Level Logger::level() const noexcept {
+    return m_level;
+}
 
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-std::vector<std::thread::id> Logger::_threads_needsLock;
+std::string_view Logger::file() const noexcept {
+    return m_file;
+}
 
-size_t Logger::_threadIndex() {
-    const auto this_thread = std::this_thread::get_id();
-    std::lock_guard<std::mutex> protection(_mutex(ThreadListMutex));
-    const auto found = std::find(_threads_needsLock.begin(), _threads_needsLock.end(), this_thread);
+std::uint32_t Logger::line() const noexcept {
+    return m_line;
+}
 
-    if (found == _threads_needsLock.end()) {
-        _threads_needsLock.push_back(this_thread);
-        return _threads_needsLock.size() - 1;
+std::string_view Logger::function() const noexcept {
+    return m_function;
+}
+
+std::string_view Logger::condition() const noexcept {
+    return m_condition;
+}
+
+Logger& Logger::operator<<(std::string_view value) {
+    return _append(value);
+}
+
+Logger& Logger::operator<<(const char* value) {
+    if (nullptr == value) {
+        return _append("(null)");
     }
 
-    return static_cast<size_t>(found - _threads_needsLock.begin());
+    return _append(value);
 }
 
+Logger& Logger::operator<<(const void* value) {
+    std::ostringstream text;
+
+    text << value;
+    return _append(text.str());
 }
+
+Logger& Logger::operator<<(double value) {
+    std::ostringstream text;
+
+    text << value;
+    return _append(text.str());
+}
+
+Logger& Logger::operator<<(const std::exception& value) {
+    auto& state = shared();
+    const std::scoped_lock lock(state.mutex);
+
+    return _append(state.formatter->format(value));
+}
+
+Logger& Logger::_append(std::string_view value) {
+    if (InserterSpacing::Pad == shared().spacing && !m_text.empty()) {
+        m_text += ' ';
+    }
+
+    m_text += value;
+    return *this;
+}
+
+void Logger::_write() const {
+    auto& state = shared();
+    const std::scoped_lock lock(state.mutex);
+
+    if (!shown(state.levels, m_level, m_file)) {
+        return;
+    }
+
+    const auto thread = thread_index(state.threads);
+    const auto failures = write_to_outputs(state, state.formatter->format(m_text, thread, *this));
+
+    // Those left are told of each output that failed. One that fails then is
+    // removed too.
+    for (const auto& failure : failures) {
+        const auto report = "Stopped writing the log to an output that failed: " + failure;
+
+        (void)write_to_outputs(state, state.formatter->format(report, thread, *this));
+    }
+}
+
+} // namespace logger
