@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <memory>
 #include <stdexcept>
@@ -19,7 +21,9 @@ namespace crypto {
 
 // An Ed25519 key, built on OpenSSL. Its PEM forms are the standard ones,
 // which the Python node reads and writes too: SubjectPublicKeyInfo for the
-// public key, and PKCS #8 for the private key.
+// public key, and PKCS #8 for the private key. A key that is one of the
+// points of small order is refused, since anyone can forge signatures that
+// OpenSSL finds verify under one (HTTP API §11.2).
 class Ed25519OpenSsl : public ISignKey {
 public:
     using Key = OpenSslKey;
@@ -48,11 +52,31 @@ private:
 
     // An Ed25519 signature's size, in bytes.
     static constexpr std::size_t signature_size = 64;
+    // An Ed25519 public key's size, in bytes, in the raw form of RFC 8032
+    // §5.1.2: the y-coordinate of its point, little-endian, with the sign of
+    // its x-coordinate in the top bit of the last byte.
+    static constexpr std::size_t raw_key_size = 32;
+    // What clears the sign of x from the last byte of a raw key.
+    static constexpr unsigned char y_mask = 0x7F;
+    // The raw keys, in hex, of the eight Ed25519 points of small order: their
+    // y-coordinates, with 0 and 1 also as p and p + 1, the encodings of them
+    // that are not canonical. As in libsodium, a key is compared with the
+    // sign of x cleared, so each matches its points whatever their sign.
+    static constexpr std::array<std::string_view, 7> small_order_keys{
+        "0000000000000000000000000000000000000000000000000000000000000000", // order 4
+        "0100000000000000000000000000000000000000000000000000000000000000", // order 1
+        "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05", // order 8
+        "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a", // order 8
+        "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f", // order 2
+        "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f", // order 4, as p
+        "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f", // order 1, as p + 1
+    };
 
     Key m_key;
     bool m_has_private;
 
     [[nodiscard]] static Key _generate();
+    [[nodiscard]] static bool _has_small_order(const EVP_PKEY* key);
 };
 
 inline ISignKey::Ptr Ed25519OpenSsl::create() {
@@ -81,6 +105,10 @@ inline Ed25519OpenSsl::Ed25519OpenSsl(Key key, bool has_private)
     if (!m_key || EVP_PKEY_is_a(m_key.get(), "ED25519") != 1) {
         throw std::invalid_argument("Not an Ed25519 key");
     }
+
+    if (_has_small_order(m_key.get())) {
+        throw std::invalid_argument("An Ed25519 key of small order, which anyone can sign for");
+    }
 }
 
 inline Ed25519OpenSsl::Key Ed25519OpenSsl::_generate() {
@@ -94,6 +122,30 @@ inline Ed25519OpenSsl::Key Ed25519OpenSsl::_generate() {
     }
 
     return Key(key);
+}
+
+inline bool Ed25519OpenSsl::_has_small_order(const EVP_PKEY* key) {
+    constexpr std::string_view hex_digits = "0123456789abcdef";
+    constexpr auto nibble_bits = 4U;
+    constexpr auto nibble_mask = 0x0FU;
+    std::array<unsigned char, raw_key_size> raw{};
+    auto length = raw.size();
+    std::string hex;
+
+    if (EVP_PKEY_get_raw_public_key(key, raw.data(), &length) != 1 || length != raw.size()) {
+        throw OpenSslError("Failed to read an Ed25519 public key");
+    }
+
+    raw.back() &= y_mask;
+    hex.reserve(raw.size() * 2);
+
+    for (const unsigned int value : raw) {
+        hex.push_back(hex_digits.at(value >> nibble_bits));
+        hex.push_back(hex_digits.at(value & nibble_mask));
+    }
+
+    return std::find(small_order_keys.begin(), small_order_keys.end(), hex)
+           != small_order_keys.end();
 }
 
 inline ISignKey::Data Ed25519OpenSsl::sign(std::string_view data) const {

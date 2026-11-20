@@ -1,12 +1,15 @@
 #include <gtest/gtest.h>
+#include <array>
 #include <cstddef>
 #include <exception>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "Fixtures.hpp"
 #include "crypto/ISignKey.hpp"
+#include "crypto/Pem.hpp"
 
 using crypto::ISignKey;
 
@@ -37,6 +40,25 @@ constexpr auto x25519_public_pem =
     "MCowBQYDK2VuAyEAj0DFrbaPJWJK5bIU6nZ6bslNgp09e14a0bpvPiE4KF8=\n"
     "-----END PUBLIC KEY-----\n";
 
+// The SubjectPublicKeyInfo of an Ed25519 public key, up to its raw bytes.
+constexpr auto ed25519_spki_prefix = "302a300506032b6570032100";
+
+// The raw Ed25519 public keys of RFC 8032 §5.1.2, in hex, that are points of
+// small order, with the sign of x clear: the y-coordinates of the eight
+// points, and the encodings of 0 and 1 as p and p + 1 that are not canonical.
+constexpr std::array<std::string_view, 7> small_order_keys{
+    "0000000000000000000000000000000000000000000000000000000000000000",
+    "0100000000000000000000000000000000000000000000000000000000000000",
+    "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05",
+    "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",
+    "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+    "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+    "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+};
+
+// The top bit of a raw Ed25519 public key's last byte: the sign of x.
+constexpr std::byte x_sign_bit{0x80};
+
 // What ISignKey::from_pem() says is wrong with a PEM it turns down; empty if
 // it reads it.
 std::string refusal(std::string_view pem) {
@@ -48,6 +70,14 @@ std::string refusal(std::string_view pem) {
 
     return {};
 }
+
+// The SubjectPublicKeyInfo of the raw Ed25519 public key that hex names.
+std::vector<std::byte> ed25519_public_der(std::string_view raw_key) {
+    return fixtures::bytes(std::string(ed25519_spki_prefix).append(raw_key));
+}
+
+// Each test runs on one of the raw Ed25519 public keys of small order.
+class Ed25519SmallOrderTest : public testing::TestWithParam<std::string_view> {};
 
 // Reads an RSA signing key from a PEM.
 using ReadRsaKey = ISignKey::Ptr (*)(std::string_view pem);
@@ -139,6 +169,23 @@ TEST(ISignKeyTest, Ed25519InvalidInputs) {
 
     EXPECT_FALSE(signer->verify("test", bad_signature));
 }
+
+TEST_P(Ed25519SmallOrderTest, Refused) {
+    const auto pem = crypto::Pem::wrap("PUBLIC KEY", ed25519_public_der(GetParam()));
+
+    EXPECT_THROW((void)ISignKey::from_pem(pem), std::invalid_argument);
+    EXPECT_NE(refusal(pem).find("small order"), std::string::npos);
+}
+
+TEST_P(Ed25519SmallOrderTest, RefusedWithTheSignOfXSet) {
+    auto der = ed25519_public_der(GetParam());
+
+    der.back() |= x_sign_bit;
+    EXPECT_NE(refusal(crypto::Pem::wrap("PUBLIC KEY", der)).find("small order"),
+              std::string::npos);
+}
+
+INSTANTIATE_TEST_SUITE_P(SmallOrder, Ed25519SmallOrderTest, testing::ValuesIn(small_order_keys));
 
 TEST(ISignKeyTest, DamagedRsaKeyRefusedByRsaReader) {
     std::string damaged = fixtures::rsa_pkcs1_private_pem;
