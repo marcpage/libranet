@@ -10,7 +10,6 @@ namespace peer {
 
 // Given a list of server ids we are connected to, tells you which ids we still need.
 // Given a server id, tells you which bucket it fills.
-// cppcheck-suppress noConstructor
 class Buckets {
 public:
     struct ExpectedSizes {
