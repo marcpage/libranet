@@ -29,6 +29,7 @@ namespace api {
 // names no node to attribute what it sends to, and any other unsigned
 // request, a GET among them, is served (HandshakeProtocol §2.1). Safe to use
 // from the threads serving connections, several at once.
+// cppcheck-suppress noConstructor
 class SignatureGuard {
 public:
     using Handler = web::Server::RequestHandler;
@@ -69,8 +70,12 @@ private:
 
     identity::MessageVerifier m_verifier;
     identity::MessageSigner m_signer;
+    // Mistaken: the constructor sets both. cppcheck loses the class's
+    // constructors in a file that names it with `using api::SignatureGuard;`.
+    // cppcheck-suppress-begin uninitMemberVarNoCtor
     std::size_t m_provisional_trust_attempts;
     std::size_t m_tracked_signers;
+    // cppcheck-suppress-end uninitMemberVarNoCtor
     std::mutex m_mutex;
     Attempts m_attempts;                                           // Guarded by m_mutex
     std::unordered_map<std::string, Attempts::iterator> m_signers; // Guarded by m_mutex

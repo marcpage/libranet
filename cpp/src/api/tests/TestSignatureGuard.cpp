@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -85,16 +86,17 @@ Response answer(const Handler& guarded, const Request& request, ConnectionInfo& 
 }
 
 // The status of the answer to each GET signed by a peer of peers, sent in
-// turn on connection.
+// turn on connection. They are sent with for_each, which takes them in
+// order, as transform need not, since each counts toward the next.
 Statuses statuses(const Handler& guarded, const std::vector<const NodeIdentity*>& peers,
                   ConnectionInfo& connection) {
     Statuses found;
 
-    for (const auto* const peer : peers) {
+    std::for_each(peers.begin(), peers.end(),
+                  [&found, &guarded, &connection](const NodeIdentity* peer) {
         found.push_back(answer(guarded, signed_by(*peer, request_of("GET")), connection)
                             .status_code());
-    }
-
+    });
     return found;
 }
 
