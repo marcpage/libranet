@@ -30,6 +30,8 @@ using std::string_view;
 using std::tie;
 using std::unique;
 using std::vector;
+using storage::HashPrefix;
+using storage::Identifier;
 using storage::SearchAnswers;
 
 namespace {
@@ -39,7 +41,7 @@ constexpr size_t bits_per_digit = 4;
 
 // The fewest leading bits a match for prefix shares with it: min_bits, or
 // all of a shorter prefix (HttpApi §6).
-size_t least_bits(const storage::HashPrefix& prefix, size_t min_bits) {
+size_t least_bits(const HashPrefix& prefix, size_t min_bits) {
     return min(min_bits, prefix.bits());
 }
 
@@ -53,8 +55,8 @@ bool is_fresh(SearchAnswers::Clock::time_point changed,
 // Whether left matches prefix better than right does: it shares more
 // leading bits with it, or as many and comes first in order of algorithm
 // and hash.
-bool is_better(const storage::HashPrefix& prefix, const storage::Identifier& left,
-               const storage::Identifier& right) {
+bool is_better(const HashPrefix& prefix, const Identifier& left,
+               const Identifier& right) {
     const auto left_bits = prefix.matching_bits(left);
     const auto right_bits = prefix.matching_bits(right);
 
@@ -66,14 +68,14 @@ bool is_better(const storage::HashPrefix& prefix, const storage::Identifier& lef
 }
 
 // Whether left and right name the same content.
-bool is_same(const storage::Identifier& left, const storage::Identifier& right) {
+bool is_same(const Identifier& left, const Identifier& right) {
     return left.algorithm() == right.algorithm() && left.hash() == right.hash();
 }
 
 // identifiers, the best match for prefix first, each once, and no more of
 // them than an answer keeps.
-vector<storage::Identifier> ranked(const storage::HashPrefix& prefix,
-                                   vector<storage::Identifier> identifiers) {
+vector<Identifier> ranked(const HashPrefix& prefix,
+                          vector<Identifier> identifiers) {
     sort(identifiers.begin(), identifiers.end(),
          [&prefix](const auto& left, const auto& right) {
         return is_better(prefix, left, right);
@@ -90,10 +92,10 @@ vector<storage::Identifier> ranked(const storage::HashPrefix& prefix,
 
 // identifiers, less those that share fewer than least leading bits with
 // prefix.
-vector<storage::Identifier> matching(const storage::HashPrefix& prefix,
-                                     vector<storage::Identifier> identifiers,
-                                     size_t least) {
-    const auto too_few_bits = [&prefix, least](const storage::Identifier& identifier) {
+vector<Identifier> matching(const HashPrefix& prefix,
+                            vector<Identifier> identifiers,
+                            size_t least) {
+    const auto too_few_bits = [&prefix, least](const Identifier& identifier) {
         return prefix.matching_bits(identifier) < least;
     };
 
@@ -105,18 +107,18 @@ vector<storage::Identifier> matching(const storage::HashPrefix& prefix,
 // The prefixes that each hash sharing least leading bits with prefix begins
 // with one of: as many of prefix's digits as those bits fill, or, when they
 // fill none, each digit that shares them.
-vector<storage::HashPrefix> scanned(const storage::HashPrefix& prefix, size_t least) {
+vector<HashPrefix> scanned(const HashPrefix& prefix, size_t least) {
     constexpr string_view hex_digits = "0123456789abcdef";
     const auto digits = least / bits_per_digit;
-    vector<storage::HashPrefix> prefixes;
+    vector<HashPrefix> prefixes;
 
     if (digits > 0) {
-        prefixes.push_back(storage::HashPrefix::parse(prefix.to_string().substr(0, digits)));
+        prefixes.push_back(HashPrefix::parse(prefix.to_string().substr(0, digits)));
         return prefixes;
     }
 
     for (const auto digit : hex_digits) {
-        auto first = storage::HashPrefix::parse(string(1, digit));
+        auto first = HashPrefix::parse(string(1, digit));
 
         if (first.matching_bits(prefix) >= least) {
             prefixes.push_back(std::move(first));
@@ -128,10 +130,10 @@ vector<storage::HashPrefix> scanned(const storage::HashPrefix& prefix, size_t le
 
 // What the node holds, as held lists it, that shares least leading bits
 // with prefix.
-vector<storage::Identifier> held_matching(const SearchAnswers::Held& held,
-                                          const storage::HashPrefix& prefix,
-                                          size_t least) {
-    vector<storage::Identifier> found;
+vector<Identifier> held_matching(const SearchAnswers::Held& held,
+                                 const HashPrefix& prefix,
+                                 size_t least) {
+    vector<Identifier> found;
 
     for (const auto& scanned_prefix : scanned(prefix, least)) {
         auto listed = held(scanned_prefix);
