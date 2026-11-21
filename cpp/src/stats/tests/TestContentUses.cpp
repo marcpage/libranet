@@ -29,6 +29,9 @@ constexpr std::string_view in_memory = ":memory:";
 // to the millisecond.
 constexpr auto start = Clock::time_point(1'700'000'000s);
 
+// A time between two milliseconds, which the table keeps as the first.
+constexpr auto between_milliseconds = 1500us;
+
 // Sizes of content as stored.
 constexpr std::size_t small = 5;
 constexpr std::size_t large = 1'048'576;
@@ -173,7 +176,7 @@ TEST_F(ContentUsesTest, EachObjectIsKeptApart) {
 }
 
 TEST_F(ContentUsesTest, TimesAreKeptToTheMillisecond) {
-    advance(1500us);
+    advance(between_milliseconds);
     content_uses().record_requested(content('a'));
 
     EXPECT_EQ(uses_of('a').last_requested, start + 1ms);
