@@ -255,7 +255,9 @@ inline std::optional<storage::Identifier> SearchResults::_identifier(const types
     const auto& text = entry.string();
     const auto slash = text.find('/');
 
-    if (std::string::npos == slash) {
+    // An entry with no algorithm before its slash is refused here, so that
+    // it is not warned of as an algorithm the node does not know.
+    if (0 == slash || std::string::npos == slash) {
         return std::nullopt;
     }
 
