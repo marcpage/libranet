@@ -19,6 +19,7 @@
 #include "msg/Channel.hpp"
 #include "msg/Message.hpp"
 #include "protocol/NodeList.hpp"
+#include "protocol/SeekList.hpp"
 #include "stats/ContentUses.hpp"
 #include "stats/NodeAddresses.hpp"
 #include "stats/Recorder.hpp"
@@ -27,13 +28,13 @@
 #include "storage/DataStored.hpp"
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
-#include "protocol/SeekList.hpp"
 
 using db::Database;
 using db::SqliteError;
 using fixtures::ScratchDirectory;
 using msg::Channel;
 using protocol::NodeList;
+using protocol::SeekList;
 using stats::ContentUses;
 using stats::NodeAddresses;
 using stats::Recorder;
@@ -42,8 +43,6 @@ using storage::DataRequested;
 using storage::DataStored;
 using storage::HashPrefix;
 using storage::Identifier;
-using protocol::SeekList;
-
 using namespace std::chrono_literals;
 
 // The tests only take the lists the recorder posts, from another file, so

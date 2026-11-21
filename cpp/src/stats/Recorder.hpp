@@ -22,21 +22,16 @@ namespace stats {
 
 // What the node remembers of the network, kept in its database, which only
 // this opens. From a thread of its own, it records the addresses each node
-// list received names and what came of each dial, and how content is used
-// (ContentUses), from each storage::DataStored and storage::DataRequested.
-// Every derive interval derives the node list (HttpApi §10.6) and the
-// candidates to dial (NodeAddresses), posting each when it has changed.
-// The first derivation is made as the thread starts, and posts both, so
-// that what takes them knows them from the start.
-// list received names and what came of each dial, and what the node seeks
-// (Sought): the content each data.not_found names, until a data.stored
-// names it, and the prefix of each search. Every derive interval it derives
-// the node list (HttpApi §10.6), the candidates to dial (NodeAddresses),
-// and the seek list (§10.7.1), posting each when it has changed. The seek
-// list is posted at once, too, when an event changes what it names, so that
-// the peers reading it learn of the change as soon as they can. The first
-// derivation is made as the thread starts, and posts all three, so that
-// what takes them knows them from the start.
+// list received names and what came of each dial; how content is used
+// (ContentUses), from each storage::DataStored and storage::DataRequested;
+// and what the node seeks (Sought): the content each data.not_found names,
+// until a data.stored names it, and the prefix of each search. Every derive
+// interval it derives the node list (HttpApi §10.6), the candidates to dial
+// (NodeAddresses), and the seek list (§10.7.1), posting each when it has
+// changed. The seek list is posted at once, too, when an event changes what
+// it names, so that the peers reading it learn of the change as soon as
+// they can. The first derivation is made as the thread starts, and posts
+// all three, so that what takes them knows them from the start.
 //
 // The events it takes and posts are below, each under its name, as the
 // Python node names it where it has the same event. An event is a plain

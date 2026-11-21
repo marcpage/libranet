@@ -179,7 +179,8 @@ NodeList newly_named(const NodeList& before, const NodeList& after) {
 
 // The tables the database holds, made as it opens if they are missing.
 string schema() {
-    return string(NodeAddresses::schema) + ";\n" + string(Sought::schema);
+    return string(NodeAddresses::schema) + ";\n" + string(ContentUses::schema) + ";\n"
+           + string(Sought::schema);
 }
 
 // own_endpoints, once they are known to be endpoints. Throws
@@ -198,12 +199,6 @@ Milliseconds checked_interval(Milliseconds interval) {
     }
 
     return interval;
-}
-
-// The tables the database is made with, as NodeAddresses and ContentUses
-// keep them.
-string schema() {
-    return string(NodeAddresses::schema) + ";\n" + string(ContentUses::schema);
 }
 
 // Reports what the thread could not handle.
@@ -253,7 +248,7 @@ Recorder::Recorder(const path& database_path, Identifier own_id, vector<string> 
     , m_derive_interval(checked_interval(settings.derive_interval))
     , m_database(database_path, schema())
     , m_addresses(m_database, settings.limits, now)
-    , m_content_uses(m_database, std::move(now))
+    , m_content_uses(m_database, now)
     , m_sought(m_database, settings.seek_entry_ttl, std::move(now))
     , m_node_list(m_own_id, m_own_endpoints)
     , m_channel({
