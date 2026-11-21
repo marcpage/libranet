@@ -6,6 +6,7 @@ find_package(ZLIB REQUIRED)
 add_library(libranet_storage STATIC
     HttpHandler.cpp
     Manager.cpp
+    SearchAnswers.cpp
     Zlib.cpp)
 add_library(libranet::storage ALIAS libranet_storage)
 target_include_directories(libranet_storage PUBLIC ${PROJECT_SOURCE_DIR}/src)
@@ -25,6 +26,7 @@ if(BUILD_TESTING)
         tests/TestHttpHandler.cpp
         tests/TestIdentifier.cpp
         tests/TestManager.cpp
+        tests/TestSearchAnswers.cpp
         tests/TestZlib.cpp)
     target_link_libraries(storage_tests PRIVATE libranet::storage GTest::gtest_main)
     gtest_discover_tests(storage_tests)
