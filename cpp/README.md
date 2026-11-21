@@ -69,7 +69,7 @@ parsers in `fuzz/`:
 | [`src/types/`](src/types/) | `libranet::types` | Data types: `Integer`, `Json`, and `BlockingQueue` |
 | [`src/http/`](src/http/) | `libranet::http` | Parsing and generating HTTP: URLs, queries, headers, requests, responses, and problem details; uses `types` |
 | [`src/msg/`](src/msg/) | `libranet::msg` | Messages, and the channels that carry them; uses `types` |
-| [`src/net/`](src/net/) | `libranet::net` | Addresses and sockets, on POSIX systems |
+| [`src/net/`](src/net/) | `libranet::net` | Addresses, IP addresses, and sockets, on POSIX systems |
 | [`src/crypto/`](src/crypto/) | `libranet::crypto` | Hashing, encrypting, and signing: SHA-256, AES, RSA, Ed25519, and Argon2id with OpenSSL; on macOS, SHA-256, AES, and RSA with Apple's frameworks instead |
 | [`src/protocol/`](src/protocol/) | `libranet::protocol` | What nodes send each other: node lists, read from JSON as sent, compressed or not, and written within 1 MiB; uses `types` and `storage` |
 | [`src/node/`](src/node/) | `libranet::node` | The node, which makes its parts and runs them, and its settings file, in YAML, read with yaml-cpp |
@@ -260,6 +260,7 @@ cannot read:
 | `request_fuzzer` | reading a `Request` | a failed stream, or as `Headers` does |
 | `response_fuzzer` | reading a `Response` | a failed stream, or as `Headers` does |
 | `address_fuzzer` | `Address::parse` | `std::invalid_argument` |
+| `ip_address_fuzzer` | `IpAddress::parse` | an empty `optional` |
 | `rsa_der_fuzzer` | `RsaDer::pkcs1_from_spki` and `pkcs1_from_pkcs8` | `std::invalid_argument` |
 | `settings_file_fuzzer` | `SettingsFile::parse` | `std::invalid_argument` |
 | `zlib_fuzzer` | `Zlib::decompress` | an empty `optional` |
