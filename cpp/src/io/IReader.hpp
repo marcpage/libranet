@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -13,8 +14,13 @@ class IReader {
 public:
     using Ptr = std::unique_ptr<IReader>;
 
+    enum class EolAction : std::uint8_t {
+        MustHaveEol,
+        MayHaveEol,
+    };
+
     // Reads a line up to its \n or the end of the input, and leaves out the \n and a \r before it
-    [[nodiscard]] virtual std::string read_line();
+    [[nodiscard]] virtual std::optional<std::string> read_line(EolAction eolAction);
     // Reads size bytes, or fewer where the input ends first.
     [[nodiscard]] virtual std::vector<std::byte> read_exact(std::size_t size);
     // Reads up to and including the delimiter, or to the end of the input.
@@ -81,11 +87,13 @@ inline std::string IReader::read_until(char delimiter) {
     return result;
 }
 
-inline std::string IReader::read_line() {
+inline std::optional<std::string> IReader::read_line(EolAction eolAction) {
     std::string raw = read_until('\n');
 
     if (!raw.empty() && '\n' == raw.back()) {
         raw.pop_back();
+    } else if (eolAction == EolAction::MayHaveEol) {
+        return std::nullopt;
     }
 
     if (!raw.empty() && '\r' == raw.back()) {
