@@ -24,9 +24,9 @@ using http::Response;
 using identity::MessageSigner;
 using identity::MessageVerifier;
 using std::invalid_argument;
-using std::lock_guard;
 using std::mutex;
 using std::optional;
+using std::scoped_lock;
 using std::size_t;
 using std::string;
 using std::to_string;
@@ -144,7 +144,7 @@ bool SignatureGuard::_admits(const Request& request, Response& response,
 // Counts a request from node_id, whose key is not held yet, and says how
 // many it has sent, this one included.
 size_t SignatureGuard::_attempt(const Identifier& node_id) {
-    const lock_guard<mutex> lock(m_mutex);
+    const scoped_lock<mutex> lock(m_mutex);
     const auto key = node_id.to_string();
     auto found = m_signers.find(key);
 
@@ -168,7 +168,7 @@ size_t SignatureGuard::_attempt(const Identifier& node_id) {
 
 // Stops counting the requests of node_id, whose key is now held.
 void SignatureGuard::_forget(const Identifier& node_id) {
-    const lock_guard<mutex> lock(m_mutex);
+    const scoped_lock<mutex> lock(m_mutex);
     const auto found = m_signers.find(node_id.to_string());
 
     if (found != m_signers.end()) {
