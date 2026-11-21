@@ -7,12 +7,10 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "Fixtures.hpp"
-#include "logger/ILogOutput.hpp"
 #include "logger/Logger.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
@@ -20,7 +18,7 @@
 
 using fixtures::bytes_of;
 using fixtures::hello_hash;
-using logger::ILogOutput;
+using fixtures::KeepingOutput;
 using logger::Logger;
 using storage::Identifier;
 using storage::Zlib;
@@ -71,22 +69,6 @@ std::string upper_case(std::string text) {
     });
     return text;
 }
-
-// Keeps each line it is given, where a test can read them while the Logger
-// owns it.
-class KeepingOutput : public ILogOutput {
-public:
-    explicit KeepingOutput(std::shared_ptr<std::vector<std::string>> lines)
-        : m_lines(std::move(lines)) {
-    }
-
-    void log(std::string_view line) override {
-        m_lines->emplace_back(line);
-    }
-
-private:
-    std::shared_ptr<std::vector<std::string>> m_lines;
-};
 
 // Runs run, writes what it logged to stderr, and ends the program, with as
 // many lines as were logged as its status.

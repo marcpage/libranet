@@ -3,23 +3,28 @@
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <optional>
 #include <random>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
 #include <vector>
 
+#include "logger/ILogOutput.hpp"
+#include "storage/HashPrefix.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
 
 // What more than one of the storage tests uses: some data and its hash, bytes
-// written as text, a directory of a test's own to store them in, and a source
-// of data that keeps it in memory.
+// written as text, a directory of a test's own to store them in, a source of
+// data that keeps it in memory, and a log output that keeps what is logged.
 namespace fixtures {
 
 // "hello", and its SHA-256 digest, as `shasum -a 256` gives it.
@@ -87,13 +92,16 @@ inline const std::filesystem::path& ScratchDirectory::path() const noexcept {
     return m_path;
 }
 
-// A source that keeps what it is given in memory. put() is const in
-// IDataSource, so what it keeps is mutable.
+// A source that keeps what it is given in memory, by identifier. put() is
+// const in IDataSource, so what it keeps is mutable.
 class MemorySource : public storage::IDataSource {
 public:
     [[nodiscard]] bool has(const storage::Identifier& identifier) const override;
     [[nodiscard]] std::optional<Data> get(const storage::Identifier& identifier) const override;
-    [[nodiscard]] storage::Identifier put(const Data& data) const override;
+    void put(const storage::Identifier& identifier, const Data& body) const override;
+    [[nodiscard]] bool remove(const storage::Identifier& identifier) const override;
+    [[nodiscard]] std::uintmax_t size() const override;
+    [[nodiscard]] Identifiers starting_with(const storage::HashPrefix& prefix) const override;
 
 private:
     mutable std::map<std::string, Data> m_data;
@@ -113,11 +121,53 @@ inline std::optional<storage::IDataSource::Data> MemorySource::get(const storage
     return found->second;
 }
 
-inline storage::Identifier MemorySource::put(const Data& data) const {
-    auto identifier = storage::Identifier::from(data);
-
-    m_data[identifier.to_string()] = data;
-    return identifier;
+inline void MemorySource::put(const storage::Identifier& identifier, const Data& body) const {
+    m_data[identifier.to_string()] = body;
 }
+
+inline bool MemorySource::remove(const storage::Identifier& identifier) const {
+    return m_data.erase(identifier.to_string()) > 0;
+}
+
+inline std::uintmax_t MemorySource::size() const {
+    std::uintmax_t total = 0;
+
+    for (const auto& [name, body] : m_data) {
+        total += body.size();
+    }
+
+    return total;
+}
+
+inline storage::IDataSource::Identifiers
+MemorySource::starting_with(const storage::HashPrefix& prefix) const {
+    Identifiers found;
+
+    for (const auto& [name, body] : m_data) {
+        auto identifier = storage::Identifier::from(name);
+
+        if (prefix.matching_bits(identifier) >= prefix.bits()) {
+            found.push_back(std::move(identifier));
+        }
+    }
+
+    return found;
+}
+
+// Keeps each line it is given, where a test can read them while the Logger
+// owns it.
+class KeepingOutput : public logger::ILogOutput {
+public:
+    explicit KeepingOutput(std::shared_ptr<std::vector<std::string>> lines)
+        : m_lines(std::move(lines)) {
+    }
+
+    void log(std::string_view line) override {
+        m_lines->emplace_back(line);
+    }
+
+private:
+    std::shared_ptr<std::vector<std::string>> m_lines;
+};
 
 } // namespace fixtures
