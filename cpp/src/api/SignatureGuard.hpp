@@ -49,19 +49,18 @@ public:
     SignatureGuard(identity::MessageVerifier verifier, identity::MessageSigner signer,
                    std::size_t provisional_trust_attempts = default_provisional_trust_attempts,
                    std::size_t tracked_signers = default_tracked_signers);
-    ~SignatureGuard() = default;
-    // Its mutex is neither copied nor moved, and the handlers it stands in
-    // front of refer to it.
-    SignatureGuard(const SignatureGuard&) = delete;
-    SignatureGuard& operator=(const SignatureGuard&) = delete;
-    SignatureGuard(SignatureGuard&&) = delete;
-    SignatureGuard& operator=(SignatureGuard&&) = delete;
 
     // handler, with this guard in front of it, to be registered with the
     // server in its place; this must outlive it. What handler throws, or
     // what the store throws as a key is read, is thrown on unsigned, for the
     // server to answer with 500.
     [[nodiscard]] Handler in_front_of(Handler handler);
+
+    ~SignatureGuard() = default;
+    SignatureGuard(const SignatureGuard&) = delete;
+    SignatureGuard& operator=(const SignatureGuard&) = delete;
+    SignatureGuard(SignatureGuard&&) = delete;
+    SignatureGuard& operator=(SignatureGuard&&) = delete;
 
 private:
     // How many requests each signer whose key is not held yet has sent, by
