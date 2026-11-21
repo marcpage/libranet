@@ -3,7 +3,7 @@
 add_library(libranet_http INTERFACE)
 add_library(libranet::http ALIAS libranet_http)
 target_include_directories(libranet_http INTERFACE ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(libranet_http INTERFACE libranet::types libranet::crypto)
+target_link_libraries(libranet_http INTERFACE libranet::types libranet::crypto libranet::io)
 
 if(BUILD_TESTING)
     add_executable(http_tests
