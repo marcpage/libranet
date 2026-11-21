@@ -29,11 +29,6 @@ public:
     // std::runtime_error when key_file cannot be read or written, as when
     // its directory is not there, or store cannot keep the public key.
     NodeIdentity(const std::filesystem::path& key_file, const storage::IDataSource& store);
-    ~NodeIdentity() = default;
-    NodeIdentity(const NodeIdentity&) = delete;
-    NodeIdentity& operator=(const NodeIdentity&) = delete;
-    NodeIdentity(NodeIdentity&&) noexcept = default;
-    NodeIdentity& operator=(NodeIdentity&&) noexcept = default;
 
     // The identifier of the public key, which a signature names as its
     // keyid (HTTP API §11.2).
@@ -43,6 +38,12 @@ public:
     [[nodiscard]] const std::string& public_pem() const noexcept;
     // The signature of data, with the node's key.
     [[nodiscard]] Data sign(std::string_view data) const;
+
+    ~NodeIdentity() = default;
+    NodeIdentity(const NodeIdentity&) = delete;
+    NodeIdentity& operator=(const NodeIdentity&) = delete;
+    NodeIdentity(NodeIdentity&&) noexcept = default;
+    NodeIdentity& operator=(NodeIdentity&&) noexcept = default;
 
 private:
     crypto::ISignKey::Ptr m_key;

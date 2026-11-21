@@ -7,25 +7,25 @@
 #include <fstream>
 #include <ios>
 #include <optional>
-#include <random>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <system_error>
 
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include "crypto/ISignKey.hpp"
+#include "io/SafeWriteFile.hpp"
 #include "logger/Logger.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 
 using crypto::ISignKey;
 using identity::NodeIdentity;
-using std::generic_category;
+using io::SafeWriteFile;
 using std::invalid_argument;
 using std::nullopt;
 using std::optional;
@@ -34,13 +34,13 @@ using std::size_t;
 using std::streamsize;
 using std::string;
 using std::string_view;
-using std::system_error;
 using std::uintmax_t;
 using std::filesystem::path;
 using std::filesystem::perms;
 using storage::IDataSource;
 using storage::Identifier;
 using types::Converter;
+using types::Kilobyte;
 
 namespace {
 
@@ -50,101 +50,7 @@ constexpr string_view ed25519_id = "ed25519-key";
 
 // A node's key is 119 bytes as PEM, so a file of more than this holds none,
 // and is not read into memory.
-constexpr uintmax_t most_key_file_size = 64UL * 1024UL;
-
-// Only its owner may read or write a key file.
-constexpr mode_t owner_only = S_IRUSR | S_IWUSR;
-
-// A file beside a key file, for a new key to be written to before it is
-// linked into place, so that no reader sees half a key. Only its owner may
-// read or write it, from the moment it is made. It is closed and removed
-// when this goes.
-class PartialFile {
-public:
-    // Throws std::system_error when it cannot be made, as when the
-    // directory key_file is to go in is not there.
-    explicit PartialFile(const path& key_file);
-    ~PartialFile();
-    PartialFile(const PartialFile&) = delete;
-    PartialFile& operator=(const PartialFile&) = delete;
-    PartialFile(PartialFile&&) = delete;
-    PartialFile& operator=(PartialFile&&) = delete;
-
-    // Writes all of text, and waits until it is on disk, so that a crash
-    // cannot leave the key file linked but empty. Throws std::system_error
-    // when it cannot.
-    void write_all(string_view text) const;
-    // Links the file in as key_file, which must not be there, so that a key
-    // kept already is never replaced. Throws
-    // std::filesystem::filesystem_error when it cannot.
-    void link_as(const path& key_file) const;
-
-private:
-    path m_path;
-    int m_descriptor;
-};
-
-// Where a new key for key_file is written: beside it, so that the link does
-// not cross filesystems, and named with a random number, so that it is not
-// a file left by a node that stopped while writing one.
-path partial_path(const path& key_file) {
-    std::random_device random;
-
-    return key_file.parent_path()
-           / ("." + key_file.filename().string() + "." + std::to_string(random()) + ".partial");
-}
-
-// A new file at file_path, open to write, that only its owner may read or
-// write. Throws std::system_error when it cannot be made, or is there
-// already.
-int make_private(const path& file_path) {
-    // open() is the POSIX call that makes a file with the permissions it
-    // starts with, and it takes variable arguments; there is no other form.
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg)
-    const auto descriptor = ::open(file_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC,
-                                   owner_only);
-
-    if (descriptor < 0) {
-        throw system_error(errno, generic_category(), "open " + file_path.string());
-    }
-
-    return descriptor;
-}
-
-PartialFile::PartialFile(const path& key_file)
-    : m_path(partial_path(key_file))
-    , m_descriptor(make_private(m_path)) {}
-
-PartialFile::~PartialFile() {
-    std::error_code ignored;
-
-    (void)::close(m_descriptor);
-    (void)std::filesystem::remove(m_path, ignored);
-}
-
-void PartialFile::write_all(string_view text) const {
-    auto remaining = text;
-
-    while (!remaining.empty()) {
-        const auto written = ::write(m_descriptor, remaining.data(), remaining.size());
-
-        if (written < 0 && EINTR != errno) {
-            throw system_error(errno, generic_category(), "write " + m_path.string());
-        }
-
-        if (written > 0) {
-            remaining.remove_prefix(static_cast<size_t>(written));
-        }
-    }
-
-    if (0 != ::fsync(m_descriptor)) {
-        throw system_error(errno, generic_category(), "fsync " + m_path.string());
-    }
-}
-
-void PartialFile::link_as(const path& key_file) const {
-    std::filesystem::create_hard_link(m_path, key_file);
-}
+constexpr uintmax_t most_key_file_size = 64 * Kilobyte;
 
 // What key_file holds, or nothing when there is no file there. Throws
 // std::invalid_argument when it holds far more than a key, and
@@ -216,10 +122,10 @@ ISignKey::Ptr load_or_make(const path& key_file) {
     }
 
     auto key = ISignKey::Ed25519();
-    const PartialFile partial(key_file);
+    SafeWriteFile final_key_file(key_file);
 
-    partial.write_all(key->private_pem());
-    partial.link_as(key_file);
+    final_key_file.write(key->private_pem());
+    final_key_file.commit();
     lInfo << "Made the node's key:" << key_file.string();
     return key;
 }

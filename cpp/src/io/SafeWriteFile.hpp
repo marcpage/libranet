@@ -23,10 +23,15 @@ public:
     // Whether file is one written to before it is committed, or one a crash
     // left behind.
     [[nodiscard]] static bool is_partial(const std::filesystem::path& file);
+
     // Where to write the file before commit(): beside it, so that the rename
     // does not cross filesystems, and named with a random number, so that
     // two writes of the same file at once do not write the same one.
     [[nodiscard]] const std::filesystem::path& writable_path() const noexcept;
+
+    // Writes contents to writable_path() and commit() unless exception thrown
+    void write(std::string_view contents);
+
     // Renames what was written to writable_path() to the file, in place of
     // any there. Throws std::logic_error when it is already committed, and
     // std::runtime_error when it cannot be renamed, as when nothing was
