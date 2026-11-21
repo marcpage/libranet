@@ -71,6 +71,7 @@ parsers in `fuzz/`:
 | [`src/msg/`](src/msg/) | `libranet::msg` | Messages, and the channels that carry them; uses `types` |
 | [`src/net/`](src/net/) | `libranet::net` | Addresses, IP addresses, and sockets, on POSIX systems |
 | [`src/crypto/`](src/crypto/) | `libranet::crypto` | Hashing, encrypting, and signing: SHA-256, AES, RSA, Ed25519, and Argon2id with OpenSSL; on macOS, SHA-256, AES, and RSA with Apple's frameworks instead |
+| [`src/identity/`](src/identity/) | `libranet::identity` | The node's identity: its Ed25519 key, made once and kept in `node-key.pem`, which only its owner may read, and its id, the identifier of its public key, which it stores as content; uses `types`, `crypto`, `storage`, and `logger` |
 | [`src/protocol/`](src/protocol/) | `libranet::protocol` | What nodes send each other: node lists, seek lists, and search answers, read from JSON as sent, compressed or not, and written within 1 MiB; uses `types`, `http`, `net`, and `storage` |
 | [`src/node/`](src/node/) | `libranet::node` | The node, which makes its parts and runs them, and its settings file, in YAML, read with yaml-cpp |
 | [`src/logger/`](src/logger/) | `libranet::logger` | The log: lines at levels, from any thread, to stderr, stdout, a file, or the system log |

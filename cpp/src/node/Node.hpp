@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <thread>
 
+#include "identity/NodeIdentity.hpp"
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
 #include "node/SettingsFile.hpp"
@@ -30,8 +31,9 @@ namespace node {
 // - logging.level: the least severe lines it logs, one of CRITICAL, ERROR,
 //   WARNING, INFO (the default), and DEBUG. Lines go to stderr.
 //
-// The data directory holds cas/, the content the node holds, and incoming/,
-// whose directories are read as content too.
+// The data directory holds cas/, the content the node holds; incoming/,
+// whose directories are read as content too; and node-key.pem, the node's
+// key, made the first time it starts, which only its owner may read.
 class Node {
 public:
     // Runs a node with the settings until the process is sent SIGINT or
@@ -41,7 +43,8 @@ public:
 
     // Throws std::invalid_argument, naming the setting, for a setting it
     // cannot use, before it makes anything; and std::system_error or
-    // std::runtime_error when it cannot lay out the data directory or listen.
+    // std::runtime_error when it cannot lay out the data directory, keep its
+    // key, or listen.
     explicit Node(const SettingsFile& settings);
     ~Node();
     Node(const Node&) = delete;
@@ -61,6 +64,7 @@ private:
 
     // What the parts share.
     storage::Manager::Ptr m_store;
+    identity::NodeIdentity m_identity;
 
     // The parts.
     storage::HttpHandler m_data_handler;
