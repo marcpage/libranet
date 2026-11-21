@@ -1,6 +1,5 @@
 #include "NodeIdentity.hpp"
 
-#include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
