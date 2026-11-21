@@ -155,7 +155,7 @@ TEST(DialPlanTest, CandidatesInFilledBucketsAreNotDialed) {
 // The first in this node's own primary bucket, a5, fills it. Those after it
 // fill the secondary set: a6 its bucket 6, and a51 its bucket 5, as a5 counts
 // there only once it is connected.
-TEST(DialPlanTest, NeighborsFillThisNodesPrimaryBucketThenTheSecondarySet) {
+TEST(DialPlanTest, NodesInThisNodesPrimaryBucketFillItThenTheSecondarySet) {
     const StoppedClock clock;
     const auto plan = plan_of(clock);
 

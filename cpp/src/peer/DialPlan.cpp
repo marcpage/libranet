@@ -159,9 +159,9 @@ vector<Candidate> DialPlan::to_dial(const vector<Candidate>& candidates,
     };
     auto taken = passed_over(m_own_id, server_ids, m_resting, m_now());
     auto chosen = spread(candidates, gaps.primary, primary, taken);
-    const auto neighbors = spread(candidates, gaps.secondary, secondary, taken);
+    const auto secondary_chosen = spread(candidates, gaps.secondary, secondary, taken);
 
-    chosen.insert(chosen.end(), neighbors.begin(), neighbors.end());
+    chosen.insert(chosen.end(), secondary_chosen.begin(), secondary_chosen.end());
     return chosen;
 }
 
