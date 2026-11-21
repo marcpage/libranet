@@ -74,6 +74,7 @@ parsers in `fuzz/`:
 | [`src/protocol/`](src/protocol/) | `libranet::protocol` | What nodes send each other: node lists and seek lists, read from JSON as sent, compressed or not, and written within 1 MiB; uses `types`, `net`, and `storage` |
 | [`src/node/`](src/node/) | `libranet::node` | The node, which makes its parts and runs them, and its settings file, in YAML, read with yaml-cpp |
 | [`src/logger/`](src/logger/) | `libranet::logger` | The log: lines at levels, from any thread, to stderr, stdout, a file, or the system log |
+| [`src/db/`](src/db/) | `libranet::db` | A connection to an SQLite database, which makes its tables, and its transactions |
 
 Headers are included from `src/`, as in
 `#include "types/BlockingQueue.hpp"`. Each directory's `CMakeLists.txt`
