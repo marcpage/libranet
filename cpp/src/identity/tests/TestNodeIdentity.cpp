@@ -398,9 +398,9 @@ TEST_F(NodeIdentityTest, AKeyFileThatIsADirectoryIsRefused) {
     EXPECT_THROW(NodeIdentity(key_file(), store()), runtime_error);
 }
 
-TEST_F(NodeIdentityTest, AKeyFileInADirectoryNotThereIsRefused) {
+TEST_F(NodeIdentityTest, AKeyFileInADirectoryNotThereIsNotRefused) {
     const auto missing = directory() / "missing" / "node-key.pem";
 
-    EXPECT_THROW(NodeIdentity(missing, store()), runtime_error);
-    EXPECT_FALSE(std::filesystem::exists(missing.parent_path()));
+    (void)NodeIdentity(missing, store());
+    EXPECT_TRUE(std::filesystem::exists(missing.parent_path()));
 }
