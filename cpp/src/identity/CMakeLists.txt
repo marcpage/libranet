@@ -1,15 +1,23 @@
-# What a node signs with, and checks others' signatures by: for now, the
-# Content-Digest that binds a signature to a body. Only headers so far, so an
-# INTERFACE library; it becomes STATIC with its first .cpp file.
-add_library(libranet_identity INTERFACE)
+# The node's identity, and the signatures on what nodes send each other: for
+# now, the signature base RFC 9421 signs, and the Content-Digest that binds a
+# signature to a body.
+add_library(libranet_identity STATIC
+    SignatureBase.cpp)
 add_library(libranet::identity ALIAS libranet_identity)
-target_include_directories(libranet_identity INTERFACE ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(libranet_identity INTERFACE libranet::http libranet::crypto)
+target_include_directories(libranet_identity PUBLIC ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(libranet_identity PUBLIC
+    libranet::types
+    libranet::http
+    libranet::crypto)
 
 if(BUILD_TESTING)
     add_executable(identity_tests
-        tests/TestContentDigest.cpp)
-    target_link_libraries(identity_tests PRIVATE libranet::identity GTest::gtest_main)
+        tests/TestContentDigest.cpp
+        tests/TestSignatureBase.cpp)
+    target_link_libraries(identity_tests PRIVATE
+        libranet::identity
+        libranet::crypto
+        GTest::gtest_main)
     gtest_discover_tests(identity_tests)
 endif()
 

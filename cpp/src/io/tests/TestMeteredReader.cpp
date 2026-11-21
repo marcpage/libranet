@@ -83,7 +83,7 @@ TEST(MeteredReaderTest, ThrowsLimitExceededWhenLimitIsCrossed) {
     MeteredReader reader(std::make_unique<StringReader>("abcdefghij"), byte_limit);
 
     EXPECT_EQ(as_text(reader.read_exact(3)), "abc");
-    EXPECT_THROW((void)reader.read_line(), LimitExceeded);
+    EXPECT_THROW((void)reader.read_line(IReader::EolAction::MayHaveEol), LimitExceeded);
 }
 
 TEST(MeteredReaderTest, ResetRestoresBudgetAndClearsCount) {
@@ -91,7 +91,7 @@ TEST(MeteredReaderTest, ResetRestoresBudgetAndClearsCount) {
     constexpr auto new_byte_limit = 12;
     MeteredReader reader(std::make_unique<StringReader>("head\r\nbody-payload"), byte_limit);
 
-    EXPECT_EQ(reader.read_line(), "head");
+    EXPECT_EQ(reader.read_line(IReader::EolAction::MayHaveEol), "head");
     EXPECT_EQ(reader.bytes_read(), 6U);
     EXPECT_EQ(reader.remaining(), 0U);
 

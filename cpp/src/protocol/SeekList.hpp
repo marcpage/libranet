@@ -14,6 +14,7 @@
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Constants.hpp"
 #include "types/Json.hpp"
 
 namespace protocol {
@@ -29,7 +30,7 @@ public:
 
     // The size a list must be less than as it is sent, compressed or not
     // (HttpApi §10.7.1).
-    static constexpr std::size_t max_bytes = 1024UL * 1024UL;
+    static constexpr std::size_t max_bytes = 1 * types::Megabyte;
 
     // Reads a list as it is received: JSON, or one zlib stream of JSON that
     // holds no more than decompressed_limit bytes, as the protocol sets no
@@ -62,7 +63,7 @@ private:
     // times over to find how much of it fits, and a list of identifiers is
     // hardly smaller at a slower level, so the quicker one is worth the
     // little it loses, as it is to the Python node's search answers.
-    static constexpr int compression_level = 6;
+    static constexpr int compression_level = storage::Zlib::balance_level;
 
     std::vector<storage::Identifier> m_data;
     std::vector<storage::HashPrefix> m_search;

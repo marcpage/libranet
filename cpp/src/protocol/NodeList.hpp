@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 
 namespace protocol {
 
@@ -29,11 +30,11 @@ public:
 
     // A list must be less than 1 MiB as it is sent, compressed or not
     // (HttpApi §10.6).
-    static constexpr std::size_t max_size = 1024UL * 1024UL;
+    static constexpr std::size_t max_size = 1 * types::Megabyte;
     // The protocol does not limit a list once decompressed, so this does, as
     // the Python node's max_decompressed_list_bytes does: a list is mostly
     // hex, so 1 MiB sent is about 2 MiB of list.
-    static constexpr std::size_t max_decompressed_size = 4UL * 1024UL * 1024UL;
+    static constexpr std::size_t max_decompressed_size = 4UL * types::Megabyte;
 
     // The list text names, as JSON. An entry whose endpoint is not one, or
     // whose node id is not a string naming an identifier, is left out,
