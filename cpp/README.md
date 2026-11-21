@@ -67,10 +67,11 @@ parsers in `fuzz/`:
 | Directory | Library | What it holds |
 | ------------------------- | ---------------- | ------------------------------------------------------------- |
 | [`src/types/`](src/types/) | `libranet::types` | Data types: `Integer`, `Json`, and `BlockingQueue` |
-| [`src/http/`](src/http/) | `libranet::http` | Parsing and generating HTTP: URLs, queries, headers, requests, responses, and problem details; uses `types` |
+| [`src/http/`](src/http/) | `libranet::http` | Parsing and generating HTTP: URLs, queries, headers, structured fields, requests, responses, and problem details; uses `types` and `crypto` |
 | [`src/msg/`](src/msg/) | `libranet::msg` | Messages, and the channels that carry them; uses `types` |
-| [`src/net/`](src/net/) | `libranet::net` | Addresses and sockets, on POSIX systems |
+| [`src/net/`](src/net/) | `libranet::net` | Addresses, IP addresses, and sockets, on POSIX systems |
 | [`src/crypto/`](src/crypto/) | `libranet::crypto` | Hashing, encrypting, and signing: SHA-256, AES, RSA, Ed25519, and Argon2id with OpenSSL; on macOS, SHA-256, AES, and RSA with Apple's frameworks instead |
+| [`src/protocol/`](src/protocol/) | `libranet::protocol` | What nodes send each other: node lists and seek lists, read from JSON as sent, compressed or not, and written within 1 MiB; uses `types`, `net`, and `storage` |
 | [`src/node/`](src/node/) | `libranet::node` | The node, which makes its parts and runs them, and its settings file, in YAML, read with yaml-cpp |
 | [`src/logger/`](src/logger/) | `libranet::logger` | The log: lines at levels, from any thread, to stderr, stdout, a file, or the system log |
 
@@ -258,10 +259,13 @@ cannot read:
 | `headers_fuzzer` | reading `Headers` | `std::runtime_error` or `std::invalid_argument` |
 | `request_fuzzer` | reading a `Request` | a failed stream, or as `Headers` does |
 | `response_fuzzer` | reading a `Response` | a failed stream, or as `Headers` does |
+| `structured_field_fuzzer` | `StructuredField::parse` | `std::invalid_argument` |
 | `address_fuzzer` | `Address::parse` | `std::invalid_argument` |
+| `ip_address_fuzzer` | `IpAddress::parse` | an empty `optional` |
 | `rsa_der_fuzzer` | `RsaDer::pkcs1_from_spki` and `pkcs1_from_pkcs8` | `std::invalid_argument` |
 | `settings_file_fuzzer` | `SettingsFile::parse` | `std::invalid_argument` |
 | `zlib_fuzzer` | `Zlib::decompress` | an empty `optional` |
+| `node_list_fuzzer` | `NodeList::from_body` | `std::invalid_argument` |
 | `seek_list_fuzzer` | `SeekList::read` | `std::invalid_argument` |
 
 Anything else a parser does with an input is a fault: crashing, hanging,

@@ -9,8 +9,6 @@ class ILogOutput {
 public:
     using Ptr = std::unique_ptr<ILogOutput>;
 
-    // Writes one line, as the formatter made it. Throws what it cannot write,
-    // and the Logger then stops writing to it.
     virtual void log(std::string_view line) = 0;
 
     virtual ~ILogOutput() = default;
