@@ -119,6 +119,7 @@ add_subdirectory(src/protocol)
 add_subdirectory(src/node)
 add_subdirectory(src/logger)
 add_subdirectory(src/db)
+add_subdirectory(src/identity)
 add_subdirectory(src/stats)
 
 add_executable(libranet src/main.cpp)

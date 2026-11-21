@@ -1,19 +1,40 @@
 #pragma once
 
+#include <algorithm>
+#include <cstddef>
 #include <iostream>
+#include <iterator>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
 
 #include "Headers.hpp"
 #include "ResponseCode.hpp"
+#include "io/IReader.hpp"
+#include "io/MeteredReader.hpp"
+#include "types/Constants.hpp"
 
 namespace http {
 
 class Response {
 public:
+    static constexpr std::size_t default_head_bytes = 64 * types::Kilobyte;
+    static constexpr std::size_t default_body_bytes = 1 * types::Megabyte;
+
+    // How much reading a response takes.
+    struct Limits {
+        // The most bytes its status line and headers may take, line ends included.
+        std::size_t head_bytes{default_head_bytes};
+        // The largest body it may have. A larger one is not read.
+        std::size_t body_bytes{default_body_bytes};
+    };
+
     Response() = default;
+
+    [[nodiscard]] static std::optional<Response> read(io::MeteredReader& reader,
+                                                      const Limits& limits);
 
     [[nodiscard]] std::string_view version() const noexcept;
     [[nodiscard]] const ResponseCode& code() const noexcept;
@@ -41,6 +62,8 @@ private:
     ResponseCode m_status{ResponseCode::Status::Ok};
     Headers m_headers;
     std::string m_body;
+
+    [[nodiscard]] std::size_t _body_length(const Limits& limits) const;
 };
 
 inline std::string_view Response::version() const noexcept {
@@ -154,6 +177,94 @@ inline std::string Response::to_string() const {
     result += m_body;
 
     return result;
+}
+
+inline std::optional<Response> Response::read(io::MeteredReader& reader, const Limits& limits) {
+    Response response;
+    std::string last_key;
+
+    reader.reset(limits.head_bytes);
+
+    const auto status_line = reader.read_line(io::IReader::EolAction::MustHaveEol);
+
+    if (!status_line) {
+        return std::nullopt;
+    }
+
+    if (!response.parse_status_line(*status_line)) {
+        throw std::invalid_argument("Not an HTTP status line: " + *status_line);
+    }
+
+    while (true) {
+        const auto line = reader.read_line(io::IReader::EolAction::MustHaveEol);
+
+        if (!line) {
+            return std::nullopt;
+        }
+
+        if (line->empty()) {
+            break;
+        }
+
+        last_key = Headers::process_header_line(*line, last_key, response.m_headers);
+    }
+
+    const auto length = response._body_length(limits);
+
+    reader.reset(length);
+
+    const auto body = reader.read_exact(length);
+
+    if (body.size() != length) {
+        return std::nullopt;
+    }
+
+    response.m_body.reserve(length);
+    std::transform(body.begin(), body.end(), std::back_inserter(response.m_body),
+                   [](std::byte byte) {
+        return static_cast<char>(std::to_integer<unsigned char>(byte));
+    });
+    return response;
+}
+
+// The length of the body the headers give: none for a status that has no
+// body, nor without a Content-Length. A length is digits alone (RFC 9110
+// §8.6), and no larger than limits.body_bytes.
+inline std::size_t Response::_body_length(const Limits& limits) const {
+    if (m_status.is_informational() || m_status == ResponseCode::Status::NoContent
+        || m_status == ResponseCode::Status::NotModified) {
+        return 0;
+    }
+
+    if (m_headers.has("Transfer-Encoding")) {
+        throw std::invalid_argument("A body sent with a Transfer-Encoding cannot be read.");
+    }
+
+    const auto value = m_headers.get("Content-Length");
+
+    if (!value.has_value()) {
+        return 0;
+    }
+
+    if (value->empty() || std::string_view::npos != value->find_first_not_of("0123456789")) {
+        throw std::invalid_argument("Content-Length is not a length: " + std::string(*value));
+    }
+
+    std::size_t length = 0;
+    bool fits = true;
+
+    try {
+        length = std::stoull(std::string(*value));
+    } catch (const std::out_of_range&) {
+        fits = false;
+    }
+
+    if (!fits || length > limits.body_bytes) {
+        throw io::LimitExceeded("The response's body is larger than "
+                                + std::to_string(limits.body_bytes) + " bytes.");
+    }
+
+    return length;
 }
 
 inline std::istream& operator>>(std::istream& in_stream, Response& response) {
