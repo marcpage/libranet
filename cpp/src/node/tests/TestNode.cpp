@@ -72,8 +72,7 @@ constexpr auto python_hash = "bf019c455f05e75ce74ca02a55a4b88bab561f85a76555d828
 // A request for hello, signed as storage asks, by any signature, on a
 // connection the node closes once it answers.
 string get_hello() {
-    return string("GET /data/sha256/") + hello_hash
-           + " HTTP/1.1\r\nConnection: close\r\nX-Node-Signature: test\r\n\r\n";
+    return string("GET /data/sha256/") + hello_hash + " HTTP/1.1\r\nConnection: close\r\n\r\n";
 }
 
 // How long to wait, at most, for the node to listen, and how long between
