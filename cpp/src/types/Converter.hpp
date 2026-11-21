@@ -53,7 +53,7 @@ inline uint64_t Converter::hex_digit_value(char hex_digit) {
 
 inline uint64_t Converter::parse_hex(std::string_view hex_text) {
     constexpr auto max_hex_digits = 16;
-    constexpr auto bits_per_digit = 4;
+    constexpr auto bits_per_digit = 4U;
 
     if (hex_text.size() > max_hex_digits) {
         throw std::invalid_argument(std::string("Too many digits: "
