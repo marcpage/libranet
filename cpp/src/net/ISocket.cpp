@@ -22,8 +22,8 @@ ISocket::Ptr ISocket::bind(const Address& address) {
     return Socket::bind(address);
 }
 
-ISocket::Ptr ISocket::connect(const Address& address) {
-    return Socket::connect(address);
+ISocket::Ptr ISocket::connect(const Address& address, Milliseconds timeout) {
+    return Socket::connect(address, timeout);
 }
 
 void ISocket::send_all(std::string_view data) {

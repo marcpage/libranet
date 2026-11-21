@@ -9,7 +9,8 @@ public:
     // cppcheck-suppress duplInheritedMember
     [[nodiscard]] static ISocket::Ptr bind(const Address& address);
     // cppcheck-suppress duplInheritedMember
-    [[nodiscard]] static ISocket::Ptr connect(const Address& address);
+    [[nodiscard]] static ISocket::Ptr connect(const Address& address,
+                                              Milliseconds timeout = Milliseconds::zero());
 
     SocketPosix() = delete;
     ~SocketPosix() override;

@@ -2,30 +2,31 @@
 
 #include "SocketPosix.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <ctime>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <system_error>
 #include <vector>
 
+#include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
-
-#if __APPLE__
-#include <fcntl.h>
-#endif
 
 #include "Address.hpp"
 #include "ISocket.hpp"
@@ -130,6 +131,88 @@ net::Address address_from_sockaddr(const sockaddr* address, socklen_t length) {
     return {host.data(), static_cast<net::Address::Port>(port)};
 }
 
+using Clock = std::chrono::steady_clock;
+
+// How long poll() is to wait, in milliseconds, until deadline: -1, as long
+// as it takes, where there is none.
+int poll_wait(const std::optional<Clock::time_point>& deadline) {
+    if (!deadline) {
+        return -1;
+    }
+
+    const auto left = std::chrono::ceil<std::chrono::milliseconds>(*deadline - Clock::now());
+
+    return static_cast<int>(std::clamp<std::chrono::milliseconds::rep>(
+        left.count(), 0, std::numeric_limits<int>::max()));
+}
+
+// Waits for the connect() under way on socket_fd to end, for at most
+// timeout, or as long as it takes for zero. Returns 0 once it has
+// connected, or the error it failed with: ETIMEDOUT once timeout passed.
+int wait_connected(int socket_fd, net::ISocket::Milliseconds timeout) {
+    // No longer than poll() can wait at once, about 24 days, so that the
+    // deadline cannot overflow the clock.
+    constexpr net::ISocket::Milliseconds longest{std::numeric_limits<int>::max()};
+    std::optional<Clock::time_point> deadline;
+    pollfd waiting{socket_fd, POLLOUT, 0};
+    int error = 0;
+    socklen_t length = sizeof(error);
+
+    if (timeout.count() > 0) {
+        deadline = Clock::now() + std::min(timeout, longest);
+    }
+
+    auto ready = ::poll(&waiting, 1, poll_wait(deadline));
+
+    // A signal ends poll() early, and it waits again for what is left.
+    while (ready < 0 && EINTR == errno) {
+        ready = ::poll(&waiting, 1, poll_wait(deadline));
+    }
+
+    if (ready < 0) {
+        return errno;
+    }
+
+    if (0 == ready) {
+        return ETIMEDOUT;
+    }
+
+    if (0 != ::getsockopt(socket_fd, SOL_SOCKET, SO_ERROR, &error, &length)) {
+        return errno;
+    }
+
+    return error;
+}
+
+// Connects socket_fd to the address info names, waiting at most timeout,
+// or as long as it takes for zero. Returns 0 once it has connected, or the
+// error it failed with. The socket does not block while it connects, so
+// that it can stop waiting, and blocks again once connected.
+int connect_within(int socket_fd, const addrinfo& info, net::ISocket::Milliseconds timeout) {
+    // fcntl() is the POSIX call that sets a descriptor's flags, an int, and
+    // it takes variable arguments; there is no other form.
+    // NOLINTBEGIN(cppcoreguidelines-pro-type-vararg,hicpp-vararg,*-signed-bitwise)
+    const auto flags = ::fcntl(socket_fd, F_GETFL);
+
+    if (flags < 0 || ::fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        return errno;
+    }
+
+    auto error = 0 == ::connect(socket_fd, info.ai_addr, info.ai_addrlen) ? 0 : errno;
+
+    // The connection goes on being made, a signal or not.
+    if (EINPROGRESS == error || EINTR == error) {
+        error = wait_connected(socket_fd, timeout);
+    }
+
+    if (0 == error && ::fcntl(socket_fd, F_SETFL, flags) < 0) {
+        error = errno;
+    }
+    // NOLINTEND(cppcoreguidelines-pro-type-vararg,hicpp-vararg,*-signed-bitwise)
+
+    return error;
+}
+
 enum class Direction : std::uint8_t {
     Send,
     Receive,
@@ -201,7 +284,7 @@ ISocket::Ptr SocketPosix::bind(const Address& address) {
 }
 
 // cppcheck-suppress duplInheritedMember
-ISocket::Ptr SocketPosix::connect(const Address& address) {
+ISocket::Ptr SocketPosix::connect(const Address& address, ISocket::Milliseconds timeout) {
     const auto addresses = resolve_address(address, 0, SOCK_STREAM);
     int last_error = ECONNREFUSED;
 
@@ -215,17 +298,12 @@ ISocket::Ptr SocketPosix::connect(const Address& address) {
             continue;
         }
 
-        int result = -1;
+        last_error = connect_within(socket_fd, *current, timeout);
 
-        do {
-            result = ::connect(socket_fd, current->ai_addr, current->ai_addrlen);
-        } while (result < 0 && EINTR == errno);
-
-        if (0 == result) {
+        if (0 == last_error) {
             return std::unique_ptr<SocketPosix>(new SocketPosix(socket_fd));
         }
 
-        last_error = errno;
         (void)::close(socket_fd);
     }
 
