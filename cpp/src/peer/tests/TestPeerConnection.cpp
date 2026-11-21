@@ -421,6 +421,7 @@ TEST(PeerConnectionTest, TimeoutsMustBePositive) {
 
 // A listener that takes no connection holds as many as its queue has room
 // for, and the next waits to be taken, until the connect timeout passes.
+// Its backlog is 1: macOS takes 0 for the most it allows.
 TEST(PeerConnectionTest, ConnectTimesOut) {
     constexpr auto most_tries = 16;
     const auto listener = ISocket::bind(Address("127.0.0.1", 0));
@@ -429,7 +430,7 @@ TEST(PeerConnectionTest, ConnectTimesOut) {
     std::error_code failure;
 
     limits.connect_timeout = short_timeout;
-    listener->listen(0);
+    listener->listen(1);
 
     for (auto tries = 0; tries < most_tries && !failure; ++tries) {
         try {

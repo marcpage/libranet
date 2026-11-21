@@ -337,7 +337,8 @@ TEST(SocketPosixTest, ConnectWithinATimeout) {
 }
 
 // A listener that takes no connection holds as many as its queue has room
-// for, and the next waits to be taken, until its timeout passes.
+// for, and the next waits to be taken, until its timeout passes. Its
+// backlog is 1: macOS takes 0 for the most it allows.
 TEST(SocketPosixTest, ConnectTimesOut) {
     constexpr auto timeout = 100ms;
     constexpr auto most_tries = 16;
@@ -345,7 +346,7 @@ TEST(SocketPosixTest, ConnectTimesOut) {
     std::vector<ISocket::Ptr> held;
     std::error_code failure;
 
-    server->listen(0);
+    server->listen(1);
 
     for (auto tries = 0; tries < most_tries && !failure; ++tries) {
         try {
