@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <utility>
 
-#include "io/IReader.hpp"
+#include "IReader.hpp"
 
 namespace io {
 
@@ -14,6 +14,12 @@ public:
     using std::runtime_error::runtime_error;
 };
 
+// Reads from another reader no more than a limit, so that input from
+// outside takes no more than it is allowed. A read asking for more than
+// remains throws LimitExceeded before reading anything, so one goes over a
+// BufferedReader rather than under it, where each read asks for a buffer's
+// worth. reset() gives a new limit and starts the count again, as for each
+// part of a request.
 class MeteredReader final : public IReader {
 public:
     MeteredReader(IReader::Ptr upstream, std::size_t max_bytes);
@@ -22,11 +28,11 @@ public:
     [[nodiscard]] std::size_t bytes_read() const noexcept;
     [[nodiscard]] std::size_t remaining() const noexcept;
 
-    std::optional<std::size_t> read_some(std::byte* data, std::size_t size) override;
+    [[nodiscard]] std::optional<std::size_t> read_some(std::byte* data, std::size_t size) override;
 
 private:
     IReader::Ptr m_upstream;
-    std::size_t m_max_bytes{0};
+    std::size_t m_max_bytes;
     std::size_t m_bytes_read{0};
 };
 
@@ -34,7 +40,7 @@ inline MeteredReader::MeteredReader(IReader::Ptr upstream, std::size_t max_bytes
     : m_upstream(std::move(upstream))
     , m_max_bytes(max_bytes) {
     if (!m_upstream) {
-        throw std::invalid_argument("MeteredReader requires a non-null upstream reader.");
+        throw std::invalid_argument("MeteredReader requires a non-null upstream reader");
     }
 }
 
@@ -56,21 +62,20 @@ inline std::size_t MeteredReader::remaining() const noexcept {
 }
 
 inline std::optional<std::size_t> MeteredReader::read_some(std::byte* data, std::size_t size) {
-    if (size == 0) {
+    if (0 == size) {
         return std::size_t{0};
     }
 
     if (size > remaining()) {
-        throw LimitExceeded("Read exceeds configured byte limit.");
+        throw LimitExceeded("Read exceeds configured byte limit");
     }
 
     const auto read = m_upstream->read_some(data, size);
 
-    if (!read.has_value()) {
-        return std::nullopt;
+    if (read) {
+        m_bytes_read += *read;
     }
 
-    m_bytes_read += *read;
     return read;
 }
 
