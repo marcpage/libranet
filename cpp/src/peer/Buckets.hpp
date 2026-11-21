@@ -55,7 +55,7 @@ public:
 
 private:
     ExpectedSizes m_sizes;
-    std::size_t m_own_bucket{};
+    std::size_t m_own_bucket{}; // the bucket secondary slots into primary
 };
 
 } // namespace peer
