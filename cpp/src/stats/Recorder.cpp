@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "NodeAddresses.hpp"
+#include "Sought.hpp"
 #include "db/Database.hpp"
 #include "logger/Logger.hpp"
 #include "msg/Channel.hpp"
@@ -18,6 +19,9 @@
 #include "msg/Message.hpp"
 #include "msg/Timer.hpp"
 #include "protocol/NodeList.hpp"
+#include "protocol/SeekList.hpp"
+#include "storage/DataNotFound.hpp"
+#include "storage/DataStored.hpp"
 #include "storage/Identifier.hpp"
 
 using db::Database;
@@ -26,8 +30,11 @@ using msg::IMessage;
 using msg::Message;
 using msg::Timer;
 using protocol::NodeList;
+using protocol::SeekList;
 using stats::NodeAddresses;
 using stats::Recorder;
+using stats::Sought;
+using std::back_inserter;
 using std::equal;
 using std::inserter;
 using std::invalid_argument;
@@ -39,6 +46,8 @@ using std::to_string;
 using std::transform;
 using std::vector;
 using std::filesystem::path;
+using storage::DataNotFound;
+using storage::DataStored;
 using storage::Identifier;
 
 // The thread takes these events, which others post from other files, so
@@ -47,6 +56,9 @@ using storage::Identifier;
 template class msg::Message<Recorder::NodesReceived>;
 template class msg::Message<Recorder::ConnectionOpened>;
 template class msg::Message<Recorder::ConnectionFailed>;
+template class msg::Message<Recorder::SearchRequested>;
+template class msg::Message<DataNotFound>;
+template class msg::Message<DataStored>;
 
 namespace {
 
@@ -117,6 +129,23 @@ bool same_candidates(const vector<Candidate>& left, const vector<Candidate>& rig
     });
 }
 
+// The text of each of entries, in order.
+template<typename Entry>
+vector<string> texts_of(const vector<Entry>& entries) {
+    vector<string> texts;
+
+    transform(entries.begin(), entries.end(), back_inserter(texts),
+              [](const Entry& entry) { return entry.to_string(); });
+    return texts;
+}
+
+// Whether left and right name the same identifiers and prefixes, in the
+// same order.
+bool same_seek(const SeekList& left, const SeekList& right) {
+    return texts_of(left.data()) == texts_of(right.data())
+           && texts_of(left.search()) == texts_of(right.search());
+}
+
 // The endpoint and node id of each entry of list.
 set<pair<string, string>> named_in(const NodeList& list) {
     set<pair<string, string>> named;
@@ -141,6 +170,11 @@ NodeList newly_named(const NodeList& before, const NodeList& after) {
     }
 
     return added;
+}
+
+// The tables the database holds, made as it opens if they are missing.
+string schema() {
+    return string(NodeAddresses::schema) + ";\n" + string(Sought::schema);
 }
 
 // own_endpoints, once they are known to be endpoints. Throws
@@ -192,15 +226,33 @@ Recorder::CandidatesUpdated::operator string() const {
     return to_string(candidates.size()) + " candidates";
 }
 
+Recorder::SearchRequested::operator string() const {
+    return prefix.to_string();
+}
+
+Recorder::SeekUpdated::operator string() const {
+    return to_string(seek.data().size()) + " identifiers, " + to_string(seek.search().size())
+           + " prefixes";
+}
+
 Recorder::Recorder(const path& database_path, Identifier own_id, vector<string> own_endpoints,
                    Settings settings, Now now)
     : m_own_id(std::move(own_id))
     , m_own_endpoints(checked_endpoints(m_own_id, std::move(own_endpoints)))
     , m_derive_interval(checked_interval(settings.derive_interval))
-    , m_database(database_path, NodeAddresses::schema)
-    , m_addresses(m_database, settings.limits, std::move(now))
+    , m_database(database_path, schema())
+    , m_addresses(m_database, settings.limits, now)
+    , m_sought(m_database, settings.seek_entry_ttl, std::move(now))
     , m_node_list(m_own_id, m_own_endpoints)
-    , m_channel({NodesReceived::name, ConnectionOpened::name, ConnectionFailed::name, derive_due},
+    , m_channel({
+                    NodesReceived::name,
+                    ConnectionOpened::name,
+                    ConnectionFailed::name,
+                    DataNotFound::name,
+                    SearchRequested::name,
+                    DataStored::name,
+                    derive_due,
+                },
                 [this](const IMessage::Ptr& message) { _handle(message); }, log_error)
     , m_timer(derive_due, m_derive_interval) {
     Channel::post(derive_due, Timer::Tick{derive_due, 0});
@@ -217,6 +269,18 @@ void Recorder::_handle(const IMessage::Ptr& message) {
         in_transaction(m_database, [this, failed] {
             m_addresses.record_failure(failed->node_id, failed->endpoint);
         });
+    } else if (const auto* const lacked = value_of<DataNotFound>(message)) {
+        if (m_sought.seek(lacked->identifier)) {
+            _post_seek_list();
+        }
+    } else if (const auto* const search = value_of<SearchRequested>(message)) {
+        if (m_sought.seek(search->prefix)) {
+            _post_seek_list();
+        }
+    } else if (const auto* const stored = value_of<DataStored>(message)) {
+        if (m_sought.found(stored->identifier)) {
+            _post_seek_list();
+        }
     } else if (nullptr != value_of<Timer::Tick>(message)) {
         _derive();
     } else {
@@ -238,7 +302,18 @@ void Recorder::_derive() {
         m_candidates = std::move(candidates);
     }
 
+    m_sought.forget_expired();
+    _post_seek_list();
     m_derived = true;
+}
+
+void Recorder::_post_seek_list() {
+    auto seek = m_sought.seek_list();
+
+    if (!m_derived || !same_seek(m_seek_list, seek)) {
+        Channel::post(SeekUpdated::name, SeekUpdated{seek});
+        m_seek_list = std::move(seek);
+    }
 }
 
 } // namespace stats
