@@ -13,9 +13,8 @@ class LibranetConan(ConanFile):
 
     def requirements(self) -> None:
         """OpenSSL, which the crypto library is built on; SQLite, which the
-        db library runs statements on; yaml-cpp, which reads the node's
-        settings file; and zlib, which the storage library compresses
-        with."""
+        db library is built on; yaml-cpp, which reads the node's settings
+        file; and zlib, which the storage library compresses with."""
         self.requires("openssl/3.5.9")
         self.requires("sqlite3/3.54.1")
         self.requires("yaml-cpp/0.9.0")
