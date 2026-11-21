@@ -13,6 +13,7 @@
 #include "crypto/IHasher.hpp"
 #include "logger/Logger.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Json.hpp"
 
 namespace storage {
 
@@ -22,6 +23,11 @@ public:
 
     static Identifier from(const std::string& identifier_str);
     static Identifier from(const Data& data);
+    // The identifier value names, as a list or a search answer names one:
+    // a string of "{algorithm}/{hash}" and nothing more. Nothing for a
+    // value that names none, such as one of an algorithm not supported,
+    // which is warned of as the constructor warns of it.
+    [[nodiscard]] static std::optional<Identifier> from(const types::Json& value);
 
     Identifier() = default;
     // Throws std::invalid_argument for an algorithm that is not supported,
@@ -94,6 +100,28 @@ inline Identifier Identifier::from(const std::string& identifier_str) {
 
 inline Identifier Identifier::from(const Data& data) {
     return Identifier(std::string(sha256), crypto::IHasher::Sha256()->hex_digest(data));
+}
+
+inline std::optional<Identifier> Identifier::from(const types::Json& value) {
+    if (!value.is_string()) {
+        return std::nullopt;
+    }
+
+    const auto& text = value.string();
+    const auto slash = text.find('/');
+
+    // Text with no algorithm before its slash is refused here, so that it
+    // is not warned of as an algorithm the node does not know.
+    if (0 == slash || std::string::npos == slash) {
+        return std::nullopt;
+    }
+
+    try {
+        return Identifier(text.substr(0, slash), text.substr(slash + 1));
+    } catch (const std::invalid_argument&) {
+        // Not an identifier of a supported algorithm: nothing.
+        return std::nullopt;
+    }
 }
 
 inline Identifier::Identifier(std::string algorithm, std::string hash)

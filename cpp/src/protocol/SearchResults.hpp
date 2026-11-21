@@ -84,7 +84,6 @@ private:
     [[nodiscard]] static types::Json _json(std::string_view body, std::size_t decompressed_limit);
     [[nodiscard]] static std::optional<types::Json> _parsed(std::string_view text);
     [[nodiscard]] static Identifiers _identifiers(const types::Json& value);
-    [[nodiscard]] static std::optional<storage::Identifier> _identifier(const types::Json& entry);
 };
 
 inline SearchResults SearchResults::parse(std::string_view body, std::size_t decompressed_limit) {
@@ -230,7 +229,7 @@ inline SearchResults::Identifiers SearchResults::_identifiers(const types::Json&
     Identifiers identifiers;
 
     for (const auto& entry : entries) {
-        auto identifier = _identifier(entry);
+        auto identifier = storage::Identifier::from(entry);
 
         if (identifier) {
             identifiers.push_back(std::move(*identifier));
@@ -243,31 +242,6 @@ inline SearchResults::Identifiers SearchResults::_identifiers(const types::Json&
     }
 
     return identifiers;
-}
-
-// The identifier an entry names, as "{algorithm}/{hash}", or nothing when it
-// names none of a supported algorithm.
-inline std::optional<storage::Identifier> SearchResults::_identifier(const types::Json& entry) {
-    if (!entry.is_string()) {
-        return std::nullopt;
-    }
-
-    const auto& text = entry.string();
-    const auto slash = text.find('/');
-
-    // An entry with no algorithm before its slash is refused here, so that
-    // it is not warned of as an algorithm the node does not know.
-    if (0 == slash || std::string::npos == slash) {
-        return std::nullopt;
-    }
-
-    try {
-        return storage::Identifier(text.substr(0, slash), text.substr(slash + 1));
-    } catch (const std::invalid_argument&) {
-        // Not an identifier of a supported algorithm: nothing, so that it is
-        // left out, and counted.
-        return std::nullopt;
-    }
 }
 
 } // namespace protocol

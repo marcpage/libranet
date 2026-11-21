@@ -147,7 +147,8 @@ TEST(SearchResultsTest, ReadsWhatPythonCompressed) {
 }
 
 TEST(SearchResultsTest, WritesAsPythonDoes) {
-    const SearchResults answer({Identifier::from(hello), Identifier::from(abc)});
+    const SearchResults answer(
+        {Identifier::from(std::string(hello)), Identifier::from(std::string(abc))});
 
     const auto body = answer.body();
 
@@ -266,7 +267,8 @@ TEST(SearchResultsTest, AsManyAsFitAreNamed) {
 
 TEST(SearchResultsTest, AnswersAResponse) {
     constexpr auto status = http::ResponseCode::Status::Accepted;
-    const SearchResults answer({Identifier::from(hello), Identifier::from(abc)});
+    const SearchResults answer(
+        {Identifier::from(std::string(hello)), Identifier::from(std::string(abc))});
     http::Response response;
 
     response.set_status_code(status);
