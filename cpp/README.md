@@ -76,7 +76,8 @@ parsers in `fuzz/`:
 | [`src/node/`](src/node/) | `libranet::node` | The node, which makes its parts and runs them, and its settings file, in YAML, read with yaml-cpp |
 | [`src/logger/`](src/logger/) | `libranet::logger` | The log: lines at levels, from any thread, to stderr, stdout, a file, or the system log |
 | [`src/db/`](src/db/) | `libranet::db` | A connection to an SQLite database, which makes its tables, its transactions, and the statements of SQL prepared on it |
-| [`src/identity/`](src/identity/) | `libranet::identity` | The node's identity and the signatures on what nodes send each other: so far, the node's Ed25519 key, made once and kept in `node-key.pem`, which only its owner may read, its id, the identifier of its public key, which it stores as content, and the signature base RFC 9421 signs; uses `types`, `http`, `crypto`, `storage`, and `logger` |
+| [`src/identity/`](src/identity/) | `libranet::identity` | The node's identity and the signatures on what nodes send each other: so far, the signature base RFC 9421 signs, and the `Content-Digest` of a body; uses `types`, `http`, and `crypto` |
+| [`src/peer/`](src/peer/) | `libranet::peer` | The node's connections to its server nodes, the nodes it connects to: for now, the buckets of node ids they are spread over; uses `storage` |
 
 Headers are included from `src/`, as in
 `#include "types/BlockingQueue.hpp"`. Each directory's `CMakeLists.txt`
