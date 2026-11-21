@@ -1,6 +1,3 @@
-# What the node remembers of the network, in its SQLite database: for now,
-# the addresses of nodes, and the node list and candidates to dial that come
-# from them.
 add_library(libranet_stats STATIC
     NodeAddresses.cpp)
 add_library(libranet::stats ALIAS libranet_stats)
