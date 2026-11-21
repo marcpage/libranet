@@ -125,7 +125,7 @@ ISignKey::Ptr load_or_make(const path& key_file) {
     SafeWriteFile final_key_file(key_file);
 
     final_key_file.write(key->private_pem());
-    final_key_file.commit();
+    restrict_to_owner(key_file);
     lInfo << "Made the node's key:" << key_file.string();
     return key;
 }
