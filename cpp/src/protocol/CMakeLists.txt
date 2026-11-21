@@ -5,6 +5,7 @@ add_library(libranet::protocol ALIAS libranet_protocol)
 target_include_directories(libranet_protocol PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(libranet_protocol PUBLIC
     libranet::types
+    libranet::http
     libranet::net
     libranet::storage
     libranet::logger)

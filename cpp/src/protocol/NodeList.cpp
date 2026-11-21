@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "http/Url.hpp"
 #include "logger/Logger.hpp"
 #include "net/IpAddress.hpp"
 #include "storage/Identifier.hpp"
@@ -52,80 +53,51 @@ std::string text_of(const Data& bytes) {
     return text;
 }
 
-// The parts of an endpoint (HttpApi §10.6): its scheme, in lower case; its
-// host, without the brackets around an IPv6 address; and its port, as
-// written, or empty when it names none.
-struct EndpointParts {
-    std::string scheme;
-    std::string_view host;
-    std::string_view port;
-};
-
-// Whether text is a host as an endpoint names one: an IPv6 address in
-// brackets, or a name or IPv4 address, of the characters RFC 3986 §2.3 leaves
-// unreserved.
-bool is_host(std::string_view text) {
+// Whether host, as http::Url reads it from an endpoint, is one: an IPv6
+// address, which the endpoint names in brackets, or a name or IPv4 address,
+// of the characters RFC 3986 §2.3 leaves unreserved.
+bool is_host(std::string_view host) {
     constexpr std::string_view unreserved = "-._~";
 
-    if (text.size() >= 2 && '[' == text.front() && ']' == text.back()) {
-        const auto address = text.substr(1, text.size() - 2);
-
-        // With a colon, as an IPv4 address has none.
-        return address.find(':') != std::string_view::npos
-               && net::IpAddress::parse(address).has_value();
+    if (host.find(':') != std::string_view::npos) {
+        return net::IpAddress::parse(host).has_value();
     }
 
-    return !text.empty() && std::all_of(text.begin(), text.end(), [unreserved](char character) {
+    return !host.empty() && std::all_of(host.begin(), host.end(), [unreserved](char character) {
         return std::isalnum(static_cast<unsigned char>(character)) != 0
                || unreserved.find(character) != std::string_view::npos;
     });
 }
 
-// Whether text is a port: decimal digits, no more than 65535.
-bool is_port(std::string_view text) {
-    constexpr std::string_view highest = "65535";
-    const auto is_digit = [](char character) { return character >= '0' && character <= '9'; };
+// Whether url names only a scheme, http or https, a host, and a port if any
+// (HttpApi §10.6). Url gives a URL with no path the path "/".
+bool is_bare_endpoint(const http::Url& url) {
+    const auto scheme = lower_case(url.scheme());
 
-    if (text.empty() || text.size() > highest.size()
-        || !std::all_of(text.begin(), text.end(), is_digit)) {
-        return false;
-    }
-
-    // As many digits as the highest, compared as text, as numbers compare.
-    return text.size() < highest.size() || text <= highest;
+    return ("http" == scheme || "https" == scheme) && is_host(url.host())
+           && url.username().empty() && url.password().empty() && "/" == url.path()
+           && url.query().empty() && url.fragment().empty();
 }
 
-// The parts of endpoint, or nothing when it is not an http or https URL
-// naming a host, and a port if any, and nothing more: no user, path, query,
-// or fragment.
-std::optional<EndpointParts> split_endpoint(std::string_view endpoint) {
-    constexpr std::string_view separator = "://";
-    const auto scheme_end = endpoint.find(separator);
+// The URL endpoint is, or nothing when it is not an endpoint: an http or
+// https URL naming a host, and a port if any, and nothing more. Url reads a
+// port it cannot use as no port, and "80a" as 80, so endpoint is one only as
+// Url writes it back, which also refuses a path of "/" and an IPv6 address
+// not in brackets.
+std::optional<http::Url> endpoint_url(std::string_view endpoint) {
+    auto url = http::Url::parse(endpoint);
 
-    if (std::string_view::npos == scheme_end) {
+    if (!url || !is_bare_endpoint(*url)) {
         return std::nullopt;
     }
 
-    EndpointParts parts{lower_case(endpoint.substr(0, scheme_end)), {}, {}};
-    const auto authority = endpoint.substr(scheme_end + separator.size());
-    // The colon before the port follows an IPv6 address's closing bracket.
-    const auto bracket = authority.rfind(']');
-    const auto port_colon = authority.find(':', std::string_view::npos == bracket ? 0 : bracket);
-    const auto has_port = port_colon != std::string_view::npos;
+    url->set_path("");
 
-    parts.host = authority.substr(0, port_colon);
-    parts.port = has_port ? authority.substr(port_colon + 1) : std::string_view();
-
-    if (("http" != parts.scheme && "https" != parts.scheme) || !is_host(parts.host)
-        || (has_port && !is_port(parts.port))) {
+    if (url->to_string() != endpoint) {
         return std::nullopt;
     }
 
-    if ('[' == parts.host.front()) {
-        parts.host = parts.host.substr(1, parts.host.size() - 2);
-    }
-
-    return parts;
+    return url;
 }
 
 // Whether host, in a node list received from source, names the sender's
@@ -151,11 +123,11 @@ bool names_sender(std::string_view host, const std::optional<net::IpAddress>& so
 // is no IP address.
 std::optional<std::string> resolved_endpoint(const std::string& endpoint,
                                              const std::optional<net::IpAddress>& source) {
-    const auto parts = split_endpoint(endpoint);
+    auto url = endpoint_url(endpoint);
 
-    // Every endpoint a list names has parts, so the first test only guards
+    // Every endpoint a list names is a URL, so the first test only guards
     // the second.
-    if (!parts || !names_sender(parts->host, source)) {
+    if (!url || !names_sender(url->host(), source)) {
         return endpoint;
     }
 
@@ -163,14 +135,8 @@ std::optional<std::string> resolved_endpoint(const std::string& endpoint,
         return std::nullopt;
     }
 
-    auto resolved = parts->scheme + "://" + source->url_host();
-
-    if (!parts->port.empty()) {
-        resolved += ':';
-        resolved += parts->port;
-    }
-
-    return resolved;
+    url->set_host(source->url_host());
+    return url->to_string();
 }
 
 // What reading a node list left out, logged once for the list: entries that
@@ -388,7 +354,7 @@ NodeList::NodeList(const storage::Identifier& own_id,
 }
 
 void NodeList::add(std::string endpoint, storage::Identifier node_id) {
-    if (!split_endpoint(endpoint)) {
+    if (!endpoint_url(endpoint)) {
         throw std::invalid_argument("Not an http or https URL naming a host, and a port: "
                                     + endpoint);
     }
