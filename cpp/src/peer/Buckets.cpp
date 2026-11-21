@@ -58,8 +58,9 @@ Buckets::Sizes checked(const Buckets::Sizes& sizes) {
     check_prefix_bits(sizes.bucket_prefix_bits, "peers.bucket_prefix_bits");
     check_prefix_bits(sizes.neighborhood_prefix_bits, "peers.neighborhood_prefix_bits");
 
-    if (sizes.min_outgoing_connections < 1
-        || sizes.min_outgoing_connections > bucket_count(sizes.bucket_prefix_bits)) {
+    const auto outgoing_buckets = bucket_count(sizes.bucket_prefix_bits);
+
+    if (sizes.min_outgoing_connections < 1 || sizes.min_outgoing_connections > outgoing_buckets) {
         throw invalid_argument("peers.min_outgoing_connections is not 1 to the buckets "
                                "peers.bucket_prefix_bits tells apart: "
                                + to_string(sizes.min_outgoing_connections));

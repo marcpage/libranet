@@ -19,6 +19,7 @@ namespace peer {
 // A connection fills one bucket at most. One to a neighbor fills its bucket
 // of the neighborhood, if no other does, so this node's own bucket of the
 // first set is filled only by a neighbor the neighborhood has no room for.
+// cppcheck-suppress noConstructor
 class Buckets {
 public:
     // How many connections each set is meant to have, and how many bits
@@ -72,6 +73,10 @@ public:
 
 private:
     Sizes m_sizes;
+    // Mistaken: the constructor sets m_own_bucket. cppcheck loses the
+    // class's constructors in a file that names it with
+    // `using peer::Buckets;`.
+    // cppcheck-suppress uninitMemberVarNoCtor
     std::size_t m_own_bucket;
 };
 
