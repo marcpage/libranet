@@ -63,6 +63,9 @@ public:
     void execute(std::string_view sql);
 
 private:
+    // A Statement is prepared on SQLite's connection.
+    friend class Statement;
+
     // Closes SQLite's connection.
     struct Closer {
         void operator()(sqlite3* connection) const noexcept;
