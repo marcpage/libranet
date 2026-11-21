@@ -55,21 +55,21 @@ void check_prefix_bits(size_t bits, const string& setting) {
 // sizes a node cannot spread its server nodes by, as the Python node refuses
 // them.
 Buckets::Sizes checked(const Buckets::Sizes& sizes) {
-    check_prefix_bits(sizes.bucket_prefix_bits, "peers.bucket_prefix_bits");
-    check_prefix_bits(sizes.neighborhood_prefix_bits, "peers.neighborhood_prefix_bits");
+    check_prefix_bits(sizes.primary_prefix_bits, "peers.bucket_prefix_bits");
+    check_prefix_bits(sizes.secondary_prefix_bits, "peers.neighborhood_prefix_bits");
 
-    const auto outgoing_buckets = bucket_count(sizes.bucket_prefix_bits);
+    const auto primary_buckets = bucket_count(sizes.primary_prefix_bits);
 
-    if (sizes.min_outgoing_connections < 1 || sizes.min_outgoing_connections > outgoing_buckets) {
+    if (sizes.min_primary_connections < 1 || sizes.min_primary_connections > primary_buckets) {
         throw invalid_argument("peers.min_outgoing_connections is not 1 to the buckets "
                                "peers.bucket_prefix_bits tells apart: "
-                               + to_string(sizes.min_outgoing_connections));
+                               + to_string(sizes.min_primary_connections));
     }
 
-    if (sizes.min_neighborhood_connections > bucket_count(sizes.neighborhood_prefix_bits)) {
+    if (sizes.min_secondary_connections > bucket_count(sizes.secondary_prefix_bits)) {
         throw invalid_argument("peers.min_neighborhood_connections is more than the buckets "
                                "peers.neighborhood_prefix_bits tells apart: "
-                               + to_string(sizes.min_neighborhood_connections));
+                               + to_string(sizes.min_secondary_connections));
     }
 
     return sizes;
@@ -128,28 +128,28 @@ namespace peer {
 
 Buckets::Buckets(const Identifier& own_id, const Sizes& sizes)
     : m_sizes(checked(sizes))
-    , m_own_bucket(bucket(own_id)) {}
+    , m_own_bucket(primary_bucket(own_id)) {}
 
-size_t Buckets::bucket(const Identifier& node_id) const {
-    return static_cast<size_t>(leading_bits(node_id, m_sizes.bucket_prefix_bits));
+size_t Buckets::primary_bucket(const Identifier& node_id) const {
+    return static_cast<size_t>(leading_bits(node_id, m_sizes.primary_prefix_bits));
 }
 
-optional<size_t> Buckets::neighborhood_bucket(const Identifier& node_id) const {
-    const auto bits = m_sizes.neighborhood_prefix_bits;
+optional<size_t> Buckets::secondary_bucket(const Identifier& node_id) const {
+    const auto bits = m_sizes.secondary_prefix_bits;
     const auto mask = (uint64_t{1} << bits) - 1U;
 
-    if (bucket(node_id) != m_own_bucket) {
+    if (primary_bucket(node_id) != m_own_bucket) {
         return nullopt;
     }
 
-    return static_cast<size_t>(leading_bits(node_id, m_sizes.bucket_prefix_bits + bits) & mask);
+    return static_cast<size_t>(leading_bits(node_id, m_sizes.primary_prefix_bits + bits) & mask);
 }
 
 Buckets::Gaps Buckets::gaps(const vector<Identifier>& server_ids) const {
     set<string> seen;
-    set<size_t> outgoing;
-    set<size_t> neighborhood;
-    size_t in_neighborhood = 0;
+    set<size_t> primary;
+    set<size_t> secondary;
+    size_t in_secondary = 0;
     Gaps result;
 
     for (const auto& server_id : server_ids) {
@@ -157,25 +157,25 @@ Buckets::Gaps Buckets::gaps(const vector<Identifier>& server_ids) const {
             continue;
         }
 
-        if (const auto place = neighborhood_bucket(server_id)) {
-            ++in_neighborhood;
-            neighborhood.insert(*place);
+        if (const auto place = secondary_bucket(server_id)) {
+            ++in_secondary;
+            secondary.insert(*place);
         } else {
-            outgoing.insert(bucket(server_id));
+            primary.insert(primary_bucket(server_id));
         }
     }
 
-    // A server node the neighborhood has no room for, as a second in one of
+    // A server node the secondary set has no room for, as a second in one of
     // its buckets, or one past the server nodes it is meant to have, fills
-    // this node's own bucket of the first set.
-    if (in_neighborhood > min(neighborhood.size(), m_sizes.min_neighborhood_connections)) {
-        outgoing.insert(m_own_bucket);
+    // this node's own primary bucket.
+    if (in_secondary > min(secondary.size(), m_sizes.min_secondary_connections)) {
+        primary.insert(m_own_bucket);
     }
 
-    result.outgoing.buckets = unfilled(outgoing, m_sizes.bucket_prefix_bits);
-    result.outgoing.wanted = wanted(outgoing, m_sizes.min_outgoing_connections);
-    result.neighborhood.buckets = unfilled(neighborhood, m_sizes.neighborhood_prefix_bits);
-    result.neighborhood.wanted = wanted(neighborhood, m_sizes.min_neighborhood_connections);
+    result.primary.buckets = unfilled(primary, m_sizes.primary_prefix_bits);
+    result.primary.wanted = wanted(primary, m_sizes.min_primary_connections);
+    result.secondary.buckets = unfilled(secondary, m_sizes.secondary_prefix_bits);
+    result.secondary.wanted = wanted(secondary, m_sizes.min_secondary_connections);
     return result;
 }
 
