@@ -170,10 +170,13 @@ vector<string_view> must_cover(const Message& message, vector<string_view> compo
 // Throws std::invalid_argument unless signature_params covers each of
 // components.
 void check_covers(const InnerList& signature_params, const vector<string_view>& components) {
-    for (const auto component : components) {
-        if (!covers(signature_params, component)) {
-            throw invalid_argument("A signature must cover " + string(component));
-        }
+    const auto missing = std::find_if(components.begin(), components.end(),
+                                      [&signature_params](string_view component) {
+        return !covers(signature_params, component);
+    });
+
+    if (missing != components.end()) {
+        throw invalid_argument("A signature must cover " + string(*missing));
     }
 }
 
