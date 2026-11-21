@@ -107,10 +107,21 @@ TEST(BufferedReaderTest, ReadLineHandlesCrLfAndEof) {
     BufferedReader reader(std::make_unique<StringReader>("line1\r\nline2\nfinal", chunk_size),
                           chunk_size);
 
-    EXPECT_EQ(reader.read_line(), "line1");
-    EXPECT_EQ(reader.read_line(), "line2");
-    EXPECT_EQ(reader.read_line(), "final");
-    EXPECT_EQ(reader.read_line(), "");
+    EXPECT_EQ(reader.read_line(IReader::EolAction::MayHaveEol), "line1");
+    EXPECT_EQ(reader.read_line(IReader::EolAction::MayHaveEol), "line2");
+    EXPECT_EQ(reader.read_line(IReader::EolAction::MayHaveEol), "final");
+    EXPECT_EQ(reader.read_line(IReader::EolAction::MayHaveEol), "");
+}
+
+// A line the input ends in, before its \n, is not a line when one must end.
+TEST(BufferedReaderTest, ReadLineThatMustEndRefusesTheLastUnended) {
+    constexpr auto chunk_size = 8;
+    BufferedReader reader(std::make_unique<StringReader>("line1\r\nfinal", chunk_size),
+                          chunk_size);
+
+    EXPECT_EQ(reader.read_line(IReader::EolAction::MustHaveEol), "line1");
+    EXPECT_FALSE(reader.read_line(IReader::EolAction::MustHaveEol).has_value());
+    EXPECT_FALSE(reader.read_line(IReader::EolAction::MustHaveEol).has_value());
 }
 
 // A read as large as the buffer, with nothing buffered, goes straight to the
