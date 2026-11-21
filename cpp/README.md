@@ -270,6 +270,7 @@ cannot read:
 | `node_list_fuzzer` | `NodeList::from_body` | `std::invalid_argument` |
 | `seek_list_fuzzer` | `SeekList::read` | `std::invalid_argument` |
 | `search_results_fuzzer` | `SearchResults::parse` | `std::invalid_argument` |
+| `content_digest_fuzzer` | `ContentDigest::parse` | `std::invalid_argument` |
 
 Anything else a parser does with an input is a fault: crashing, hanging,
 leaking, a finding of AddressSanitizer or UndefinedBehaviorSanitizer, a

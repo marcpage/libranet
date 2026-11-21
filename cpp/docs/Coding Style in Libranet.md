@@ -99,6 +99,8 @@ line it is for (§2.1).
   program if stopping throws. `db::Database` holds SQLite's connection, and
   a `Database::Transaction` rolls back what it was not told to commit.
   `db::Statement` finalizes the SQLite statement it prepared.
+  `io::SafeWriteFile` removes what was written to it unless it was
+  committed.
 - **Casts (§10.4).** `OpenSslBytes::of()` is where bytes held as
   `std::byte` or `char` become the `unsigned char*` OpenSSL takes, and
   `OpenSslDer` is where OpenSSL's `d2i_*` and `i2d_*` functions are called.
