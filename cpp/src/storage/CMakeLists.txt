@@ -4,7 +4,6 @@
 find_package(ZLIB REQUIRED)
 
 add_library(libranet_storage STATIC
-    HttpHandler.cpp
     Manager.cpp
     SearchAnswers.cpp
     Zlib.cpp)
@@ -22,8 +21,9 @@ target_compile_definitions(libranet_storage PRIVATE ZLIB_CONST)
 if(BUILD_TESTING)
     add_executable(storage_tests
         tests/TestDataDir.cpp
+        tests/TestDataNotFound.cpp
+        tests/TestDataStored.cpp
         tests/TestHashPrefix.cpp
-        tests/TestHttpHandler.cpp
         tests/TestIdentifier.cpp
         tests/TestManager.cpp
         tests/TestSearchAnswers.cpp

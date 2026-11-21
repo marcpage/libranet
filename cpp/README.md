@@ -72,6 +72,7 @@ parsers in `fuzz/`:
 | [`src/net/`](src/net/) | `libranet::net` | Addresses, IP addresses, and sockets, on POSIX systems |
 | [`src/crypto/`](src/crypto/) | `libranet::crypto` | Hashing, encrypting, and signing: SHA-256, AES, RSA, Ed25519, and Argon2id with OpenSSL; on macOS, SHA-256, AES, and RSA with Apple's frameworks instead |
 | [`src/protocol/`](src/protocol/) | `libranet::protocol` | What nodes send each other: node lists, seek lists, and search answers, read from JSON as sent, compressed or not, and written within 1 MiB; uses `types`, `http`, `net`, and `storage` |
+| [`src/api/`](src/api/) | `libranet::api` | What the web server serves: for now, `GET` and `PUT` of `/data/{algorithm}/{hash}`, each upload checked against its path before it is stored; uses `http`, `msg`, `storage`, and `web` |
 | [`src/node/`](src/node/) | `libranet::node` | The node, which makes its parts and runs them, and its settings file, in YAML, read with yaml-cpp |
 | [`src/logger/`](src/logger/) | `libranet::logger` | The log: lines at levels, from any thread, to stderr, stdout, a file, or the system log |
 | [`src/db/`](src/db/) | `libranet::db` | A connection to an SQLite database, which makes its tables, its transactions, and the statements of SQL prepared on it |
