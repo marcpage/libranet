@@ -96,14 +96,16 @@ line it is for (§2.1).
   returns, and `AesMacos::Cryptor` a CommonCrypto cryptor. `AesOpenSsl`
   wipes its key with `OPENSSL_cleanse()`.
   `AsyncChannel`'s destructor stops and joins its worker, and ends the
-  program if stopping throws.
+  program if stopping throws. `db::Statement` finalizes the SQLite
+  statement it prepared.
 - **Casts (§10.4).** `OpenSslBytes::of()` is where bytes held as
   `std::byte` or `char` become the `unsigned char*` OpenSSL takes, and
   `OpenSslDer` is where OpenSSL's `d2i_*` and `i2d_*` functions are called.
   `CFBytes`, in `crypto/CFBytes.hpp`, is where they become Core
   Foundation's `UInt8` and back.
   `query_socket_address()`, in `net/SocketPosix.cpp`, casts a
-  `sockaddr_storage` for the socket calls.
+  `sockaddr_storage` for the socket calls. `Statement::text()`, in
+  `db/Statement.cpp`, reads the `unsigned char` text SQLite gives as `char`.
 - **Errors (§9.1).** `OpenSslError`, a `std::runtime_error`, adds the last
   error OpenSSL queued for the thread, and clears the queue. In
   `net/SocketPosix.cpp`, `assert_socket()` throws a `std::system_error`

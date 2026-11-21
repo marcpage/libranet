@@ -71,6 +71,7 @@ parsers in `fuzz/`:
 | [`src/msg/`](src/msg/) | `libranet::msg` | Messages, and the channels that carry them; uses `types` |
 | [`src/net/`](src/net/) | `libranet::net` | Addresses and sockets, on POSIX systems |
 | [`src/crypto/`](src/crypto/) | `libranet::crypto` | Hashing, encrypting, and signing: SHA-256, AES, RSA, Ed25519, and Argon2id with OpenSSL; on macOS, SHA-256, AES, and RSA with Apple's frameworks instead |
+| [`src/db/`](src/db/) | `libranet::db` | The database: statements of SQL, run on SQLite |
 | [`src/node/`](src/node/) | `libranet::node` | The node, which makes its parts and runs them, and its settings file, in YAML, read with yaml-cpp |
 | [`src/logger/`](src/logger/) | `libranet::logger` | The log: lines at levels, from any thread, to stderr, stdout, a file, or the system log |
 
