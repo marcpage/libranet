@@ -16,13 +16,31 @@
 
 #include "Database.hpp"
 
+using std::bad_alloc;
+using std::byte;
+using std::copy_n;
+using std::distance;
+using std::domain_error;
+using std::int64_t;
+using std::invalid_argument;
+using std::isnan;
+using std::logic_error;
+using std::min;
+using std::nullopt_t;
+using std::numeric_limits;
+using std::out_of_range;
+using std::size_t;
+using std::string;
+using std::string_view;
+using std::to_string;
+
 namespace {
 
 // A kind of value SQLite holds, as sqlite3_column_type() gives it, and its
 // name, for messages.
 struct Kind {
     int code = SQLITE_NULL;
-    std::string_view name;
+    string_view name;
 };
 
 constexpr Kind integer_kind{SQLITE_INTEGER, "an integer"};
@@ -33,22 +51,22 @@ constexpr Kind blob_kind{SQLITE_BLOB, "a blob"};
 // The most SQL SQLite is given to read, as it counts its length in an int.
 // SQLite refuses SQL longer than its own limit, a billion bytes unless
 // built with another, so SQL cut to this is refused as it would be whole.
-constexpr auto most_sql = static_cast<std::size_t>(std::numeric_limits<int>::max());
+constexpr auto most_sql = static_cast<size_t>(numeric_limits<int>::max());
 
 // What SQLite last said went wrong on connection.
-std::string error_of(sqlite3* connection) {
+string error_of(sqlite3* connection) {
     return sqlite3_errmsg(connection);
 }
 
 // The one statement sql holds, prepared on connection, for the caller to
 // finalize. Throws SqliteError for SQL that SQLite cannot prepare, and
-// std::invalid_argument for SQL that holds no statement, or that holds
+// invalid_argument for SQL that holds no statement, or that holds
 // anything but whitespace after its first. The return type is deduced:
 // CodeQL reads the code without building it, and may take a declaration
 // that starts with a type of SQLite's for a variable.
-auto* prepare(sqlite3& connection, std::string_view sql) {
-    constexpr std::string_view whitespace = " \t\n\v\f\r";
-    const auto length = static_cast<int>(std::min(sql.size(), most_sql));
+auto* prepare(sqlite3& connection, string_view sql) {
+    constexpr string_view whitespace = " \t\n\v\f\r";
+    const auto length = static_cast<int>(min(sql.size(), most_sql));
     // SQLite refuses SQL at no address, where empty text may be.
     const auto* text = sql.empty() ? "" : sql.data();
     sqlite3_stmt* statement = nullptr;
@@ -59,24 +77,24 @@ auto* prepare(sqlite3& connection, std::string_view sql) {
     }
 
     if (nullptr == statement) {
-        throw std::invalid_argument("No statement in the SQL: " + std::string(sql));
+        throw invalid_argument("No statement in the SQL: " + string(sql));
     }
 
     // SQLite reads the first statement, and says where it ends with tail.
-    const auto first_length = static_cast<std::size_t>(std::distance(text, tail));
+    const auto first_length = static_cast<size_t>(distance(text, tail));
 
-    if (std::string_view::npos != sql.find_first_not_of(whitespace, first_length)) {
+    if (string_view::npos != sql.find_first_not_of(whitespace, first_length)) {
         (void)sqlite3_finalize(statement);
-        throw std::invalid_argument("Only one statement can be prepared at a time: "
-                                    + std::string(sql));
+        throw invalid_argument("Only one statement can be prepared at a time: "
+                               + string(sql));
     }
 
     return statement;
 }
 
 // Throws for what SQLite gave, result, when binding a value, unless it
-// bound it: std::out_of_range when the statement has no parameter left,
-// std::logic_error when it has stepped and is not yet reset, and
+// bound it: out_of_range when the statement has no parameter left,
+// logic_error when it has stepped and is not yet reset, and
 // SqliteError for anything else.
 void check_bound(int result) {
     if (SQLITE_OK == result) {
@@ -84,34 +102,34 @@ void check_bound(int result) {
     }
 
     if (SQLITE_RANGE == result) {
-        throw std::out_of_range("Every parameter of the statement is bound already");
+        throw out_of_range("Every parameter of the statement is bound already");
     }
 
     if (SQLITE_MISUSE == result) {
-        throw std::logic_error("Cannot bind a value to a statement that has stepped until it is reset");
+        throw logic_error("Cannot bind a value to a statement that has stepped until it is reset");
     }
 
-    throw db::SqliteError(std::string("Cannot bind the value: ") + sqlite3_errstr(result));
+    throw db::SqliteError(string("Cannot bind the value: ") + sqlite3_errstr(result));
 }
 
 // The kind of value column holds in the row statement is on, as
-// sqlite3_column_type() gives it. Throws std::out_of_range when statement is
+// sqlite3_column_type() gives it. Throws out_of_range when statement is
 // on no row, or its row has no such column, where what SQLite would give is
 // undefined.
 int kind_of(sqlite3_stmt* statement, int column) {
     if (column < 0 || sqlite3_data_count(statement) <= column) {
-        throw std::out_of_range("No column " + std::to_string(column) + " in the statement's row");
+        throw out_of_range("No column " + to_string(column) + " in the statement's row");
     }
 
     return sqlite3_column_type(statement, column);
 }
 
-// Throws std::domain_error unless column, in the row statement is on, holds
-// a value of kind, and std::out_of_range as kind_of() does.
+// Throws domain_error unless column, in the row statement is on, holds
+// a value of kind, and out_of_range as kind_of() does.
 void expect(sqlite3_stmt* statement, int column, Kind kind) {
     if (kind.code != kind_of(statement, column)) {
-        throw std::domain_error("Column " + std::to_string(column) + " does not hold "
-                                + std::string(kind.name));
+        throw domain_error("Column " + to_string(column) + " does not hold "
+                           + string(kind.name));
     }
 }
 
@@ -119,18 +137,18 @@ void expect(sqlite3_stmt* statement, int column, Kind kind) {
 
 namespace db {
 
-Statement::Statement(Database& database, std::string_view sql)
+Statement::Statement(Database& database, string_view sql)
     : m_statement(prepare(*database.m_connection, sql)) {}
 
-Statement& Statement::bind(std::int64_t value) {
+Statement& Statement::bind(int64_t value) {
     check_bound(sqlite3_bind_int64(m_statement.get(), m_next_parameter, value));
     ++m_next_parameter;
     return *this;
 }
 
 Statement& Statement::bind(double value) {
-    if (std::isnan(value)) {
-        throw std::invalid_argument("SQLite cannot hold NaN, only NULL in its place");
+    if (isnan(value)) {
+        throw invalid_argument("SQLite cannot hold NaN, only NULL in its place");
     }
 
     check_bound(sqlite3_bind_double(m_statement.get(), m_next_parameter, value));
@@ -138,7 +156,7 @@ Statement& Statement::bind(double value) {
     return *this;
 }
 
-Statement& Statement::bind(std::string_view value) {
+Statement& Statement::bind(string_view value) {
     // SQLite binds NULL for text at no address, where empty text may be.
     const auto* characters = value.empty() ? "" : value.data();
 
@@ -162,7 +180,7 @@ Statement& Statement::bind(const Data& value) {
     return *this;
 }
 
-Statement& Statement::bind(std::nullopt_t /*null*/) {
+Statement& Statement::bind(nullopt_t /*null*/) {
     check_bound(sqlite3_bind_null(m_statement.get(), m_next_parameter));
     ++m_next_parameter;
     return *this;
@@ -170,7 +188,7 @@ Statement& Statement::bind(std::nullopt_t /*null*/) {
 
 bool Statement::step() {
     if (m_next_parameter <= sqlite3_bind_parameter_count(m_statement.get())) {
-        throw std::logic_error("Cannot run a statement before each of its parameters is bound");
+        throw logic_error("Cannot run a statement before each of its parameters is bound");
     }
 
     const auto result = sqlite3_step(m_statement.get());
@@ -198,7 +216,7 @@ bool Statement::is_null(int column) const {
     return SQLITE_NULL == kind_of(m_statement.get(), column);
 }
 
-std::int64_t Statement::integer(int column) const {
+int64_t Statement::integer(int column) const {
     expect(m_statement.get(), column, integer_kind);
     return sqlite3_column_int64(m_statement.get(), column);
 }
@@ -208,39 +226,39 @@ double Statement::real(int column) const {
     return sqlite3_column_double(m_statement.get(), column);
 }
 
-std::string Statement::text(int column) const {
+string Statement::text(int column) const {
     expect(m_statement.get(), column, text_kind);
 
     // SQLite gives text as unsigned char, which a char may be read as.
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
     const auto* characters = reinterpret_cast<const char*>(
         sqlite3_column_text(m_statement.get(), column));
-    const auto size = static_cast<std::size_t>(sqlite3_column_bytes(m_statement.get(), column));
+    const auto size = static_cast<size_t>(sqlite3_column_bytes(m_statement.get(), column));
 
-    return std::string(characters, size);
+    return string(characters, size);
 }
 
 Statement::Data Statement::blob(int column) const {
     expect(m_statement.get(), column, blob_kind);
 
-    const auto* bytes = static_cast<const std::byte*>(sqlite3_column_blob(m_statement.get(), column));
-    const auto size = static_cast<std::size_t>(sqlite3_column_bytes(m_statement.get(), column));
+    const auto* bytes = static_cast<const byte*>(sqlite3_column_blob(m_statement.get(), column));
+    const auto size = static_cast<size_t>(sqlite3_column_bytes(m_statement.get(), column));
     Data data(size);
 
-    std::copy_n(bytes, size, data.begin());
+    copy_n(bytes, size, data.begin());
     return data;
 }
 
-std::string Statement::label(int column) const {
+string Statement::label(int column) const {
     if (column < 0 || sqlite3_column_count(m_statement.get()) <= column) {
-        throw std::out_of_range("No column " + std::to_string(column) + " in the statement's rows");
+        throw out_of_range("No column " + to_string(column) + " in the statement's rows");
     }
 
     const auto* name = sqlite3_column_name(m_statement.get(), column);
 
     // SQLite gives no name only when it ran out of memory making one.
     if (nullptr == name) {
-        throw std::bad_alloc();
+        throw bad_alloc();
     }
 
     return name;
