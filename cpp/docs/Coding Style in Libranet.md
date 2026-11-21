@@ -102,6 +102,9 @@ line it is for (§2.1).
   `io::SafeWriteFile` removes what was written to it unless it was
   committed. `PartialFile`, in `identity/NodeIdentity.cpp`, closes and
   removes the file a new key is written to before it is linked into place.
+  `peer::PeerConnection`'s destructor closes its connection, failing the
+  requests still waiting, and joins its two threads, ending the program if
+  closing throws.
 - **Casts (§10.4).** `OpenSslBytes::of()` is where bytes held as
   `std::byte` or `char` become the `unsigned char*` OpenSSL takes, and
   `OpenSslDer` is where OpenSSL's `d2i_*` and `i2d_*` functions are called.
