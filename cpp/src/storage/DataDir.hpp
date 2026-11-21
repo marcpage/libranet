@@ -8,7 +8,6 @@
 #include <memory>
 #include <numeric>
 #include <optional>
-#include <random>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -19,6 +18,7 @@
 #include "HashPrefix.hpp"
 #include "IDataSource.hpp"
 #include "Identifier.hpp"
+#include "io/SafeWriteFile.hpp"
 #include "logger/Logger.hpp"
 
 namespace storage {
@@ -60,11 +60,6 @@ private:
 
     // How many of a hash's digits name the directory it is kept in.
     static constexpr std::size_t directory_digits = 3;
-    // A body is written to a file that starts with this, so that it is not
-    // taken for a body held while it is written, and ends with that, so
-    // that one a crash left behind can be told.
-    static constexpr std::string_view partial_start = ".";
-    static constexpr std::string_view partial_end = ".partial";
 
     std::filesystem::path m_directory;
 
@@ -76,9 +71,7 @@ private:
                                                const std::filesystem::directory_entry& entry) const;
     [[nodiscard]] static std::vector<std::filesystem::path>
     _subdirectories(const std::filesystem::path& directory);
-    [[nodiscard]] static std::filesystem::path _partial_path(const std::filesystem::path& target);
     [[nodiscard]] static bool _write(const std::filesystem::path& partial, const Data& body);
-    static void _discard(const std::filesystem::path& partial);
 };
 
 inline DataDir::Ptr DataDir::create(std::filesystem::path path) {
@@ -119,29 +112,13 @@ inline std::optional<DataDir::Data> DataDir::get(const Identifier& identifier) c
 }
 
 inline void DataDir::put(const Identifier& identifier, const Data& body) const {
-    const auto path = _path(identifier);
-    const auto partial = _partial_path(path);
-    std::error_code error;
+    io::SafeWriteFile file(_path(identifier));
 
-    std::filesystem::create_directories(path.parent_path(), error);
-
-    if (error) {
-        throw std::runtime_error("Failed to create directory: " + path.parent_path().string() + ": "
-                                 + error.message());
+    if (!_write(file.writable_path(), body)) {
+        throw std::runtime_error("Failed to write file: " + file.writable_path().string());
     }
 
-    if (!_write(partial, body)) {
-        _discard(partial);
-        throw std::runtime_error("Failed to write file: " + partial.string());
-    }
-
-    std::filesystem::rename(partial, path, error);
-
-    if (error) {
-        _discard(partial);
-        throw std::runtime_error("Failed to rename " + partial.string() + " to " + path.string()
-                                 + ": " + error.message());
-    }
+    file.commit();
 }
 
 // Only a file is a body, so a directory in its place is left.
@@ -223,7 +200,7 @@ inline void DataDir::_add_held(const std::filesystem::path& directory,
         const auto name = entry.path().filename().string();
 
         if (0 != name.compare(0, digits.size(), digits)
-            || 0 == name.compare(0, partial_start.size(), partial_start)) {
+            || io::SafeWriteFile::is_partial(entry.path())) {
             continue;
         }
 
@@ -286,18 +263,6 @@ DataDir::_subdirectories(const std::filesystem::path& directory) {
     return found;
 }
 
-// Where the body for target is written before it is renamed into place:
-// beside it, so that the rename does not cross filesystems, and named with a
-// random number, so that two puts of the same identifier at once do not
-// write the same file.
-inline std::filesystem::path DataDir::_partial_path(const std::filesystem::path& target) {
-    std::random_device random;
-
-    return target.parent_path()
-           / (std::string(partial_start) + target.filename().string() + "."
-              + std::to_string(random()) + std::string(partial_end));
-}
-
 // Writes body to a new file at partial, and closes it. Whether all of it was
 // written.
 inline bool DataDir::_write(const std::filesystem::path& partial, const Data& body) {
@@ -311,15 +276,6 @@ inline bool DataDir::_write(const std::filesystem::path& partial, const Data& bo
 
     file.close();
     return !file.fail();
-}
-
-// Removes partial, the file a put that failed wrote to, if it made one.
-// Nothing more can be done if it cannot be removed, as the put is already
-// refused.
-inline void DataDir::_discard(const std::filesystem::path& partial) {
-    std::error_code ignored;
-
-    (void)std::filesystem::remove(partial, ignored);
 }
 
 } // namespace storage
