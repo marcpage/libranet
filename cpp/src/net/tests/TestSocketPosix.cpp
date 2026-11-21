@@ -320,6 +320,45 @@ TEST(SocketPosixTest, ConnectWhereNoneListensIsRefused) {
     EXPECT_THROW((void)SocketPosix::connect(address), std::system_error);
 }
 
+// Connected with a timeout, the socket waits for what it reads as any does.
+TEST(SocketPosixTest, ConnectWithinATimeout) {
+    constexpr auto timeout = 10000ms;
+    auto [server, address] = bind_ephemeral();
+
+    server->listen(1);
+
+    const auto client = SocketPosix::connect(address, timeout);
+    const auto peer = server->accept();
+
+    client->send_all("ping");
+    EXPECT_EQ(as_text(peer->read_exact(4)), "ping");
+    peer->send_all("pong");
+    EXPECT_EQ(as_text(client->read_exact(4)), "pong");
+}
+
+// A listener that takes no connection holds as many as its queue has room
+// for, and the next waits to be taken, until its timeout passes. Its
+// backlog is 1: macOS takes 0 for the most it allows.
+TEST(SocketPosixTest, ConnectTimesOut) {
+    constexpr auto timeout = 100ms;
+    constexpr auto most_tries = 16;
+    auto [server, address] = bind_ephemeral();
+    std::vector<ISocket::Ptr> held;
+    std::error_code failure;
+
+    server->listen(1);
+
+    for (auto tries = 0; tries < most_tries && !failure; ++tries) {
+        try {
+            held.push_back(SocketPosix::connect(address, timeout));
+        } catch (const std::system_error& error) {
+            failure = error.code();
+        }
+    }
+
+    EXPECT_TRUE(failure == std::errc::timed_out) << failure.message();
+}
+
 TEST(SocketPosixTest, SendNothingSendsNothing) {
     const auto connection = connect_ephemeral();
 

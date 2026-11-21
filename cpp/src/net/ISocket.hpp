@@ -15,7 +15,12 @@ public:
     using Milliseconds = std::chrono::milliseconds;
 
     [[nodiscard]] static Ptr bind(const Address& address);
-    [[nodiscard]] static Ptr connect(const Address& address);
+    // Connects to address, trying each of the addresses its host resolves
+    // to in turn, and waiting at most timeout for each; zero waits as long
+    // as the system does. Throws std::system_error when none connects, with
+    // the last one's error, std::errc::timed_out where it took too long.
+    [[nodiscard]] static Ptr connect(const Address& address,
+                                     Milliseconds timeout = Milliseconds::zero());
 
     virtual ~ISocket() = default;
     ISocket(const ISocket&) = delete;
