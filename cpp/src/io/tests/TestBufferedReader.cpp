@@ -107,10 +107,10 @@ TEST(BufferedReaderTest, ReadLineHandlesCrLfAndEof) {
     BufferedReader reader(std::make_unique<StringReader>("line1\r\nline2\nfinal", chunk_size),
                           chunk_size);
 
-    EXPECT_EQ(reader.read_line(), "line1");
-    EXPECT_EQ(reader.read_line(), "line2");
-    EXPECT_EQ(reader.read_line(), "final");
-    EXPECT_EQ(reader.read_line(), "");
+    EXPECT_EQ(reader.read_line(IReader::EolAction::MayHaveEol), "line1");
+    EXPECT_EQ(reader.read_line(IReader::EolAction::MayHaveEol), "line2");
+    EXPECT_EQ(reader.read_line(IReader::EolAction::MayHaveEol), "final");
+    EXPECT_EQ(reader.read_line(IReader::EolAction::MayHaveEol), "");
 }
 
 // A read as large as the buffer, with nothing buffered, goes straight to the

@@ -129,10 +129,10 @@ TEST(SocketReaderTest, ReadLineStripsCrLfAndLf) {
     ScriptedSocket socket("first\r\nsecond\nlast", 4);
     SocketReader reader(socket);
 
-    EXPECT_EQ(reader.read_line(), "first");
-    EXPECT_EQ(reader.read_line(), "second");
-    EXPECT_EQ(reader.read_line(), "last");
-    EXPECT_EQ(reader.read_line(), "");
+    EXPECT_EQ(reader.read_line(io::IReader::EolAction::MayHaveEol), "first");
+    EXPECT_EQ(reader.read_line(io::IReader::EolAction::MayHaveEol), "second");
+    EXPECT_EQ(reader.read_line(io::IReader::EolAction::MayHaveEol), "last");
+    EXPECT_EQ(reader.read_line(io::IReader::EolAction::MayHaveEol), "");
 }
 
 TEST(SocketReaderTest, EmptySocketReturnsEmptyOnRead) {
@@ -143,5 +143,5 @@ TEST(SocketReaderTest, EmptySocketReturnsEmptyOnRead) {
     EXPECT_EQ(reader.read_some(data.data(), 0), 0U);
     EXPECT_FALSE(reader.read_some(data.data(), data.size()).has_value());
     EXPECT_TRUE(reader.read_exact(4).empty());
-    EXPECT_EQ(reader.read_line(), "");
+    EXPECT_EQ(reader.read_line(io::IReader::EolAction::MayHaveEol), "");
 }
