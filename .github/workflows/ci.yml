@@ -148,9 +148,9 @@ jobs:
         run: uv run libranet --config examples/libranet.yaml --check-config
 
   # The C++ implementation, run from its own directory. It is built for
-  # Debug, instrumented for coverage, for Release, and twice more for Debug
-  # with sanitizers; the tests of the Debug builds are run. On Ubuntu, its
-  # parsers are fuzzed as well. gcovr reads its settings, and the floor below
+  # Debug, instrumented for coverage, and for Release; the tests of the
+  # Debug build are run. Sanitizers and fuzzers run in a separate parallel
+  # job (cpp-sanitizers). gcovr reads its settings, and the floor below
   # which the job fails, from cpp/gcovr.cfg. The program itself is built but
   # not run: it is to be a server.
   cpp:
@@ -218,6 +218,106 @@ jobs:
       - name: Shrink the Conan cache
         run: conan cache clean
 
+      - name: Test
+        run: ctest --preset conan-debug --output-on-failure
+
+      # Apple's Clang has no LeakSanitizer, so on macOS each test program
+      # runs again under leaks, which lists the memory nothing points to when
+      # the program ends, with the stack that allocated each block. It exits
+      # with status 1 when it finds any, and above 1 when it cannot look.
+      - name: Find leaks
+        if: runner.os == 'macOS'
+        run: |
+          failed=0
+          for tests in build/Debug/src/*/*_tests; do
+            name=$(basename "$tests")
+            report="build/$name.leaks"
+            status=0
+            leaks --atExit -- "$tests" > "$report" 2>&1 || status=$?
+            case "$status" in
+              0)
+                echo "$name: no leaks"
+                ;;
+              1)
+                echo "::error::$name leaks memory"
+                awk '/^leaks Report/ { found = 1 } found && shown < 80 { print; shown++ }' "$report"
+                failed=1
+                ;;
+              *)
+                echo "::error::leaks could not check $name (status $status)"
+                tail -n 20 "$report"
+                failed=1
+                ;;
+            esac
+          done
+          exit "$failed"
+
+      # gcov must match the compiler: GCC's on Ubuntu, LLVM's for Apple's
+      # Clang on macOS.
+      - name: Coverage
+        env:
+          GCOV: ${{ runner.os == 'macOS' && 'xcrun llvm-cov gcov' || 'gcov' }}
+        run: >-
+          gcovr --txt --cobertura coverage.xml
+          --markdown-summary coverage.md
+          --markdown-title "C++ coverage (${{ matrix.os }})"
+
+      - name: Coverage summary
+        if: ${{ !cancelled() && hashFiles('cpp/coverage.md') != '' }}
+        run: cat coverage.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-cpp-${{ matrix.os }}
+          path: cpp/coverage.xml
+          if-no-files-found: ignore
+
+  # Runs C++ sanitizer builds/tests and (on Ubuntu) fuzzers in parallel with
+  # the main C++ build and lint jobs.
+  cpp-sanitizers:
+    name: C++ sanitizers & fuzzers (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.cpp == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: false
+
+      - name: Install Conan and Ninja
+        run: |
+          uv tool install "conan>=2,<3"
+          uv tool install ninja
+          uv tool dir --bin >> "$GITHUB_PATH"
+
+      - name: Conan profile
+        id: profile
+        run: |
+          conan profile detect --exist-ok
+          echo "hash=$(shasum -a 256 "$(conan profile path default)" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Conan packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.conan2/p
+          key: conan-${{ github.job }}-${{ runner.os }}-${{ steps.profile.outputs.hash }}-${{ hashFiles('cpp/conanfile.py') }}
+
+      - name: Install Debug dependencies for toolchain
+        run: |
+          conan install . -s build_type=Debug --build=missing
+          conan cache clean
+
       # AddressSanitizer and ThreadSanitizer cannot share a build, so each
       # has one of its own. UndefinedBehaviorSanitizer runs with
       # AddressSanitizer only: GCC's checks of an object's type probe memory
@@ -253,40 +353,6 @@ jobs:
             -DBUILD_TESTING=OFF -DLIBRANET_FUZZERS=ON \
             -DLIBRANET_SANITIZERS=address,undefined
           cmake --build build/fuzz
-
-      - name: Test
-        run: ctest --preset conan-debug --output-on-failure
-
-      # Apple's Clang has no LeakSanitizer, so on macOS each test program
-      # runs again under leaks, which lists the memory nothing points to when
-      # the program ends, with the stack that allocated each block. It exits
-      # with status 1 when it finds any, and above 1 when it cannot look.
-      - name: Find leaks
-        if: runner.os == 'macOS'
-        run: |
-          failed=0
-          for tests in build/Debug/src/*/*_tests; do
-            name=$(basename "$tests")
-            report="build/$name.leaks"
-            status=0
-            leaks --atExit -- "$tests" > "$report" 2>&1 || status=$?
-            case "$status" in
-              0)
-                echo "$name: no leaks"
-                ;;
-              1)
-                echo "::error::$name leaks memory"
-                awk '/^leaks Report/ { found = 1 } found && shown < 80 { print; shown++ }' "$report"
-                failed=1
-                ;;
-              *)
-                echo "::error::leaks could not check $name (status $status)"
-                tail -n 20 "$report"
-                failed=1
-                ;;
-            esac
-          done
-          exit "$failed"
 
       # Some sanitizer runtimes fail as a program starts when Linux spreads
       # memory over 32 bits of random addresses, as recent Ubuntu does. 28
@@ -344,28 +410,6 @@ jobs:
         with:
           name: fuzz-findings
           path: cpp/build/fuzz/findings/
-          if-no-files-found: ignore
-
-      # gcov must match the compiler: GCC's on Ubuntu, LLVM's for Apple's
-      # Clang on macOS.
-      - name: Coverage
-        env:
-          GCOV: ${{ runner.os == 'macOS' && 'xcrun llvm-cov gcov' || 'gcov' }}
-        run: >-
-          gcovr --txt --cobertura coverage.xml
-          --markdown-summary coverage.md
-          --markdown-title "C++ coverage (${{ matrix.os }})"
-
-      - name: Coverage summary
-        if: ${{ !cancelled() && hashFiles('cpp/coverage.md') != '' }}
-        run: cat coverage.md >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload coverage report
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v6
-        with:
-          name: coverage-cpp-${{ matrix.os }}
-          path: cpp/coverage.xml
           if-no-files-found: ignore
 
   # clang-format and clang-tidy, at the LLVM version cpp/README.md names.
@@ -478,7 +522,7 @@ jobs:
   cpp-checks:
     name: C++
     if: always()
-    needs: [changes, cpp, cpp-lint]
+    needs: [changes, cpp, cpp-sanitizers, cpp-lint]
     runs-on: ubuntu-latest
     defaults:
       run:
