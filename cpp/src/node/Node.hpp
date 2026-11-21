@@ -3,10 +3,10 @@
 #include <filesystem>
 #include <thread>
 
+#include "api/DataHandler.hpp"
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
 #include "node/SettingsFile.hpp"
-#include "storage/HttpHandler.hpp"
 #include "storage/Manager.hpp"
 #include "web/Server.hpp"
 
@@ -63,7 +63,7 @@ private:
     storage::Manager::Ptr m_store;
 
     // The parts.
-    storage::HttpHandler m_data_handler;
+    api::DataHandler m_data_handler;
     web::Server m_server;
     net::Address m_local_address; // Where m_server listens
     std::thread m_server_thread;
