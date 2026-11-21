@@ -80,6 +80,18 @@ std::string execute_error(Database& database, std::string_view sql) {
     return "";
 }
 
+// What Database's constructor says when it cannot open the database at
+// path, or nothing if it can.
+std::string open_error(const std::filesystem::path& path) {
+    try {
+        (void)Database(path, names_schema);
+    } catch (const SqliteError& error) {
+        return error.what();
+    }
+
+    return "";
+}
+
 } // namespace
 
 TEST(DatabaseTest, MakesTheFile) {
@@ -124,11 +136,13 @@ TEST(DatabaseTest, WritesAheadToALog) {
     EXPECT_TRUE(std::filesystem::exists(directory.database().string() + "-wal"));
 }
 
-TEST(DatabaseTest, FileThatCannotBeOpenedThrows) {
+TEST(DatabaseTest, FileThatCannotBeOpenedSaysWhy) {
     const ScratchDirectory directory;
     const auto path = directory.database().parent_path() / "missing" / "libranet.sqlite3";
 
-    EXPECT_THROW(const Database database(path, names_schema), SqliteError);
+    const auto error = open_error(path);
+
+    EXPECT_EQ(error, "Cannot open the database " + path.string() + ": unable to open database file");
 }
 
 TEST(DatabaseTest, SchemaThatCannotBeRunThrows) {

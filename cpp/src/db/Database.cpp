@@ -1,5 +1,6 @@
 #include "Database.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -12,7 +13,6 @@ using std::logic_error;
 using std::string;
 using std::string_view;
 using std::uint8_t;
-using std::filesystem::path;
 
 namespace {
 
@@ -36,15 +36,18 @@ void assert_sqlite3(bool condition, sqlite3* connection, string_view what, Actio
 
 // A connection to the database at path, which makes the file if it is not
 // there, for one thread to use. Throws SqliteError when it cannot be opened.
-sqlite3* open_connection(const path& path) {
+sqlite3* open_connection(const std::filesystem::path& path) {
     constexpr int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX;
     const auto name = path.string();
     sqlite3* connection = nullptr;
+    // Opened before connection is passed on, as the order a call's
+    // arguments are worked out in is not set.
+    const auto result = sqlite3_open_v2(name.c_str(), &connection, flags, nullptr);
 
     // SQLite makes a connection that says what failed, unless it ran out
     // of memory making one, and it is closed once it has said it.
-    assert_sqlite3(SQLITE_OK == sqlite3_open_v2(name.c_str(), &connection, flags, nullptr),
-                   connection, "Cannot open the database " + name, Action::CloseDatabase);
+    assert_sqlite3(SQLITE_OK == result, connection, "Cannot open the database " + name,
+                   Action::CloseDatabase);
     return connection;
 }
 
@@ -80,7 +83,7 @@ void Database::Transaction::commit() {
     m_committed = true;
 }
 
-Database::Database(const path& path, string_view schema)
+Database::Database(const std::filesystem::path& path, string_view schema)
     : m_connection(open_connection(path)) {
     // Changes are written to a log beside the database before the database
     // itself, as the Python node's are, which makes each of the many small
