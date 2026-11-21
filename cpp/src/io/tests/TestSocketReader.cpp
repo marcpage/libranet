@@ -10,10 +10,12 @@
 #include <utility>
 #include <vector>
 
+#include "io/IReader.hpp"
 #include "io/SocketReader.hpp"
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
 
+using io::IReader;
 using io::SocketReader;
 using net::Address;
 using net::ISocket;
@@ -129,10 +131,10 @@ TEST(SocketReaderTest, ReadLineStripsCrLfAndLf) {
     ScriptedSocket socket("first\r\nsecond\nlast", 4);
     SocketReader reader(socket);
 
-    EXPECT_EQ(reader.read_line(io::IReader::EolAction::MayHaveEol), "first");
-    EXPECT_EQ(reader.read_line(io::IReader::EolAction::MayHaveEol), "second");
-    EXPECT_EQ(reader.read_line(io::IReader::EolAction::MayHaveEol), "last");
-    EXPECT_EQ(reader.read_line(io::IReader::EolAction::MayHaveEol), "");
+    EXPECT_EQ(reader.read_line(IReader::EolAction::MayHaveEol), "first");
+    EXPECT_EQ(reader.read_line(IReader::EolAction::MayHaveEol), "second");
+    EXPECT_EQ(reader.read_line(IReader::EolAction::MayHaveEol), "last");
+    EXPECT_EQ(reader.read_line(IReader::EolAction::MayHaveEol), "");
 }
 
 TEST(SocketReaderTest, EmptySocketReturnsEmptyOnRead) {
