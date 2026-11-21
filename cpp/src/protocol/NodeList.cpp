@@ -1,34 +1,25 @@
 #include "NodeList.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cctype>
-#include <cerrno>
 #include <cstddef>
-#include <cstdint>
-#include <iterator>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <utility>
 #include <vector>
 
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-
 #include "logger/Logger.hpp"
+#include "net/IpAddress.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
 #include "types/Json.hpp"
 
 namespace {
 
-using protocol::NodeList;
-using Data = NodeList::Data;
-using Entries = NodeList::Entries;
+using Data = protocol::NodeList::Data;
+using Entries = protocol::NodeList::Entries;
 
 // The host a node names itself by when it does not know the address it is
 // reached at (HttpApi §10).
@@ -61,102 +52,6 @@ std::string text_of(const Data& bytes) {
     return text;
 }
 
-// An IP address, as inet_pton() reads it and inet_ntop() writes it: IPv4 in
-// its first 4 bytes, and IPv6 in all 16.
-class IpAddress {
-public:
-    // The address text names, with an IPv4-mapped IPv6 address read as the
-    // IPv4 address it holds; nothing when text names no IP address.
-    [[nodiscard]] static std::optional<IpAddress> parse(std::string_view text);
-
-    // In 127.0.0.0/8, or ::1.
-    [[nodiscard]] bool is_loopback() const;
-    // As a URL names it as its host, IPv6 in brackets (RFC 3986 §3.2.2).
-    [[nodiscard]] std::string url_host() const;
-
-private:
-    // As many bytes as an IPv6 address has.
-    using Bytes = std::array<std::uint8_t, sizeof(in6_addr)>;
-
-    // ::ffff:0:0/96, the IPv4-mapped addresses (RFC 4291 §2.5.5.2): their
-    // first 12 bytes are these, and their last 4 the IPv4 address.
-    static constexpr Bytes mapped_prefix{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0};
-    static constexpr std::ptrdiff_t mapped_prefix_size = 12;
-    // ::1 (RFC 4291 §2.5.3).
-    static constexpr Bytes ipv6_loopback{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
-    // 127.0.0.0/8 (RFC 1122 §3.2.1.3), by its first byte.
-    static constexpr std::uint8_t ipv4_loopback = 127;
-
-    int m_family;
-    Bytes m_bytes;
-
-    IpAddress(int family, const Bytes& bytes);
-
-    // This address, or the IPv4 address it holds when it is IPv4-mapped.
-    [[nodiscard]] IpAddress _unmapped() const;
-};
-
-std::optional<IpAddress> IpAddress::parse(std::string_view text) {
-    // inet_pton() reads text up to a NUL, which would let what follows one
-    // through unread.
-    if (text.find('\0') != std::string_view::npos) {
-        return std::nullopt;
-    }
-
-    const std::string terminated(text);
-    Bytes bytes{};
-
-    if (1 == ::inet_pton(AF_INET, terminated.c_str(), bytes.data())) {
-        return IpAddress(AF_INET, bytes);
-    }
-
-    if (1 == ::inet_pton(AF_INET6, terminated.c_str(), bytes.data())) {
-        return IpAddress(AF_INET6, bytes)._unmapped();
-    }
-
-    return std::nullopt;
-}
-
-IpAddress::IpAddress(int family, const Bytes& bytes)
-    : m_family(family)
-    , m_bytes(bytes) {}
-
-bool IpAddress::is_loopback() const {
-    if (AF_INET == m_family) {
-        return ipv4_loopback == m_bytes.at(0);
-    }
-
-    return ipv6_loopback == m_bytes;
-}
-
-std::string IpAddress::url_host() const {
-    std::array<char, INET6_ADDRSTRLEN> text{};
-
-    if (nullptr
-        == ::inet_ntop(m_family, m_bytes.data(), text.data(),
-                       static_cast<socklen_t>(text.size()))) {
-        throw std::system_error(errno, std::generic_category(), "inet_ntop");
-    }
-
-    if (AF_INET6 == m_family) {
-        return "[" + std::string(text.data()) + "]";
-    }
-
-    return {text.data()};
-}
-
-IpAddress IpAddress::_unmapped() const {
-    if (!std::equal(mapped_prefix.begin(), std::next(mapped_prefix.begin(), mapped_prefix_size),
-                    m_bytes.begin())) {
-        return *this;
-    }
-
-    Bytes ipv4{};
-
-    std::copy(std::next(m_bytes.begin(), mapped_prefix_size), m_bytes.end(), ipv4.begin());
-    return {AF_INET, ipv4};
-}
-
 // The parts of an endpoint (HttpApi §10.6): its scheme, in lower case; its
 // host, without the brackets around an IPv6 address; and its port, as
 // written, or empty when it names none.
@@ -177,7 +72,7 @@ bool is_host(std::string_view text) {
 
         // With a colon, as an IPv4 address has none.
         return address.find(':') != std::string_view::npos
-               && IpAddress::parse(address).has_value();
+               && net::IpAddress::parse(address).has_value();
     }
 
     return !text.empty() && std::all_of(text.begin(), text.end(), [unreserved](char character) {
@@ -237,12 +132,12 @@ std::optional<EndpointParts> split_endpoint(std::string_view endpoint) {
 // machine (HttpApi §10.2): localhost always does, and a loopback address
 // unless source is one too, when the sender is on this machine, whose
 // loopback address it is too.
-bool names_sender(std::string_view host, const std::optional<IpAddress>& source) {
+bool names_sender(std::string_view host, const std::optional<net::IpAddress>& source) {
     if (localhost == lower_case(host)) {
         return true;
     }
 
-    const auto address = IpAddress::parse(host);
+    const auto address = net::IpAddress::parse(host);
 
     if (!address || !address->is_loopback()) {
         return false;
@@ -255,7 +150,7 @@ bool names_sender(std::string_view host, const std::optional<IpAddress>& source)
 // source when it names the sender's machine; nothing when it does and source
 // is no IP address.
 std::optional<std::string> resolved_endpoint(const std::string& endpoint,
-                                             const std::optional<IpAddress>& source) {
+                                             const std::optional<net::IpAddress>& source) {
     const auto parts = split_endpoint(endpoint);
 
     // Every endpoint a list names has parts, so the first test only guards
@@ -326,7 +221,7 @@ void LeftOut::log() const {
 
 // Adds the entry naming node_id at endpoint, as a node list holds it, to
 // list, or counts it in left_out when it names no endpoint or node id.
-void read_entry(NodeList& list, const std::string& endpoint, const types::Json& node_id,
+void read_entry(protocol::NodeList& list, const std::string& endpoint, const types::Json& node_id,
                 LeftOut& left_out) {
     if (!node_id.is_string()) {
         left_out.add_unusable(endpoint, "its node id is not a string");
@@ -360,12 +255,12 @@ void read_entry(NodeList& list, const std::string& endpoint, const types::Json& 
 
 // The node list json holds. Throws std::invalid_argument when it is not an
 // object holding a "nodes" object.
-NodeList from_json(const types::Json& json) {
+protocol::NodeList from_json(const types::Json& json) {
     if (!json.is_object() || !json.has("nodes") || !json.at("nodes").is_object()) {
         throw std::invalid_argument("A node list must be an object holding a \"nodes\" object");
     }
 
-    NodeList list;
+    protocol::NodeList list;
     LeftOut left_out;
 
     for (const auto& [endpoint, node_id] : json.at("nodes").object()) {
@@ -510,7 +405,7 @@ const NodeList::Entries& NodeList::entries() const noexcept {
 }
 
 NodeList NodeList::resolved(std::string_view source_address) const {
-    const auto source = IpAddress::parse(source_address);
+    const auto source = net::IpAddress::parse(source_address);
     NodeList list;
     std::size_t left_out = 0;
 
