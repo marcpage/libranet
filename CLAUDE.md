@@ -5,6 +5,10 @@
 Each session should make minimal changes to existing code to accomplish the
 task.
 
+Do not update README.md when changing code. Only update it when explicitly asked to.
+Updating the README.md is a top reason for merge conflicts when working on multiple
+steps simultaneously.
+
 ## Coding Conventions for Python
 
 All function parameters and class members should have correct type annotations.
@@ -32,6 +36,8 @@ Each git change should minimal. It should be the creation or modification of
 a single class with minimal adjustments to other files to adapt to that change
 or a general simple refactor across many files. Modifications in tests are not
 counted towards these limits as a change in once class could affect multiple tests.
+
+Do not put comments in CMakeLists.txt. Do not update existing comments.
 
 ## Interacting with GitHub and Git
 
