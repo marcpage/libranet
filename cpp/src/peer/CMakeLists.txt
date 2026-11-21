@@ -1,5 +1,5 @@
-# This node's outgoing connections to its peers: for now, the buckets it
-# spreads them over.
+# This node's connections to its server nodes, the nodes it connects to: for
+# now, the buckets they are spread over.
 add_library(libranet_peer STATIC
     Buckets.cpp)
 add_library(libranet::peer ALIAS libranet_peer)

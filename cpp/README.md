@@ -75,7 +75,7 @@ parsers in `fuzz/`:
 | [`src/node/`](src/node/) | `libranet::node` | The node, which makes its parts and runs them, and its settings file, in YAML, read with yaml-cpp |
 | [`src/logger/`](src/logger/) | `libranet::logger` | The log: lines at levels, from any thread, to stderr, stdout, a file, or the system log |
 | [`src/db/`](src/db/) | `libranet::db` | A connection to an SQLite database, which makes its tables, its transactions, and the statements of SQL prepared on it |
-| [`src/peer/`](src/peer/) | `libranet::peer` | The node's outgoing connections to its peers: for now, the buckets of node ids it spreads them over; uses `storage` |
+| [`src/peer/`](src/peer/) | `libranet::peer` | The node's connections to its server nodes, the nodes it connects to: for now, the buckets of node ids they are spread over; uses `storage` |
 
 Headers are included from `src/`, as in
 `#include "types/BlockingQueue.hpp"`. Each directory's `CMakeLists.txt`

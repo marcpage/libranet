@@ -19,10 +19,10 @@ namespace {
 // of four bits.
 constexpr std::size_t default_buckets = 16;
 
-// One more than the most prefix bits, and than the connections four bits
+// One more than the most prefix bits, and than the server nodes four bits
 // have buckets for.
 constexpr std::size_t too_many_bits = 17;
-constexpr std::size_t too_many_connections = 17;
+constexpr std::size_t too_many_server_nodes = 17;
 
 // The node id whose hash starts with digits, and is zeros after them.
 Identifier node_of(const std::string& digits) {
@@ -135,7 +135,7 @@ TEST(BucketsTest, TheWidestBucketsReadEightDigits) {
     EXPECT_FALSE(buckets.neighborhood_bucket(node_of("ffff0000")).has_value());
 }
 
-TEST(BucketsTest, NoConnectionsLeaveEveryBucketEmpty) {
+TEST(BucketsTest, NoServerNodesLeaveEveryBucketEmpty) {
     const Buckets buckets(node_of("a0"), Buckets::Sizes{});
 
     const auto gaps = buckets.gaps({});
@@ -146,9 +146,9 @@ TEST(BucketsTest, NoConnectionsLeaveEveryBucketEmpty) {
     EXPECT_EQ(gaps.neighborhood.wanted, 16U);
 }
 
-// The neighbor fills its bucket of the neighborhood, so this node's own
-// bucket of the first set, 10, is still empty.
-TEST(BucketsTest, ConnectionsFillTheirBuckets) {
+// The server node in the neighborhood, a5, fills its bucket there, so this
+// node's own bucket of the first set, 10, is still empty.
+TEST(BucketsTest, ServerNodesFillTheirBuckets) {
     const Buckets buckets(node_of("a0"), Buckets::Sizes{});
 
     const auto gaps = buckets.gaps(nodes_of({"10", "3f", "a5"}));
@@ -159,7 +159,7 @@ TEST(BucketsTest, ConnectionsFillTheirBuckets) {
     EXPECT_EQ(gaps.neighborhood.wanted, 15U);
 }
 
-TEST(BucketsTest, ConnectionsInOneBucketFillItOnce) {
+TEST(BucketsTest, ServerNodesInOneBucketFillItOnce) {
     const Buckets buckets(node_of("a0"), Buckets::Sizes{});
 
     const auto gaps = buckets.gaps(nodes_of({"10", "11", "1f"}));
@@ -169,7 +169,7 @@ TEST(BucketsTest, ConnectionsInOneBucketFillItOnce) {
     EXPECT_EQ(gaps.neighborhood.wanted, 16U);
 }
 
-TEST(BucketsTest, ASecondNeighborInABucketFillsThisNodesOwnBucket) {
+TEST(BucketsTest, ASecondServerNodeInANeighborhoodBucketFillsThisNodesOwnBucket) {
     const Buckets buckets(node_of("a0"), Buckets::Sizes{});
 
     const auto gaps = buckets.gaps(nodes_of({"a51", "a52"}));
@@ -180,7 +180,7 @@ TEST(BucketsTest, ASecondNeighborInABucketFillsThisNodesOwnBucket) {
     EXPECT_EQ(gaps.neighborhood.wanted, 15U);
 }
 
-TEST(BucketsTest, NeighborsPastTheNeighborhoodFillThisNodesOwnBucket) {
+TEST(BucketsTest, ServerNodesPastTheNeighborhoodFillThisNodesOwnBucket) {
     Buckets::Sizes sizes;
 
     sizes.min_neighborhood_connections = 1;
@@ -195,7 +195,7 @@ TEST(BucketsTest, NeighborsPastTheNeighborhoodFillThisNodesOwnBucket) {
     EXPECT_EQ(gaps.neighborhood.wanted, 0U);
 }
 
-TEST(BucketsTest, WithNoNeighborhoodANeighborFillsThisNodesOwnBucket) {
+TEST(BucketsTest, WithNoNeighborhoodAServerNodeInThisNodesBucketFillsIt) {
     Buckets::Sizes sizes;
 
     sizes.min_neighborhood_connections = 0;
@@ -209,9 +209,9 @@ TEST(BucketsTest, WithNoNeighborhoodANeighborFillsThisNodesOwnBucket) {
     EXPECT_EQ(gaps.neighborhood.wanted, 0U);
 }
 
-// A node named twice is one neighbor, so it does not fill this node's own
-// bucket of the first set.
-TEST(BucketsTest, ANodeConnectedTwiceFillsOneBucket) {
+// A server node named twice is one in the neighborhood, so it does not fill
+// this node's own bucket of the first set.
+TEST(BucketsTest, AServerNodeNamedTwiceFillsOneBucket) {
     const Buckets buckets(node_of("a0"), Buckets::Sizes{});
 
     const auto gaps = buckets.gaps(nodes_of({"a5", "10", "a5", "10"}));
@@ -222,13 +222,13 @@ TEST(BucketsTest, ANodeConnectedTwiceFillsOneBucket) {
     EXPECT_EQ(gaps.neighborhood.wanted, 15U);
 }
 
-// A set meant to have fewer connections than it has buckets wants none
+// A set meant to have fewer server nodes than it has buckets wants none
 // once it has them, though it still has buckets empty.
-TEST(BucketsTest, ASetWithItsConnectionsWantsNoMore) {
-    constexpr std::size_t connections = 4;
+TEST(BucketsTest, ASetWithItsServerNodesWantsNoMore) {
+    constexpr std::size_t server_nodes = 4;
     Buckets::Sizes sizes;
 
-    sizes.min_outgoing_connections = connections;
+    sizes.min_outgoing_connections = server_nodes;
 
     const Buckets buckets(node_of("a0"), sizes);
 
@@ -238,9 +238,9 @@ TEST(BucketsTest, ASetWithItsConnectionsWantsNoMore) {
     EXPECT_EQ(gaps.outgoing.wanted, 0U);
 }
 
-// A node in each bucket of the first set but this node's own, a neighbor in
-// each bucket of the neighborhood, and a second neighbor, which fills this
-// node's own bucket.
+// A server node in each bucket of the first set but this node's own, one in
+// each bucket of the neighborhood, and a second in one of those, which fills
+// this node's own bucket.
 TEST(BucketsTest, EveryBucketFilled) {
     const Buckets buckets(node_of("a0"), Buckets::Sizes{});
     std::vector<std::string> digits;
@@ -280,21 +280,21 @@ TEST(BucketsTest, PrefixBitsOutOfRangeAreRefused) {
     EXPECT_TRUE(refused(too_many_neighborhood));
 }
 
-TEST(BucketsTest, MoreConnectionsThanBucketsAreRefused) {
+TEST(BucketsTest, MoreServerNodesThanBucketsAreRefused) {
     Buckets::Sizes no_outgoing;
     Buckets::Sizes too_many_outgoing;
-    Buckets::Sizes too_many_neighbors;
-    Buckets::Sizes no_neighbors;
+    Buckets::Sizes too_many_in_neighborhood;
+    Buckets::Sizes none_in_neighborhood;
 
     no_outgoing.min_outgoing_connections = 0;
-    too_many_outgoing.min_outgoing_connections = too_many_connections;
-    too_many_neighbors.min_neighborhood_connections = too_many_connections;
-    no_neighbors.min_neighborhood_connections = 0;
+    too_many_outgoing.min_outgoing_connections = too_many_server_nodes;
+    too_many_in_neighborhood.min_neighborhood_connections = too_many_server_nodes;
+    none_in_neighborhood.min_neighborhood_connections = 0;
 
     EXPECT_TRUE(refused(no_outgoing));
     EXPECT_TRUE(refused(too_many_outgoing));
-    EXPECT_TRUE(refused(too_many_neighbors));
-    EXPECT_FALSE(refused(no_neighbors));
+    EXPECT_TRUE(refused(too_many_in_neighborhood));
+    EXPECT_FALSE(refused(none_in_neighborhood));
     EXPECT_FALSE(refused(Buckets::Sizes{}));
 }
 

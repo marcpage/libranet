@@ -52,7 +52,7 @@ void check_prefix_bits(size_t bits, const string& setting) {
 }
 
 // sizes, once checked. Throws std::invalid_argument, naming the setting, for
-// sizes a node cannot spread its connections by, as the Python node refuses
+// sizes a node cannot spread its server nodes by, as the Python node refuses
 // them.
 Buckets::Sizes checked(const Buckets::Sizes& sizes) {
     check_prefix_bits(sizes.bucket_prefix_bits, "peers.bucket_prefix_bits");
@@ -116,10 +116,10 @@ vector<size_t> unfilled(const set<size_t>& filled, size_t bits) {
     return empty;
 }
 
-// How many more connections a set with filled buckets wants, to have as
-// many as connections.
-size_t wanted(const set<size_t>& filled, size_t connections) {
-    return filled.size() < connections ? connections - filled.size() : 0;
+// How many more server nodes a set with filled buckets wants, to have as
+// many as server_nodes.
+size_t wanted(const set<size_t>& filled, size_t server_nodes) {
+    return filled.size() < server_nodes ? server_nodes - filled.size() : 0;
 }
 
 } // namespace
@@ -145,30 +145,30 @@ optional<size_t> Buckets::neighborhood_bucket(const Identifier& node_id) const {
     return static_cast<size_t>(leading_bits(node_id, m_sizes.bucket_prefix_bits + bits) & mask);
 }
 
-Buckets::Gaps Buckets::gaps(const vector<Identifier>& connected) const {
+Buckets::Gaps Buckets::gaps(const vector<Identifier>& server_ids) const {
     set<string> seen;
     set<size_t> outgoing;
     set<size_t> neighborhood;
-    size_t neighbors = 0;
+    size_t in_neighborhood = 0;
     Gaps result;
 
-    for (const auto& node_id : connected) {
-        if (!seen.insert(node_id.to_string()).second) {
+    for (const auto& server_id : server_ids) {
+        if (!seen.insert(server_id.to_string()).second) {
             continue;
         }
 
-        if (const auto place = neighborhood_bucket(node_id)) {
-            ++neighbors;
+        if (const auto place = neighborhood_bucket(server_id)) {
+            ++in_neighborhood;
             neighborhood.insert(*place);
         } else {
-            outgoing.insert(bucket(node_id));
+            outgoing.insert(bucket(server_id));
         }
     }
 
-    // A neighbor the neighborhood has no room for, as a second in one of
-    // its buckets, or one past the connections it is meant to have, fills
+    // A server node the neighborhood has no room for, as a second in one of
+    // its buckets, or one past the server nodes it is meant to have, fills
     // this node's own bucket of the first set.
-    if (neighbors > min(neighborhood.size(), m_sizes.min_neighborhood_connections)) {
+    if (in_neighborhood > min(neighborhood.size(), m_sizes.min_neighborhood_connections)) {
         outgoing.insert(m_own_bucket);
     }
 
