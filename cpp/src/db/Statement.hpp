@@ -69,6 +69,13 @@ public:
     [[nodiscard]] std::string text(int column) const;
     [[nodiscard]] Data blob(int column) const;
 
+    // The label of column in the rows the statement gives, whether it is on
+    // one or not: the name its AS clause gives it, or without one, a name
+    // SQLite picks, which may change from one release of SQLite to the
+    // next. Throws std::out_of_range when the statement gives no such
+    // column, and std::bad_alloc when SQLite runs out of memory.
+    [[nodiscard]] std::string label(int column) const;
+
 private:
     // Finalizes a statement SQLite prepared.
     struct Finalizer {

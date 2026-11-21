@@ -340,6 +340,28 @@ TEST(StatementTest, ReadingOutsideTheRowIsRefused) {
     EXPECT_THROW((void)statement.integer(0), std::out_of_range);
 }
 
+TEST(StatementTest, LabelsItsColumns) {
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement statement(database, R"(SELECT id AS node, attempts AS "tries so far" FROM nodes)");
+
+    EXPECT_EQ(statement.label(0), "node");
+    EXPECT_EQ(statement.label(1), "tries so far");
+    EXPECT_FALSE(statement.step());
+    EXPECT_EQ(statement.label(0), "node");
+}
+
+TEST(StatementTest, LabelOutsideTheColumnsIsRefused) {
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement select(database, "SELECT id AS node FROM nodes");
+    Statement insert(database, "INSERT INTO nodes (id) VALUES ('first')");
+
+    EXPECT_THROW((void)select.label(-1), std::out_of_range);
+    EXPECT_THROW((void)select.label(1), std::out_of_range);
+    EXPECT_THROW((void)insert.label(0), std::out_of_range);
+}
+
 TEST(StatementTest, FinalizedWhenItGoes) {
     const ScratchDirectory directory;
     Database database(directory.database(), nodes_schema);

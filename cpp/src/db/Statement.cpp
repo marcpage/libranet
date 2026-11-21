@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <iterator>
 #include <limits>
+#include <new>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -228,6 +229,21 @@ Statement::Data Statement::blob(int column) const {
 
     std::copy_n(bytes, size, data.begin());
     return data;
+}
+
+std::string Statement::label(int column) const {
+    if (column < 0 || sqlite3_column_count(m_statement.get()) <= column) {
+        throw std::out_of_range("No column " + std::to_string(column) + " in the statement's rows");
+    }
+
+    const auto* name = sqlite3_column_name(m_statement.get(), column);
+
+    // SQLite gives no name only when it ran out of memory making one.
+    if (nullptr == name) {
+        throw std::bad_alloc();
+    }
+
+    return name;
 }
 
 void Statement::Finalizer::operator()(sqlite3_stmt* statement) const noexcept {
