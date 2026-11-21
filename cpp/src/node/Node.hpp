@@ -3,8 +3,8 @@
 #include <filesystem>
 #include <thread>
 
-#include "identity/NodeIdentity.hpp"
 #include "api/DataHandler.hpp"
+#include "identity/NodeIdentity.hpp"
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
 #include "node/SettingsFile.hpp"
