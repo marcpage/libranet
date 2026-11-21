@@ -119,6 +119,7 @@ add_subdirectory(src/protocol)
 add_subdirectory(src/node)
 add_subdirectory(src/logger)
 add_subdirectory(src/db)
+add_subdirectory(src/peer)
 
 add_executable(libranet src/main.cpp)
 target_link_libraries(libranet PRIVATE libranet::node)
