@@ -19,7 +19,8 @@ public:
         MayHaveEol,
     };
 
-    // Reads a line up to its \n or the end of the input, and leaves out the \n and a \r before it
+    // Reads a line up to its \n or the end of the input, and leaves out the \n and a \r before it.
+    // With MustHaveEol, returns nothing if the input ends before the \n.
     [[nodiscard]] virtual std::optional<std::string> read_line(EolAction eolAction);
     // Reads size bytes, or fewer where the input ends first.
     [[nodiscard]] virtual std::vector<std::byte> read_exact(std::size_t size);
@@ -92,7 +93,7 @@ inline std::optional<std::string> IReader::read_line(EolAction eolAction) {
 
     if (!raw.empty() && '\n' == raw.back()) {
         raw.pop_back();
-    } else if (eolAction == EolAction::MayHaveEol) {
+    } else if (eolAction == EolAction::MustHaveEol) {
         return std::nullopt;
     }
 
