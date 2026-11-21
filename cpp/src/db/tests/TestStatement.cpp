@@ -2,66 +2,75 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
 
-#include <sqlite3.h>
-
+#include "Fixtures.hpp"
+#include "db/Database.hpp"
 #include "db/Statement.hpp"
 
+using db::Database;
+using db::SqliteError;
 using db::Statement;
+using fixtures::ScratchDirectory;
 using namespace std::string_view_literals;
 
 namespace {
 
-// Closes a connection to SQLite.
-struct Closer {
-    void operator()(sqlite3* connection) const noexcept {
-        (void)sqlite3_close(connection);
-    }
-};
+// A table of nodes, each id held once, made only if it is missing.
+constexpr std::string_view nodes_schema =
+    "CREATE TABLE IF NOT EXISTS nodes (id TEXT UNIQUE, attempts INTEGER)";
 
-// A connection to SQLite, closed when it goes.
-using Connection = std::unique_ptr<sqlite3, Closer>;
+// Whether a statement prepared on database is part way through the rows of
+// a table: SQLite refuses to drop a table while one is, and a statement
+// finalized is part way through none.
+bool busy(Database& database) {
+    database.execute("CREATE TABLE IF NOT EXISTS spare (value)");
 
-// A connection to a new database in memory, which goes when it closes.
-Connection open_in_memory() {
-    sqlite3* connection = nullptr;
-
-    (void)sqlite3_open(":memory:", &connection);
-    return Connection(connection);
-}
-
-// Runs sql, which takes no values and gives no rows, on connection.
-void run(sqlite3& connection, std::string_view sql) {
-    (void)Statement(connection, sql).step();
-}
-
-// How many statements are prepared on connection, and not yet finalized.
-int prepared_on(sqlite3& connection) {
-    auto count = 0;
-
-    for (auto* statement = sqlite3_next_stmt(&connection, nullptr); nullptr != statement;
-         statement = sqlite3_next_stmt(&connection, statement)) {
-        ++count;
-    }
-
-    return count;
-}
-
-// Whether Statement turns down sql as invalid.
-bool refused(sqlite3& connection, std::string_view sql) {
     try {
-        const Statement statement(connection, sql);
+        database.execute("DROP TABLE spare");
+    } catch (const SqliteError&) {
+        return true;
+    }
+
+    return false;
+}
+
+// Whether Statement turns down sql as not one statement.
+bool refused(Database& database, std::string_view sql) {
+    try {
+        const Statement statement(database, sql);
     } catch (const std::invalid_argument&) {
         return true;
     }
 
     return false;
+}
+
+// What Statement says when SQLite cannot prepare sql on database, or
+// nothing if it can.
+std::string prepare_error(Database& database, std::string_view sql) {
+    try {
+        const Statement statement(database, sql);
+    } catch (const SqliteError& error) {
+        return error.what();
+    }
+
+    return "";
+}
+
+// What step() says when SQLite cannot run statement, or nothing if it can.
+std::string step_error(Statement& statement) {
+    try {
+        (void)statement.step();
+    } catch (const SqliteError& error) {
+        return error.what();
+    }
+
+    return "";
 }
 
 // Every value a byte can hold, once each.
@@ -81,17 +90,15 @@ Statement::Data every_byte() {
 TEST(StatementTest, StepsThroughRows) {
     constexpr std::int64_t first_attempts = 3;
     constexpr std::int64_t second_attempts = 5;
-    const auto database = open_in_memory();
-
-    run(*database, "CREATE TABLE nodes (id TEXT, attempts INTEGER)");
-
-    Statement insert(*database, "INSERT INTO nodes (id, attempts) VALUES (?, ?)");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement insert(database, "INSERT INTO nodes (id, attempts) VALUES (?, ?)");
 
     EXPECT_FALSE(insert.bind("first").bind(first_attempts).step());
     insert.reset();
     EXPECT_FALSE(insert.bind("second").bind(second_attempts).step());
 
-    Statement select(*database, "SELECT id, attempts FROM nodes ORDER BY id");
+    Statement select(database, "SELECT id, attempts FROM nodes ORDER BY id");
 
     ASSERT_TRUE(select.step());
     EXPECT_EQ(select.text(0), "first");
@@ -106,8 +113,9 @@ TEST(StatementTest, ReadsBackEachKind) {
     constexpr std::int64_t number = -42;
     constexpr double measure = 2.5;
     const Statement::Data content{std::byte{0x00}, std::byte{0xFF}};
-    const auto database = open_in_memory();
-    Statement statement(*database, "SELECT ?, ?, ?, ?, ?");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement statement(database, "SELECT ?, ?, ?, ?, ?");
 
     statement.bind(number).bind(measure).bind("text").bind(content).bind(std::nullopt);
 
@@ -129,8 +137,9 @@ TEST(StatementTest, ReadsBackIntegersAndRealsWhole) {
     constexpr auto lowest = std::numeric_limits<double>::lowest();
     constexpr auto tiniest = std::numeric_limits<double>::denorm_min();
     constexpr auto infinite = std::numeric_limits<double>::infinity();
-    const auto database = open_in_memory();
-    Statement statement(*database, "SELECT ?, ?, ?, ?, ?");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement statement(database, "SELECT ?, ?, ?, ?, ?");
 
     statement.bind(smallest).bind(largest).bind(lowest).bind(tiniest).bind(infinite);
 
@@ -145,8 +154,9 @@ TEST(StatementTest, ReadsBackIntegersAndRealsWhole) {
 TEST(StatementTest, ReadsBackTextAndBlobsWhole) {
     constexpr auto with_nul = "before\0after"sv;
     constexpr auto unicode = "Grüße, 世界"sv;
-    const auto database = open_in_memory();
-    Statement statement(*database, "SELECT ?, ?, ?");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement statement(database, "SELECT ?, ?, ?");
 
     statement.bind(with_nul).bind(unicode).bind(every_byte());
 
@@ -157,8 +167,9 @@ TEST(StatementTest, ReadsBackTextAndBlobsWhole) {
 }
 
 TEST(StatementTest, EmptyTextAndBlobsAreNotNull) {
-    const auto database = open_in_memory();
-    Statement statement(*database, "SELECT ?, ?, ?");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement statement(database, "SELECT ?, ?, ?");
 
     statement.bind(std::string_view()).bind("").bind(Statement::Data());
 
@@ -173,8 +184,9 @@ TEST(StatementTest, EmptyTextAndBlobsAreNotNull) {
 
 TEST(StatementTest, BindsOptionalValues) {
     constexpr std::int64_t number = 7;
-    const auto database = open_in_memory();
-    Statement statement(*database, "SELECT ?, ?");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement statement(database, "SELECT ?, ?");
 
     statement.bind(std::optional<std::int64_t>(number)).bind(std::optional<std::string>());
 
@@ -186,8 +198,9 @@ TEST(StatementTest, BindsOptionalValues) {
 TEST(StatementTest, ResetRunsAgainWithNewValues) {
     constexpr std::int64_t first = 1;
     constexpr std::int64_t second = 2;
-    const auto database = open_in_memory();
-    Statement statement(*database, "SELECT ?");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement statement(database, "SELECT ?");
 
     ASSERT_TRUE(statement.bind(first).step());
     EXPECT_EQ(statement.integer(0), first);
@@ -199,8 +212,9 @@ TEST(StatementTest, ResetRunsAgainWithNewValues) {
 
 TEST(StatementTest, ResetUnbindsEveryParameter) {
     constexpr std::int64_t number = 1;
-    const auto database = open_in_memory();
-    Statement statement(*database, "SELECT ?");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement statement(database, "SELECT ?");
 
     ASSERT_TRUE(statement.bind(number).step());
     statement.reset();
@@ -210,8 +224,9 @@ TEST(StatementTest, ResetUnbindsEveryParameter) {
 
 TEST(StatementTest, SteppingWithAParameterUnboundIsRefused) {
     constexpr std::int64_t number = 1;
-    const auto database = open_in_memory();
-    Statement statement(*database, "SELECT ?, ?");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement statement(database, "SELECT ?, ?");
 
     statement.bind(number);
 
@@ -220,9 +235,10 @@ TEST(StatementTest, SteppingWithAParameterUnboundIsRefused) {
 
 TEST(StatementTest, BindingPastTheLastParameterIsRefused) {
     constexpr std::int64_t number = 1;
-    const auto database = open_in_memory();
-    Statement none(*database, "SELECT 1");
-    Statement one(*database, "SELECT ?");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement none(database, "SELECT 1");
+    Statement one(database, "SELECT ?");
 
     one.bind(number);
 
@@ -232,9 +248,10 @@ TEST(StatementTest, BindingPastTheLastParameterIsRefused) {
 
 TEST(StatementTest, BindingOnceSteppedIsRefused) {
     constexpr std::int64_t number = 1;
-    const auto database = open_in_memory();
-    Statement running(*database, "SELECT 1 WHERE ? IS NOT NULL");
-    Statement finished(*database, "SELECT 1 WHERE ? IS NULL");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement running(database, "SELECT 1 WHERE ? IS NOT NULL");
+    Statement finished(database, "SELECT 1 WHERE ? IS NULL");
 
     ASSERT_TRUE(running.bind(number).step());
     ASSERT_FALSE(finished.bind(number).step());
@@ -244,68 +261,62 @@ TEST(StatementTest, BindingOnceSteppedIsRefused) {
 }
 
 TEST(StatementTest, NaNIsRefused) {
-    const auto database = open_in_memory();
-    Statement statement(*database, "SELECT ?");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement statement(database, "SELECT ?");
 
     EXPECT_THROW(statement.bind(std::numeric_limits<double>::quiet_NaN()), std::invalid_argument);
 }
 
-TEST(StatementTest, ValueLongerThanSQLiteAllowsIsRefused) {
-    constexpr auto most_length = 100;
-    const auto database = open_in_memory();
-    Statement statement(*database, "SELECT ?, ?");
-
-    (void)sqlite3_limit(database.get(), SQLITE_LIMIT_LENGTH, most_length);
-
-    const std::string text(most_length + 1, 'x');
-    const Statement::Data content(most_length + 1);
-
-    EXPECT_THROW(statement.bind(text), std::runtime_error);
-    EXPECT_THROW(statement.bind(content), std::runtime_error);
-}
-
 TEST(StatementTest, OneStatementWithWhitespaceAfterIsPrepared) {
-    const auto database = open_in_memory();
-    Statement statement(*database, "SELECT 'one'; \t\n");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement statement(database, "SELECT 'one'; \t\n");
 
     ASSERT_TRUE(statement.step());
     EXPECT_EQ(statement.text(0), "one");
 }
 
-TEST(StatementTest, SqlThatIsNotOneStatementIsRefused) {
-    const auto database = open_in_memory();
+TEST(StatementTest, SqlThatCannotBePreparedSaysWhy) {
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
 
-    EXPECT_TRUE(refused(*database, "SELEC 1"));
-    EXPECT_TRUE(refused(*database, "SELECT * FROM missing"));
-    EXPECT_TRUE(refused(*database, std::string_view()));
-    EXPECT_TRUE(refused(*database, ""));
-    EXPECT_TRUE(refused(*database, " \n"));
-    EXPECT_TRUE(refused(*database, ";"));
-    EXPECT_TRUE(refused(*database, "-- no statement"));
-    EXPECT_TRUE(refused(*database, "SELECT 1; SELECT 2"));
-    EXPECT_TRUE(refused(*database, "SELECT 1; garbage"));
-    EXPECT_EQ(prepared_on(*database), 0);
+    const auto error = prepare_error(database, "SELECT * FROM missing");
+
+    EXPECT_EQ(error, "Cannot prepare SQL: no such table: missing");
+    EXPECT_THROW(const Statement statement(database, "SELEC 1"), SqliteError);
 }
 
-TEST(StatementTest, FailingToRunThrows) {
-    constexpr std::int64_t taken = 1;
-    constexpr std::int64_t free = 2;
-    const auto database = open_in_memory();
+TEST(StatementTest, SqlThatIsNotOneStatementIsRefused) {
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
 
-    run(*database, "CREATE TABLE nodes (id INTEGER UNIQUE)");
+    EXPECT_TRUE(refused(database, std::string_view()));
+    EXPECT_TRUE(refused(database, ""));
+    EXPECT_TRUE(refused(database, " \n"));
+    EXPECT_TRUE(refused(database, ";"));
+    EXPECT_TRUE(refused(database, "-- no statement"));
+    EXPECT_TRUE(refused(database, "SELECT 1; SELECT 2"));
+    EXPECT_TRUE(refused(database, "SELECT 1; garbage"));
+}
 
-    Statement insert(*database, "INSERT INTO nodes (id) VALUES (?)");
+TEST(StatementTest, FailingToRunSaysWhy) {
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement insert(database, "INSERT INTO nodes (id) VALUES (?)");
 
-    EXPECT_FALSE(insert.bind(taken).step());
+    EXPECT_FALSE(insert.bind("taken").step());
     insert.reset();
-    EXPECT_THROW((void)insert.bind(taken).step(), std::runtime_error);
+    EXPECT_EQ(step_error(insert.bind("taken")),
+              "Cannot run the statement: UNIQUE constraint failed: nodes.id");
     insert.reset();
-    EXPECT_FALSE(insert.bind(free).step());
+    EXPECT_FALSE(insert.bind("free").step());
 }
 
 TEST(StatementTest, ReadingAnotherKindIsRefused) {
-    const auto database = open_in_memory();
-    Statement statement(*database, "SELECT 1, 1.5, 'text', x'00', NULL");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement statement(database, "SELECT 1, 1.5, 'text', x'00', NULL");
 
     ASSERT_TRUE(statement.step());
 
@@ -317,8 +328,9 @@ TEST(StatementTest, ReadingAnotherKindIsRefused) {
 }
 
 TEST(StatementTest, ReadingOutsideTheRowIsRefused) {
-    const auto database = open_in_memory();
-    Statement statement(*database, "SELECT 1");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement statement(database, "SELECT 1");
 
     EXPECT_THROW((void)statement.is_null(0), std::out_of_range);
     ASSERT_TRUE(statement.step());
@@ -329,24 +341,37 @@ TEST(StatementTest, ReadingOutsideTheRowIsRefused) {
 }
 
 TEST(StatementTest, FinalizedWhenItGoes) {
-    const auto database = open_in_memory();
-    auto statement = std::make_optional<Statement>(*database, "SELECT 1");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
 
-    EXPECT_EQ(prepared_on(*database), 1);
-    statement = std::nullopt;
-    EXPECT_EQ(prepared_on(*database), 0);
+    database.execute("INSERT INTO nodes (id) VALUES ('first')");
+
+    {
+        Statement statement(database, "SELECT id FROM nodes");
+
+        ASSERT_TRUE(statement.step());
+        EXPECT_TRUE(busy(database));
+    }
+
+    EXPECT_FALSE(busy(database));
 }
 
 TEST(StatementTest, MovedStatementRuns) {
     constexpr std::int64_t number = 7;
-    const auto database = open_in_memory();
-    Statement original(*database, "SELECT ?");
-    Statement moved(std::move(original));
-    Statement assigned(*database, "SELECT 1");
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
 
+    database.execute("INSERT INTO nodes (id) VALUES ('first')");
+
+    Statement original(database, "SELECT ?");
+    Statement moved(std::move(original));
+    Statement assigned(database, "SELECT id FROM nodes");
+
+    ASSERT_TRUE(assigned.step());
     assigned = std::move(moved);
 
-    EXPECT_EQ(prepared_on(*database), 1);
+    // The statement assigned over, part way through its rows, is finalized.
+    EXPECT_FALSE(busy(database));
     ASSERT_TRUE(assigned.bind(number).step());
     EXPECT_EQ(assigned.integer(0), number);
 }

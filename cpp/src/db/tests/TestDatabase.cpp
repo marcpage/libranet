@@ -1,60 +1,21 @@
 #include <gtest/gtest.h>
 #include <filesystem>
-#include <random>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <system_error>
 
+#include "Fixtures.hpp"
 #include "db/Database.hpp"
 
 using db::Database;
 using db::SqliteError;
+using fixtures::ScratchDirectory;
 
 namespace {
 
 // A table of names, each held once, made only if it is missing.
 constexpr std::string_view names_schema =
     "CREATE TABLE IF NOT EXISTS names (name TEXT PRIMARY KEY)";
-
-// A directory of the running test's own, made under the system's directory
-// for temporary files, and removed with all it holds when this is destroyed.
-// SQLite writes files beside the database, which go with it.
-class ScratchDirectory {
-public:
-    ScratchDirectory();
-    ~ScratchDirectory();
-    ScratchDirectory(const ScratchDirectory&) = delete;
-    ScratchDirectory& operator=(const ScratchDirectory&) = delete;
-    ScratchDirectory(ScratchDirectory&&) = delete;
-    ScratchDirectory& operator=(ScratchDirectory&&) = delete;
-
-    // Where the database is kept in this directory.
-    [[nodiscard]] std::filesystem::path database() const;
-
-private:
-    std::filesystem::path m_path;
-};
-
-ScratchDirectory::ScratchDirectory() {
-    const auto* const test = testing::UnitTest::GetInstance()->current_test_info();
-    std::random_device random;
-
-    m_path = std::filesystem::temp_directory_path()
-             / (std::string("libranet-") + test->test_suite_name() + "-" + test->name() + "-"
-                + std::to_string(random()));
-    std::filesystem::create_directories(m_path);
-}
-
-ScratchDirectory::~ScratchDirectory() {
-    std::error_code error;
-
-    std::filesystem::remove_all(m_path, error);
-}
-
-std::filesystem::path ScratchDirectory::database() const {
-    return m_path / "libranet.sqlite3";
-}
 
 // Whether name could be added to the names table in database, as it can be
 // only when the table is there and does not hold name already.

@@ -13,6 +13,8 @@
 
 #include <sqlite3.h>
 
+#include "Database.hpp"
+
 namespace {
 
 // A kind of value SQLite holds, as sqlite3_column_type() gives it, and its
@@ -38,11 +40,11 @@ std::string error_of(sqlite3* connection) {
 }
 
 // The one statement sql holds, prepared on connection, for the caller to
-// finalize. Throws std::invalid_argument for SQL that SQLite cannot
-// prepare, that holds no statement, or that holds anything but whitespace
-// after its first. The return type is deduced: CodeQL reads the code
-// without building it, and may take a declaration that starts with a type
-// of SQLite's for a variable.
+// finalize. Throws SqliteError for SQL that SQLite cannot prepare, and
+// std::invalid_argument for SQL that holds no statement, or that holds
+// anything but whitespace after its first. The return type is deduced:
+// CodeQL reads the code without building it, and may take a declaration
+// that starts with a type of SQLite's for a variable.
 auto* prepare(sqlite3& connection, std::string_view sql) {
     constexpr std::string_view whitespace = " \t\n\v\f\r";
     const auto length = static_cast<int>(std::min(sql.size(), most_sql));
@@ -52,7 +54,7 @@ auto* prepare(sqlite3& connection, std::string_view sql) {
     const char* tail = nullptr;
 
     if (SQLITE_OK != sqlite3_prepare_v2(&connection, text, length, &statement, &tail)) {
-        throw std::invalid_argument("SQLite cannot prepare the statement: " + error_of(&connection));
+        throw db::SqliteError("Cannot prepare SQL: " + error_of(&connection));
     }
 
     if (nullptr == statement) {
@@ -74,7 +76,7 @@ auto* prepare(sqlite3& connection, std::string_view sql) {
 // Throws for what SQLite gave, result, when binding a value, unless it
 // bound it: std::out_of_range when the statement has no parameter left,
 // std::logic_error when it has stepped and is not yet reset, and
-// std::runtime_error for anything else.
+// SqliteError for anything else.
 void check_bound(int result) {
     if (SQLITE_OK == result) {
         return;
@@ -88,7 +90,7 @@ void check_bound(int result) {
         throw std::logic_error("Cannot bind a value to a statement that has stepped until it is reset");
     }
 
-    throw std::runtime_error(std::string("SQLite cannot bind the value: ") + sqlite3_errstr(result));
+    throw db::SqliteError(std::string("Cannot bind the value: ") + sqlite3_errstr(result));
 }
 
 // The kind of value column holds in the row statement is on, as
@@ -116,8 +118,8 @@ void expect(sqlite3_stmt* statement, int column, Kind kind) {
 
 namespace db {
 
-Statement::Statement(sqlite3& connection, std::string_view sql)
-    : m_statement(prepare(connection, sql)) {}
+Statement::Statement(Database& database, std::string_view sql)
+    : m_statement(prepare(*database.m_connection, sql)) {}
 
 Statement& Statement::bind(std::int64_t value) {
     check_bound(sqlite3_bind_int64(m_statement.get(), m_next_parameter, value));
@@ -180,8 +182,7 @@ bool Statement::step() {
         return false;
     }
 
-    throw std::runtime_error("SQLite cannot run the statement: "
-                             + error_of(sqlite3_db_handle(m_statement.get())));
+    throw SqliteError("Cannot run the statement: " + error_of(sqlite3_db_handle(m_statement.get())));
 }
 
 void Statement::reset() noexcept {

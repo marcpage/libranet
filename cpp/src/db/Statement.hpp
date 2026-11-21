@@ -8,25 +8,27 @@
 #include <string_view>
 #include <vector>
 
-// SQLite's connection and prepared statement, which only Statement.cpp
-// reads, so that SQLite's header stays out of this one.
-struct sqlite3;
+#include "Database.hpp"
+
+// SQLite's prepared statement, which only Statement.cpp, where SQLite is
+// included, uses as more than a pointer.
 struct sqlite3_stmt;
 
 namespace db {
 
-// A statement of SQL, prepared on an SQLite connection that must outlive it.
-// Values are bound to its parameters in order, from the first; it steps
-// through the rows it gives; and the columns of the row it is on are read
-// by their index, from 0. It is finalized when it goes. Built on SQLite.
+// A statement of SQL, prepared on a Database that must outlive it. Values
+// are bound to its parameters in order, from the first; it steps through
+// the rows it gives; and the columns of the row it is on are read by their
+// index, from 0. It is finalized when it goes. Built on SQLite.
 class Statement {
 public:
     using Data = std::vector<std::byte>;
 
-    // Prepares the one statement that sql holds. Throws
-    // std::invalid_argument for SQL that SQLite cannot prepare, that holds
-    // no statement, or that holds anything but whitespace after its first.
-    Statement(sqlite3& connection, std::string_view sql);
+    // Prepares the one statement that sql holds on database. Throws
+    // SqliteError for SQL that SQLite cannot prepare, as when it names a
+    // table that is not there; and std::invalid_argument for SQL that holds
+    // no statement, or anything but whitespace after its first.
+    Statement(Database& database, std::string_view sql);
     ~Statement() = default;
     Statement(const Statement&) = delete;
     Statement& operator=(const Statement&) = delete;
@@ -36,8 +38,8 @@ public:
     // Each binds value to the next parameter, and returns this statement, so
     // that binds chain. Each throws std::out_of_range when every parameter
     // is bound already, std::logic_error once the statement has stepped
-    // and is not yet reset, and std::runtime_error when SQLite cannot bind
-    // the value, as when it is longer than SQLite allows.
+    // and is not yet reset, and SqliteError when SQLite cannot bind the
+    // value, as when it is longer than SQLite allows.
     Statement& bind(std::int64_t value);
     // Also throws std::invalid_argument for NaN, which SQLite would hold as
     // NULL.
@@ -51,8 +53,8 @@ public:
 
     // Runs the statement on to its next row: whether there is one, or false
     // once it has run to its end. Throws std::logic_error while a parameter
-    // is unbound, and std::runtime_error when SQLite fails to run it, as
-    // when a constraint fails.
+    // is unbound, and SqliteError when SQLite fails to run it, as when a
+    // constraint fails.
     bool step();
     // Readies the statement to run again, with its parameters unbound.
     void reset() noexcept;

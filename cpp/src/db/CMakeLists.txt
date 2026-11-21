@@ -1,7 +1,6 @@
 # A connection to an SQLite database, and the statements prepared on it,
 # built on SQLite, which Conan provides. Only Database.cpp and Statement.cpp
-# include it, so it is linked privately. The Statement tests open their own
-# connections to it.
+# include it, so it is linked privately.
 find_package(SQLite3 REQUIRED)
 
 add_library(libranet_db STATIC
@@ -15,6 +14,6 @@ if(BUILD_TESTING)
     add_executable(db_tests
         tests/TestDatabase.cpp
         tests/TestStatement.cpp)
-    target_link_libraries(db_tests PRIVATE libranet::db SQLite::SQLite3 GTest::gtest_main)
+    target_link_libraries(db_tests PRIVATE libranet::db GTest::gtest_main)
     gtest_discover_tests(db_tests)
 endif()
