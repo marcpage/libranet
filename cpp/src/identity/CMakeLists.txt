@@ -1,6 +1,7 @@
 # The node's identity, and the signatures on what nodes send each other: for
-# now, the signature base RFC 9421 signs, and the public keys of other nodes,
-# read from the store.
+# now, the signature base RFC 9421 signs, the Content-Digest that binds a
+# signature to a body, and the public keys of other nodes, read from the
+# store.
 add_library(libranet_identity STATIC
     KnownKeys.cpp
     SignatureBase.cpp)
@@ -14,6 +15,7 @@ target_link_libraries(libranet_identity PUBLIC
 
 if(BUILD_TESTING)
     add_executable(identity_tests
+        tests/TestContentDigest.cpp
         tests/TestKnownKeys.cpp
         tests/TestSignatureBase.cpp)
     target_link_libraries(identity_tests PRIVATE
@@ -21,4 +23,8 @@ if(BUILD_TESTING)
         libranet::crypto
         GTest::gtest_main)
     gtest_discover_tests(identity_tests)
+endif()
+
+if(LIBRANET_FUZZERS)
+    libranet_add_fuzzer(content_digest_fuzzer fuzz/FuzzContentDigest.cpp libranet::identity)
 endif()
