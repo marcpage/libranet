@@ -77,6 +77,7 @@ parsers in `fuzz/`:
 | [`src/logger/`](src/logger/) | `libranet::logger` | The log: lines at levels, from any thread, to stderr, stdout, a file, or the system log |
 | [`src/db/`](src/db/) | `libranet::db` | A connection to an SQLite database, which makes its tables, its transactions, and the statements of SQL prepared on it |
 | [`src/identity/`](src/identity/) | `libranet::identity` | The node's identity and the signatures on what nodes send each other: so far, the signature base RFC 9421 signs, and the `Content-Digest` of a body; uses `types`, `http`, and `crypto` |
+| [`src/peer/`](src/peer/) | `libranet::peer` | The node's connections to its server nodes, the nodes it connects to: for now, the buckets of node ids they are spread over; uses `storage` |
 
 Headers are included from `src/`, as in
 `#include "types/BlockingQueue.hpp"`. Each directory's `CMakeLists.txt`
