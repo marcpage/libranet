@@ -52,7 +52,7 @@ std::vector<std::size_t> every_bucket_but(const std::set<std::size_t>& filled) {
 }
 
 // Whether Buckets refuses sizes as invalid.
-bool refused(const Buckets::Sizes& sizes) {
+bool refused(const Buckets::ExpectedSizes& sizes) {
     try {
         (void)Buckets(node_of("a0"), sizes);
     } catch (const std::invalid_argument&) {
@@ -65,7 +65,7 @@ bool refused(const Buckets::Sizes& sizes) {
 } // namespace
 
 TEST(BucketsTest, DefaultsAreThePythonNodes) {
-    const Buckets::Sizes sizes;
+    const Buckets::ExpectedSizes sizes;
 
     EXPECT_EQ(sizes.min_primary_connections, 16U);
     EXPECT_EQ(sizes.primary_prefix_bits, 4U);
@@ -74,7 +74,7 @@ TEST(BucketsTest, DefaultsAreThePythonNodes) {
 }
 
 TEST(BucketsTest, PrimaryBucketIsTheFirstBits) {
-    const Buckets buckets(node_of("a0"), Buckets::Sizes{});
+    const Buckets buckets(node_of("a0"), Buckets::ExpectedSizes{});
 
     EXPECT_EQ(buckets.primary_bucket(node_of("00")), 0U);
     EXPECT_EQ(buckets.primary_bucket(node_of("3f")), 3U);
@@ -83,7 +83,7 @@ TEST(BucketsTest, PrimaryBucketIsTheFirstBits) {
 }
 
 TEST(BucketsTest, SecondaryBucketIsTheBitsAfter) {
-    const Buckets buckets(node_of("a5"), Buckets::Sizes{});
+    const Buckets buckets(node_of("a5"), Buckets::ExpectedSizes{});
 
     EXPECT_EQ(buckets.secondary_bucket(node_of("a5")), 5U);
     EXPECT_EQ(buckets.secondary_bucket(node_of("a0")), 0U);
@@ -92,7 +92,7 @@ TEST(BucketsTest, SecondaryBucketIsTheBitsAfter) {
 }
 
 TEST(BucketsTest, NodesOutsideThisNodesPrimaryBucketHaveNoSecondaryBucket) {
-    const Buckets buckets(node_of("a5"), Buckets::Sizes{});
+    const Buckets buckets(node_of("a5"), Buckets::ExpectedSizes{});
 
     EXPECT_FALSE(buckets.secondary_bucket(node_of("b5")).has_value());
     EXPECT_FALSE(buckets.secondary_bucket(node_of("05")).has_value());
@@ -104,7 +104,7 @@ TEST(BucketsTest, NodesOutsideThisNodesPrimaryBucketHaveNoSecondaryBucket) {
 TEST(BucketsTest, BitsNeedNotFillADigit) {
     constexpr std::size_t primary_bits = 3;
     constexpr std::size_t secondary_bits = 2;
-    Buckets::Sizes sizes;
+    Buckets::ExpectedSizes sizes;
 
     sizes.min_primary_connections = 1U << primary_bits;
     sizes.primary_prefix_bits = primary_bits;
@@ -122,7 +122,7 @@ TEST(BucketsTest, BitsNeedNotFillADigit) {
 
 TEST(BucketsTest, TheWidestBucketsReadEightDigits) {
     constexpr std::size_t widest = 16;
-    Buckets::Sizes sizes;
+    Buckets::ExpectedSizes sizes;
 
     sizes.primary_prefix_bits = widest;
     sizes.secondary_prefix_bits = widest;
@@ -136,7 +136,7 @@ TEST(BucketsTest, TheWidestBucketsReadEightDigits) {
 }
 
 TEST(BucketsTest, NoServerNodesLeaveEveryBucketEmpty) {
-    const Buckets buckets(node_of("a0"), Buckets::Sizes{});
+    const Buckets buckets(node_of("a0"), Buckets::ExpectedSizes{});
 
     const auto gaps = buckets.gaps({});
 
@@ -149,7 +149,7 @@ TEST(BucketsTest, NoServerNodesLeaveEveryBucketEmpty) {
 // The server node in this node's own primary bucket, a5, fills its
 // secondary bucket, so this node's own primary bucket, 10, is still empty.
 TEST(BucketsTest, ServerNodesFillTheirBuckets) {
-    const Buckets buckets(node_of("a0"), Buckets::Sizes{});
+    const Buckets buckets(node_of("a0"), Buckets::ExpectedSizes{});
 
     const auto gaps = buckets.gaps(nodes_of({"10", "3f", "a5"}));
 
@@ -160,7 +160,7 @@ TEST(BucketsTest, ServerNodesFillTheirBuckets) {
 }
 
 TEST(BucketsTest, ServerNodesInOneBucketFillItOnce) {
-    const Buckets buckets(node_of("a0"), Buckets::Sizes{});
+    const Buckets buckets(node_of("a0"), Buckets::ExpectedSizes{});
 
     const auto gaps = buckets.gaps(nodes_of({"10", "11", "1f"}));
 
@@ -170,7 +170,7 @@ TEST(BucketsTest, ServerNodesInOneBucketFillItOnce) {
 }
 
 TEST(BucketsTest, ASecondServerNodeInASecondaryBucketFillsThisNodesPrimaryBucket) {
-    const Buckets buckets(node_of("a0"), Buckets::Sizes{});
+    const Buckets buckets(node_of("a0"), Buckets::ExpectedSizes{});
 
     const auto gaps = buckets.gaps(nodes_of({"a51", "a52"}));
 
@@ -181,7 +181,7 @@ TEST(BucketsTest, ASecondServerNodeInASecondaryBucketFillsThisNodesPrimaryBucket
 }
 
 TEST(BucketsTest, ServerNodesPastTheSecondarySetFillThisNodesPrimaryBucket) {
-    Buckets::Sizes sizes;
+    Buckets::ExpectedSizes sizes;
 
     sizes.min_secondary_connections = 1;
 
@@ -196,7 +196,7 @@ TEST(BucketsTest, ServerNodesPastTheSecondarySetFillThisNodesPrimaryBucket) {
 }
 
 TEST(BucketsTest, WithNoSecondarySetAServerNodeInThisNodesPrimaryBucketFillsIt) {
-    Buckets::Sizes sizes;
+    Buckets::ExpectedSizes sizes;
 
     sizes.min_secondary_connections = 0;
 
@@ -212,7 +212,7 @@ TEST(BucketsTest, WithNoSecondarySetAServerNodeInThisNodesPrimaryBucketFillsIt) 
 // A server node named twice is one in the secondary set, so it does not
 // fill this node's own primary bucket.
 TEST(BucketsTest, AServerNodeNamedTwiceFillsOneBucket) {
-    const Buckets buckets(node_of("a0"), Buckets::Sizes{});
+    const Buckets buckets(node_of("a0"), Buckets::ExpectedSizes{});
 
     const auto gaps = buckets.gaps(nodes_of({"a5", "10", "a5", "10"}));
 
@@ -226,7 +226,7 @@ TEST(BucketsTest, AServerNodeNamedTwiceFillsOneBucket) {
 // once it has them, though it still has buckets empty.
 TEST(BucketsTest, ASetWithItsServerNodesWantsNoMore) {
     constexpr std::size_t server_nodes = 4;
-    Buckets::Sizes sizes;
+    Buckets::ExpectedSizes sizes;
 
     sizes.min_primary_connections = server_nodes;
 
@@ -242,7 +242,7 @@ TEST(BucketsTest, ASetWithItsServerNodesWantsNoMore) {
 // secondary bucket, and a second in one of those, which fills this node's
 // own primary bucket.
 TEST(BucketsTest, EveryBucketFilled) {
-    const Buckets buckets(node_of("a0"), Buckets::Sizes{});
+    const Buckets buckets(node_of("a0"), Buckets::ExpectedSizes{});
     std::vector<std::string> digits;
 
     for (const auto digit : std::string("0123456789abcdef")) {
@@ -264,10 +264,10 @@ TEST(BucketsTest, EveryBucketFilled) {
 }
 
 TEST(BucketsTest, PrefixBitsOutOfRangeAreRefused) {
-    Buckets::Sizes no_bits;
-    Buckets::Sizes too_many;
-    Buckets::Sizes no_secondary_bits;
-    Buckets::Sizes too_many_secondary_bits;
+    Buckets::ExpectedSizes no_bits;
+    Buckets::ExpectedSizes too_many;
+    Buckets::ExpectedSizes no_secondary_bits;
+    Buckets::ExpectedSizes too_many_secondary_bits;
 
     no_bits.primary_prefix_bits = 0;
     too_many.primary_prefix_bits = too_many_bits;
@@ -281,10 +281,10 @@ TEST(BucketsTest, PrefixBitsOutOfRangeAreRefused) {
 }
 
 TEST(BucketsTest, MoreServerNodesThanBucketsAreRefused) {
-    Buckets::Sizes no_primary;
-    Buckets::Sizes too_many_primary;
-    Buckets::Sizes too_many_secondary;
-    Buckets::Sizes no_secondary;
+    Buckets::ExpectedSizes no_primary;
+    Buckets::ExpectedSizes too_many_primary;
+    Buckets::ExpectedSizes too_many_secondary;
+    Buckets::ExpectedSizes no_secondary;
 
     no_primary.min_primary_connections = 0;
     too_many_primary.min_primary_connections = too_many_server_nodes;
@@ -295,13 +295,13 @@ TEST(BucketsTest, MoreServerNodesThanBucketsAreRefused) {
     EXPECT_TRUE(refused(too_many_primary));
     EXPECT_TRUE(refused(too_many_secondary));
     EXPECT_FALSE(refused(no_secondary));
-    EXPECT_FALSE(refused(Buckets::Sizes{}));
+    EXPECT_FALSE(refused(Buckets::ExpectedSizes{}));
 }
 
 TEST(BucketsTest, ANodeIdWithNoHashIsRefused) {
-    const Buckets buckets(node_of("a0"), Buckets::Sizes{});
+    const Buckets buckets(node_of("a0"), Buckets::ExpectedSizes{});
 
-    EXPECT_THROW((void)Buckets(Identifier(), Buckets::Sizes{}), std::invalid_argument);
+    EXPECT_THROW((void)Buckets(Identifier(), Buckets::ExpectedSizes{}), std::invalid_argument);
     EXPECT_THROW((void)buckets.primary_bucket(Identifier()), std::invalid_argument);
     EXPECT_THROW((void)buckets.secondary_bucket(Identifier()), std::invalid_argument);
     EXPECT_THROW((void)buckets.gaps({Identifier()}), std::invalid_argument);
