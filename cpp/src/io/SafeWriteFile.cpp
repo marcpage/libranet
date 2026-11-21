@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <ios>
 #include <random>
 #include <stdexcept>
 #include <string>
