@@ -117,6 +117,7 @@ add_subdirectory(src/crypto)
 add_subdirectory(src/storage)
 add_subdirectory(src/node)
 add_subdirectory(src/logger)
+add_subdirectory(src/db)
 
 add_executable(libranet src/main.cpp)
 target_link_libraries(libranet PRIVATE libranet::node)
