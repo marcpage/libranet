@@ -14,6 +14,7 @@ public:
     static std::string lower_case(std::string_view text);
     static Bytes bytes_of(std::string_view text);
     static std::string text_of(const Converter::Bytes& bytes);
+    static uint64_t hex_digit_value(char hex_digit);
 };
 
 inline std::string Converter::lower_case(std::string_view text) {
@@ -39,6 +40,12 @@ inline std::string Converter::text_of(const Converter::Bytes& bytes) {
     std::transform(bytes.begin(), bytes.end(), text.begin(),
                    [](std::byte byte) { return static_cast<char>(byte); });
     return text;
+}
+
+inline uint64_t Converter::hex_digit_value(char hex_digit) {
+    constexpr std::string_view digits = "0123456789abcdef";
+
+    return static_cast<uint64_t>(digits.find(hex_digit));
 }
 
 } // namespace types

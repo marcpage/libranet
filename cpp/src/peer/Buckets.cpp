@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "storage/Identifier.hpp"
+#include "types/Converter.hpp"
 
 using peer::Buckets;
 using std::accumulate;
@@ -27,6 +28,7 @@ using std::to_string;
 using std::uint64_t;
 using std::vector;
 using storage::Identifier;
+using types::Converter;
 
 namespace {
 
@@ -52,9 +54,8 @@ void check_prefix_bits(size_t bits, const string& setting) {
 }
 
 // sizes, once checked. Throws std::invalid_argument, naming the setting, for
-// sizes a node cannot spread its server nodes by, as the Python node refuses
-// them.
-Buckets::Sizes checked(const Buckets::Sizes& sizes) {
+// sizes a node cannot spread its server nodes by, as the Python node refuses them.
+Buckets::ExpectedSizes checked(const Buckets::ExpectedSizes& sizes) {
     check_prefix_bits(sizes.primary_prefix_bits, "peers.bucket_prefix_bits");
     check_prefix_bits(sizes.secondary_prefix_bits, "peers.neighborhood_prefix_bits");
 
@@ -75,13 +76,6 @@ Buckets::Sizes checked(const Buckets::Sizes& sizes) {
     return sizes;
 }
 
-// The value of a lower-case hex digit, as an identifier keeps its hash.
-uint64_t digit_value(char digit) {
-    constexpr string_view digits = "0123456789abcdef";
-
-    return static_cast<uint64_t>(digits.find(digit));
-}
-
 // The value of the first bits bits of node_id's hash. Throws
 // std::invalid_argument for a hash shorter than that, as an identifier made
 // with no hash has.
@@ -95,7 +89,7 @@ uint64_t leading_bits(const Identifier& node_id, size_t bits) {
 
     const auto leading = string_view(hash).substr(0, digits);
     const auto append = [](uint64_t read, char digit) {
-        return (read << bits_per_digit) | digit_value(digit);
+        return (read << bits_per_digit) | Converter::hex_digit_value(digit);
     };
     const auto value = accumulate(leading.begin(), leading.end(), uint64_t{0}, append);
 
@@ -126,7 +120,7 @@ size_t wanted(const set<size_t>& filled, size_t server_nodes) {
 
 namespace peer {
 
-Buckets::Buckets(const Identifier& own_id, const Sizes& sizes)
+Buckets::Buckets(const Identifier& own_id, const ExpectedSizes& sizes)
     : m_sizes(checked(sizes))
     , m_own_bucket(primary_bucket(own_id)) {}
 
