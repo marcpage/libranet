@@ -92,11 +92,10 @@ inline std::string ContentDigest::to_string() const {
 // here, or that give a digest of one as other than a byte sequence.
 inline ContentDigest::ContentDigest(http::StructuredField digests)
     : m_digests(std::move(digests)) {
-    const auto is_given = [this](const Algorithm& algorithm) {
+    if (std::none_of(known_algorithms.begin(), known_algorithms.end(),
+                     [this](const Algorithm& algorithm) {
         return _digest(algorithm).has_value();
-    };
-
-    if (std::none_of(known_algorithms.begin(), known_algorithms.end(), is_given)) {
+    })) {
         throw std::invalid_argument("A Content-Digest names no algorithm known here: "
                                     + m_digests.to_string());
     }
@@ -104,8 +103,8 @@ inline ContentDigest::ContentDigest(http::StructuredField digests)
 
 // The digest given under algorithm's key, if there is one. Throws
 // std::invalid_argument for a key that names other than a byte sequence.
-inline std::optional<ContentDigest::Bytes>
-ContentDigest::_digest(const Algorithm& algorithm) const {
+inline std::optional<ContentDigest::Bytes> ContentDigest::_digest(
+    const Algorithm& algorithm) const {
     const auto member = m_digests.member(algorithm.key);
 
     if (!member) {
