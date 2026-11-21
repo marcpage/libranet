@@ -1,19 +1,26 @@
 # The node's identity, and the signatures on what nodes send each other: for
-# now, the signature base RFC 9421 signs.
+# now, the signature base RFC 9421 signs, and the Content-Digest that binds a
+# signature to a body.
 add_library(libranet_identity STATIC
     SignatureBase.cpp)
 add_library(libranet::identity ALIAS libranet_identity)
 target_include_directories(libranet_identity PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(libranet_identity PUBLIC
     libranet::types
-    libranet::http)
+    libranet::http
+    libranet::crypto)
 
 if(BUILD_TESTING)
     add_executable(identity_tests
+        tests/TestContentDigest.cpp
         tests/TestSignatureBase.cpp)
     target_link_libraries(identity_tests PRIVATE
         libranet::identity
         libranet::crypto
         GTest::gtest_main)
     gtest_discover_tests(identity_tests)
+endif()
+
+if(LIBRANET_FUZZERS)
+    libranet_add_fuzzer(content_digest_fuzzer fuzz/FuzzContentDigest.cpp libranet::identity)
 endif()
