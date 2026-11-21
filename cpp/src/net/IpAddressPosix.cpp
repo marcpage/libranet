@@ -16,19 +16,30 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 
+using std::array;
+using std::copy;
+using std::generic_category;
+using std::next;
+using std::nullopt;
+using std::optional;
+using std::string;
+using std::string_view;
+using std::system_error;
+using std::uint8_t;
+
 namespace {
 
 // As many bytes as an IPv4 address has.
-using Ipv4Bytes = std::array<std::uint8_t, sizeof(in_addr)>;
+using Ipv4Bytes = array<uint8_t, sizeof(in_addr)>;
 
 // What inet_ntop() writes for the address of family whose bytes start at
-// bytes. Throws std::system_error when it writes nothing.
-std::string text_of(int family, const std::uint8_t* bytes) {
-    std::array<char, INET6_ADDRSTRLEN> text{};
+// bytes. Throws system_error when it writes nothing.
+string text_of(int family, const uint8_t* bytes) {
+    array<char, INET6_ADDRSTRLEN> text{};
 
     if (nullptr
         == ::inet_ntop(family, bytes, text.data(), static_cast<socklen_t>(text.size()))) {
-        throw std::system_error(errno, std::generic_category(), "inet_ntop");
+        throw system_error(errno, generic_category(), "inet_ntop");
     }
 
     return {text.data()};
@@ -38,19 +49,19 @@ std::string text_of(int family, const std::uint8_t* bytes) {
 
 namespace net {
 
-std::optional<IpAddress> IpAddress::parse(std::string_view text) {
+optional<IpAddress> IpAddress::parse(string_view text) {
     // inet_pton() reads text up to a NUL, which would let what follows one
     // through unread.
-    if (text.find('\0') != std::string_view::npos) {
-        return std::nullopt;
+    if (text.find('\0') != string_view::npos) {
+        return nullopt;
     }
 
-    const std::string terminated(text);
+    const string terminated(text);
     Ipv4Bytes ipv4{};
     Bytes bytes = mapped_prefix;
 
     if (1 == ::inet_pton(AF_INET, terminated.c_str(), ipv4.data())) {
-        std::copy(ipv4.begin(), ipv4.end(), std::next(bytes.begin(), mapped_prefix_size));
+        copy(ipv4.begin(), ipv4.end(), next(bytes.begin(), mapped_prefix_size));
         return IpAddress(bytes);
     }
 
@@ -58,17 +69,17 @@ std::optional<IpAddress> IpAddress::parse(std::string_view text) {
         return IpAddress(bytes);
     }
 
-    return std::nullopt;
+    return nullopt;
 }
 
-std::string IpAddress::to_string() const {
+string IpAddress::to_string() const {
     if (!_is_ipv4()) {
         return text_of(AF_INET6, m_bytes.data());
     }
 
     Ipv4Bytes ipv4{};
 
-    std::copy(std::next(m_bytes.begin(), mapped_prefix_size), m_bytes.end(), ipv4.begin());
+    copy(next(m_bytes.begin(), mapped_prefix_size), m_bytes.end(), ipv4.begin());
     return text_of(AF_INET, ipv4.data());
 }
 
