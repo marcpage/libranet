@@ -15,21 +15,38 @@
 #include "HashPrefix.hpp"
 #include "Identifier.hpp"
 
+using std::equal;
+using std::invalid_argument;
+using std::make_move_iterator;
+using std::min;
+using std::nullopt;
+using std::optional;
+using std::remove_if;
+using std::scoped_lock;
+using std::size_t;
+using std::sort;
+using std::string;
+using std::string_view;
+using std::tie;
+using std::unique;
+using std::vector;
+using storage::SearchAnswers;
+
 namespace {
 
 // A hex digit is four bits.
-constexpr std::size_t bits_per_digit = 4;
+constexpr size_t bits_per_digit = 4;
 
 // The fewest leading bits a match for prefix shares with it: min_bits, or
 // all of a shorter prefix (HttpApi §6).
-std::size_t least_bits(const storage::HashPrefix& prefix, std::size_t min_bits) {
-    return std::min(min_bits, prefix.bits());
+size_t least_bits(const storage::HashPrefix& prefix, size_t min_bits) {
+    return min(min_bits, prefix.bits());
 }
 
 // Whether an answer that last changed at changed is still kept at now.
-bool is_fresh(storage::SearchAnswers::Clock::time_point changed,
-              storage::SearchAnswers::Clock::time_point now,
-              storage::SearchAnswers::Milliseconds ttl) {
+bool is_fresh(SearchAnswers::Clock::time_point changed,
+              SearchAnswers::Clock::time_point now,
+              SearchAnswers::Milliseconds ttl) {
     return now - changed < ttl;
 }
 
@@ -45,7 +62,7 @@ bool is_better(const storage::HashPrefix& prefix, const storage::Identifier& lef
         return left_bits > right_bits;
     }
 
-    return std::tie(left.algorithm(), left.hash()) < std::tie(right.algorithm(), right.hash());
+    return tie(left.algorithm(), left.hash()) < tie(right.algorithm(), right.hash());
 }
 
 // Whether left and right name the same content.
@@ -55,17 +72,17 @@ bool is_same(const storage::Identifier& left, const storage::Identifier& right) 
 
 // identifiers, the best match for prefix first, each once, and no more of
 // them than an answer keeps.
-std::vector<storage::Identifier> ranked(const storage::HashPrefix& prefix,
-                                        std::vector<storage::Identifier> identifiers) {
-    std::sort(identifiers.begin(), identifiers.end(),
-              [&prefix](const auto& left, const auto& right) {
+vector<storage::Identifier> ranked(const storage::HashPrefix& prefix,
+                                   vector<storage::Identifier> identifiers) {
+    sort(identifiers.begin(), identifiers.end(),
+         [&prefix](const auto& left, const auto& right) {
         return is_better(prefix, left, right);
     });
-    identifiers.erase(std::unique(identifiers.begin(), identifiers.end(), is_same),
+    identifiers.erase(unique(identifiers.begin(), identifiers.end(), is_same),
                       identifiers.end());
 
-    if (identifiers.size() > storage::SearchAnswers::max_identifiers) {
-        identifiers.resize(storage::SearchAnswers::max_identifiers);
+    if (identifiers.size() > SearchAnswers::max_identifiers) {
+        identifiers.resize(SearchAnswers::max_identifiers);
     }
 
     return identifiers;
@@ -73,14 +90,14 @@ std::vector<storage::Identifier> ranked(const storage::HashPrefix& prefix,
 
 // identifiers, less those that share fewer than least leading bits with
 // prefix.
-std::vector<storage::Identifier> matching(const storage::HashPrefix& prefix,
-                                          std::vector<storage::Identifier> identifiers,
-                                          std::size_t least) {
+vector<storage::Identifier> matching(const storage::HashPrefix& prefix,
+                                     vector<storage::Identifier> identifiers,
+                                     size_t least) {
     const auto too_few_bits = [&prefix, least](const storage::Identifier& identifier) {
         return prefix.matching_bits(identifier) < least;
     };
 
-    identifiers.erase(std::remove_if(identifiers.begin(), identifiers.end(), too_few_bits),
+    identifiers.erase(remove_if(identifiers.begin(), identifiers.end(), too_few_bits),
                       identifiers.end());
     return identifiers;
 }
@@ -88,10 +105,10 @@ std::vector<storage::Identifier> matching(const storage::HashPrefix& prefix,
 // The prefixes that each hash sharing least leading bits with prefix begins
 // with one of: as many of prefix's digits as those bits fill, or, when they
 // fill none, each digit that shares them.
-std::vector<storage::HashPrefix> scanned(const storage::HashPrefix& prefix, std::size_t least) {
-    constexpr std::string_view hex_digits = "0123456789abcdef";
+vector<storage::HashPrefix> scanned(const storage::HashPrefix& prefix, size_t least) {
+    constexpr string_view hex_digits = "0123456789abcdef";
     const auto digits = least / bits_per_digit;
-    std::vector<storage::HashPrefix> prefixes;
+    vector<storage::HashPrefix> prefixes;
 
     if (digits > 0) {
         prefixes.push_back(storage::HashPrefix::parse(prefix.to_string().substr(0, digits)));
@@ -99,7 +116,7 @@ std::vector<storage::HashPrefix> scanned(const storage::HashPrefix& prefix, std:
     }
 
     for (const auto digit : hex_digits) {
-        auto first = storage::HashPrefix::parse(std::string(1, digit));
+        auto first = storage::HashPrefix::parse(string(1, digit));
 
         if (first.matching_bits(prefix) >= least) {
             prefixes.push_back(std::move(first));
@@ -111,16 +128,16 @@ std::vector<storage::HashPrefix> scanned(const storage::HashPrefix& prefix, std:
 
 // What the node holds, as held lists it, that shares least leading bits
 // with prefix.
-std::vector<storage::Identifier> held_matching(const storage::SearchAnswers::Held& held,
-                                               const storage::HashPrefix& prefix,
-                                               std::size_t least) {
-    std::vector<storage::Identifier> found;
+vector<storage::Identifier> held_matching(const SearchAnswers::Held& held,
+                                          const storage::HashPrefix& prefix,
+                                          size_t least) {
+    vector<storage::Identifier> found;
 
     for (const auto& scanned_prefix : scanned(prefix, least)) {
         auto listed = held(scanned_prefix);
 
-        found.insert(found.end(), std::make_move_iterator(listed.begin()),
-                     std::make_move_iterator(listed.end()));
+        found.insert(found.end(), make_move_iterator(listed.begin()),
+                     make_move_iterator(listed.end()));
     }
 
     return matching(prefix, std::move(found), least);
@@ -130,21 +147,21 @@ std::vector<storage::Identifier> held_matching(const storage::SearchAnswers::Hel
 
 namespace storage {
 
-SearchAnswers::SearchAnswers(Held held, std::size_t min_bits, Milliseconds ttl, Now now)
+SearchAnswers::SearchAnswers(Held held, size_t min_bits, Milliseconds ttl, Now now)
     : m_held(std::move(held))
     , m_min_bits(min_bits)
     , m_ttl(ttl)
     , m_now(std::move(now)) {
     if (!m_held || !m_now) {
-        throw std::invalid_argument("Searches need what the node holds, and the time");
+        throw invalid_argument("Searches need what the node holds, and the time");
     }
 
     if (m_ttl <= Milliseconds::zero()) {
-        throw std::invalid_argument("An answer must be kept for more than no time");
+        throw invalid_argument("An answer must be kept for more than no time");
     }
 }
 
-std::vector<Identifier> SearchAnswers::answer(const HashPrefix& prefix) {
+vector<Identifier> SearchAnswers::answer(const HashPrefix& prefix) {
     auto kept = _kept(prefix);
 
     if (kept) {
@@ -154,20 +171,20 @@ std::vector<Identifier> SearchAnswers::answer(const HashPrefix& prefix) {
     return _merge(prefix, held_matching(m_held, prefix, least_bits(prefix, m_min_bits)));
 }
 
-void SearchAnswers::add(const HashPrefix& prefix, const std::vector<Identifier>& named) {
+void SearchAnswers::add(const HashPrefix& prefix, const vector<Identifier>& named) {
     // Made first, when none is kept.
     (void)answer(prefix);
     (void)_merge(prefix, matching(prefix, named, least_bits(prefix, m_min_bits)));
 }
 
 // The answer kept for prefix, if it is still fresh.
-std::optional<std::vector<Identifier>> SearchAnswers::_kept(const HashPrefix& prefix) {
+optional<vector<Identifier>> SearchAnswers::_kept(const HashPrefix& prefix) {
     const auto now = m_now();
-    const std::scoped_lock lock(m_mutex);
+    const scoped_lock lock(m_mutex);
     const auto kept = m_answers.find(prefix.to_string());
 
     if (kept == m_answers.end() || !is_fresh(kept->second.changed, now, m_ttl)) {
-        return std::nullopt;
+        return nullopt;
     }
 
     return kept->second.identifiers;
@@ -176,10 +193,10 @@ std::optional<std::vector<Identifier>> SearchAnswers::_kept(const HashPrefix& pr
 // Adds found, which all match prefix, to the answer kept for prefix, or
 // keeps them as its answer when none is fresh, and gives the answer. It
 // changes, and is kept from now, only when it names more or better.
-std::vector<Identifier> SearchAnswers::_merge(const HashPrefix& prefix,
-                                              std::vector<Identifier> found) {
+vector<Identifier> SearchAnswers::_merge(const HashPrefix& prefix,
+                                         vector<Identifier> found) {
     const auto now = m_now();
-    const std::scoped_lock lock(m_mutex);
+    const scoped_lock lock(m_mutex);
 
     _sweep(now);
 
@@ -195,8 +212,8 @@ std::vector<Identifier> SearchAnswers::_merge(const HashPrefix& prefix,
     auto merged = ranked(prefix, std::move(found));
 
     if (!is_kept
-        || !std::equal(merged.begin(), merged.end(), kept->second.identifiers.begin(),
-                       kept->second.identifiers.end(), is_same)) {
+        || !equal(merged.begin(), merged.end(), kept->second.identifiers.begin(),
+                  kept->second.identifiers.end(), is_same)) {
         m_answers.insert_or_assign(key, Answer{merged, now});
     }
 
