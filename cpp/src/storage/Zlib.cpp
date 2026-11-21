@@ -22,7 +22,7 @@ using std::runtime_error;
 using std::size_t;
 using std::string;
 using std::to_string;
-using types::Megabyte;
+using types::Kilobyte;
 
 namespace {
 
@@ -31,7 +31,7 @@ using Data = storage::Zlib::Data;
 // How much more room is made at a time for what a stream holds, as it is
 // decompressed: 64 KiB, as the Python node decompresses a piece at a time,
 // so that a stream that holds little makes little room.
-constexpr size_t room_step = 64 * Megabyte;
+constexpr size_t room_step = 64 * Kilobyte;
 
 // Where zlib is to read or write data, from offset, which may be its end.
 // zlib takes bytes as Bytef, an unsigned char, which a byte may be read
