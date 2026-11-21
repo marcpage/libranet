@@ -14,13 +14,14 @@ namespace api {
 // Answers GET and PUT of /data/{algorithm}/{hash}, the content the node
 // stores (HttpApi §5, §7), and any other method there with 405. A GET is
 // the body stored, as it was put, compressed or not; one for content not
-// held is 404, and posts storage::DataNotFound. A PUT is checked against its
-// path, as it is or once decompressed, stored as it came, and answered 201,
-// or 200 for content already held, which is not stored again. Content newly
-// stored is posted as storage::DataStored, naming the node the connection
-// carries the signature of. An identifier that is not valid, as one of an
-// algorithm the node does not know, is 400. A path beneath /data of another
-// form, or beneath one of its other endpoints, is 404: it names no content.
+// held is 404, and posts storage::DataNotFound. Each GET, held or not, posts
+// storage::DataRequested. A PUT is checked against its path, as it is or
+// once decompressed, stored as it came, and answered 201, or 200 for
+// content already held, which is not stored again. Content newly stored is
+// posted as storage::DataStored, naming the node the connection carries the
+// signature of. An identifier that is not valid, as one of an algorithm the
+// node does not know, is 400. A path beneath /data of another form, or
+// beneath one of its other endpoints, is 404: it names no content.
 class DataHandler {
 public:
     // The largest body a PUT may have, as sent (HttpApi §7.1).

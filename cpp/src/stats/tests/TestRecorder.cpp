@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <iterator>
 #include <map>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -15,8 +17,11 @@
 #include "msg/Channel.hpp"
 #include "msg/Message.hpp"
 #include "protocol/NodeList.hpp"
+#include "stats/ContentUses.hpp"
 #include "stats/NodeAddresses.hpp"
 #include "stats/Recorder.hpp"
+#include "storage/DataRequested.hpp"
+#include "storage/DataStored.hpp"
 #include "storage/Identifier.hpp"
 
 using db::Database;
@@ -24,8 +29,11 @@ using db::SqliteError;
 using fixtures::ScratchDirectory;
 using msg::Channel;
 using protocol::NodeList;
+using stats::ContentUses;
 using stats::NodeAddresses;
 using stats::Recorder;
+using storage::DataRequested;
+using storage::DataStored;
 using storage::Identifier;
 using namespace std::chrono_literals;
 
@@ -164,6 +172,9 @@ protected:
     // The addresses of the node of digit, read from the database once the
     // recorder has stopped.
     [[nodiscard]] std::vector<NodeAddresses::Address> addresses_of(char digit) const;
+    // What is known of the content of digit, read from the database once the
+    // recorder has stopped.
+    [[nodiscard]] std::optional<ContentUses::Uses> uses_of(char digit) const;
 
 private:
     ScratchDirectory m_directory;
@@ -215,6 +226,13 @@ std::vector<NodeAddresses::Address> RecorderTest::addresses_of(char digit) const
     const NodeAddresses addresses(database, NodeAddresses::Limits());
 
     return addresses.addresses(node(digit));
+}
+
+std::optional<ContentUses::Uses> RecorderTest::uses_of(char digit) const {
+    Database database(m_directory.database(), ContentUses::schema);
+    const ContentUses content_uses(database);
+
+    return content_uses.uses(node(digit));
 }
 
 // The recorder, once it has posted the lists it starts with.
@@ -333,6 +351,33 @@ TEST_F(RecorderTest, AnAddressThatFailedTooOftenIsNoLongerACandidate) {
     EXPECT_TRUE(candidates.candidates.empty());
     stop_recording();
     EXPECT_TRUE(addresses_of('a').empty());
+}
+
+// The recorder takes events in the order they are posted, so once a node
+// list naming a node reached after them is posted, the content events
+// before it are recorded.
+TEST_F(StartedRecorderTest, HowContentIsUsedIsRecorded) {
+    constexpr std::size_t size = 5;
+
+    Channel::post(DataStored::name, DataStored{node('c'), node('a'), size});
+    Channel::post(DataRequested::name, DataRequested{node('c')});
+    Channel::post(DataRequested::name, DataRequested{node('c')});
+    Channel::post(DataRequested::name, DataRequested{node('d')});
+    Channel::post(ConnectionOpened::name, ConnectionOpened{node('a'), std::string(first)});
+    (void)next_nodes();
+    stop_recording();
+
+    const auto stored = uses_of('c').value_or(ContentUses::Uses());
+    const auto missing = uses_of('d').value_or(ContentUses::Uses());
+
+    EXPECT_EQ(stored.size, size);
+    EXPECT_EQ(stored.last_stored, start);
+    EXPECT_EQ(stored.last_requested, start);
+    EXPECT_EQ(stored.requests, 2);
+    EXPECT_FALSE(missing.size.has_value());
+    EXPECT_EQ(missing.last_requested, start);
+    EXPECT_EQ(missing.requests, 1);
+    EXPECT_FALSE(uses_of('e').has_value());
 }
 
 TEST_F(StartedRecorderTest, KeepsRecordingAfterAnEventItCannotRecord) {

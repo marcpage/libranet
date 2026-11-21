@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "ContentUses.hpp"
 #include "NodeAddresses.hpp"
 #include "db/Database.hpp"
 #include "logger/Logger.hpp"
@@ -18,6 +19,8 @@
 #include "msg/Message.hpp"
 #include "msg/Timer.hpp"
 #include "protocol/NodeList.hpp"
+#include "storage/DataRequested.hpp"
+#include "storage/DataStored.hpp"
 #include "storage/Identifier.hpp"
 
 using db::Database;
@@ -26,6 +29,7 @@ using msg::IMessage;
 using msg::Message;
 using msg::Timer;
 using protocol::NodeList;
+using stats::ContentUses;
 using stats::NodeAddresses;
 using stats::Recorder;
 using std::equal;
@@ -39,6 +43,8 @@ using std::to_string;
 using std::transform;
 using std::vector;
 using std::filesystem::path;
+using storage::DataRequested;
+using storage::DataStored;
 using storage::Identifier;
 
 // The thread takes these events, which others post from other files, so
@@ -47,6 +53,8 @@ using storage::Identifier;
 template class msg::Message<Recorder::NodesReceived>;
 template class msg::Message<Recorder::ConnectionOpened>;
 template class msg::Message<Recorder::ConnectionFailed>;
+template class msg::Message<DataStored>;
+template class msg::Message<DataRequested>;
 
 namespace {
 
@@ -161,6 +169,12 @@ Milliseconds checked_interval(Milliseconds interval) {
     return interval;
 }
 
+// The tables the database is made with, as NodeAddresses and ContentUses
+// keep them.
+string schema() {
+    return string(NodeAddresses::schema) + ";\n" + string(ContentUses::schema);
+}
+
 // Reports what the thread could not handle.
 void log_error(const string& text) {
     lErr << text;
@@ -197,10 +211,18 @@ Recorder::Recorder(const path& database_path, Identifier own_id, vector<string> 
     : m_own_id(std::move(own_id))
     , m_own_endpoints(checked_endpoints(m_own_id, std::move(own_endpoints)))
     , m_derive_interval(checked_interval(settings.derive_interval))
-    , m_database(database_path, NodeAddresses::schema)
-    , m_addresses(m_database, settings.limits, std::move(now))
+    , m_database(database_path, schema())
+    , m_addresses(m_database, settings.limits, now)
+    , m_content_uses(m_database, std::move(now))
     , m_node_list(m_own_id, m_own_endpoints)
-    , m_channel({NodesReceived::name, ConnectionOpened::name, ConnectionFailed::name, derive_due},
+    , m_channel({
+                    NodesReceived::name,
+                    ConnectionOpened::name,
+                    ConnectionFailed::name,
+                    DataStored::name,
+                    DataRequested::name,
+                    derive_due,
+                },
                 [this](const IMessage::Ptr& message) { _handle(message); }, log_error)
     , m_timer(derive_due, m_derive_interval) {
     Channel::post(derive_due, Timer::Tick{derive_due, 0});
@@ -217,6 +239,10 @@ void Recorder::_handle(const IMessage::Ptr& message) {
         in_transaction(m_database, [this, failed] {
             m_addresses.record_failure(failed->node_id, failed->endpoint);
         });
+    } else if (const auto* const stored = value_of<DataStored>(message)) {
+        m_content_uses.record_stored(stored->identifier, stored->size);
+    } else if (const auto* const requested = value_of<DataRequested>(message)) {
+        m_content_uses.record_requested(requested->identifier);
     } else if (nullptr != value_of<Timer::Tick>(message)) {
         _derive();
     } else {
