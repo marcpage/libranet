@@ -11,11 +11,6 @@
 
 namespace logger {
 
-// Writes a line as
-// "[2026-11-19 14:03:07.042 -0800 (Thu)][0][WRN][src/net/Socket.cpp:88][send] text",
-// with the time to the millisecond, the index of the thread, the level, where
-// the line was logged, and the condition it was logged on, if any. In GMT the
-// time has no offset.
 class DefaultFormatter : public ILogFormatter {
 public:
     // Which time a line is stamped with.

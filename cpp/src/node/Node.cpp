@@ -17,6 +17,7 @@
 
 #include "http/Request.hpp"
 #include "http/Response.hpp"
+#include "io/Directories.hpp"
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
 #include "node/SettingsFile.hpp"
@@ -25,6 +26,7 @@
 
 using http::Request;
 using http::Response;
+using io::Directories;
 using logger::Logger;
 using net::Address;
 using node::Node;
@@ -34,7 +36,6 @@ using std::domain_error;
 using std::exception;
 using std::find;
 using std::generic_category;
-using std::getenv;
 using std::invalid_argument;
 using std::numeric_limits;
 using std::size_t;
@@ -115,36 +116,17 @@ Logger::Level log_level(const SettingsFile& settings) {
                            + "'");
 }
 
-// The value of the environment variable name, or "" if it is not set.
-string environment(const char* name) {
-    // Read before the node starts a thread, and never set by the node.
-    // NOLINTNEXTLINE(concurrency-mt-unsafe)
-    const char* const value = getenv(name);
-
-    return nullptr == value ? "" : value;
-}
-
 // The user's data directory for libranet, as the Python node finds it with
 // platformdirs.
 path default_data_dir() {
-    const auto home = environment("HOME");
+    const auto data_dir = Directories::user_app_data();
 
-#ifndef __APPLE__
-    if (const auto data_home = environment("XDG_DATA_HOME"); !data_home.empty()) {
-        return path(data_home) / "libranet";
-    }
-#endif
-
-    if (home.empty()) {
+    if (!data_dir) {
         throw invalid_argument(string(data_dir_setting)
                                + ": must be given, as HOME is not set to find the default");
     }
 
-#ifdef __APPLE__
-    return path(home) / "Library" / "Application Support" / "libranet";
-#else
-    return path(home) / ".local" / "share" / "libranet";
-#endif
+    return *data_dir / "libranet";
 }
 
 path data_dir(const SettingsFile& settings) {

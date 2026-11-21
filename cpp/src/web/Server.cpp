@@ -7,6 +7,7 @@
 #include <exception>
 #include <iterator>
 #include <list>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
@@ -23,6 +24,9 @@
 #include "http/Request.hpp"
 #include "http/Response.hpp"
 #include "http/ResponseCode.hpp"
+#include "io/BufferedReader.hpp"
+#include "io/MeteredReader.hpp"
+#include "io/SocketReader.hpp"
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
 
@@ -31,9 +35,12 @@ using http::Problem;
 using http::Request;
 using http::Response;
 using http::ResponseCode;
+using io::BufferedReader;
+using io::LimitExceeded;
+using io::MeteredReader;
+using io::SocketReader;
 using net::Address;
 using net::ISocket;
-using std::byte;
 using std::exception;
 using std::invalid_argument;
 using std::list;
@@ -49,7 +56,6 @@ using std::string_view;
 using std::system_error;
 using std::thread;
 using std::unique_lock;
-using std::vector;
 using web::ConnectionInfo;
 using web::Server;
 using Status = http::ResponseCode::Status;
@@ -87,39 +93,25 @@ bool is_under(string_view uri, string_view path) {
 enum class Line : std::uint8_t {
     Read,    // At its end
     Ended,   // The connection ended first
-    TooLong, // Before its end, as room ran out
+    TooLong, // Before its end, as the limit ran out
 };
 
-// Reads a line, up to its '\n', leaving out each '\r'. It may take room
-// bytes at most, its end included, and those it takes are taken from room.
-// Reads a byte at a time, so that the next request, sent before this one is
-// answered, is left for the next read.
-Line read_line(ISocket& client, string& line, size_t& room) {
-    vector<byte> buffer(1);
-
-    line.clear();
-
-    while (room > 0) {
-        buffer.resize(1);
-
-        if (!client.receive(buffer)) {
-            return Line::Ended;
-        }
-
-        --room;
-
-        const auto character = static_cast<char>(buffer.front());
-
-        if ('\n' == character) {
-            return Line::Read;
-        }
-
-        if ('\r' != character) {
-            line.push_back(character);
-        }
+// Reads a line, up to its '\n', leaving out each '\r'. It takes no more
+// than the reader's limit has left, its end included.
+Line read_line(MeteredReader& reader, string& line) {
+    try {
+        line = reader.read_until('\n');
+    } catch (const LimitExceeded&) {
+        return Line::TooLong;
     }
 
-    return Line::TooLong;
+    if (line.empty() || '\n' != line.back()) {
+        return Line::Ended;
+    }
+
+    line.pop_back();
+    line.erase(std::remove(line.begin(), line.end(), '\r'), line.end());
+    return Line::Read;
 }
 
 // A request read from a connection, and why it is refused, if it is. A
@@ -150,12 +142,12 @@ Problem too_large(size_t most_bytes) {
 
 // Reads the request's headers, after its line, into received, noting why
 // they are refused if they are. Returns false if the connection ended first.
-bool read_headers(ISocket& client, size_t& room, Received& received) {
+bool read_headers(MeteredReader& reader, Received& received) {
     string line;
     string last_key;
 
     while (true) {
-        const auto read = read_line(client, line, room);
+        const auto read = read_line(reader, line);
 
         if (Line::Ended == read) {
             return false;
@@ -219,12 +211,15 @@ optional<Problem> body_length(const Headers& headers, size_t most_bytes, size_t&
 }
 
 // The next request on the connection, or nothing if the connection ended
-// before it was all sent, as a client's does once it is done.
-optional<Received> read_request(ISocket& client, const Server::Limits& limits) {
+// before it was all sent, as a client's does once it is done. Its line and
+// headers may take limits.head_bytes, and its body the length it gives.
+optional<Received> read_request(MeteredReader& reader, const Server::Limits& limits) {
     Received received;
     string line;
-    size_t room = limits.head_bytes;
-    const auto read = read_line(client, line, room);
+
+    reader.reset(limits.head_bytes);
+
+    const auto read = read_line(reader, line);
 
     if (Line::Ended == read) {
         return nullopt;
@@ -243,7 +238,7 @@ optional<Received> read_request(ISocket& client, const Server::Limits& limits) {
 
     received.line_read = true;
 
-    if (!read_headers(client, room, received)) {
+    if (!read_headers(reader, received)) {
         return nullopt;
     }
 
@@ -257,7 +252,9 @@ optional<Received> read_request(ISocket& client, const Server::Limits& limits) {
         return received;
     }
 
-    const auto body = client.read_exact(length);
+    reader.reset(length);
+
+    const auto body = reader.read_exact(length);
 
     if (body.size() != length) {
         return nullopt;
@@ -574,8 +571,12 @@ void Server::_converse(Client& client) {
         // Only this thread changes client.socket, so it reads it unguarded.
         auto& socket = *client.socket;
         ConnectionInfo connection(socket.remote_address());
+        // One reader for the connection, whose buffer keeps what was sent
+        // after one request, as the next, for the next read.
+        auto buffered = std::make_unique<BufferedReader>(std::make_unique<SocketReader>(socket));
+        MeteredReader reader(std::move(buffered), m_limits.head_bytes);
 
-        while (m_running && _answer(socket, connection)) {
+        while (m_running && _answer(socket, reader, connection)) {
         }
         // The client may go, send nothing for too long, or its connection
         // fail. Only that connection ends; the server goes on.
@@ -589,10 +590,10 @@ void Server::_converse(Client& client) {
     m_changed.notify_all();
 }
 
-// Reads the next request on the connection and answers it. Returns whether
-// the connection stays open for another.
-bool Server::_answer(ISocket& client, ConnectionInfo& connection) const {
-    const auto received = read_request(client, m_limits);
+// Reads the next request on the connection, from the reader, and answers
+// it. Returns whether the connection stays open for another.
+bool Server::_answer(ISocket& client, MeteredReader& reader, ConnectionInfo& connection) const {
+    const auto received = read_request(reader, m_limits);
 
     if (!received.has_value()) {
         return false;

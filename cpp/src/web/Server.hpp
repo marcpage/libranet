@@ -15,6 +15,7 @@
 #include "ConnectionInfo.hpp"
 #include "http/Request.hpp"
 #include "http/Response.hpp"
+#include "io/MeteredReader.hpp"
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
 
@@ -111,7 +112,8 @@ private:
     [[nodiscard]] bool _wait_for_room();
     void _serve(net::ISocket::Ptr client);
     void _converse(Client& client);
-    [[nodiscard]] bool _answer(net::ISocket& client, ConnectionInfo& connection) const;
+    [[nodiscard]] bool _answer(net::ISocket& client, io::MeteredReader& reader,
+                               ConnectionInfo& connection) const;
     void _end_all();
 };
 

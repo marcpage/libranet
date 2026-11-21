@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -14,14 +15,29 @@
 #include "logger/ILogOutput.hpp"
 #include "logger/Logger.hpp"
 #include "storage/Identifier.hpp"
+#include "storage/Zlib.hpp"
 
 using fixtures::bytes_of;
 using fixtures::hello_hash;
 using logger::ILogOutput;
 using logger::Logger;
 using storage::Identifier;
+using storage::Zlib;
 
 namespace {
+
+// Enough for a test's content to decompress to.
+constexpr std::size_t enough = 1024;
+
+// data as a zlib stream, compressed as much as zlib can.
+Identifier::Data zlib_of(const Identifier::Data& data) {
+    return Zlib::compress(data, Zlib::max_level);
+}
+
+// Whether identifier finds none of the content it names in body.
+bool finds_nothing(const Identifier& identifier, const Identifier::Data& body) {
+    return !identifier.content_of(body, enough).has_value();
+}
 
 // Whether Identifier::from() turns down text as invalid.
 bool refused(const std::string& text) {
@@ -156,6 +172,14 @@ TEST(IdentifierTest, LongestHashIsSha256s) {
     EXPECT_EQ(Identifier::longest_hash_digits(), 64U);
 }
 
+// Only SHA-256 is supported, named as an identifier names it.
+TEST(IdentifierTest, OnlySha256IsSupported) {
+    EXPECT_TRUE(Identifier::is_supported("sha256"));
+    EXPECT_FALSE(Identifier::is_supported("SHA256"));
+    EXPECT_FALSE(Identifier::is_supported("md5"));
+    EXPECT_FALSE(Identifier::is_supported(""));
+}
+
 // Hashes should be in lower case, but upper and mixed case are taken, and
 // kept in lower case (HttpApi §5.4).
 TEST(IdentifierTest, HashInUpperOrMixedCaseIsKeptInLowerCase) {
@@ -197,6 +221,80 @@ TEST(IdentifierTest, FromDataIsItsSha256) {
               "sha256/2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
     EXPECT_EQ(empty.to_string(),
               "sha256/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+}
+
+// Content sent as it is, with no compression.
+TEST(IdentifierTest, ContentAsItIsIsGivenBack) {
+    const Identifier identifier("sha256", hello_hash);
+    const auto empty = Identifier::from(Identifier::Data{});
+
+    EXPECT_EQ(identifier.content_of(bytes_of("hello"), enough), bytes_of("hello"));
+    EXPECT_EQ(empty.content_of(Identifier::Data{}, enough), Identifier::Data{});
+}
+
+// Content sent as a zlib stream, at any level (HttpApi §8).
+TEST(IdentifierTest, CompressedContentIsGivenBackDecompressed) {
+    const Identifier identifier("sha256", hello_hash);
+    const auto empty = Identifier::from(Identifier::Data{});
+
+    for (auto level = Zlib::min_level; level <= Zlib::max_level; ++level) {
+        const auto compressed = Zlib::compress(bytes_of("hello"), level);
+
+        EXPECT_EQ(identifier.content_of(compressed, enough), bytes_of("hello")) << level;
+    }
+
+    EXPECT_EQ(empty.content_of(zlib_of(Identifier::Data{}), 0), Identifier::Data{});
+}
+
+// Content that is itself a zlib stream is named by the hash of the stream,
+// and is given back as it is, not decompressed.
+TEST(IdentifierTest, ContentThatIsAZlibStreamIsGivenBackAsItIs) {
+    const auto compressed = zlib_of(bytes_of("hello"));
+    const auto identifier = Identifier::from(compressed);
+
+    EXPECT_EQ(identifier.content_of(compressed, enough), compressed);
+}
+
+// The limit bounds only what a stream decompresses to.
+TEST(IdentifierTest, ContentAsItIsIsNotLimited) {
+    const Identifier identifier("sha256", hello_hash);
+
+    EXPECT_EQ(identifier.content_of(bytes_of("hello"), 0), bytes_of("hello"));
+}
+
+TEST(IdentifierTest, CompressedContentPastTheLimitIsNothing) {
+    const auto content = bytes_of(std::string(enough, 'x'));
+    const auto identifier = Identifier::from(content);
+    const auto compressed = zlib_of(content);
+
+    EXPECT_EQ(identifier.content_of(compressed, enough), content);
+    EXPECT_FALSE(identifier.content_of(compressed, enough - 1).has_value());
+}
+
+// Neither the content, nor one zlib stream of it (HighLevelDesign §4.1.1).
+// A stream is decompressed once, so a stream of a stream of the content is
+// not it.
+TEST(IdentifierTest, OtherContentIsNothing) {
+    const Identifier identifier("sha256", hello_hash);
+    const auto compressed = zlib_of(bytes_of("hello"));
+    auto with_more = compressed;
+
+    with_more.push_back(std::byte{0});
+
+    EXPECT_TRUE(finds_nothing(identifier, bytes_of("world")));
+    EXPECT_TRUE(finds_nothing(identifier, bytes_of("hello!")));
+    EXPECT_TRUE(finds_nothing(identifier, Identifier::Data{}));
+    EXPECT_TRUE(finds_nothing(identifier, zlib_of(bytes_of("world"))));
+    EXPECT_TRUE(finds_nothing(identifier, with_more));
+    EXPECT_TRUE(finds_nothing(identifier, zlib_of(compressed)));
+}
+
+// An identifier made with no algorithm or hash names no content.
+TEST(IdentifierTest, DefaultNamesNoContent) {
+    const Identifier identifier;
+
+    EXPECT_TRUE(finds_nothing(identifier, Identifier::Data{}));
+    EXPECT_TRUE(finds_nothing(identifier, zlib_of(Identifier::Data{})));
 }
 
 TEST(IdentifierTest, CopyAndMove) {

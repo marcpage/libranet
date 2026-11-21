@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cctype>
 #include <cstddef>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -11,6 +12,7 @@
 
 #include "crypto/IHasher.hpp"
 #include "logger/Logger.hpp"
+#include "storage/Zlib.hpp"
 
 namespace storage {
 
@@ -36,8 +38,19 @@ public:
     [[nodiscard]] const std::string& algorithm() const;
     [[nodiscard]] const std::string& hash() const;
     [[nodiscard]] std::string to_string() const;
+    // The content this identifier names, read from body: body itself, when
+    // it hashes to this identifier, or else what body decompresses to, when
+    // it is one zlib stream of that content (HighLevelDesign §4.1.1, HttpApi
+    // §8). Nothing when body is neither, or when it decompresses to more
+    // than limit bytes; limit bounds only decompressing. Throws
+    // std::bad_alloc if zlib runs out of memory.
+    [[nodiscard]] std::optional<Data> content_of(const Data& body, std::size_t limit) const;
     // How many hex digits the longest hash of a supported algorithm has.
     [[nodiscard]] static std::size_t longest_hash_digits();
+    // Whether an identifier may name algorithm, so that one under an
+    // algorithm the node does not know can be told from one that is not
+    // valid without being refused.
+    [[nodiscard]] static bool is_supported(std::string_view algorithm) noexcept;
 
 private:
     // The only hash algorithm supported (HttpApi §5.4: an unknown one is
@@ -48,6 +61,7 @@ private:
     std::string m_algorithm;
     std::string m_hash;
 
+    [[nodiscard]] bool _is_hash_of(const Data& data) const;
     [[nodiscard]] static std::size_t _sha256_digits();
     static void _warn_unsupported(const std::string& algorithm);
 };
@@ -86,7 +100,7 @@ inline Identifier::Identifier(std::string algorithm, std::string hash)
     : m_algorithm(std::move(algorithm)), m_hash(std::move(hash)) {
     constexpr std::string_view hex_digits = "0123456789abcdefABCDEF";
 
-    if (sha256 != m_algorithm) {
+    if (!is_supported(m_algorithm)) {
         _warn_unsupported(m_algorithm);
         throw std::invalid_argument("Invalid identifier format: unsupported algorithm");
     }
@@ -114,9 +128,36 @@ inline std::string Identifier::to_string() const {
     return m_algorithm + "/" + m_hash;
 }
 
+inline std::optional<Identifier::Data> Identifier::content_of(const Data& body,
+                                                              std::size_t limit) const {
+    if (_is_hash_of(body)) {
+        return body;
+    }
+
+    auto content = Zlib::decompress(body, limit);
+
+    if (!content || !_is_hash_of(*content)) {
+        return std::nullopt;
+    }
+
+    return content;
+}
+
 // SHA-256 is the only algorithm supported, so its hash is the longest.
 inline std::size_t Identifier::longest_hash_digits() {
     return _sha256_digits();
+}
+
+inline bool Identifier::is_supported(std::string_view algorithm) noexcept {
+    return sha256 == algorithm;
+}
+
+// Whether data hashes to this identifier. SHA-256 is the only algorithm
+// supported, so an identifier made with no algorithm names no data.
+inline bool Identifier::_is_hash_of(const Data& data) const {
+    const auto hashed = from(data);
+
+    return hashed.algorithm() == m_algorithm && hashed.hash() == m_hash;
 }
 
 // How many hex digits a SHA-256 hash has: two for each byte of its digest.

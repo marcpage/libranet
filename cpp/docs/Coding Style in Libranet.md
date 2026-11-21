@@ -96,7 +96,8 @@ line it is for (§2.1).
   returns, and `AesMacos::Cryptor` a CommonCrypto cryptor. `AesOpenSsl`
   wipes its key with `OPENSSL_cleanse()`.
   `AsyncChannel`'s destructor stops and joins its worker, and ends the
-  program if stopping throws.
+  program if stopping throws. `db::Database` holds SQLite's connection, and
+  a `Database::Transaction` rolls back what it was not told to commit.
 - **Casts (§10.4).** `OpenSslBytes::of()` is where bytes held as
   `std::byte` or `char` become the `unsigned char*` OpenSSL takes, and
   `OpenSslDer` is where OpenSSL's `d2i_*` and `i2d_*` functions are called.
@@ -108,6 +109,8 @@ line it is for (§2.1).
   error OpenSSL queued for the thread, and clears the queue. In
   `net/SocketPosix.cpp`, `assert_socket()` throws a `std::system_error`
   with `errno` and the call's name, and `assert_condition<E>()` throws `E`.
+  `db::SqliteError`, a `std::runtime_error`, adds what SQLite said of the
+  call that failed.
 - **Reporting (§9.3).** `AsyncChannel::Logger` is the function an
   `AsyncChannel` reports with; given none, it reports nothing.
   `AsyncChannelOf` reports a message of a type it was not made for.
@@ -123,9 +126,10 @@ line it is for (§2.1).
 - **Untrusted input (§10.1, §12).** The README's
   [Fuzzing](../README.md#fuzzing) table names each parser and how it turns
   input down. `Json`'s parser nests no deeper than 128,
-  `Headers::read_body()` reads a body 64 KiB at a time, and
+  `Headers::read_body()` reads a body 64 KiB at a time,
   `Zlib::decompress()` stops just past the limit it is given, making room
-  64 KiB at a time.
+  64 KiB at a time, and a `StructuredField` holds no more members, inner
+  list items, or parameters than RFC 9651 asks a parser to take.
 - **Tests (§11).** `crypto/tests/Fixtures.hpp` holds hex helpers, and an RSA
   key with what Python's `cryptography` package signed and encrypted with
   it, as the Python node does, so that the C++ node is checked against the

@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -18,6 +20,7 @@ using net::ISocket;
 
 namespace {
 
+// The bytes as text, a char for each.
 std::string as_text(const std::vector<std::byte>& bytes) {
     std::string text;
 
@@ -28,9 +31,11 @@ std::string as_text(const std::vector<std::byte>& bytes) {
     return text;
 }
 
+// A socket that reads the text it is given, at most chunk_limit bytes a
+// read. It cannot listen, accept, or say its addresses, and sends nothing.
 class ScriptedSocket final : public ISocket {
 public:
-    explicit ScriptedSocket(std::string input, std::size_t chunk_limit = 64);
+    ScriptedSocket(std::string input, std::size_t chunk_limit);
 
     void listen([[maybe_unused]] int backlog) override {
         throw std::logic_error("ScriptedSocket cannot listen");
@@ -87,17 +92,28 @@ ScriptedSocket::ScriptedSocket(std::string input, std::size_t chunk_limit)
 } // namespace
 
 TEST(SocketReaderTest, ReadExactReadsAcrossPartialReceives) {
+    constexpr auto size = 5;
     ScriptedSocket socket("abcdef", 2);
     SocketReader reader(socket);
 
-    EXPECT_EQ(as_text(reader.read_exact(5)), "abcde");
+    EXPECT_EQ(as_text(reader.read_exact(size)), "abcde");
 }
 
 TEST(SocketReaderTest, ReadExactStopsAtEof) {
-    ScriptedSocket socket("hi", 8);
+    constexpr auto chunk_limit = 8;
+    constexpr auto size = 10;
+    ScriptedSocket socket("hi", chunk_limit);
     SocketReader reader(socket);
 
-    EXPECT_EQ(as_text(reader.read_exact(10)), "hi");
+    EXPECT_EQ(as_text(reader.read_exact(size)), "hi");
+}
+
+// A size far larger than what is sent takes no more memory than is sent.
+TEST(SocketReaderTest, ReadExactOfAnyLengthStopsAtEof) {
+    ScriptedSocket socket("partial", 4);
+    SocketReader reader(socket);
+
+    EXPECT_EQ(as_text(reader.read_exact(std::numeric_limits<std::size_t>::max())), "partial");
 }
 
 TEST(SocketReaderTest, ReadUntilStopsAtDelimiter) {
@@ -122,7 +138,10 @@ TEST(SocketReaderTest, ReadLineStripsCrLfAndLf) {
 TEST(SocketReaderTest, EmptySocketReturnsEmptyOnRead) {
     ScriptedSocket socket("", 4);
     SocketReader reader(socket);
+    std::array<std::byte, 4> data{};
 
+    EXPECT_EQ(reader.read_some(data.data(), 0), 0U);
+    EXPECT_FALSE(reader.read_some(data.data(), data.size()).has_value());
     EXPECT_TRUE(reader.read_exact(4).empty());
     EXPECT_EQ(reader.read_line(), "");
 }
