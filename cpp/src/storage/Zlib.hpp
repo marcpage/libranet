@@ -15,6 +15,7 @@ public:
     // zlib's levels: 0 stores without compressing, 1 is fastest, and 9 makes
     // the smallest stream.
     static constexpr int min_level = 0;
+    static constexpr int balance_level = 6;
     static constexpr int max_level = 9;
 
     // data as one zlib stream, compressed at level. Throws

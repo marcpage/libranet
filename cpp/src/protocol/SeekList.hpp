@@ -63,7 +63,7 @@ private:
     // times over to find how much of it fits, and a list of identifiers is
     // hardly smaller at a slower level, so the quicker one is worth the
     // little it loses, as it is to the Python node's search answers.
-    static constexpr int compression_level = 6;
+    static constexpr int compression_level = storage::Zlib::balance_level;
 
     std::vector<storage::Identifier> m_data;
     std::vector<storage::HashPrefix> m_search;

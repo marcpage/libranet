@@ -33,10 +33,6 @@ using Data = storage::Zlib::Data;
 // so that a stream that holds little makes little room.
 constexpr size_t room_step = 64 * Megabyte;
 
-// The most bytes zlib reads or writes in one call: it counts them in an
-// unsigned int.
-constexpr size_t most_per_call = numeric_limits<uInt>::max();
-
 // Where zlib is to read or write data, from offset, which may be its end.
 // zlib takes bytes as Bytef, an unsigned char, which a byte may be read
 // as. The return types are deduced: CodeQL reads the code without building
@@ -56,7 +52,8 @@ auto* bytes_at(Data& data, size_t offset) {
 
 // As many of count bytes as zlib takes in one call.
 auto per_call(size_t count) {
-    return static_cast<uInt>(min(count, most_per_call));
+    // The most bytes zlib reads or writes in one call: it counts them in an unsigned int.
+    return static_cast<uInt>(min(count, static_cast<size_t>(numeric_limits<uInt>::max())));
 }
 
 // The size to make what a stream holds once it has filled size: a step

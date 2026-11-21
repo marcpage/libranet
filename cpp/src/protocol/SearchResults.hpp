@@ -72,7 +72,7 @@ private:
     static constexpr std::size_t max_body_size = 1 * types::Megabyte;
     // The level an answer too large as it is is compressed at, as the
     // reference node does (HttpApi §6.1).
-    static constexpr int compression_level = 6;
+    static constexpr int compression_level = storage::Zlib::balance_level;
     static constexpr std::string_view results_member = "results";
 
     Identifiers m_results;
