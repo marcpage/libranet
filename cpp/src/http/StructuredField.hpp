@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "crypto/Base64.hpp"
+#include "types/Constants.hpp"
 
 namespace http {
 
@@ -154,7 +155,7 @@ private:
     static constexpr std::int64_t max_integer = 999'999'999'999'999;
     static constexpr std::int64_t decimal_base = 10;
     // The fewest RFC 9651 lets a parser take (§3.2, §3.1.1, §3.1.2).
-    static constexpr std::size_t max_members = 1024;
+    static constexpr std::size_t max_members = 1 * types::Kilobyte;
     static constexpr std::size_t max_inner_list_items = 256;
     static constexpr std::size_t max_parameters = 256;
 

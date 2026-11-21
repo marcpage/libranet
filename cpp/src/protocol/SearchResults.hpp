@@ -14,6 +14,7 @@
 #include "logger/Logger.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 #include "types/Json.hpp"
 
@@ -68,7 +69,7 @@ private:
 
     // HttpApi §6.1: an answer is less than 1 MiB as sent, which for one sent
     // compressed is its compressed size.
-    static constexpr std::size_t max_body_size = 1024UL * 1024UL;
+    static constexpr std::size_t max_body_size = 1 * types::Megabyte;
     // The level an answer too large as it is is compressed at, as the
     // reference node does (HttpApi §6.1).
     static constexpr int compression_level = 6;
