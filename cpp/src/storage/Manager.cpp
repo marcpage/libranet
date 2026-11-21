@@ -1,19 +1,27 @@
 #include "Manager.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <numeric>
 #include <optional>
+#include <set>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 #include "DataDir.hpp"
+#include "HashPrefix.hpp"
 #include "IDataSource.hpp"
 #include "Identifier.hpp"
 
 using std::invalid_argument;
 using std::nullopt;
 using std::optional;
+using std::set;
+using std::string;
+using std::uintmax_t;
 using std::filesystem::directory_iterator;
 using std::filesystem::path;
 
@@ -62,12 +70,44 @@ optional<IDataSource::Data> Manager::get(const Identifier& identifier) const {
     return nullopt;
 }
 
-Identifier Manager::put(const Data& data) const {
+void Manager::put(const Identifier& identifier, const Data& body) const {
     if (m_sources.empty()) {
         throw invalid_argument("Trying to add data before first store added");
     }
 
-    return m_sources.front()->put(data);
+    m_sources.front()->put(identifier, body);
+}
+
+bool Manager::remove(const Identifier& identifier) const {
+    auto removed = false;
+
+    for (const auto& store : m_sources) {
+        removed = store->remove(identifier) || removed;
+    }
+
+    return removed;
+}
+
+uintmax_t Manager::size() const {
+    return std::accumulate(m_sources.begin(), m_sources.end(), uintmax_t{0},
+                           [](uintmax_t total, const auto& store) {
+        return total + store->size();
+    });
+}
+
+IDataSource::Identifiers Manager::starting_with(const HashPrefix& prefix) const {
+    Identifiers found;
+    set<string> named;
+
+    for (const auto& store : m_sources) {
+        for (auto& identifier : store->starting_with(prefix)) {
+            if (named.insert(identifier.to_string()).second) {
+                found.push_back(std::move(identifier));
+            }
+        }
+    }
+
+    return found;
 }
 
 } // namespace storage

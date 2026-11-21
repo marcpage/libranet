@@ -67,7 +67,7 @@ parsers in `fuzz/`:
 | Directory | Library | What it holds |
 | ------------------------- | ---------------- | ------------------------------------------------------------- |
 | [`src/types/`](src/types/) | `libranet::types` | Data types: `Integer`, `Json`, and `BlockingQueue` |
-| [`src/http/`](src/http/) | `libranet::http` | Parsing and generating HTTP: URLs, queries, headers, structured fields, requests, responses, and problem details; uses `types` and `crypto` |
+| [`src/http/`](src/http/) | `libranet::http` | Parsing and generating HTTP: URLs, queries, headers, structured fields, requests, responses, and problem details; uses `types`, `crypto`, and `io` |
 | [`src/msg/`](src/msg/) | `libranet::msg` | Messages, and the channels that carry them; uses `types` |
 | [`src/net/`](src/net/) | `libranet::net` | Addresses, IP addresses, and sockets, on POSIX systems |
 | [`src/crypto/`](src/crypto/) | `libranet::crypto` | Hashing, encrypting, and signing: SHA-256, AES, RSA, Ed25519, and Argon2id with OpenSSL; on macOS, SHA-256, AES, and RSA with Apple's frameworks instead |
@@ -75,6 +75,7 @@ parsers in `fuzz/`:
 | [`src/node/`](src/node/) | `libranet::node` | The node, which makes its parts and runs them, and its settings file, in YAML, read with yaml-cpp |
 | [`src/logger/`](src/logger/) | `libranet::logger` | The log: lines at levels, from any thread, to stderr, stdout, a file, or the system log |
 | [`src/db/`](src/db/) | `libranet::db` | A connection to an SQLite database, which makes its tables, its transactions, and the statements of SQL prepared on it |
+| [`src/identity/`](src/identity/) | `libranet::identity` | The node's identity and the signatures on what nodes send each other: so far, the signature base RFC 9421 signs; uses `types` and `http` |
 | [`src/peer/`](src/peer/) | `libranet::peer` | The node's connections to its server nodes, the nodes it connects to: for now, the buckets of node ids they are spread over; uses `storage` |
 
 Headers are included from `src/`, as in
@@ -260,7 +261,7 @@ cannot read:
 | `query_fuzzer` | `Query::parse` | nothing: it takes any text |
 | `headers_fuzzer` | reading `Headers` | `std::runtime_error` or `std::invalid_argument` |
 | `request_fuzzer` | reading a `Request` | a failed stream, or as `Headers` does |
-| `response_fuzzer` | reading a `Response` | a failed stream, or as `Headers` does |
+| `response_fuzzer` | reading a `Response`, from a stream and with `Response::read` | a failed stream, `std::invalid_argument`, or `io::LimitExceeded`, or as `Headers` does |
 | `structured_field_fuzzer` | `StructuredField::parse` | `std::invalid_argument` |
 | `address_fuzzer` | `Address::parse` | `std::invalid_argument` |
 | `ip_address_fuzzer` | `IpAddress::parse` | an empty `optional` |

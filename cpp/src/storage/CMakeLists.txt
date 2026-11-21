@@ -14,6 +14,7 @@ target_link_libraries(libranet_storage
     PUBLIC
         libranet::http
         libranet::crypto
+        libranet::io
         libranet::logger
     PRIVATE
         ZLIB::ZLIB)

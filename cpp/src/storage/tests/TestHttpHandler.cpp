@@ -8,6 +8,7 @@
 #include "http/Response.hpp"
 #include "storage/DataDir.hpp"
 #include "storage/HttpHandler.hpp"
+#include "storage/Identifier.hpp"
 
 using fixtures::bytes_of;
 using fixtures::hello;
@@ -19,6 +20,7 @@ using http::Request;
 using http::Response;
 using storage::DataDir;
 using storage::HttpHandler;
+using storage::Identifier;
 
 namespace {
 
@@ -63,7 +65,7 @@ TEST(HttpHandlerTest, SearchFindsNothing) {
 TEST(HttpHandlerTest, DataForNoNodeIsUnauthorized) {
     const auto source = std::make_shared<MemorySource>();
     const HttpHandler handler(source);
-    (void)source->put(bytes_of(hello));
+    source->put(Identifier("sha256", hello_hash), bytes_of(hello));
 
     const auto response = answer(handler, unsigned_get(std::string("/data/sha256/") + hello_hash));
 
@@ -74,7 +76,7 @@ TEST(HttpHandlerTest, DataForNoNodeIsUnauthorized) {
 TEST(HttpHandlerTest, DataHeldIsServed) {
     const auto source = std::make_shared<MemorySource>();
     const HttpHandler handler(source);
-    (void)source->put(bytes_of(hello));
+    source->put(Identifier("sha256", hello_hash), bytes_of(hello));
 
     const auto response = answer(handler, signed_get(std::string("/data/sha256/") + hello_hash));
 
