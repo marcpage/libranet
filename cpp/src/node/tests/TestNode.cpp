@@ -400,6 +400,25 @@ TEST_F(NodeTest, ServesItsPublicKeyUnderItsId) {
     EXPECT_EQ(answer.substr(answer.find("\r\n\r\n")), string("\r\n\r\n") + python_public_pem);
 }
 
+// Each answer it sends is signed with its key, naming its id, and an
+// unsigned upload is refused (HandshakeProtocol §2.1).
+TEST_F(NodeTest, SignsItsAnswersAndRefusesUnsignedUploads) {
+    write_file(data_dir() / "node-key.pem", python_private_pem);
+    std::filesystem::permissions(data_dir() / "node-key.pem",
+                                 perms::owner_read | perms::owner_write);
+
+    const Node node(settings_of(loopback(data_dir())));
+    const auto answer = answer_to(node.local_address(),
+                                  string("PUT /data/sha256/") + hello_hash
+                                      + " HTTP/1.1\r\nConnection: close\r\n"
+                                        "Content-Length: 5\r\n\r\nhello");
+
+    EXPECT_EQ(answer.rfind("HTTP/1.1 401 Unauthorized\r\n", 0), 0U) << answer;
+    EXPECT_NE(answer.find(string(";keyid=\"sha256/") + python_hash + "\""), string::npos)
+        << answer;
+    EXPECT_FALSE(std::filesystem::exists(data_dir() / "cas" / "sha256" / "2cf" / hello_hash));
+}
+
 // What each directory in incoming/ holds is served from /data too.
 TEST_F(NodeTest, ServesWhatIncomingHolds) {
     write_file(data_dir() / "incoming" / "batch" / "sha256" / "2cf" / hello_hash, hello);

@@ -4,6 +4,7 @@
 #include <thread>
 
 #include "api/DataHandler.hpp"
+#include "api/SignatureGuard.hpp"
 #include "identity/NodeIdentity.hpp"
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
@@ -68,6 +69,7 @@ private:
 
     // The parts.
     api::DataHandler m_data_handler;
+    api::SignatureGuard m_guard; // In front of each of m_server's handlers
     web::Server m_server;
     net::Address m_local_address; // Where m_server listens
     std::thread m_server_thread;

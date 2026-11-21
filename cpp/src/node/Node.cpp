@@ -9,6 +9,7 @@
 #include <exception>
 #include <filesystem>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -17,6 +18,9 @@
 
 #include "http/Request.hpp"
 #include "http/Response.hpp"
+#include "identity/KnownKeys.hpp"
+#include "identity/MessageSigner.hpp"
+#include "identity/MessageVerifier.hpp"
 #include "identity/NodeIdentity.hpp"
 #include "io/Directories.hpp"
 #include "logger/Logger.hpp"
@@ -27,6 +31,9 @@
 
 using http::Request;
 using http::Response;
+using identity::KnownKeys;
+using identity::MessageSigner;
+using identity::MessageVerifier;
 using io::Directories;
 using logger::Logger;
 using net::Address;
@@ -38,6 +45,7 @@ using std::exception;
 using std::find;
 using std::generic_category;
 using std::invalid_argument;
+using std::make_shared;
 using std::numeric_limits;
 using std::size_t;
 using std::stoul;
@@ -274,6 +282,8 @@ Node::Node(const SettingsFile& settings)
     , m_store(lay_out(m_data_dir))
     , m_identity(m_data_dir / key_file_name, *m_store)
     , m_data_handler(m_store)
+    , m_guard(MessageVerifier(make_shared<KnownKeys>(m_store), MessageVerifier::Window{}),
+              MessageSigner(m_identity))
     , m_server(m_listen_address)
     , m_local_address(m_server.local_address()) {
     lInfo << data_dir_setting << "=" << m_data_dir.string();
@@ -285,9 +295,10 @@ Node::Node(const SettingsFile& settings)
     lInfo << "Listening on" << m_local_address.to_string();
 
     m_server.register_handler(
-        "/data", [this](const Request& request, Response& response, ConnectionInfo& connection) {
+        "/data", m_guard.in_front_of(
+                     [this](const Request& request, Response& response, ConnectionInfo& connection) {
         m_data_handler(request, response, connection);
-    });
+    }));
     m_server_thread = thread([this] {
         _serve();
     });
