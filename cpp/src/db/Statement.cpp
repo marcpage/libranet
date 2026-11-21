@@ -16,6 +16,7 @@
 
 #include "Database.hpp"
 
+using db::SqliteError;
 using std::bad_alloc;
 using std::byte;
 using std::copy_n;
@@ -58,6 +59,14 @@ string error_of(sqlite3* connection) {
     return sqlite3_errmsg(connection);
 }
 
+template<typename Exception>
+void validate(bool condition, string_view message = "", sqlite3* connection = nullptr) {
+    if (!condition) {
+        throw Exception(string(message)
+                        + (nullptr == connection ? string() : error_of(connection)));
+    }
+}
+
 // The one statement sql holds, prepared on connection, for the caller to
 // finalize. Throws SqliteError for SQL that SQLite cannot prepare, and
 // invalid_argument for SQL that holds no statement, or that holds
@@ -71,14 +80,10 @@ auto* prepare(sqlite3& connection, string_view sql) {
     const auto* text = sql.empty() ? "" : sql.data();
     sqlite3_stmt* statement = nullptr;
     const char* tail = nullptr;
+    const auto result = sqlite3_prepare_v2(&connection, text, length, &statement, &tail);
 
-    if (SQLITE_OK != sqlite3_prepare_v2(&connection, text, length, &statement, &tail)) {
-        throw db::SqliteError("Cannot prepare SQL: " + error_of(&connection));
-    }
-
-    if (nullptr == statement) {
-        throw invalid_argument("No statement in the SQL: " + string(sql));
-    }
+    validate<SqliteError>(SQLITE_OK == result, "Cannot prepare SQL: ", &connection);
+    validate<invalid_argument>(nullptr != statement, "No statement in the SQL: " + string(sql));
 
     // SQLite reads the first statement, and says where it ends with tail.
     const auto first_length = static_cast<size_t>(distance(text, tail));
@@ -101,14 +106,10 @@ void check_bound(int result) {
         return;
     }
 
-    if (SQLITE_RANGE == result) {
-        throw out_of_range("Every parameter of the statement is bound already");
-    }
-
-    if (SQLITE_MISUSE == result) {
-        throw logic_error("Cannot bind a value to a statement that has stepped until it is reset");
-    }
-
+    validate<out_of_range>(SQLITE_RANGE != result,
+                           "Every parameter of the statement is bound already");
+    validate<logic_error>(SQLITE_MISUSE != result,
+                          "Cannot bind a value to statement that has stepped until it is reset");
     throw db::SqliteError(string("Cannot bind the value: ") + sqlite3_errstr(result));
 }
 
@@ -117,20 +118,19 @@ void check_bound(int result) {
 // on no row, or its row has no such column, where what SQLite would give is
 // undefined.
 int kind_of(sqlite3_stmt* statement, int column) {
-    if (column < 0 || sqlite3_data_count(statement) <= column) {
-        throw out_of_range("No column " + to_string(column) + " in the statement's row");
-    }
+    const auto columns = sqlite3_data_count(statement);
 
+    validate<out_of_range>(column >= 0 && column < columns,
+                           "No column " + to_string(column) + " in the statement's row");
     return sqlite3_column_type(statement, column);
 }
 
 // Throws domain_error unless column, in the row statement is on, holds
 // a value of kind, and out_of_range as kind_of() does.
 void expect(sqlite3_stmt* statement, int column, Kind kind) {
-    if (kind.code != kind_of(statement, column)) {
-        throw domain_error("Column " + to_string(column) + " does not hold "
-                           + string(kind.name));
-    }
+    validate<domain_error>(kind.code == kind_of(statement, column),
+                           "Column " + to_string(column) + " does not hold "
+                               + string(kind.name));
 }
 
 } // namespace
@@ -147,10 +147,7 @@ Statement& Statement::bind(int64_t value) {
 }
 
 Statement& Statement::bind(double value) {
-    if (isnan(value)) {
-        throw invalid_argument("SQLite cannot hold NaN, only NULL in its place");
-    }
-
+    validate<invalid_argument>(!isnan(value), "SQLite cannot hold NaN, only NULL in its place");
     check_bound(sqlite3_bind_double(m_statement.get(), m_next_parameter, value));
     ++m_next_parameter;
     return *this;
@@ -187,9 +184,8 @@ Statement& Statement::bind(nullopt_t /*null*/) {
 }
 
 bool Statement::step() {
-    if (m_next_parameter <= sqlite3_bind_parameter_count(m_statement.get())) {
-        throw logic_error("Cannot run a statement before each of its parameters is bound");
-    }
+    validate<logic_error>(m_next_parameter > sqlite3_bind_parameter_count(m_statement.get()),
+                          "Cannot run a statement before each of its parameters is bound");
 
     const auto result = sqlite3_step(m_statement.get());
 
@@ -250,9 +246,8 @@ Statement::Data Statement::blob(int column) const {
 }
 
 string Statement::label(int column) const {
-    if (column < 0 || sqlite3_column_count(m_statement.get()) <= column) {
-        throw out_of_range("No column " + to_string(column) + " in the statement's rows");
-    }
+    validate<out_of_range>(column >= 0 && column < sqlite3_column_count(m_statement.get()),
+                           "No column " + to_string(column) + " in the statement's rows");
 
     const auto* name = sqlite3_column_name(m_statement.get(), column);
 
