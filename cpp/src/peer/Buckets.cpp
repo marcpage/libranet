@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <numeric>
 #include <optional>
 #include <set>
 #include <stdexcept>
@@ -15,7 +14,6 @@
 #include "types/Converter.hpp"
 
 using peer::Buckets;
-using std::accumulate;
 using std::invalid_argument;
 using std::min;
 using std::nullopt;
@@ -44,7 +42,7 @@ size_t bucket_count(size_t bits) {
     return size_t{1} << bits;
 }
 
-// Throws std::invalid_argument, naming setting, for bits that are not 1 to
+// Throws invalid_argument, naming setting, for bits that are not 1 to
 // max_prefix_bits.
 void check_prefix_bits(size_t bits, const string& setting) {
     if (bits < 1 || bits > max_prefix_bits) {
@@ -53,7 +51,7 @@ void check_prefix_bits(size_t bits, const string& setting) {
     }
 }
 
-// sizes, once checked. Throws std::invalid_argument, naming the setting, for
+// sizes, once checked. Throws invalid_argument, naming the setting, for
 // sizes a node cannot spread its server nodes by, as the Python node refuses them.
 Buckets::ExpectedSizes checked(const Buckets::ExpectedSizes& sizes) {
     check_prefix_bits(sizes.primary_prefix_bits, "peers.bucket_prefix_bits");
@@ -77,8 +75,7 @@ Buckets::ExpectedSizes checked(const Buckets::ExpectedSizes& sizes) {
 }
 
 // The value of the first bits bits of node_id's hash. Throws
-// std::invalid_argument for a hash shorter than that, as an identifier made
-// with no hash has.
+// invalid_argument for a hash shorter than that, as an identifier made with no hash has.
 uint64_t leading_bits(const Identifier& node_id, size_t bits) {
     const auto& hash = node_id.hash();
     const auto digits = (bits + bits_per_digit - 1) / bits_per_digit;
@@ -88,10 +85,7 @@ uint64_t leading_bits(const Identifier& node_id, size_t bits) {
     }
 
     const auto leading = string_view(hash).substr(0, digits);
-    const auto append = [](uint64_t read, char digit) {
-        return (read << bits_per_digit) | Converter::hex_digit_value(digit);
-    };
-    const auto value = accumulate(leading.begin(), leading.end(), uint64_t{0}, append);
+    const auto value = Converter::parse_hex(leading);
 
     return value >> ((digits * bits_per_digit) - bits);
 }
