@@ -77,10 +77,15 @@ optional<string> read_key_file(const path& key_file) {
     return text;
 }
 
+enum class Report : uint8_t {
+    Permissions,
+    DoNot,
+};
+
 // Makes key_file readable and writable only by its owner, when others may
 // read or write it, and warns of it, as others may have read the key
 // already. Throws std::filesystem::filesystem_error when it cannot.
-void restrict_to_owner(const path& key_file) {
+void restrict_to_owner(const path& key_file, Report report) {
     constexpr auto others = perms::group_all | perms::others_all;
     const auto permissions = std::filesystem::status(key_file).permissions();
 
@@ -88,8 +93,9 @@ void restrict_to_owner(const path& key_file) {
         return;
     }
 
-    lWarn << "Others could read the node's key file, which only its owner now may:"
-          << key_file.string();
+    lWarnIf(Report::Permissions == report)
+        << "Others could read the node's key file, which only its owner now may:"
+        << key_file.string();
     std::filesystem::permissions(key_file, perms::owner_read | perms::owner_write);
 }
 
@@ -117,7 +123,7 @@ ISignKey::Ptr key_from(string_view pem, const path& key_file) {
 // and written to one, in PKCS #8, as the Python node writes its key.
 ISignKey::Ptr load_or_make(const path& key_file) {
     if (const auto pem = read_key_file(key_file)) {
-        restrict_to_owner(key_file);
+        restrict_to_owner(key_file, Report::Permissions);
         return key_from(*pem, key_file);
     }
 
@@ -125,7 +131,7 @@ ISignKey::Ptr load_or_make(const path& key_file) {
     SafeWriteFile final_key_file(key_file);
 
     final_key_file.write(key->private_pem());
-    restrict_to_owner(key_file);
+    restrict_to_owner(key_file, Report::DoNot);
     lInfo << "Made the node's key:" << key_file.string();
     return key;
 }
