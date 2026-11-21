@@ -271,8 +271,8 @@ Node::Node(const SettingsFile& settings)
     lInfo << "Listening on" << m_local_address.to_string();
 
     m_server.register_handler(
-        "/data", [this](const Request& request, Response& response, ConnectionInfo& /*connection*/) {
-        m_data_handler(request, response);
+        "/data", [this](const Request& request, Response& response, ConnectionInfo& connection) {
+        m_data_handler(request, response, connection);
     });
     m_server_thread = thread([this] {
         _serve();
