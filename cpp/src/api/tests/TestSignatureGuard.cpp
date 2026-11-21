@@ -57,7 +57,7 @@ constexpr std::string_view remote_host = "192.0.2.1";
 constexpr Address::Port remote_port = 50000;
 
 ConnectionInfo new_connection() {
-    return ConnectionInfo(Address(std::string(remote_host), remote_port));
+    return ConnectionInfo(Address(remote_host, remote_port));
 }
 
 Request request_of(std::string method, std::string_view uri = hello_path,
