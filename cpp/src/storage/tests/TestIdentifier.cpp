@@ -16,6 +16,7 @@
 #include "logger/Logger.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Json.hpp"
 
 using fixtures::bytes_of;
 using fixtures::hello_hash;
@@ -23,6 +24,7 @@ using logger::ILogOutput;
 using logger::Logger;
 using storage::Identifier;
 using storage::Zlib;
+using types::Json;
 
 namespace {
 
@@ -50,6 +52,18 @@ bool refused(const std::string& text) {
     return false;
 }
 
+// What Identifier::from() makes of value, as text, or "nothing".
+std::string made_from(const Json& value) {
+    const auto identifier = Identifier::from(value);
+
+    return identifier ? identifier->to_string() : "nothing";
+}
+
+// Whether Identifier::from() makes nothing of value.
+bool names_none(const Json& value) {
+    return !Identifier::from(value).has_value();
+}
+
 // text, with its letters in upper case.
 std::string upper_case(std::string text) {
     std::transform(text.begin(), text.end(), text.begin(), [](char character) {
@@ -74,19 +88,16 @@ private:
     std::shared_ptr<std::vector<std::string>> m_lines;
 };
 
-// Refuses the text of each identifier, writes what was logged to stderr,
-// and ends the program, with as many as were logged as its status.
-[[noreturn]] void refuse_and_exit(const std::vector<std::string>& texts) {
+// Runs run, writes what it logged to stderr, and ends the program, with as
+// many lines as were logged as its status.
+template<typename Function>
+[[noreturn]] void run_and_exit(Function run) {
     const auto lines = std::make_shared<std::vector<std::string>>();
 
     Logger::remove_all_outputs();
     Logger::add_output(std::make_unique<KeepingOutput>(lines));
     Logger::reset_levels(Logger::Level::Warning);
-
-    for (const auto& text : texts) {
-        (void)refused(text);
-    }
-
+    run();
     Logger::remove_all_outputs();
 
     for (const auto& line : *lines) {
@@ -94,6 +105,20 @@ private:
     }
 
     std::_Exit(static_cast<int>(lines->size()));
+}
+
+// Refuses the text of each identifier, as run_and_exit() runs it.
+[[noreturn]] void refuse_and_exit(const std::vector<std::string>& texts) {
+    run_and_exit([&texts] {
+        for (const auto& text : texts) {
+            (void)refused(text);
+        }
+    });
+}
+
+// Reads value as an identifier, as run_and_exit() runs it.
+[[noreturn]] void read_and_exit(const Json& value) {
+    run_and_exit([&value] { (void)Identifier::from(value); });
 }
 
 } // namespace
@@ -210,6 +235,44 @@ TEST(IdentifierDeathTest, HashThatIsNotValidIsNotLogged) {
     GTEST_FLAG_SET(death_test_style, "threadsafe");
 
     EXPECT_EXIT(refuse_and_exit({"sha256/abc123", "sha256"}), testing::ExitedWithCode(0), "");
+}
+
+// JSON text with no algorithm before its slash names none the node lacks.
+TEST(IdentifierDeathTest, JsonWithNoAlgorithmIsNotLogged) {
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
+    const auto text = std::string("/sha256/") + hello_hash;
+
+    EXPECT_EXIT(read_and_exit(Json(text)), testing::ExitedWithCode(0), "");
+}
+
+// An identifier in JSON, as a list or a search answer names one, is a
+// string of an algorithm and a hash (HttpApi §6.1).
+TEST(IdentifierTest, FromJson) {
+    const std::string hash(hello_hash);
+
+    EXPECT_EQ(made_from("sha256/" + hash), "sha256/" + hash);
+    EXPECT_EQ(made_from("sha256/" + upper_case(hash)), "sha256/" + hash);
+}
+
+TEST(IdentifierTest, JsonThatIsNoStringIsNothing) {
+    EXPECT_TRUE(names_none(nullptr));
+    EXPECT_TRUE(names_none(true));
+    EXPECT_TRUE(names_none(1));
+    EXPECT_TRUE(names_none(Json::Array{}));
+    EXPECT_TRUE(names_none(Json::Object{}));
+}
+
+// Unlike text read from a path, JSON names an identifier and nothing more.
+TEST(IdentifierTest, JsonTextThatNamesNoIdentifierIsNothing) {
+    const std::string hash(hello_hash);
+
+    EXPECT_TRUE(names_none(""));
+    EXPECT_TRUE(names_none("sha256"));
+    EXPECT_TRUE(names_none("sha256/"));
+    EXPECT_TRUE(names_none("sha256/abc123"));
+    EXPECT_TRUE(names_none("md5/" + hash));
+    EXPECT_TRUE(names_none("/sha256/" + hash));
+    EXPECT_TRUE(names_none("sha256/" + hash + "/more"));
 }
 
 // The SHA-256 digests are those `shasum -a 256` gives for the same bytes.
