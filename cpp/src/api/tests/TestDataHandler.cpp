@@ -14,6 +14,7 @@
 #include "msg/Message.hpp"
 #include "net/Address.hpp"
 #include "storage/DataNotFound.hpp"
+#include "storage/DataRequested.hpp"
 #include "storage/DataStored.hpp"
 #include "storage/HashPrefix.hpp"
 #include "storage/IDataSource.hpp"
@@ -29,6 +30,7 @@ using http::Response;
 using msg::Channel;
 using net::Address;
 using storage::DataNotFound;
+using storage::DataRequested;
 using storage::DataStored;
 using storage::HashPrefix;
 using storage::IDataSource;
@@ -39,11 +41,12 @@ using types::Json;
 using web::ConnectionInfo;
 using namespace std::chrono_literals;
 
-// The tests only take DataStored and DataNotFound, which the handler posts
-// from another file, so nothing here would make their messages' virtual
-// to_string(), which next<>() casts to.
+// The tests only take DataStored, DataNotFound, and DataRequested, which the
+// handler posts from another file, so nothing here would make their
+// messages' virtual to_string(), which next<>() casts to.
 template class msg::Message<DataStored>;
 template class msg::Message<DataNotFound>;
+template class msg::Message<DataRequested>;
 
 namespace {
 
@@ -239,6 +242,40 @@ TEST(DataHandlerTest, HeldContentIsNotPostedAsNotFound) {
     (void)answer(handler, get(hello_path()));
 
     EXPECT_TRUE(not_found.empty());
+}
+
+// Each GET is posted as a request for the content, held or not, and once.
+TEST(DataHandlerTest, EachGetIsPostedAsRequested) {
+    const auto store = std::make_shared<MemoryStore>();
+    const DataHandler handler(store);
+    Channel requested(DataRequested::name);
+
+    (void)answer(handler, get(hello_path()));
+    store->put(hello_id(), Converter::bytes_of(hello));
+    (void)answer(handler, get(hello_path()));
+
+    const auto missing = requested.next<DataRequested>(0ms);
+    const auto held = requested.next<DataRequested>(0ms);
+
+    ASSERT_TRUE(missing.has_value());
+    EXPECT_EQ(missing->identifier.to_string(), hello_id().to_string());
+    ASSERT_TRUE(held.has_value());
+    EXPECT_EQ(held->identifier.to_string(), hello_id().to_string());
+    EXPECT_TRUE(requested.empty());
+}
+
+// Only a GET of content is a request for it: not a PUT, nor a request that
+// names no content.
+TEST(DataHandlerTest, OnlyAGetOfContentIsPostedAsRequested) {
+    const DataHandler handler(std::make_shared<MemoryStore>());
+    Channel requested(DataRequested::name);
+
+    (void)answer(handler, put(hello_path(), std::string(hello)));
+    (void)answer(handler, request_of("POST", hello_path()));
+    (void)answer(handler, get("/data/sha256/x" + std::string(hello_hash.substr(1))));
+    (void)answer(handler, get("/data/search/2cf"));
+
+    EXPECT_TRUE(requested.empty());
 }
 
 // A hash that is not hex, or not as many digits as SHA-256's, an algorithm
