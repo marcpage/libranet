@@ -51,8 +51,10 @@ namespace net {
 
 optional<IpAddress> IpAddress::parse(string_view text) {
     // inet_pton() reads text up to a NUL, which would let what follows one
-    // through unread.
-    if (text.find('\0') != string_view::npos) {
+    // through unread. Apple's also reads an IPv6 zone after a '%', as in
+    // fe80::1%eth0, and leaves it out, where glibc's refuses it; an address
+    // here names no zone.
+    if (text.find('\0') != string_view::npos || text.find('%') != string_view::npos) {
         return nullopt;
     }
 
