@@ -14,6 +14,7 @@
 #include "logger/Logger.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Converter.hpp"
 #include "types/Json.hpp"
 
 namespace protocol {
@@ -59,8 +60,6 @@ public:
     void answer(http::Response& response) const;
 
 private:
-    using Data = storage::Zlib::Data;
-
     // The answer naming the first count of the results, compressed.
     struct Attempt {
         std::size_t count = 0;
@@ -86,8 +85,6 @@ private:
     [[nodiscard]] static std::optional<types::Json> _parsed(std::string_view text);
     [[nodiscard]] static Identifiers _identifiers(const types::Json& value);
     [[nodiscard]] static std::optional<storage::Identifier> _identifier(const types::Json& entry);
-    [[nodiscard]] static Data _bytes(std::string_view text);
-    [[nodiscard]] static std::string _string(const Data& data);
 };
 
 inline SearchResults SearchResults::parse(std::string_view body, std::size_t decompressed_limit) {
@@ -166,9 +163,10 @@ inline std::size_t SearchResults::_next_count(const Attempt& fitting, const Atte
 
 // The answer naming the first count of the results, zlib-compressed.
 inline SearchResults::Attempt SearchResults::_compressed(std::size_t count) const {
-    const auto compressed = storage::Zlib::compress(_bytes(_json_text(count)), compression_level);
+    const auto compressed = storage::Zlib::compress(types::Converter::bytes_of(_json_text(count)),
+                                                    compression_level);
 
-    return {count, _string(compressed)};
+    return {count, types::Converter::text_of(compressed)};
 }
 
 // The answer naming the first count of the results, as compact JSON.
@@ -195,7 +193,8 @@ inline types::Json SearchResults::_json(std::string_view body, std::size_t decom
         return std::move(*value);
     }
 
-    const auto decompressed = storage::Zlib::decompress(_bytes(body), decompressed_limit);
+    const auto decompressed = storage::Zlib::decompress(types::Converter::bytes_of(body),
+                                                        decompressed_limit);
 
     if (!decompressed) {
         throw std::invalid_argument("A search answer must be JSON, or zlib-compressed JSON of "
@@ -203,7 +202,7 @@ inline types::Json SearchResults::_json(std::string_view body, std::size_t decom
                                     + std::to_string(decompressed_limit) + " bytes");
     }
 
-    return types::Json::parse(_string(*decompressed));
+    return types::Json::parse(types::Converter::text_of(*decompressed));
 }
 
 // The JSON text holds, or nothing when it is not JSON.
@@ -267,27 +266,6 @@ inline std::optional<storage::Identifier> SearchResults::_identifier(const types
         // left out, and counted.
         return std::nullopt;
     }
-}
-
-// The bytes of text, a byte for each char.
-inline SearchResults::Data SearchResults::_bytes(std::string_view text) {
-    Data data;
-
-    data.reserve(text.size());
-    std::transform(text.begin(), text.end(), std::back_inserter(data),
-                   [](char character) { return static_cast<std::byte>(character); });
-    return data;
-}
-
-// The text of data, a char for each byte.
-inline std::string SearchResults::_string(const Data& data) {
-    std::string text;
-
-    text.reserve(data.size());
-    std::transform(data.begin(), data.end(), std::back_inserter(text), [](std::byte byte) {
-        return static_cast<char>(std::to_integer<unsigned char>(byte));
-    });
-    return text;
 }
 
 } // namespace protocol
