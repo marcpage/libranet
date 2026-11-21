@@ -90,23 +90,23 @@ Item component(std::string name) {
 
 } // namespace
 
-// RFC 8941 §3.2's example.
+// RFC 9651 §3.2's example.
 TEST(StructuredFieldTest, ReadsADictionary) {
-    // "Æbletærte", and a newline, in UTF-8.
-    constexpr std::string_view aebletaerte = "\xC3\x86\x62let\xC3\xA6rte\n";
-    const auto field = StructuredField::parse(R"(en="Applepie", da=:w4ZibGV0w6ZydGUK:)");
+    // "Æbletærte", in UTF-8.
+    constexpr std::string_view aebletaerte = "\xC3\x86\x62let\xC3\xA6rte";
+    const auto field = StructuredField::parse(R"(en="Applepie", da=:w4ZibGV0w6ZydGU=:)");
 
     ASSERT_EQ(field.members().size(), 2U);
     EXPECT_EQ(field.members().at(0).first, "en");
     EXPECT_EQ(field.members().at(1).first, "da");
     EXPECT_EQ(field.member("en"), Member(Item{std::string("Applepie"), {}}));
     EXPECT_EQ(field.member("da"), Member(Item{bytes_of(aebletaerte), {}}));
-    EXPECT_EQ(field.to_string(), R"(en="Applepie", da=:w4ZibGV0w6ZydGUK:)");
+    EXPECT_EQ(field.to_string(), R"(en="Applepie", da=:w4ZibGV0w6ZydGU=:)");
 }
 
-// RFC 8941 §3.2's example.
+// RFC 9651 §3.2's example.
 TEST(StructuredFieldTest, AKeyOrParameterAloneIsTrue) {
-    const auto field = StructuredField::parse("a=?0, b, c;foo=bar");
+    const auto field = StructuredField::parse("a=?0, b, c; foo=bar");
 
     EXPECT_EQ(field.member("a"), Member(Item{false, {}}));
     EXPECT_EQ(field.member("b"), Member(Item{true, {}}));
@@ -114,7 +114,7 @@ TEST(StructuredFieldTest, AKeyOrParameterAloneIsTrue) {
     EXPECT_EQ(field.to_string(), "a=?0, b, c;foo=bar");
 }
 
-// RFC 8941 §3.2's example.
+// RFC 9651 §3.2's example.
 TEST(StructuredFieldTest, ReadsInnerListsAndParameters) {
     const auto field = StructuredField::parse("a=(1 2), b=3, c=4;aa=bb, d=(5 6);valid");
     const Item five{std::int64_t{5}, {}};
@@ -172,14 +172,14 @@ TEST(StructuredFieldTest, ReadsAContentDigest) {
     EXPECT_EQ(field.to_string(), text);
 }
 
-// RFC 8941 §3.3.5's example.
+// RFC 9651 §3.3.5's example.
 TEST(StructuredFieldTest, ReadsAByteSequence) {
     const auto field = StructuredField::parse("a=:cHJldGVuZCB0aGlzIGlzIGJpbmFyeSBjb250ZW50Lg==:");
 
     EXPECT_EQ(field.member("a"), Member(Item{bytes_of("pretend this is binary content."), {}}));
 }
 
-// RFC 8941 §4.2.7 asks that a byte sequence be read without its padding.
+// RFC 9651 §4.2.7 asks that a byte sequence be read without its padding.
 TEST(StructuredFieldTest, ReadsAByteSequenceWithoutPadding) {
     EXPECT_EQ(StructuredField::parse("a=:AQI:").member("a"),
               Member(Item{bytes_of("\x01\x02"), {}}));
@@ -195,7 +195,7 @@ TEST(StructuredFieldTest, ReadsStringsWithTheirEscapes) {
     EXPECT_EQ(field.to_string(), R"(a="say \"hi\" \\ bye", b="")");
 }
 
-// RFC 8941 §3.3.4's example, and each character a token may hold.
+// RFC 9651 §3.3.4's example, and each character a token may hold.
 TEST(StructuredFieldTest, ReadsTokens) {
     EXPECT_EQ(StructuredField::parse("a=foo123/456").member("a"),
               Member(Item{Token{"foo123/456"}, {}}));
@@ -282,14 +282,16 @@ TEST(StructuredFieldTest, ItemsThatCannotBeReadAreRefused) {
     EXPECT_TRUE(refused("a=:AA==AA==:"));
     EXPECT_TRUE(refused("a=?"));
     EXPECT_TRUE(refused("a=?2"));
+    EXPECT_TRUE(refused("a=@1659578233"));
+    EXPECT_TRUE(refused(R"(a=%"f%c3%bc%c3%bc")"));
     EXPECT_TRUE(refused("a=(1 2"));
     EXPECT_TRUE(refused("a=(1,2)"));
     EXPECT_TRUE(refused("a=((1))"));
 }
 
-// RFC 8941 asks a parser to take at least 1024 members, 256 items in an
+// RFC 9651 asks a parser to take at least 1024 members, 256 items in an
 // inner list, and 256 parameters (§3.2, §3.1.1, §3.1.2).
-TEST(StructuredFieldTest, HoldsWhatRfc8941AsksAParserToTake) {
+TEST(StructuredFieldTest, HoldsWhatRfc9651AsksAParserToTake) {
     constexpr std::size_t members = 1024;
     constexpr std::size_t items = 256;
     constexpr std::size_t parameter_count = 256;

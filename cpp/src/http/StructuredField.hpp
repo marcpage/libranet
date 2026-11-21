@@ -17,16 +17,19 @@
 
 namespace http {
 
-// A structured field value (RFC 8941) that is a dictionary, as
+// A structured field value (RFC 9651) that is a dictionary, as
 // Signature-Input, Signature, and Content-Digest are: keys, each naming an
 // item or an inner list of items, with parameters. An item is an integer, a
-// string, a token, a byte sequence, or a boolean; decimals are not read or
-// written. It holds as many members, inner list items, and parameters as RFC
-// 8941 asks a parser to take, and no more, so that the time spent looking up
-// keys stays in proportion to the text read (§3.1.1, §3.1.2, §3.2).
+// string, a token, a byte sequence, or a boolean. Decimals are not read or
+// written, nor are dates and display strings, which RFC 9651 added: those
+// three fields are defined against RFC 8941, which it obsoletes, and so
+// cannot hold them (§2.4). It holds as many members, inner list items, and
+// parameters as RFC 9651 asks a parser to take, and no more, so that the time
+// spent looking up keys stays in proportion to the text read (§3.1.1,
+// §3.1.2, §3.2).
 class StructuredField {
 public:
-    // Text written bare, where a string is quoted (RFC 8941 §3.3.4).
+    // Text written bare, where a string is quoted (RFC 9651 §3.3.4).
     struct Token {
         std::string text;
 
@@ -35,12 +38,12 @@ public:
     };
 
     using Bytes = std::vector<std::byte>;
-    // An item's value (RFC 8941 §3.3).
+    // An item's value (RFC 9651 §3.3).
     using Value = std::variant<std::int64_t, std::string, Token, Bytes, bool>;
-    // The parameters of an item or an inner list, in order (RFC 8941 §3.1.2).
+    // The parameters of an item or an inner list, in order (RFC 9651 §3.1.2).
     using Parameters = std::vector<std::pair<std::string, Value>>;
 
-    // A value, with its parameters (RFC 8941 §3.3).
+    // A value, with its parameters (RFC 9651 §3.3).
     struct Item {
         Value value;
         Parameters parameters;
@@ -49,7 +52,7 @@ public:
         friend bool operator!=(const Item& left, const Item& right);
     };
 
-    // Items in parentheses, with parameters of the list's own (RFC 8941
+    // Items in parentheses, with parameters of the list's own (RFC 9651
     // §3.1.1).
     struct InnerList {
         std::vector<Item> items;
@@ -59,11 +62,11 @@ public:
         friend bool operator!=(const InnerList& left, const InnerList& right);
     };
 
-    // What a key of the dictionary names (RFC 8941 §3.2).
+    // What a key of the dictionary names (RFC 9651 §3.2).
     using Member = std::variant<Item, InnerList>;
     using Members = std::vector<std::pair<std::string, Member>>;
 
-    // Reads a field's value, its lines joined with commas, as RFC 8941 §4.2
+    // Reads a field's value, its lines joined with commas, as RFC 9651 §4.2
     // reads a dictionary. A key given twice keeps its first place and its
     // last member, and so does a parameter's. Throws std::invalid_argument
     // for text that is not a dictionary this can hold.
@@ -74,11 +77,11 @@ public:
     [[nodiscard]] std::optional<Member> member(std::string_view key) const;
     // Sets key to name value, in the place key has, or after the other keys.
     // Throws std::invalid_argument for a key, a parameter's key, or a value
-    // that RFC 8941 cannot write, for a parameter's key given twice, or for
+    // that RFC 9651 cannot write, for a parameter's key given twice, or for
     // more members, items, or parameters than this holds.
     void set(std::string key, Member value);
 
-    // The dictionary as RFC 8941 §4.1.2 writes it: empty, with no members,
+    // The dictionary as RFC 9651 §4.1.2 writes it: empty, with no members,
     // when the field is not to be sent at all.
     [[nodiscard]] std::string to_string() const;
 
@@ -93,7 +96,7 @@ private:
         std::string_view rest;
     };
 
-    // Reads the dictionary RFC 8941 §4.2.2 gives, from the start of a field's
+    // Reads the dictionary RFC 9651 §4.2.2 gives, from the start of a field's
     // value.
     class Parser {
     public:
@@ -126,31 +129,31 @@ private:
         bool _parse_boolean();
     };
 
-    // RFC 8941 §3.1.2: lcalpha or "*", then lcalpha, DIGIT, "_", "-", ".",
+    // RFC 9651 §3.1.2: lcalpha or "*", then lcalpha, DIGIT, "_", "-", ".",
     // or "*".
     static constexpr Spelling key_spelling{
         "abcdefghijklmnopqrstuvwxyz*",
         "abcdefghijklmnopqrstuvwxyz0123456789_-.*",
     };
-    // RFC 8941 §3.3.4: ALPHA or "*", then tchar (RFC 9110 §5.6.2), ":", or
+    // RFC 9651 §3.3.4: ALPHA or "*", then tchar (RFC 9110 §5.6.2), ":", or
     // "/".
     static constexpr Spelling token_spelling{
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz*",
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&'*+-.^_`|~:/",
     };
     static constexpr std::string_view digits = "0123456789";
-    // RFC 8941 §3.3.5: base64's alphabet, with its padding.
+    // RFC 9651 §3.3.5: base64's alphabet, with its padding.
     static constexpr std::string_view base64_characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                                                           "abcdefghijklmnopqrstuvwxyz0123456789+/=";
-    // Base64 is written in groups of 4 characters, which RFC 8941 §4.2.7 lets
+    // Base64 is written in groups of 4 characters, which RFC 9651 §4.2.7 lets
     // a byte sequence leave unpadded.
     static constexpr std::size_t base64_group_size = 4;
 
-    // RFC 8941 §3.3.1: an integer has at most 15 digits.
+    // RFC 9651 §3.3.1: an integer has at most 15 digits.
     static constexpr std::size_t max_integer_digits = 15;
     static constexpr std::int64_t max_integer = 999'999'999'999'999;
     static constexpr std::int64_t decimal_base = 10;
-    // The fewest RFC 8941 lets a parser take (§3.2, §3.1.1, §3.1.2).
+    // The fewest RFC 9651 lets a parser take (§3.2, §3.1.1, §3.1.2).
     static constexpr std::size_t max_members = 1024;
     static constexpr std::size_t max_inner_list_items = 256;
     static constexpr std::size_t max_parameters = 256;
@@ -270,13 +273,13 @@ inline bool StructuredField::_is_spelled(std::string_view text, const Spelling& 
            && std::all_of(text.begin(), text.end(), may_follow);
 }
 
-// RFC 8941 §3.3.3: a string holds only %x20-7E.
+// RFC 9651 §3.3.3: a string holds only %x20-7E.
 inline bool StructuredField::_is_printable(char character) noexcept {
     return ' ' <= character && character <= '~';
 }
 
 // Whether value is the boolean true, which a member or a parameter writes as
-// its key alone (RFC 8941 §4.1.2, §4.1.1.2).
+// its key alone (RFC 9651 §4.1.2, §4.1.1.2).
 inline bool StructuredField::_is_true(const Value& value) noexcept {
     const auto* const flag = std::get_if<bool>(&value);
 
@@ -303,7 +306,7 @@ inline StructuredField::Bytes StructuredField::_decode(std::string_view base64) 
 }
 
 // Sets key's value in entries, in the place key has, or after the others, as
-// RFC 8941 §4.2.2 and §4.2.3.2 read a key given twice. Throws
+// RFC 9651 §4.2.2 and §4.2.3.2 read a key given twice. Throws
 // std::invalid_argument for one entry more than max_entries.
 template<typename Type>
 inline void StructuredField::_put(std::vector<std::pair<std::string, Type>>& entries,
@@ -481,7 +484,7 @@ inline void StructuredField::_write_value(const Value& value, std::string& text)
     std::visit(write, value);
 }
 
-// RFC 8941 §4.1.6: in quotes, with a backslash before each quote and
+// RFC 9651 §4.1.6: in quotes, with a backslash before each quote and
 // backslash.
 inline void StructuredField::_write_string(std::string_view value, std::string& text) {
     text += '"';
@@ -570,7 +573,7 @@ inline void StructuredField::Parser::_skip_spaces() {
     }
 }
 
-// RFC 8941 §4.2.2 takes OWS, spaces and tabs, around a dictionary's commas.
+// RFC 9651 §4.2.2 takes OWS, spaces and tabs, around a dictionary's commas.
 inline void StructuredField::Parser::_skip_whitespace() {
     while (' ' == _peek() || '\t' == _peek()) {
         ++m_cursor;
@@ -597,7 +600,7 @@ inline std::string StructuredField::Parser::_parse_key() {
 }
 
 // What follows a key: "=" and an item or inner list, or, for an item that is
-// true, its parameters alone (RFC 8941 §4.2.2).
+// true, its parameters alone (RFC 9651 §4.2.2).
 inline StructuredField::Member StructuredField::Parser::_parse_member() {
     if (!_consume('=')) {
         auto parameters = _parse_parameters();
@@ -612,7 +615,7 @@ inline StructuredField::Member StructuredField::Parser::_parse_member() {
     return _parse_item();
 }
 
-// RFC 8941 §4.2.1.2: items, one or more spaces between each.
+// RFC 9651 §4.2.1.2: items, one or more spaces between each.
 inline StructuredField::InnerList StructuredField::Parser::_parse_inner_list() {
     InnerList list;
 
@@ -641,7 +644,7 @@ inline StructuredField::Item StructuredField::Parser::_parse_item() {
     return Item{std::move(value), std::move(parameters)};
 }
 
-// RFC 8941 §4.2.3.2: each ";", then a key, and "=" and its value if it is not
+// RFC 9651 §4.2.3.2: each ";", then a key, and "=" and its value if it is not
 // true.
 inline StructuredField::Parameters StructuredField::Parser::_parse_parameters() {
     Parameters parameters;
@@ -658,8 +661,9 @@ inline StructuredField::Parameters StructuredField::Parser::_parse_parameters() 
     return parameters;
 }
 
-// RFC 8941 §4.2.3.1, but for a decimal, whose '.' is left unread, and so
-// refused by what reads after it.
+// RFC 9651 §4.2.3.1, but for a decimal, whose '.' is left unread, and so
+// refused by what reads after it, and a date or a display string, refused as
+// no item at all.
 inline StructuredField::Value StructuredField::Parser::_parse_bare_item() {
     const auto character = _peek();
 
@@ -687,7 +691,7 @@ inline StructuredField::Value StructuredField::Parser::_parse_bare_item() {
                                 + std::to_string(m_cursor));
 }
 
-// RFC 8941 §4.2.4, for an integer.
+// RFC 9651 §4.2.4, for an integer.
 inline std::int64_t StructuredField::Parser::_parse_integer() {
     const bool is_negative = _consume('-');
     const auto number = _take_while(digits);
@@ -706,7 +710,7 @@ inline std::int64_t StructuredField::Parser::_parse_integer() {
     return is_negative ? -magnitude : magnitude;
 }
 
-// RFC 8941 §4.2.5.
+// RFC 9651 §4.2.5.
 inline std::string StructuredField::Parser::_parse_string() {
     std::string text;
 
@@ -737,13 +741,13 @@ inline std::string StructuredField::Parser::_parse_string() {
     }
 }
 
-// RFC 8941 §4.2.6. What reads a bare item has seen that it starts as a token
+// RFC 9651 §4.2.6. What reads a bare item has seen that it starts as a token
 // does.
 inline StructuredField::Token StructuredField::Parser::_parse_token() {
     return Token{std::string(_take_while(token_spelling.rest))};
 }
 
-// RFC 8941 §4.2.7: base64 between colons.
+// RFC 9651 §4.2.7: base64 between colons.
 inline StructuredField::Bytes StructuredField::Parser::_parse_bytes() {
     _expect(':');
 
@@ -765,7 +769,7 @@ inline StructuredField::Bytes StructuredField::Parser::_parse_bytes() {
     return _decode(base64);
 }
 
-// RFC 8941 §4.2.8.
+// RFC 9651 §4.2.8.
 inline bool StructuredField::Parser::_parse_boolean() {
     _expect('?');
 

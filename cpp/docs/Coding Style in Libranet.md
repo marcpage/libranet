@@ -126,7 +126,7 @@ line it is for (§2.1).
   `Headers::read_body()` reads a body 64 KiB at a time,
   `Zlib::decompress()` stops just past the limit it is given, making room
   64 KiB at a time, and a `StructuredField` holds no more members, inner
-  list items, or parameters than RFC 8941 asks a parser to take.
+  list items, or parameters than RFC 9651 asks a parser to take.
 - **Tests (§11).** `crypto/tests/Fixtures.hpp` holds hex helpers, and an RSA
   key with what Python's `cryptography` package signed and encrypted with
   it, as the Python node does, so that the C++ node is checked against the
