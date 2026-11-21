@@ -10,6 +10,7 @@ add_library(libranet::node ALIAS libranet_node)
 target_include_directories(libranet_node PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(libranet_node
     PUBLIC
+        libranet::identity
         libranet::api
         libranet::logger
         libranet::storage

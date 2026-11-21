@@ -1,6 +1,8 @@
 #include "SafeWriteFile.hpp"
 
 #include <filesystem>
+#include <fstream>
+#include <ios>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -63,7 +65,7 @@ SafeWriteFile::~SafeWriteFile() {
     error_code ignored;
 
     if (!m_committed) {
-        (void)std::filesystem::remove(m_partial, ignored);
+        (void)std::filesystem::remove(writable_path(), ignored);
     }
 }
 
@@ -79,6 +81,22 @@ const path& SafeWriteFile::writable_path() const noexcept {
     return m_partial;
 }
 
+void SafeWriteFile::write(std::string_view contents) {
+    std::ofstream out(writable_path(), std::ios::out | std::ios::binary);
+
+    if (!out.is_open()) {
+        throw std::runtime_error("Failed to open file for writing: " + writable_path().string());
+    }
+
+    out.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+
+    if (!out.good()) {
+        throw std::runtime_error("Error occurred while writing to file: " + writable_path().string());
+    }
+
+    commit();
+}
+
 void SafeWriteFile::commit() {
     error_code error;
 
@@ -86,10 +104,10 @@ void SafeWriteFile::commit() {
         throw logic_error("Cannot commit a file already committed: " + m_file.string());
     }
 
-    std::filesystem::rename(m_partial, m_file, error);
+    std::filesystem::rename(writable_path(), m_file, error);
 
     if (error) {
-        throw runtime_error("Failed to rename " + m_partial.string() + " to " + m_file.string()
+        throw runtime_error("Failed to rename " + writable_path().string() + " to " + m_file.string()
                             + ": " + error.message());
     }
 

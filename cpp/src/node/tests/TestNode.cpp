@@ -48,6 +48,7 @@ using std::chrono::milliseconds;
 using std::chrono::seconds;
 using std::chrono::steady_clock;
 using std::filesystem::path;
+using std::filesystem::perms;
 
 namespace {
 
@@ -55,7 +56,21 @@ namespace {
 constexpr auto hello = "hello";
 constexpr auto hello_hash = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
 
-// A request for hello, on a connection the node closes once it answers.
+// RFC 8032 §7.1 TEST 2's key, as Python's cryptography package writes it,
+// with its public key and the SHA-256 of that, its id, as in
+// identity/tests/TestNodeIdentity.cpp.
+constexpr auto python_private_pem =
+    "-----BEGIN PRIVATE KEY-----\n"
+    "MC4CAQAwBQYDK2VwBCIEIEzNCJso/5banbbDRuwRTg9bijGfNaumJNqM9u1PuKb7\n"
+    "-----END PRIVATE KEY-----\n";
+constexpr auto python_public_pem =
+    "-----BEGIN PUBLIC KEY-----\n"
+    "MCowBQYDK2VwAyEAPUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw=\n"
+    "-----END PUBLIC KEY-----\n";
+constexpr auto python_hash = "bf019c455f05e75ce74ca02a55a4b88bab561f85a76555d8281a79f7c2985233";
+
+// A request for hello, signed as storage asks, by any signature, on a
+// connection the node closes once it answers.
 string get_hello() {
     return string("GET /data/sha256/") + hello_hash + " HTTP/1.1\r\nConnection: close\r\n\r\n";
 }
@@ -355,6 +370,34 @@ TEST_F(NodeTest, ServesWhatCasHolds) {
 
     EXPECT_EQ(answer.rfind("HTTP/1.1 200 OK\r\n", 0), 0U) << answer;
     EXPECT_EQ(answer.substr(answer.find("\r\n\r\n")), "\r\n\r\nhello");
+}
+
+// Its key is made the first time it starts, and only its owner may read it.
+TEST_F(NodeTest, MakesItsKeyTheFirstTimeItStarts) {
+    const Node node(settings_of(loopback(data_dir())));
+
+    EXPECT_EQ(std::filesystem::status(data_dir() / "node-key.pem").permissions(),
+              perms::owner_read | perms::owner_write);
+    EXPECT_TRUE(logged("Made the node's key: " + (data_dir() / "node-key.pem").string()));
+    EXPECT_TRUE(logged("Node id: sha256/"));
+}
+
+// The key it is given is its own, and its id, which it logs, names its
+// public key in /data.
+TEST_F(NodeTest, ServesItsPublicKeyUnderItsId) {
+    write_file(data_dir() / "node-key.pem", python_private_pem);
+    std::filesystem::permissions(data_dir() / "node-key.pem",
+                                 perms::owner_read | perms::owner_write);
+
+    const Node node(settings_of(loopback(data_dir())));
+    const auto answer = answer_to(node.local_address(),
+                                  string("GET /data/sha256/") + python_hash
+                                      + " HTTP/1.1\r\nConnection: close\r\n"
+                                        "X-Node-Signature: test\r\n\r\n");
+
+    EXPECT_TRUE(logged(string("Node id: sha256/") + python_hash));
+    EXPECT_EQ(answer.rfind("HTTP/1.1 200 OK\r\n", 0), 0U) << answer;
+    EXPECT_EQ(answer.substr(answer.find("\r\n\r\n")), string("\r\n\r\n") + python_public_pem);
 }
 
 // What each directory in incoming/ holds is served from /data too.

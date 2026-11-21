@@ -17,6 +17,7 @@
 
 #include "http/Request.hpp"
 #include "http/Response.hpp"
+#include "identity/NodeIdentity.hpp"
 #include "io/Directories.hpp"
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
@@ -71,6 +72,9 @@ constexpr auto default_listen_address = "::";
 constexpr auto default_listen_port = "8080";
 constexpr auto default_log_level = "INFO";
 
+// The file in the data directory that holds the node's key.
+constexpr auto key_file_name = "node-key.pem";
+
 // The connections the system queues until the web server takes them.
 constexpr int backlog = 128;
 
@@ -114,6 +118,15 @@ Logger::Level log_level(const SettingsFile& settings) {
     throw invalid_argument(string(log_level_setting)
                            + ": must be CRITICAL, ERROR, WARNING, INFO, or DEBUG, not '" + level
                            + "'");
+}
+
+// The log level the settings give, set for the log before the node makes
+// anything, so that what its parts log as they are made is shown.
+Logger::Level applied_log_level(const SettingsFile& settings) {
+    const auto level = log_level(settings);
+
+    Logger::reset_levels(level);
+    return level;
 }
 
 // The user's data directory for libranet, as the Python node finds it with
@@ -255,19 +268,20 @@ void Node::run(const SettingsFile& settings) {
 }
 
 Node::Node(const SettingsFile& settings)
-    : m_log_level(log_level(settings))
+    : m_log_level(applied_log_level(settings))
     , m_data_dir(data_dir(settings))
     , m_listen_address(listen_address(settings))
     , m_store(lay_out(m_data_dir))
+    , m_identity(m_data_dir / key_file_name, *m_store)
     , m_data_handler(m_store)
     , m_server(m_listen_address)
     , m_local_address(m_server.local_address()) {
-    Logger::reset_levels(m_log_level);
     lInfo << data_dir_setting << "=" << m_data_dir.string();
     lInfo << listen_address_setting << "=" << m_listen_address.host();
     lInfo << listen_port_setting << "=" << m_listen_address.port();
     lInfo << log_level_setting << "=" << text(settings, log_level_setting, default_log_level);
     warn_of_unused(settings);
+    lInfo << "Node id:" << m_identity.id().to_string();
     lInfo << "Listening on" << m_local_address.to_string();
 
     m_server.register_handler(
