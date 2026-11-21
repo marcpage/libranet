@@ -1,9 +1,13 @@
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <map>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -15,8 +19,12 @@
 #include "msg/Channel.hpp"
 #include "msg/Message.hpp"
 #include "protocol/NodeList.hpp"
+#include "protocol/SeekList.hpp"
 #include "stats/NodeAddresses.hpp"
 #include "stats/Recorder.hpp"
+#include "storage/DataNotFound.hpp"
+#include "storage/DataStored.hpp"
+#include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
 
 using db::Database;
@@ -24,8 +32,12 @@ using db::SqliteError;
 using fixtures::ScratchDirectory;
 using msg::Channel;
 using protocol::NodeList;
+using protocol::SeekList;
 using stats::NodeAddresses;
 using stats::Recorder;
+using storage::DataNotFound;
+using storage::DataStored;
+using storage::HashPrefix;
 using storage::Identifier;
 using namespace std::chrono_literals;
 
@@ -34,6 +46,7 @@ using namespace std::chrono_literals;
 // next<>() casts to.
 template class msg::Message<Recorder::NodesUpdated>;
 template class msg::Message<Recorder::CandidatesUpdated>;
+template class msg::Message<Recorder::SeekUpdated>;
 
 namespace {
 
@@ -44,8 +57,11 @@ using ConnectionFailed = Recorder::ConnectionFailed;
 using ConnectionOpened = Recorder::ConnectionOpened;
 using NodesReceived = Recorder::NodesReceived;
 using NodesUpdated = Recorder::NodesUpdated;
+using SearchRequested = Recorder::SearchRequested;
+using SeekUpdated = Recorder::SeekUpdated;
 using Settings = Recorder::Settings;
 using Source = NodeAddresses::Source;
+using Texts = std::vector<std::string>;
 // An entry of a node list, as endpoint and node id.
 using Named = std::pair<std::string, std::string>;
 // A candidate, as node id and endpoints.
@@ -64,7 +80,13 @@ constexpr auto quiet_time = 50ms;
 // Short, so that the tests see many derivations.
 constexpr auto derive_interval = 2ms;
 
-// When the tests' clock stands, in whole seconds, as the table keeps times
+// How long the tests seek each entry for.
+constexpr auto seek_entry_ttl = 10s;
+
+// How many bytes the content the tests store takes.
+constexpr std::size_t stored_size = 5;
+
+// When the tests' clock starts, in whole seconds, as the table keeps times
 // to the millisecond. With every time the same, the lists are in the order
 // of their endpoints and node ids.
 constexpr auto start = Clock::time_point(1'700'000'000s);
@@ -85,9 +107,14 @@ Identifier own_id() {
     return node('0');
 }
 
+// The content whose hash is digit, over and over.
+Identifier content(char digit) {
+    return node(digit);
+}
+
 // The settings the tests derive with, and limits.
 Settings test_settings(NodeAddresses::Limits limits = {}) {
-    return {derive_interval, limits};
+    return {derive_interval, limits, seek_entry_ttl};
 }
 
 // A list naming each node of digits at the endpoint beside it.
@@ -133,6 +160,16 @@ std::vector<Dialable> dialable_of(const std::vector<Candidate>& candidates) {
     return found;
 }
 
+// The text of each of entries, in order.
+template<typename Entry>
+Texts texts_of(const std::vector<Entry>& entries) {
+    Texts texts;
+
+    std::transform(entries.begin(), entries.end(), std::back_inserter(texts),
+                   [](const Entry& entry) { return entry.to_string(); });
+    return texts;
+}
+
 // Whether a Recorder refuses own_endpoints or settings as invalid.
 bool refused(const ScratchDirectory& directory, const std::vector<std::string>& own_endpoints,
              Settings settings) {
@@ -146,20 +183,23 @@ bool refused(const ScratchDirectory& directory, const std::vector<std::string>& 
 }
 
 // A recorder on a database of the test's own, with a clock that stands
-// still, and channels that take the lists it posts, made before it so that
-// they take the first.
+// still until a test moves it on, and channels that take the lists it
+// posts, made before it so that they take the first.
 class RecorderTest : public testing::Test {
 protected:
     // Starts the recorder, again if it was running, with settings.
     void start_recording(Settings new_settings = test_settings());
     // Stops the recorder, which closes the database.
     void stop_recording() noexcept;
+    // Moves the clock on, which the recorder's thread reads.
+    void advance(std::chrono::milliseconds duration) noexcept;
 
-    // The next node list or candidates posted. Throws std::runtime_error if
-    // none is posted in time.
+    // The next node list, candidates, or seek list posted. Throws
+    // std::runtime_error if none is posted in time.
     [[nodiscard]] NodesUpdated next_nodes();
     [[nodiscard]] CandidatesUpdated next_candidates();
-    // Whether neither list is posted for a while.
+    [[nodiscard]] SeekUpdated next_seek();
+    // Whether no list is posted for a while.
     [[nodiscard]] bool quiet();
     // The addresses of the node of digit, read from the database once the
     // recorder has stopped.
@@ -169,18 +209,25 @@ private:
     ScratchDirectory m_directory;
     Channel m_nodes{NodesUpdated::name};
     Channel m_candidates{CandidatesUpdated::name};
+    Channel m_seek{SeekUpdated::name};
+    // How far the clock has moved on from start.
+    std::atomic<std::int64_t> m_elapsed_milliseconds{0};
     std::unique_ptr<Recorder> m_recorder;
 };
 
 void RecorderTest::start_recording(Settings new_settings) {
     stop_recording();
-    m_recorder = std::make_unique<Recorder>(m_directory.database(), own_id(),
-                                            std::vector<std::string>{std::string(own_endpoint)},
-                                            new_settings, [] { return start; });
+    m_recorder = std::make_unique<Recorder>(
+        m_directory.database(), own_id(), std::vector<std::string>{std::string(own_endpoint)},
+        new_settings, [this] { return start + std::chrono::milliseconds(m_elapsed_milliseconds); });
 }
 
 void RecorderTest::stop_recording() noexcept {
     m_recorder.reset();
+}
+
+void RecorderTest::advance(std::chrono::milliseconds duration) noexcept {
+    m_elapsed_milliseconds += duration.count();
 }
 
 NodesUpdated RecorderTest::next_nodes() {
@@ -203,11 +250,22 @@ CandidatesUpdated RecorderTest::next_candidates() {
     return std::move(*posted);
 }
 
+SeekUpdated RecorderTest::next_seek() {
+    auto posted = m_seek.next<SeekUpdated>(post_timeout);
+
+    if (!posted) {
+        throw std::runtime_error("No seek list was posted");
+    }
+
+    return std::move(*posted);
+}
+
 bool RecorderTest::quiet() {
     const auto nodes = m_nodes.next<NodesUpdated>(quiet_time);
     const auto candidates = m_candidates.next<CandidatesUpdated>(quiet_time);
+    const auto seek = m_seek.next<SeekUpdated>(quiet_time);
 
-    return !nodes && !candidates;
+    return !nodes && !candidates && !seek;
 }
 
 std::vector<NodeAddresses::Address> RecorderTest::addresses_of(char digit) const {
@@ -227,6 +285,7 @@ StartedRecorderTest::StartedRecorderTest() {
     start_recording();
     (void)next_nodes();
     (void)next_candidates();
+    (void)next_seek();
 }
 
 } // namespace
@@ -236,10 +295,13 @@ TEST_F(RecorderTest, PostsTheListsAsItStarts) {
 
     const auto nodes = next_nodes();
     const auto candidates = next_candidates();
+    const auto seek = next_seek();
 
     EXPECT_EQ(entries_of(nodes.nodes), std::vector<Named>{named(own_endpoint, '0')});
     EXPECT_TRUE(nodes.added.entries().empty());
     EXPECT_TRUE(candidates.candidates.empty());
+    EXPECT_TRUE(seek.seek.data().empty());
+    EXPECT_TRUE(seek.seek.search().empty());
 }
 
 TEST_F(StartedRecorderTest, ListsThatHaveNotChangedAreNotPostedAgain) {
@@ -324,6 +386,7 @@ TEST_F(RecorderTest, AnAddressThatFailedTooOftenIsNoLongerACandidate) {
     start_recording(test_settings({1, 1}));
     (void)next_nodes();
     (void)next_candidates();
+    (void)next_seek();
     Channel::post(NodesReceived::name, NodesReceived{list_of({{first, 'a'}}), {}});
     (void)next_candidates();
     Channel::post(ConnectionFailed::name, ConnectionFailed{node('a'), std::string(first)});
@@ -353,6 +416,73 @@ TEST_F(StartedRecorderTest, AnEventOfAnotherKindUnderItsNamesIsLetGo) {
     EXPECT_EQ(entries_of(nodes.added), std::vector<Named>{named(first, 'a')});
 }
 
+TEST_F(StartedRecorderTest, ContentNotFoundIsSoughtAtOnce) {
+    Channel::post(DataNotFound::name, DataNotFound{content('a')});
+
+    const auto seek = next_seek();
+
+    EXPECT_EQ(texts_of(seek.seek.data()), Texts{content('a').to_string()});
+    EXPECT_TRUE(seek.seek.search().empty());
+}
+
+TEST_F(StartedRecorderTest, ASearchIsSoughtAtOnce) {
+    Channel::post(SearchRequested::name, SearchRequested{HashPrefix::parse("0123")});
+
+    const auto seek = next_seek();
+
+    EXPECT_TRUE(seek.seek.data().empty());
+    EXPECT_EQ(texts_of(seek.seek.search()), Texts{"0123"});
+}
+
+TEST_F(StartedRecorderTest, WhatIsSoughtAgainIsNotPostedAgain) {
+    Channel::post(DataNotFound::name, DataNotFound{content('a')});
+    (void)next_seek();
+    Channel::post(DataNotFound::name, DataNotFound{content('a')});
+
+    EXPECT_TRUE(quiet());
+}
+
+TEST_F(StartedRecorderTest, ContentStoredIsNoLongerSought) {
+    Channel::post(DataNotFound::name, DataNotFound{content('a')});
+    Channel::post(DataNotFound::name, DataNotFound{content('b')});
+    (void)next_seek();
+    (void)next_seek();
+    Channel::post(DataStored::name, DataStored{content('a'), node('c'), stored_size});
+
+    const auto seek = next_seek();
+
+    EXPECT_EQ(texts_of(seek.seek.data()), Texts{content('b').to_string()});
+}
+
+TEST_F(StartedRecorderTest, ContentStoredThatWasNotSoughtChangesNothing) {
+    Channel::post(DataStored::name, DataStored{content('a'), std::nullopt, stored_size});
+
+    EXPECT_TRUE(quiet());
+}
+
+TEST_F(StartedRecorderTest, AnEntryIsNoLongerSoughtOnceItsTtlHasPassed) {
+    Channel::post(DataNotFound::name, DataNotFound{content('a')});
+    Channel::post(SearchRequested::name, SearchRequested{HashPrefix::parse("0123")});
+    (void)next_seek();
+    (void)next_seek();
+    advance(seek_entry_ttl);
+
+    const auto seek = next_seek();
+
+    EXPECT_TRUE(seek.seek.data().empty());
+    EXPECT_TRUE(seek.seek.search().empty());
+}
+
+TEST_F(StartedRecorderTest, WhatIsSoughtIsRememberedAfterARestart) {
+    Channel::post(DataNotFound::name, DataNotFound{content('a')});
+    (void)next_seek();
+    start_recording();
+
+    const auto seek = next_seek();
+
+    EXPECT_EQ(texts_of(seek.seek.data()), Texts{content('a').to_string()});
+}
+
 TEST(RecorderSettingsTest, WhatItCannotUseIsRefused) {
     const ScratchDirectory directory;
     const std::vector<std::string> own_endpoints{std::string(own_endpoint)};
@@ -361,6 +491,8 @@ TEST(RecorderSettingsTest, WhatItCannotUseIsRefused) {
     EXPECT_TRUE(refused(directory, {"not an endpoint"}, test_settings()));
     EXPECT_TRUE(refused(directory, own_endpoints, {0ms, {}}));
     EXPECT_TRUE(refused(directory, own_endpoints, {-1ms, {}}));
+    EXPECT_TRUE(refused(directory, own_endpoints, {derive_interval, {}, 0ms}));
+    EXPECT_TRUE(refused(directory, own_endpoints, {derive_interval, {}, -1ms}));
     EXPECT_TRUE(refused(directory, own_endpoints, test_settings({0, 1})));
     EXPECT_TRUE(refused(directory, own_endpoints, test_settings({1, 0})));
 }
@@ -385,4 +517,7 @@ TEST(RecorderEventTest, EachEventSaysWhatItHolds) {
               node('a').to_string() + " not reached at " + std::string(first));
     EXPECT_EQ(std::string(NodesUpdated{list, list_of({{second, 'b'}})}), "2 entries, 1 new");
     EXPECT_EQ(std::string(CandidatesUpdated{candidates}), "1 candidates");
+    EXPECT_EQ(std::string(SearchRequested{HashPrefix::parse("0123")}), "0123");
+    EXPECT_EQ(std::string(SeekUpdated{SeekList({node('a'), node('b')}, {})}),
+              "2 identifiers, 0 prefixes");
 }
