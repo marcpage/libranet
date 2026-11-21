@@ -7,30 +7,44 @@
 
 #include <sqlite3.h>
 
+using db::SqliteError;
+using std::logic_error;
+using std::string;
+using std::string_view;
+using std::uint8_t;
+using std::filesystem::path;
+
 namespace {
 
+enum class Action : uint8_t {
+    CloseDatabase,
+    KeepDatabaseOpen,
+};
 // Throws what was being done when a call on connection failed, and what
 // SQLite said of it.
-[[noreturn]] void throw_failure(sqlite3* connection, std::string_view what) {
-    throw db::SqliteError(std::string(what) + ": " + sqlite3_errmsg(connection));
+void assert_sqlite3(bool condition, sqlite3* connection, string_view what, Action action = Action::KeepDatabaseOpen) {
+    if (!condition) {
+        const auto error = string(what) + ": " + sqlite3_errmsg(connection);
+
+        if (Action::CloseDatabase == action) {
+            (void)sqlite3_close(connection);
+        }
+
+        throw SqliteError(error);
+    }
 }
 
 // A connection to the database at path, which makes the file if it is not
 // there, for one thread to use. Throws SqliteError when it cannot be opened.
-sqlite3* open_connection(const std::filesystem::path& path) {
+sqlite3* open_connection(const path& path) {
     constexpr int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX;
     const auto name = path.string();
     sqlite3* connection = nullptr;
 
-    if (SQLITE_OK != sqlite3_open_v2(name.c_str(), &connection, flags, nullptr)) {
-        // SQLite makes a connection that says what failed, unless it ran out
-        // of memory making one, and it is closed once it has said it.
-        const auto error = "Cannot open the database " + name + ": " + sqlite3_errmsg(connection);
-
-        (void)sqlite3_close(connection);
-        throw db::SqliteError(error);
-    }
-
+    // SQLite makes a connection that says what failed, unless it ran out
+    // of memory making one, and it is closed once it has said it.
+    assert_sqlite3(SQLITE_OK == sqlite3_open_v2(name.c_str(), &connection, flags, nullptr),
+                   connection, "Cannot open the database " + name, Action::CloseDatabase);
     return connection;
 }
 
@@ -59,14 +73,14 @@ Database::Transaction::~Transaction() {
 
 void Database::Transaction::commit() {
     if (m_committed) {
-        throw std::logic_error("Cannot commit a transaction that was committed already");
+        throw logic_error("Cannot commit a transaction that was committed already");
     }
 
     m_database->execute("COMMIT");
     m_committed = true;
 }
 
-Database::Database(const std::filesystem::path& path, std::string_view schema)
+Database::Database(const path& path, string_view schema)
     : m_connection(open_connection(path)) {
     // Changes are written to a log beside the database before the database
     // itself, as the Python node's are, which makes each of the many small
@@ -79,16 +93,14 @@ Database::Database(const std::filesystem::path& path, std::string_view schema)
     transaction.commit();
 }
 
-void Database::execute(std::string_view sql) {
+void Database::execute(string_view sql) {
     // SQLite reads the statements up to a null character, which a
-    // std::string_view may not end with.
-    const std::string statements(sql);
+    // string_view may not end with.
+    const string statements(sql);
     const auto result =
         sqlite3_exec(m_connection.get(), statements.c_str(), nullptr, nullptr, nullptr);
 
-    if (SQLITE_OK != result) {
-        throw_failure(m_connection.get(), "Cannot run SQL");
-    }
+    assert_sqlite3(SQLITE_OK == result, m_connection.get(), "Cannot run SQL");
 }
 
 void Database::Closer::operator()(sqlite3* connection) const noexcept {
