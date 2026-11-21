@@ -172,6 +172,14 @@ TEST(IdentifierTest, LongestHashIsSha256s) {
     EXPECT_EQ(Identifier::longest_hash_digits(), 64U);
 }
 
+// Only SHA-256 is supported, named as an identifier names it.
+TEST(IdentifierTest, OnlySha256IsSupported) {
+    EXPECT_TRUE(Identifier::is_supported("sha256"));
+    EXPECT_FALSE(Identifier::is_supported("SHA256"));
+    EXPECT_FALSE(Identifier::is_supported("md5"));
+    EXPECT_FALSE(Identifier::is_supported(""));
+}
+
 // Hashes should be in lower case, but upper and mixed case are taken, and
 // kept in lower case (HttpApi §5.4).
 TEST(IdentifierTest, HashInUpperOrMixedCaseIsKeptInLowerCase) {
