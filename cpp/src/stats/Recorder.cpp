@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "ContentUses.hpp"
 #include "NodeAddresses.hpp"
 #include "Sought.hpp"
 #include "db/Database.hpp"
@@ -21,6 +22,7 @@
 #include "protocol/NodeList.hpp"
 #include "protocol/SeekList.hpp"
 #include "storage/DataNotFound.hpp"
+#include "storage/DataRequested.hpp"
 #include "storage/DataStored.hpp"
 #include "storage/Identifier.hpp"
 
@@ -31,6 +33,7 @@ using msg::Message;
 using msg::Timer;
 using protocol::NodeList;
 using protocol::SeekList;
+using stats::ContentUses;
 using stats::NodeAddresses;
 using stats::Recorder;
 using stats::Sought;
@@ -47,18 +50,20 @@ using std::transform;
 using std::vector;
 using std::filesystem::path;
 using storage::DataNotFound;
+using storage::DataRequested;
 using storage::DataStored;
 using storage::Identifier;
 
 // The thread takes these events, which others post from other files, so
 // nothing here would make their messages' virtual to_string(), which
 // value_of() casts to.
-template class msg::Message<Recorder::NodesReceived>;
-template class msg::Message<Recorder::ConnectionOpened>;
-template class msg::Message<Recorder::ConnectionFailed>;
-template class msg::Message<Recorder::SearchRequested>;
 template class msg::Message<DataNotFound>;
+template class msg::Message<DataRequested>;
 template class msg::Message<DataStored>;
+template class msg::Message<Recorder::ConnectionFailed>;
+template class msg::Message<Recorder::ConnectionOpened>;
+template class msg::Message<Recorder::NodesReceived>;
+template class msg::Message<Recorder::SearchRequested>;
 
 namespace {
 
@@ -174,7 +179,8 @@ NodeList newly_named(const NodeList& before, const NodeList& after) {
 
 // The tables the database holds, made as it opens if they are missing.
 string schema() {
-    return string(NodeAddresses::schema) + ";\n" + string(Sought::schema);
+    return string(NodeAddresses::schema) + ";\n" + string(ContentUses::schema) + ";\n"
+           + string(Sought::schema);
 }
 
 // own_endpoints, once they are known to be endpoints. Throws
@@ -242,15 +248,17 @@ Recorder::Recorder(const path& database_path, Identifier own_id, vector<string> 
     , m_derive_interval(checked_interval(settings.derive_interval))
     , m_database(database_path, schema())
     , m_addresses(m_database, settings.limits, now)
+    , m_content_uses(m_database, now)
     , m_sought(m_database, settings.seek_entry_ttl, std::move(now))
     , m_node_list(m_own_id, m_own_endpoints)
     , m_channel({
-                    NodesReceived::name,
-                    ConnectionOpened::name,
                     ConnectionFailed::name,
+                    ConnectionOpened::name,
                     DataNotFound::name,
-                    SearchRequested::name,
+                    DataRequested::name,
                     DataStored::name,
+                    NodesReceived::name,
+                    SearchRequested::name,
                     derive_due,
                 },
                 [this](const IMessage::Ptr& message) { _handle(message); }, log_error)
@@ -269,6 +277,8 @@ void Recorder::_handle(const IMessage::Ptr& message) {
         in_transaction(m_database, [this, failed] {
             m_addresses.record_failure(failed->node_id, failed->endpoint);
         });
+    } else if (const auto* const requested = value_of<DataRequested>(message)) {
+        m_content_uses.record_requested(requested->identifier);
     } else if (const auto* const lacked = value_of<DataNotFound>(message)) {
         if (m_sought.seek(lacked->identifier)) {
             _post_seek_list();
@@ -281,6 +291,7 @@ void Recorder::_handle(const IMessage::Ptr& message) {
         if (m_sought.found(stored->identifier)) {
             _post_seek_list();
         }
+        m_content_uses.record_stored(stored->identifier, stored->size);
     } else if (nullptr != value_of<Timer::Tick>(message)) {
         _derive();
     } else {
