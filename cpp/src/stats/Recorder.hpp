@@ -1,8 +1,10 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -102,11 +104,16 @@ public:
     };
 
     // A search for what has a hash that begins with prefix, which the node
-    // seeks from its peers too.
+    // seeks from its peers too. node is the node that asked, if one did,
+    // and relays how many times more it said the search may be passed on,
+    // in X-Search-Relays: none when it said nothing usable, or no node
+    // asked (HttpApi §6).
     struct SearchRequested {
         static constexpr auto name = "data.search_requested";
 
         storage::HashPrefix prefix;
+        std::optional<storage::Identifier> node = std::nullopt;
+        std::size_t relays = 0;
 
         explicit operator std::string() const;
     };

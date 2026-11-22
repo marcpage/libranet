@@ -28,6 +28,7 @@ if(BUILD_TESTING)
         tests/TestHashPrefix.cpp
         tests/TestIdentifier.cpp
         tests/TestManager.cpp
+        tests/TestSearchAnswered.cpp
         tests/TestSearchAnswers.cpp
         tests/TestZlib.cpp)
     target_link_libraries(storage_tests PRIVATE libranet::storage GTest::gtest_main)

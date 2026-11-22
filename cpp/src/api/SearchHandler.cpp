@@ -1,0 +1,209 @@
+#include "SearchHandler.hpp"
+
+#include <charconv>
+#include <cstddef>
+#include <iterator>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <string_view>
+#include <system_error>
+#include <utility>
+
+#include "http/Problem.hpp"
+#include "http/Request.hpp"
+#include "http/Response.hpp"
+#include "http/ResponseCode.hpp"
+#include "msg/Channel.hpp"
+#include "protocol/SearchResults.hpp"
+#include "stats/Recorder.hpp"
+#include "storage/HashPrefix.hpp"
+#include "storage/SearchAnswered.hpp"
+#include "storage/SearchAnswers.hpp"
+#include "web/ConnectionInfo.hpp"
+
+using http::Problem;
+using http::Request;
+using http::Response;
+using msg::Channel;
+using protocol::SearchResults;
+using std::errc;
+using std::from_chars;
+using std::invalid_argument;
+using std::nullopt;
+using std::numeric_limits;
+using std::optional;
+using std::ptrdiff_t;
+using std::shared_ptr;
+using std::size_t;
+using std::string_view;
+using storage::HashPrefix;
+using storage::SearchAnswered;
+using storage::SearchAnswers;
+using web::ConnectionInfo;
+
+namespace {
+
+using Status = http::ResponseCode::Status;
+using SearchRequested = stats::Recorder::SearchRequested;
+
+constexpr string_view search_prefix = "/data/search/";
+
+// The methods /data/search/{prefix} takes, as Allow names them.
+constexpr string_view allowed_methods = "GET, POST";
+
+// The prefix uri names, not yet checked, when its path, less any query, is
+// /data/search/{prefix}, the prefix not empty; nothing otherwise.
+optional<string_view> search_path(string_view uri) {
+    const auto path = uri.substr(0, uri.find('?'));
+
+    if (path.substr(0, search_prefix.size()) != search_prefix) {
+        return nullopt;
+    }
+
+    const auto prefix = path.substr(search_prefix.size());
+
+    if (prefix.empty() || string_view::npos != prefix.find('/')) {
+        return nullopt;
+    }
+
+    return prefix;
+}
+
+// The prefix text names, or nothing when it names none, having answered
+// 400 saying why.
+optional<HashPrefix> prefix_of(string_view text, Response& response) {
+    try {
+        return HashPrefix::parse(text);
+    } catch (const invalid_argument& error) {
+        Problem(Problem::Type::InvalidSearchPrefix, Status::BadRequest, error.what())
+            .answer(response);
+        return nullopt;
+    }
+}
+
+// How many times more request says the search it asks may be passed on, as
+// a whole number: none when it says nothing usable, and as many as can be
+// counted when it says more, which the node then holds to what it allows
+// (HttpApi §6).
+size_t relays_of(const Request& request) {
+    const auto said = request.headers().get(api::SearchHandler::search_relays_header);
+
+    if (!said) {
+        return 0;
+    }
+
+    const auto* const first = said->data();
+    const auto* const last = std::next(first, static_cast<ptrdiff_t>(said->size()));
+    size_t relays = 0;
+    const auto [stop, error] = from_chars(first, last, relays);
+
+    if (stop != last) {
+        return 0;
+    }
+
+    if (errc::result_out_of_range == error) {
+        return numeric_limits<size_t>::max();
+    }
+
+    return errc() == error ? relays : 0;
+}
+
+// What the body of request names, read as a search's answer that
+// decompresses to no more than limit bytes, or nothing when it is none,
+// having answered 400 saying why (HttpApi §10.7.2).
+optional<SearchResults> named_in(const Request& request, size_t limit, Response& response) {
+    try {
+        return SearchResults::parse(request.body(), limit);
+    } catch (const invalid_argument& error) {
+        Problem(Problem::Type::InvalidList, Status::BadRequest, error.what()).answer(response);
+        return nullopt;
+    }
+}
+
+shared_ptr<SearchAnswers> checked(shared_ptr<SearchAnswers> answers) {
+    if (!answers) {
+        throw invalid_argument("A SearchHandler needs the answers to give");
+    }
+
+    return answers;
+}
+
+} // namespace
+
+namespace api {
+
+SearchHandler::SearchHandler(shared_ptr<SearchAnswers> answers, size_t decompressed_bytes)
+    : m_answers(checked(std::move(answers)))
+    , m_decompressed_bytes(decompressed_bytes) {}
+
+void SearchHandler::operator()(const Request& request, Response& response,
+                               const ConnectionInfo& connection) const {
+    const auto path = search_path(request.uri());
+
+    if (!path) {
+        Problem(Status::NotFound, "No resource exists at this path.").answer(response);
+        return;
+    }
+
+    const auto method = request.method();
+
+    if ("GET" != method && "POST" != method) {
+        Problem::answer_method_not_allowed(request, allowed_methods, response);
+        return;
+    }
+
+    const auto prefix = prefix_of(*path, response);
+
+    if (!prefix) {
+        return;
+    }
+
+    if ("GET" == method) {
+        _get(*prefix, request, response, connection);
+    } else {
+        _post(*prefix, request, response, connection);
+    }
+}
+
+// What is known now that matches prefix, best first, and tells the node's
+// other parts of the search, so that they search its peers too, as far as
+// the node that asked allows.
+void SearchHandler::_get(const HashPrefix& prefix, const Request& request, Response& response,
+                         const ConnectionInfo& connection) const {
+    const auto& node = connection.node();
+
+    response.set_status_code(Status::Ok);
+    SearchResults(m_answers->answer(prefix)).answer(response);
+    Channel::post(SearchRequested::name,
+                  SearchRequested{prefix, node, node ? relays_of(request) : 0});
+}
+
+// Tells the node's other parts what the node whose signature the
+// connection carries named for prefix; or says why not.
+void SearchHandler::_post(const HashPrefix& prefix, const Request& request, Response& response,
+                          const ConnectionInfo& connection) const {
+    const auto& node = connection.node();
+
+    if (!node) {
+        Problem(Problem::Type::SignatureRequired, Status::Unauthorized,
+                "This request must carry the sending node's verified signature.")
+            .answer(response);
+        return;
+    }
+
+    const auto named = named_in(request, m_decompressed_bytes, response);
+
+    if (!named) {
+        return;
+    }
+
+    if (!named->results().empty()) {
+        Channel::post(SearchAnswered::name, SearchAnswered{prefix, *node, named->results()});
+    }
+
+    response.set_status_code(Status::Accepted);
+}
+
+} // namespace api
