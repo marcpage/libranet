@@ -406,6 +406,8 @@ bool refused(const Fetch::Settings& settings) {
 
 } // namespace
 
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
+
 TEST_F(FetchTest, ContentSentIsStoredAndPosted) {
     Channel stored(DataStored::name);
     const StandInNode peer(sending(MessageSigner(first()), content_text));
@@ -445,6 +447,8 @@ TEST_F(FetchTest, CompressedContentIsStoredAsSent) {
     ASSERT_TRUE(posted);
     EXPECT_EQ(posted->size, compressed.size());
 }
+
+// NOLINTEND(bugprone-unchecked-optional-access)
 
 // The peer is asked in each pass, as it may have fetched the content since.
 TEST_F(FetchTest, WhatIsNotTheContentIsNotStored) {
