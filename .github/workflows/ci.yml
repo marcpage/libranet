@@ -500,7 +500,6 @@ jobs:
           conan cache clean
 
       - name: Filter compilation database for PRs
-        if: github.event_name == 'pull_request'
         run: |
           mkdir -p build/Release-pr
           python3 ../scripts/filter_compilation_db.py \
