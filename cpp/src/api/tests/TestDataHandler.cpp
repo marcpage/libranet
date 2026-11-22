@@ -1,11 +1,14 @@
 #include <gtest/gtest.h>
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "api/DataHandler.hpp"
 #include "http/Request.hpp"
@@ -175,6 +178,15 @@ std::string problem_type(const Response& response) {
     return Json::parse(response.body()).at("type").string();
 }
 
+// Says each search is held off, and keeps the text of each identifier it is
+// asked of.
+DataHandler::IsHeldOff all_held_off(std::shared_ptr<std::vector<std::string>> asked) {
+    return [asked = std::move(asked)](const Identifier& identifier) {
+        asked->push_back(identifier.to_string());
+        return true;
+    };
+}
+
 } // namespace
 
 // The tests read optionals after ASSERT_TRUE(x.has_value()), which this
@@ -218,19 +230,105 @@ TEST(DataHandlerTest, UpperCaseHashAndQueryAreTaken) {
     EXPECT_EQ(status_of(handler, get(hello_path() + "?from=test")), 200);
 }
 
-TEST(DataHandlerTest, ContentNotHeldIsNotFound) {
+// Content not held is looked for, and the client told when to ask again,
+// in Retry-After and in the problem, and not to keep the answer (HttpApi
+// §5.2, §17.2, §20).
+TEST(DataHandlerTest, ContentNotHeldIsUnavailable) {
     const DataHandler handler(std::make_shared<MemoryStore>());
     Channel not_found(DataNotFound::name);
 
     const auto response = answer(handler, get(hello_path()));
     const auto posted = not_found.next<DataNotFound>(0ms);
+    const auto problem = Json::parse(response.body());
 
-    EXPECT_EQ(response.status_code(), 404);
+    EXPECT_EQ(response.status_code(), 503);
     EXPECT_EQ(response.headers().get("Content-Type"), "application/problem+json");
-    EXPECT_EQ(problem_type(response), "about:blank");
+    EXPECT_EQ(response.headers().get("Retry-After"), "5");
+    EXPECT_EQ(response.headers().get("Cache-Control"), "no-store");
+    EXPECT_EQ(problem.at("type").string(), "https://libranet.org/problems/content-unavailable");
+    EXPECT_EQ(problem.at("status").integer(), 503);
+    EXPECT_EQ(problem.at("retry_after").integer(), 5);
     ASSERT_TRUE(posted.has_value());
     EXPECT_EQ(posted->identifier.to_string(), "sha256/" + std::string(hello_hash));
     EXPECT_TRUE(not_found.empty());
+}
+
+// The client is told to ask again after network.retry_after_seconds.
+TEST(DataHandlerTest, ContentNotHeldIsRetriedAfterTheSettingsSay) {
+    const auto store = std::make_shared<MemoryStore>();
+    const DataHandler later(store, DataHandler::default_content_bytes, 30s);
+    const DataHandler at_once(store, DataHandler::default_content_bytes, 0s);
+
+    const auto response = answer(later, get(hello_path()));
+    const auto immediate = answer(at_once, get(hello_path()));
+
+    EXPECT_EQ(response.status_code(), 503);
+    EXPECT_EQ(response.headers().get("Retry-After"), "30");
+    EXPECT_EQ(Json::parse(response.body()).at("retry_after").integer(), 30);
+    EXPECT_EQ(immediate.status_code(), 503);
+    EXPECT_EQ(immediate.headers().get("Retry-After"), "0");
+    EXPECT_EQ(Json::parse(immediate.body()).at("retry_after").integer(), 0);
+}
+
+// While the search for content is held off, the node will not look for it,
+// so it is not found (HttpApi §5.3), and not posted as needed; but it is
+// posted as asked for.
+TEST(DataHandlerTest, ContentHeldOffIsNotFound) {
+    const auto asked = std::make_shared<std::vector<std::string>>();
+    const DataHandler handler(std::make_shared<MemoryStore>(), DataHandler::default_content_bytes,
+                              DataHandler::default_retry_after, all_held_off(asked));
+    Channel not_found(DataNotFound::name);
+    Channel requested(DataRequested::name);
+
+    const auto response = answer(handler, get(hello_path()));
+
+    EXPECT_EQ(response.status_code(), 404);
+    EXPECT_EQ(response.headers().get("Content-Type"), "application/problem+json");
+    EXPECT_FALSE(response.headers().has("Retry-After"));
+    EXPECT_EQ(problem_type(response), "about:blank");
+    EXPECT_EQ(*asked, std::vector<std::string>{hello_id().to_string()});
+    EXPECT_TRUE(not_found.empty());
+    EXPECT_TRUE(requested.next<DataRequested>(0ms).has_value());
+}
+
+// Only the search for the content asked for is held off.
+TEST(DataHandlerTest, OnlyContentHeldOffIsNotFound) {
+    const auto world_id = Identifier::from(Converter::bytes_of("world"));
+    const DataHandler handler(std::make_shared<MemoryStore>(), DataHandler::default_content_bytes,
+                              DataHandler::default_retry_after,
+                              [world_id](const Identifier& identifier) {
+        return identifier.to_string() == world_id.to_string();
+    });
+
+    EXPECT_EQ(status_of(handler, get("/data/" + world_id.to_string())), 404);
+    EXPECT_EQ(status_of(handler, get(hello_path())), 503);
+}
+
+// Content held is served whether or not a search for it would be held off,
+// which is not asked.
+TEST(DataHandlerTest, HeldContentIsServedWhileHeldOff) {
+    const auto store = std::make_shared<MemoryStore>();
+    const auto asked = std::make_shared<std::vector<std::string>>();
+    const DataHandler handler(store, DataHandler::default_content_bytes,
+                              DataHandler::default_retry_after, all_held_off(asked));
+    store->put(hello_id(), Converter::bytes_of(hello));
+
+    const auto response = answer(handler, get(hello_path()));
+
+    EXPECT_EQ(response.status_code(), 200);
+    EXPECT_EQ(response.body(), "hello");
+    EXPECT_TRUE(asked->empty());
+}
+
+TEST(DataHandlerTest, NegativeRetryAfterIsRefused) {
+    const auto store = std::make_shared<MemoryStore>();
+
+    try {
+        const DataHandler refused(store, DataHandler::default_content_bytes, -1s);
+        FAIL() << "A retry after of -1s was taken";
+    } catch (const std::invalid_argument& error) {
+        EXPECT_STREQ(error.what(), "network.retry_after_seconds is less than zero");
+    }
 }
 
 TEST(DataHandlerTest, HeldContentIsNotPostedAsNotFound) {
