@@ -1,0 +1,14 @@
+add_library(libranet_eviction STATIC
+    Score.cpp)
+add_library(libranet::eviction ALIAS libranet_eviction)
+target_include_directories(libranet_eviction PUBLIC ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(libranet_eviction PUBLIC
+    libranet::storage
+    libranet::types)
+
+if(BUILD_TESTING)
+    add_executable(eviction_tests
+        tests/TestScore.cpp)
+    target_link_libraries(eviction_tests PRIVATE libranet::eviction GTest::gtest_main)
+    gtest_discover_tests(eviction_tests)
+endif()

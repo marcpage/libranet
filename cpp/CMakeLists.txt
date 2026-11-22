@@ -123,6 +123,7 @@ add_subdirectory(src/db)
 add_subdirectory(src/identity)
 add_subdirectory(src/stats)
 add_subdirectory(src/peer)
+add_subdirectory(src/eviction)
 
 add_executable(libranet src/main.cpp)
 target_link_libraries(libranet PRIVATE libranet::node)
