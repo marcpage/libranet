@@ -361,14 +361,17 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo sysctl vm.mmap_rnd_bits=28
 
+      # Each test program runs a few times, each running a share of its
+      # tests, instead of once for each test as ctest runs them: on macOS a
+      # sanitizer makes starting a program slow.
       - name: Test with AddressSanitizer and UndefinedBehaviorSanitizer
         env:
           ASAN_OPTIONS: detect_stack_use_after_return=1
           UBSAN_OPTIONS: print_stacktrace=1
-        run: ctest --test-dir build/address --parallel --output-on-failure
+        run: bash ../scripts/run_test_shards.sh build/address
 
       - name: Test with ThreadSanitizer
-        run: ctest --test-dir build/thread --parallel --output-on-failure
+        run: bash ../scripts/run_test_shards.sh build/thread
 
       # Every fuzzer runs for two minutes, all at once. One that finds a
       # fault stops, shows the end of its log here, and saves the input that
