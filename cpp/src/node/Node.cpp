@@ -15,7 +15,9 @@
 #include <string_view>
 #include <system_error>
 #include <thread>
+#include <vector>
 
+#include "api/NodesHandler.hpp"
 #include "http/Request.hpp"
 #include "http/Response.hpp"
 #include "identity/KnownKeys.hpp"
@@ -29,6 +31,7 @@
 #include "storage/Manager.hpp"
 #include "web/ConnectionInfo.hpp"
 
+using api::NodesHandler;
 using http::Request;
 using http::Response;
 using identity::KnownKeys;
@@ -55,6 +58,7 @@ using std::system_error;
 using std::terminate;
 using std::thread;
 using std::to_string;
+using std::vector;
 using std::filesystem::create_directories;
 using std::filesystem::path;
 using storage::Manager;
@@ -189,6 +193,13 @@ Address listen_address(const SettingsFile& settings) {
             listen_port(settings)};
 }
 
+// The endpoints the node names itself by in its node list, with no external
+// address or port set: localhost, meaning the address its list comes from,
+// at the port it listens on (HttpApi §10.1).
+vector<string> own_endpoints(const Address& local_address) {
+    return {"http://localhost:" + to_string(local_address.port())};
+}
+
 // The data directory's cas/, where content is stored, and incoming/, made if
 // they are not there, with each directory in incoming/ read too.
 Manager::Ptr lay_out(const path& directory) {
@@ -285,7 +296,8 @@ Node::Node(const SettingsFile& settings)
     , m_guard(MessageVerifier(make_shared<KnownKeys>(m_store), MessageVerifier::Window{}),
               MessageSigner(m_identity))
     , m_server(m_listen_address)
-    , m_local_address(m_server.local_address()) {
+    , m_local_address(m_server.local_address())
+    , m_nodes_handler(m_identity.id(), own_endpoints(m_local_address)) {
     lInfo << data_dir_setting << "=" << m_data_dir.string();
     lInfo << listen_address_setting << "=" << m_listen_address.host();
     lInfo << listen_port_setting << "=" << m_listen_address.port();
@@ -298,6 +310,12 @@ Node::Node(const SettingsFile& settings)
         "/data", m_guard.in_front_of(
                      [this](const Request& request, Response& response, ConnectionInfo& connection) {
         m_data_handler(request, response, connection);
+    }));
+    m_server.register_handler(
+        NodesHandler::path,
+        m_guard.in_front_of(
+            [this](const Request& request, Response& response, ConnectionInfo& connection) {
+        m_nodes_handler(request, response, connection);
     }));
     m_server_thread = thread([this] {
         _serve();
