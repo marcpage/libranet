@@ -1,6 +1,7 @@
 add_library(libranet_peer STATIC
     Buckets.cpp
     DialPlan.cpp
+    FirstContact.cpp
     NodeListPublisher.cpp
     PeerConnection.cpp
     PeerSession.cpp
@@ -12,7 +13,9 @@ target_link_libraries(libranet_peer PUBLIC
     libranet::http
     libranet::identity
     libranet::io
+    libranet::msg
     libranet::net
+    libranet::protocol
     libranet::stats
     libranet::storage
     Threads::Threads
@@ -22,6 +25,7 @@ if(BUILD_TESTING)
     add_executable(peer_tests
         tests/TestBuckets.cpp
         tests/TestDialPlan.cpp
+        tests/TestFirstContact.cpp
         tests/TestNodeListPublisher.cpp
         tests/TestPeerConnection.cpp
         tests/TestPeerSession.cpp
