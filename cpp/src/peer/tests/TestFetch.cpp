@@ -75,8 +75,8 @@ constexpr std::string_view length_line = "Content-Length: ";
 // What a peer holds, and the node asking for it does not.
 constexpr std::string_view content_text = "Content only a peer holds";
 
-// How a node answers a request, given as sent: with the text this gives.
-using Answering = std::function<std::string(const std::string& request)>;
+// What a node does as it answers each request, before its answer is sent.
+using Answering = std::function<void()>;
 
 // The next request on socket, as sent: its line and headers, each ended
 // with a CRLF, and its body, as long as its Content-Length gives. Nothing
@@ -106,7 +106,9 @@ std::optional<std::string> read_request(ISocket& socket) {
 // closes. It keeps the line of each request it was sent.
 class StandInNode {
 public:
-    explicit StandInNode(Answering answering);
+    // Answers each request with answer, the text of a response, once
+    // answering, if given, has run.
+    explicit StandInNode(std::string answer, Answering answering = nullptr);
     ~StandInNode();
     StandInNode(const StandInNode&) = delete;
     StandInNode& operator=(const StandInNode&) = delete;
@@ -123,19 +125,23 @@ public:
 
 private:
     ISocket::Ptr m_listener;
+    std::string m_answer;
+    Answering m_answering;
     mutable std::mutex m_mutex;
     mutable std::condition_variable m_asked_more;
     std::vector<std::string> m_requests; // Guarded by m_mutex
     std::thread m_thread;
 
-    void _answer_all(const Answering& answering);
+    void _answer_all();
     void _keep(const std::string& request);
 };
 
-StandInNode::StandInNode(Answering answering)
-    : m_listener(ISocket::bind(Address("127.0.0.1", 0))) {
+StandInNode::StandInNode(std::string answer, Answering answering)
+    : m_listener(ISocket::bind(Address("127.0.0.1", 0)))
+    , m_answer(std::move(answer))
+    , m_answering(std::move(answering)) {
     m_listener->listen(1);
-    m_thread = std::thread([this, answering = std::move(answering)] { _answer_all(answering); });
+    m_thread = std::thread([this] { _answer_all(); });
 }
 
 StandInNode::~StandInNode() {
@@ -164,7 +170,7 @@ bool StandInNode::is_asked(std::size_t count) const {
     return m_asked_more.wait_for(lock, patience, has_all);
 }
 
-void StandInNode::_answer_all(const Answering& answering) {
+void StandInNode::_answer_all() {
     try {
         const auto connection = m_listener->accept();
 
@@ -172,7 +178,12 @@ void StandInNode::_answer_all(const Answering& answering) {
 
         while (const auto request = read_request(*connection)) {
             _keep(*request);
-            connection->send_all(answering(*request));
+
+            if (m_answering) {
+                m_answering();
+            }
+
+            connection->send_all(m_answer);
         }
         // The node asking may end the connection while answers are on their
         // way, as a session does once one fails its check.
@@ -254,50 +265,36 @@ std::string answer(const MessageSigner& signer, Status status, const std::string
     return made.to_string();
 }
 
-// Answers each request with body, as a node holding it does.
-Answering sending(const MessageSigner& signer, std::string_view body) {
-    return [signer, body = std::string(body)](const std::string& /*request*/) {
-        return answer(signer, Status::Ok, body);
-    };
+// The answer of a node that holds body.
+std::string sending(const MessageSigner& signer, std::string_view body) {
+    return answer(signer, Status::Ok, std::string(body));
 }
 
-// Answers each request with 404, as a node that does not hold it.
-Answering lacking(const MessageSigner& signer) {
-    return [signer](const std::string& /*request*/) { return answer(signer, Status::NotFound); };
+// The answer of a node that does not hold what it is asked for.
+std::string lacking(const MessageSigner& signer) {
+    return answer(signer, Status::NotFound);
 }
 
-// Answers each request with 503, asking to be left for retry_after
-// seconds, as a node that is looking for it does.
-Answering looking(const MessageSigner& signer, const std::string& retry_after) {
-    return [signer, retry_after](const std::string& /*request*/) {
-        return answer(signer, Status::ServiceUnavailable, "", retry_after);
-    };
+// The answer of a node that is looking for what it is asked for, asking to
+// be left for retry_after seconds.
+std::string looking(const MessageSigner& signer, const std::string& retry_after) {
+    return answer(signer, Status::ServiceUnavailable, "", retry_after);
 }
 
-// Answers as answering does, once it has moved clock on a second.
-Answering taking_a_second(StillClock& clock, Answering answering) {
-    return [&clock, answering = std::move(answering)](const std::string& request) {
-        clock.advance(std::chrono::seconds(1));
-        return answering(request);
-    };
+// Moves clock on a second, as a node that takes that long to answer.
+Answering taking_a_second(StillClock& clock) {
+    return [&clock] { clock.advance(std::chrono::seconds(1)); };
 }
 
-// Answers as answering does, and sets answered.
-Answering noting(std::atomic<bool>& answered, Answering answering) {
-    return [&answered, answering = std::move(answering)](const std::string& request) {
-        auto text = answering(request);
-
-        answered = true;
-        return text;
-    };
+// Sets answered.
+Answering noting(std::atomic<bool>& answered) {
+    return [&answered] { answered = true; };
 }
 
-// Answers as answering does, once released is set.
-Answering waiting_for(std::shared_future<void> released, Answering answering) {
-    return [released = std::move(released), answering = std::move(answering)](
-               const std::string& request) {
+// Waits for released to be set.
+Answering waiting_for(std::shared_future<void> released) {
+    return [released = std::move(released)] {
         EXPECT_EQ(released.wait_for(patience), std::future_status::ready);
-        return answering(request);
     };
 }
 
@@ -501,7 +498,7 @@ TEST_F(FetchTest, PeerIsLeftUntilItsRetryAfterHasPassed) {
     StillClock clock;
     const StandInNode first_peer(looking(MessageSigner(first()), "60"));
     const StandInNode second_peer(looking(MessageSigner(second()), "1"));
-    const StandInNode third_peer(taking_a_second(clock, lacking(MessageSigner(third()))));
+    const StandInNode third_peer(lacking(MessageSigner(third())), taking_a_second(clock));
     Connected connected({
         session_with(first_peer, first()),
         session_with(second_peer, second()),
@@ -554,11 +551,11 @@ TEST_F(FetchTest, ContentHeldIsNotAskedFor) {
     EXPECT_EQ(peer.asked(), 0U);
 }
 
-// The second peer connects once the first has answered, and is then asked
-// in the same pass.
+// The second peer connects as the first answers, and is then asked in the
+// same pass.
 TEST_F(FetchTest, PeerThatConnectsDuringTheSearchIsAsked) {
     std::atomic<bool> answered{false};
-    const StandInNode first_peer(noting(answered, lacking(MessageSigner(first()))));
+    const StandInNode first_peer(lacking(MessageSigner(first())), noting(answered));
     const StandInNode second_peer(sending(MessageSigner(second()), content_text));
     const auto first_session = session_with(first_peer, first());
     const auto second_session = session_with(second_peer, second());
@@ -577,9 +574,7 @@ TEST_F(FetchTest, PeerThatConnectsDuringTheSearchIsAsked) {
 // unsigned answer ends its session.
 TEST_F(FetchTest, PeerThatCannotBeAskedIsPassedOver) {
     const auto sought = first().id();
-    const StandInNode first_peer([](const std::string& /*request*/) {
-        return "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
-    });
+    const StandInNode first_peer("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n");
     const StandInNode second_peer(sending(MessageSigner(second()), key_of(first())));
     const auto first_session = session_with(first_peer, first());
     Connected connected({first_session, session_with(second_peer, second())});
@@ -593,8 +588,8 @@ TEST_F(FetchTest, PeerThatCannotBeAskedIsPassedOver) {
 
 TEST_F(FetchTest, SearchUnderWayIsNotStartedAgain) {
     std::promise<void> release;
-    const StandInNode peer(
-        waiting_for(release.get_future().share(), sending(MessageSigner(first()), content_text)));
+    const StandInNode peer(sending(MessageSigner(first()), content_text),
+                           waiting_for(release.get_future().share()));
     Connected connected({session_with(peer, first())});
     auto fetch = fetch_from(connected);
     auto searching = std::async(std::launch::async, [&fetch] { return fetch.fetch(content_id()); });
