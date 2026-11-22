@@ -34,7 +34,6 @@
 using http::Request;
 using http::Response;
 using peer::PeerSession;
-using peer::SeekFulfiller;
 using protocol::NodeList;
 using protocol::SearchResults;
 using protocol::SeekList;
@@ -77,8 +76,8 @@ IDataSource::Ptr checked(IDataSource::Ptr store) {
 
 // settings, once each is known to be one that can be worked with. Throws
 // invalid_argument, naming the setting, for one that cannot.
-SeekFulfiller::Settings checked(const SeekFulfiller::Settings& settings) {
-    if (settings.refresh <= SeekFulfiller::Milliseconds::zero()) {
+peer::SeekFulfiller::Settings checked(const peer::SeekFulfiller::Settings& settings) {
+    if (settings.refresh <= peer::SeekFulfiller::Milliseconds::zero()) {
         throw invalid_argument("peers.seek_refresh_seconds must be more than zero: "
                                + to_string(settings.refresh.count()) + " ms");
     }
@@ -91,7 +90,7 @@ SeekFulfiller::Settings checked(const SeekFulfiller::Settings& settings) {
 }
 
 // now, once it is known to be a function. Throws invalid_argument for none.
-SeekFulfiller::Now checked(SeekFulfiller::Now now) {
+peer::SeekFulfiller::Now checked(peer::SeekFulfiller::Now now) {
     if (!now) {
         throw invalid_argument("A seek fulfiller needs the time");
     }
@@ -211,14 +210,15 @@ void SeekFulfiller::fulfil(PeerSession& session, const SeekList& seek) {
 }
 
 size_t SeekFulfiller::refresh(const Sessions& sessions) {
+    const auto due = _due(sessions);
     vector<future<bool>> reads;
     size_t read = 0;
 
-    for (const auto& session : _due(sessions)) {
-        reads.push_back(std::async(std::launch::async, [this, session] {
-            return _refresh(*session);
-        }));
-    }
+    reads.reserve(due.size());
+    std::transform(due.begin(), due.end(), std::back_inserter(reads),
+                   [this](const std::shared_ptr<PeerSession>& session) {
+        return std::async(std::launch::async, [this, session] { return _refresh(*session); });
+    });
 
     for (auto& reading : reads) {
         if (reading.get()) {
@@ -372,10 +372,10 @@ void SeekFulfiller::_name(PeerSession& session, const vector<HashPrefix>& search
         vector<Request> posts;
 
         posts.reserve(run.size());
-
-        for (const auto& prefix : run) {
-            posts.push_back(post_of(prefix, unnamed.at(prefix)));
-        }
+        std::transform(run.begin(), run.end(), std::back_inserter(posts),
+                       [&unnamed](const string& prefix) {
+            return post_of(prefix, unnamed.at(prefix));
+        });
 
         const auto answers = session.exchange(std::move(posts));
 
@@ -461,11 +461,10 @@ SeekFulfiller::Matches SeekFulfiller::_unnamed(const string& node_id, const Matc
             listed = before->second;
         }
 
-        for (const auto& identifier : matching) {
-            if (listed.insert(identifier.to_string()).second) {
-                fresh.push_back(identifier);
-            }
-        }
+        std::copy_if(matching.begin(), matching.end(), std::back_inserter(fresh),
+                     [&listed](const Identifier& identifier) {
+            return listed.insert(identifier.to_string()).second;
+        });
     }
 
     served->second.named = std::move(named);

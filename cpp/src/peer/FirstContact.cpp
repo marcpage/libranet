@@ -251,7 +251,7 @@ Recorder::NodesReceived received_from(const NodeList& sent, const Identifier& pe
 // once it is shown to be the content, unless store holds it already. What is
 // not kept is logged.
 void keep(const Identifier& identifier, const Response& answer, const Identifier& node_id,
-          IDataSource& store) {
+          const IDataSource& store) {
     if (static_cast<int>(Status::Ok) != answer.status_code()) {
         lDebug << node_id.to_string() << "did not send" << identifier.to_string()
                << "but answered" << answer.status_code();
@@ -275,7 +275,7 @@ void keep(const Identifier& identifier, const Response& answer, const Identifier
 
 // Step 7: asks the node of session for each of sought that store does not
 // hold, in runs of depth, and keeps what it sends that is the content.
-void ask_for(PeerSession& session, const vector<Identifier>& sought, IDataSource& store,
+void ask_for(PeerSession& session, const vector<Identifier>& sought, const IDataSource& store,
              size_t depth) {
     vector<Identifier> lacked;
 
@@ -307,7 +307,7 @@ void ask_for(PeerSession& session, const vector<Identifier>& sought, IDataSource
 // identifier. Throws what PeerSession::exchange() throws, but for the
 // connection having closed as the node turned this node away.
 void trade(PeerSession& session, const SeekList& seek, const SeekList& own_seek,
-           SeekFulfiller& fulfiller, IDataSource& store) {
+           SeekFulfiller& fulfiller, const IDataSource& store) {
     try {
         if (session.is_open()) {
             fulfiller.fulfil(session, seek);

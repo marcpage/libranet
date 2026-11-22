@@ -31,6 +31,10 @@ namespace peer {
 // it. What a search finds is kept for peers.seek_refresh_seconds, for every
 // connection to share, since each node's list is read that often, and nodes
 // seek much the same. Any thread may use it.
+//
+// Mistaken: it declares a constructor. cppcheck loses the class's
+// constructors in a file that names it with `using peer::SeekFulfiller;`.
+// cppcheck-suppress noConstructor
 class SeekFulfiller {
 public:
     using Clock = storage::SearchAnswers::Clock;

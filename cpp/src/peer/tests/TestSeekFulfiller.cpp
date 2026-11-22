@@ -117,17 +117,15 @@ std::string line_of(const Request& request) {
     return std::string(request.method()) + " " + std::string(request.uri());
 }
 
-// The id of content whose hash begins with digits, the rest of it number.
-// The tests' store need not hold the content a hash is of.
+// The id of content whose hash begins with digits and ends with number,
+// with zeros between. The tests' store need not hold the content a hash is
+// of.
 Identifier id_of(std::string_view digits, int number) {
     constexpr std::size_t hash_digits = 64;
-    std::ostringstream hash;
+    const auto last = std::to_string(number);
+    const std::string zeros(hash_digits - digits.size() - last.size(), '0');
 
-    hash << digits << std::string(hash_digits - digits.size() - 4, '0');
-    hash.width(4);
-    hash.fill('0');
-    hash << number;
-    return {"sha256", hash.str()};
+    return {"sha256", std::string(digits) + zeros + last};
 }
 
 // The identifiers named in the body of a post naming what matches a search.
