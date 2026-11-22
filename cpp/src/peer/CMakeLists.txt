@@ -1,6 +1,7 @@
 add_library(libranet_peer STATIC
     Buckets.cpp
     DialPlan.cpp
+    Fetch.cpp
     PeerConnection.cpp
     PeerSession.cpp
 )
@@ -21,6 +22,7 @@ if(BUILD_TESTING)
     add_executable(peer_tests
         tests/TestBuckets.cpp
         tests/TestDialPlan.cpp
+        tests/TestFetch.cpp
         tests/TestPeerConnection.cpp
         tests/TestPeerSession.cpp
     )
