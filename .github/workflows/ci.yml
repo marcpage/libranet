@@ -361,14 +361,17 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo sysctl vm.mmap_rnd_bits=28
 
+      # Each test program runs a few times, each running a share of its
+      # tests, instead of once for each test as ctest runs them: on macOS a
+      # sanitizer makes starting a program slow.
       - name: Test with AddressSanitizer and UndefinedBehaviorSanitizer
         env:
           ASAN_OPTIONS: detect_stack_use_after_return=1
           UBSAN_OPTIONS: print_stacktrace=1
-        run: ctest --test-dir build/address --parallel --output-on-failure
+        run: bash ../scripts/run_test_shards.sh build/address
 
       - name: Test with ThreadSanitizer
-        run: ctest --test-dir build/thread --parallel --output-on-failure
+        run: bash ../scripts/run_test_shards.sh build/thread
 
       # Every fuzzer runs for two minutes, all at once. One that finds a
       # fault stops, shows the end of its log here, and saves the input that
@@ -482,14 +485,39 @@ jobs:
           path: ~/.conan2/p
           key: conan-${{ github.job }}-${{ runner.os }}-${{ steps.profile.outputs.hash }}-${{ hashFiles('cpp/conanfile.py') }}
 
+      # Cache the clang-tidy source/header hash manifest: CI runs save it for
+      # subsequent PRs, while PR runs restore it without overwriting the CI
+      # baseline cache.
+      - name: clang-tidy manifest cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/libranet/clang-tidy-manifest.json
+          key: clang-tidy-manifest-${{ runner.os }}-${{ matrix.fuzzers }}-${{ github.sha }}
+          restore-keys: |
+            clang-tidy-manifest-${{ runner.os }}-${{ matrix.fuzzers }}-
+
       - name: Configure
         run: |
           conan install . --build=missing
           cmake --preset conan-release -DLIBRANET_FUZZERS=${{ matrix.fuzzers }}
           conan cache clean
 
+      - name: Filter compilation database for PRs
+        run: |
+          mkdir -p build/Release-pr
+          python3 ../scripts/filter_compilation_db.py \
+            build/Release/compile_commands.json \
+            "$HOME/.cache/libranet/clang-tidy-manifest.json" \
+            src \
+            build/Release-pr/compile_commands.json
+
       - name: clang-tidy
-        run: run-clang-tidy.py -p build/Release -quiet
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            run-clang-tidy.py -p build/Release-pr -quiet
+          else
+            run-clang-tidy.py -p build/Release -quiet
+          fi
 
       # cppcheck does not know the compiler's own macros, so each platform
       # names its own; without one, ISocket.cpp stops at its #error.
