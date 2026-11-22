@@ -95,7 +95,7 @@ private:
     };
 
     using Matches = std::map<std::string, std::vector<storage::Identifier>>; // By prefix
-    using ByNode = std::map<std::string, std::shared_ptr<PeerSession>>;       // By node id
+    using ByNode = std::map<std::string, std::shared_ptr<PeerSession>>;      // By node id
 
     storage::IDataSource::Ptr m_store;
     Settings m_settings;
