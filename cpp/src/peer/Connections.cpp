@@ -1,5 +1,6 @@
 #include "Connections.hpp"
 
+#include <algorithm>
 #include <exception>
 #include <functional>
 #include <future>
@@ -7,7 +8,6 @@
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <set>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -46,6 +46,7 @@ using peer::PeerConnection;
 using peer::PeerSession;
 using protocol::NodeList;
 using stats::Recorder;
+using std::any_of;
 using std::exception;
 using std::function;
 using std::future;
@@ -56,7 +57,6 @@ using std::make_unique;
 using std::nullopt;
 using std::optional;
 using std::scoped_lock;
-using std::set;
 using std::shared_ptr;
 using std::string;
 using std::to_string;
@@ -276,16 +276,14 @@ void Connections::_maintain() {
 // holding m_mutex.
 void Connections::_dial_seeds() {
     const auto now = m_now();
-    set<string> connected_at;
-
-    for (const auto& [node, peer] : m_peers) {
-        connected_at.insert(peer.endpoint);
-    }
 
     for (const auto& seed : m_seeds) {
         const auto resting = m_seeds_resting.find(seed.endpoint);
+        const auto connected = any_of(m_peers.begin(), m_peers.end(), [&seed](const auto& entry) {
+            return entry.second.endpoint == seed.endpoint;
+        });
 
-        if (0 != m_seeds_dialing.count(seed.endpoint) || 0 != connected_at.count(seed.endpoint)
+        if (connected || 0 != m_seeds_dialing.count(seed.endpoint)
             || (m_seeds_resting.end() != resting && now < resting->second)) {
             continue;
         }
