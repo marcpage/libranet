@@ -1,5 +1,8 @@
 #include "FirstContact.hpp"
 
+#include <algorithm>
+#include <cstddef>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <set>
@@ -7,9 +10,11 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "PeerConnection.hpp"
 #include "PeerSession.hpp"
+#include "SeekFulfiller.hpp"
 #include "http/Request.hpp"
 #include "http/Response.hpp"
 #include "http/ResponseCode.hpp"
@@ -27,6 +32,7 @@
 #include "storage/DataStored.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 
 using http::Request;
@@ -40,16 +46,22 @@ using net::Address;
 using peer::FirstContact;
 using peer::PeerConnection;
 using peer::PeerSession;
+using peer::SeekFulfiller;
 using protocol::NodeList;
 using protocol::SeekList;
 using stats::Recorder;
 using std::invalid_argument;
+using std::min;
 using std::nullopt;
 using std::optional;
+using std::ptrdiff_t;
 using std::set;
+using std::shared_ptr;
+using std::size_t;
 using std::string;
 using std::string_view;
 using std::unique_ptr;
+using std::vector;
 using storage::DataStored;
 using storage::IDataSource;
 using storage::Identifier;
@@ -67,6 +79,11 @@ constexpr string_view seek_path = "/data/seek";
 // The types of a key put as content, and of a list posted.
 constexpr string_view octet_stream = "application/octet-stream";
 constexpr string_view json = "application/json";
+
+// How large content a peer sends compressed may be once decompressed, as
+// the data handler takes it from a client by default: as large as the
+// Python node reads a bundle.
+constexpr size_t max_content_bytes = 16 * types::Megabyte;
 
 // A request of method for target, with body, of content_type when it has one.
 Request request_of(string method, string target, string body = "",
@@ -229,23 +246,106 @@ Recorder::NodesReceived received_from(const NodeList& sent, const Identifier& pe
     return received;
 }
 
+// Keeps in store what the node node_id sent in answer to a request for
+// identifier, as it was sent, and posts it as data.stored, from that node,
+// once it is shown to be the content, unless store holds it already. What is
+// not kept is logged.
+void keep(const Identifier& identifier, const Response& answer, const Identifier& node_id,
+          IDataSource& store) {
+    if (static_cast<int>(Status::Ok) != answer.status_code()) {
+        lDebug << node_id.to_string() << "did not send" << identifier.to_string()
+               << "but answered" << answer.status_code();
+        return;
+    }
+
+    const auto body = Converter::bytes_of(answer.body());
+
+    if (!identifier.content_of(body, max_content_bytes)) {
+        lInfo << node_id.to_string() << "sent what is not" << identifier.to_string();
+        return;
+    }
+
+    if (store.has(identifier)) {
+        return;
+    }
+
+    store.put(identifier, body);
+    Channel::post(DataStored::name, DataStored{identifier, node_id, body.size()});
+}
+
+// Step 7: asks the node of session for each of sought that store does not
+// hold, in runs of depth, and keeps what it sends that is the content.
+void ask_for(PeerSession& session, const vector<Identifier>& sought, IDataSource& store,
+             size_t depth) {
+    vector<Identifier> lacked;
+
+    std::copy_if(sought.begin(), sought.end(), std::back_inserter(lacked),
+                 [&store](const Identifier& identifier) { return !store.has(identifier); });
+
+    for (size_t start = 0; start < lacked.size(); start += depth) {
+        const auto first = std::next(lacked.begin(), static_cast<ptrdiff_t>(start));
+        const auto count = min(depth, lacked.size() - start);
+        vector<Request> gets;
+
+        std::transform(first, std::next(first, static_cast<ptrdiff_t>(count)),
+                       std::back_inserter(gets),
+                       [](const Identifier& identifier) {
+            return request_of("GET", data_path(identifier));
+        });
+
+        const auto answers = session.exchange(std::move(gets));
+
+        for (size_t index = 0; index < answers.size(); ++index) {
+            keep(lacked.at(start + index), answers.at(index), session.node_id(), store);
+        }
+    }
+}
+
+// Steps 6 and 7, unless the node of session has turned this node away, as
+// it may in any answer, and so takes no more requests: fulfils seek, the
+// list it sent, with fulfiller, then asks it for what own_seek names by
+// identifier. Throws what PeerSession::exchange() throws, but for the
+// connection having closed as the node turned this node away.
+void trade(PeerSession& session, const SeekList& seek, const SeekList& own_seek,
+           SeekFulfiller& fulfiller, IDataSource& store) {
+    try {
+        if (session.is_open()) {
+            fulfiller.fulfil(session, seek);
+        }
+
+        if (session.is_open()) {
+            ask_for(session, own_seek.data(), store, fulfiller.pipeline_depth());
+        }
+    } catch (const PeerConnection::Closed&) {
+        if (!session.was_turned_away()) {
+            throw;
+        }
+    }
+}
+
 } // namespace
 
 namespace peer {
 
 FirstContact::FirstContact(const NodeIdentity& identity, IDataSource::Ptr store,
-                           MessageVerifier verifier)
+                           MessageVerifier verifier, shared_ptr<SeekFulfiller> fulfiller)
     : m_identity(&identity)
     , m_store(std::move(store))
     , m_signer(identity)
-    , m_verifier(std::move(verifier)) {
+    , m_verifier(std::move(verifier))
+    , m_fulfiller(std::move(fulfiller)) {
     if (!m_store) {
         throw invalid_argument("First contact needs a store to keep peers' keys in");
+    }
+
+    if (!m_fulfiller) {
+        throw invalid_argument("First contact needs a seek fulfiller for what peers seek");
     }
 }
 
 FirstContact::Contact FirstContact::make(unique_ptr<PeerConnection> connection,
-                                         const NodeList& own_list) const {
+                                         const NodeList& own_list,
+                                         const SeekList& own_seek) const {
     if (!connection) {
         throw invalid_argument("First contact needs a connection to the node");
     }
@@ -272,6 +372,7 @@ FirstContact::Contact FirstContact::make(unique_ptr<PeerConnection> connection,
 
     auto seek = seek_list_in(answers.at(1), session.address());
 
+    trade(session, seek, own_seek, *m_fulfiller, *m_store);
     return {std::move(session), std::move(seek)};
 }
 
