@@ -233,7 +233,12 @@ Recorder::CandidatesUpdated::operator string() const {
 }
 
 Recorder::SearchRequested::operator string() const {
-    return prefix.to_string();
+    if (!node) {
+        return prefix.to_string();
+    }
+
+    return prefix.to_string() + " from " + node->to_string() + ", to be passed on "
+           + to_string(relays) + " more times";
 }
 
 Recorder::SeekUpdated::operator string() const {

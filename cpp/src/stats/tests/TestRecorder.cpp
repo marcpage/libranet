@@ -559,6 +559,8 @@ TEST(RecorderEventTest, EachEventSaysWhatItHolds) {
     EXPECT_EQ(std::string(NodesUpdated{list, list_of({{second, 'b'}})}), "2 entries, 1 new");
     EXPECT_EQ(std::string(CandidatesUpdated{candidates}), "1 candidates");
     EXPECT_EQ(std::string(SearchRequested{HashPrefix::parse("0123")}), "0123");
+    EXPECT_EQ(std::string(SearchRequested{HashPrefix::parse("0123"), node('a'), 2}),
+              "0123 from " + node('a').to_string() + ", to be passed on 2 more times");
     EXPECT_EQ(std::string(SeekUpdated{SeekList({node('a'), node('b')}, {})}),
               "2 identifiers, 0 prefixes");
 }
