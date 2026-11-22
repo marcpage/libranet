@@ -2,13 +2,16 @@
 # /data.
 add_library(libranet_api STATIC
     DataHandler.cpp
+    SeekHandler.cpp
     SignatureGuard.cpp)
 add_library(libranet::api ALIAS libranet_api)
 target_include_directories(libranet_api PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(libranet_api PUBLIC
     libranet::http
     libranet::identity
+    libranet::logger
     libranet::msg
+    libranet::protocol
     libranet::storage
     libranet::types
     libranet::web)
@@ -16,6 +19,7 @@ target_link_libraries(libranet_api PUBLIC
 if(BUILD_TESTING)
     add_executable(api_tests
         tests/TestDataHandler.cpp
+        tests/TestSeekHandler.cpp
         tests/TestSignatureGuard.cpp)
     target_link_libraries(api_tests PRIVATE libranet::api GTest::gtest_main)
     gtest_discover_tests(api_tests)
