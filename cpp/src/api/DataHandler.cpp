@@ -15,6 +15,7 @@
 #include "http/ResponseCode.hpp"
 #include "msg/Channel.hpp"
 #include "storage/DataNotFound.hpp"
+#include "storage/DataRequested.hpp"
 #include "storage/DataStored.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
@@ -34,6 +35,7 @@ using std::string;
 using std::string_view;
 using std::to_string;
 using storage::DataNotFound;
+using storage::DataRequested;
 using storage::DataStored;
 using storage::IDataSource;
 using storage::Identifier;
@@ -178,9 +180,11 @@ void DataHandler::operator()(const Request& request, Response& response,
 }
 
 // The body stored, as it was put; or 404, telling the node's other parts
-// that the content was needed.
+// that the content was needed. Either way, tells them it was asked for.
 void DataHandler::_get(const Identifier& identifier, Response& response) const {
     const auto body = m_store->get(identifier);
+
+    Channel::post(DataRequested::name, DataRequested{identifier});
 
     if (!body) {
         Channel::post(DataNotFound::name, DataNotFound{identifier});

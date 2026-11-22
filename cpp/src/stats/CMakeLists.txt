@@ -1,4 +1,5 @@
 add_library(libranet_stats STATIC
+    ContentUses.cpp
     NodeAddresses.cpp
     Recorder.cpp
     Sought.cpp)
@@ -13,6 +14,7 @@ target_link_libraries(libranet_stats PUBLIC
 
 if(BUILD_TESTING)
     add_executable(stats_tests
+        tests/TestContentUses.cpp
         tests/TestNodeAddresses.cpp
         tests/TestRecorder.cpp
         tests/TestSought.cpp)

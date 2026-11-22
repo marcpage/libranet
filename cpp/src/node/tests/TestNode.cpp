@@ -419,6 +419,26 @@ TEST_F(NodeTest, SignsItsAnswersAndRefusesUnsignedUploads) {
     EXPECT_FALSE(std::filesystem::exists(data_dir() / "cas" / "sha256" / "2cf" / hello_hash));
 }
 
+// Its node list names it at localhost, the port it listens on, until it is
+// given another (HttpApi §10.1), and is signed as each answer is.
+TEST_F(NodeTest, ServesItsOwnEndpointAsItsNodeList) {
+    write_file(data_dir() / "node-key.pem", python_private_pem);
+    std::filesystem::permissions(data_dir() / "node-key.pem",
+                                 perms::owner_read | perms::owner_write);
+
+    const Node node(settings_of(loopback(data_dir())));
+    const auto answer = answer_to(node.local_address(),
+                                  "GET /data/nodes HTTP/1.1\r\nConnection: close\r\n\r\n");
+    const auto port = std::to_string(node.local_address().port());
+
+    EXPECT_EQ(answer.rfind("HTTP/1.1 200 OK\r\n", 0), 0U) << answer;
+    EXPECT_NE(answer.find(string(";keyid=\"sha256/") + python_hash + "\""), string::npos)
+        << answer;
+    EXPECT_EQ(answer.substr(answer.find("\r\n\r\n")),
+              "\r\n\r\n{\"nodes\":{\"http://localhost:" + port + "\":\"sha256/" + python_hash
+                  + "\"}}");
+}
+
 // What each directory in incoming/ holds is served from /data too.
 TEST_F(NodeTest, ServesWhatIncomingHolds) {
     write_file(data_dir() / "incoming" / "batch" / "sha256" / "2cf" / hello_hash, hello);

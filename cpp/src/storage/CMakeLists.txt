@@ -23,6 +23,7 @@ if(BUILD_TESTING)
     add_executable(storage_tests
         tests/TestDataDir.cpp
         tests/TestDataNotFound.cpp
+        tests/TestDataRequested.cpp
         tests/TestDataStored.cpp
         tests/TestHashPrefix.cpp
         tests/TestIdentifier.cpp
