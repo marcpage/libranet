@@ -291,17 +291,18 @@ TEST(DataHandlerTest, ContentHeldOffIsNotFound) {
     EXPECT_TRUE(requested.next<DataRequested>(0ms).has_value());
 }
 
-// Only the search for the content asked for is held off.
+// Only the search for the content asked for is held off. The function
+// captures nothing, so that moving it cannot throw.
 TEST(DataHandlerTest, OnlyContentHeldOffIsNotFound) {
     const auto world_id = Identifier::from(Converter::bytes_of("world"));
     const DataHandler handler(std::make_shared<MemoryStore>(), DataHandler::default_content_bytes,
                               DataHandler::default_retry_after,
-                              [world_id](const Identifier& identifier) {
-        return identifier.to_string() == world_id.to_string();
+                              [](const Identifier& identifier) {
+        return identifier.hash() == hello_hash;
     });
 
-    EXPECT_EQ(status_of(handler, get("/data/" + world_id.to_string())), 404);
-    EXPECT_EQ(status_of(handler, get(hello_path())), 503);
+    EXPECT_EQ(status_of(handler, get(hello_path())), 404);
+    EXPECT_EQ(status_of(handler, get("/data/" + world_id.to_string())), 503);
 }
 
 // Content held is served whether or not a search for it would be held off,
