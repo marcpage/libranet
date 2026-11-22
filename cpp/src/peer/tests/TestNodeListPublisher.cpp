@@ -295,6 +295,10 @@ private:
 
 } // namespace
 
+// The tests read optionals after ASSERT_TRUE(x.has_value()), which this
+// check does not follow.
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
+
 TEST_F(NodeListPublisherTest, ListNamesOwnEntriesFirstAndLeavesOutThePeer) {
     const auto third = node_named("third");
     NodeList added;
@@ -354,6 +358,8 @@ TEST_F(NodeListPublisherTest, OwnEndpointsComeFirstInTheOrderGiven) {
                                    entry(second_endpoint, second_id()),
                                }));
 }
+
+// NOLINTEND(bugprone-unchecked-optional-access)
 
 // Each peer is posted, signed as this node, what is new but itself.
 TEST_F(NodeListPublisherTest, EachPeerIsPostedTheOthers) {
