@@ -318,21 +318,19 @@ std::vector<std::string> relays_of(const std::vector<Asked>& asked) {
 // first, and those that share as many in the order of their text.
 std::vector<std::string> best_first(const std::vector<const StandInPeer*>& peers,
                                     const HashPrefix& prefix) {
-    std::vector<const StandInPeer*> ranked(peers);
+    std::vector<Identifier> node_ids;
 
-    std::sort(ranked.begin(), ranked.end(), [&prefix](const auto* one, const auto* other) {
-        const auto one_bits = prefix.matching_bits(one->id());
-        const auto other_bits = prefix.matching_bits(other->id());
+    std::transform(peers.begin(), peers.end(), std::back_inserter(node_ids),
+                   [](const StandInPeer* peer) { return peer->id(); });
+    std::sort(node_ids.begin(), node_ids.end(),
+              [&prefix](const Identifier& one, const Identifier& other) {
+        const auto one_bits = prefix.matching_bits(one);
+        const auto other_bits = prefix.matching_bits(other);
 
         return one_bits != other_bits ? one_bits > other_bits
-                                      : one->id().to_string() < other->id().to_string();
+                                      : one.to_string() < other.to_string();
     });
-
-    std::vector<std::string> node_ids;
-
-    std::transform(ranked.begin(), ranked.end(), std::back_inserter(node_ids),
-                   [](const StandInPeer* peer) { return peer->id().to_string(); });
-    return node_ids;
+    return texts_of(node_ids);
 }
 
 // Settings making two passes, a second apart, held off a minute after.
