@@ -365,6 +365,8 @@ std::optional<Request> request_named(const StandInNode& node, const std::string&
 
 } // namespace
 
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
+
 TEST_F(FirstContactTest, KeyNotHeldIsFetchedAndKept) {
     Channel stored(DataStored::name);
     const StandInNode node(peer_answers());
@@ -476,6 +478,8 @@ TEST_F(FirstContactTest, PeersNodeListIsPosted) {
                                    {peer_loopback, Source::Advertised},
                                }));
 }
+
+// NOLINTEND(bugprone-unchecked-optional-access)
 
 TEST_F(FirstContactTest, ListNamingOnlyThisNodeIsNotPosted) {
     auto answers = peer_answers();
