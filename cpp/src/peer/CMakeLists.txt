@@ -1,5 +1,6 @@
 add_library(libranet_peer STATIC
     Buckets.cpp
+    Connections.cpp
     DialPlan.cpp
     FirstContact.cpp
     NodeListPublisher.cpp
@@ -26,6 +27,7 @@ target_link_libraries(libranet_peer PUBLIC
 if(BUILD_TESTING)
     add_executable(peer_tests
         tests/TestBuckets.cpp
+        tests/TestConnections.cpp
         tests/TestDialPlan.cpp
         tests/TestFirstContact.cpp
         tests/TestNodeListPublisher.cpp
