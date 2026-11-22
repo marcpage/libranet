@@ -2,6 +2,7 @@ add_library(libranet_peer STATIC
     Buckets.cpp
     Connections.cpp
     DialPlan.cpp
+    Fetch.cpp
     FirstContact.cpp
     NodeListPublisher.cpp
     PeerConnection.cpp
@@ -29,6 +30,7 @@ if(BUILD_TESTING)
         tests/TestBuckets.cpp
         tests/TestConnections.cpp
         tests/TestDialPlan.cpp
+        tests/TestFetch.cpp
         tests/TestFirstContact.cpp
         tests/TestNodeListPublisher.cpp
         tests/TestPeerConnection.cpp
