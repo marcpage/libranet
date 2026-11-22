@@ -72,6 +72,11 @@ namespace {
 constexpr auto patience = std::chrono::seconds(10);
 // How long a test waits for what it expects not to come.
 constexpr auto quiet = 300ms;
+// How often a test looks again for what it waits for.
+constexpr auto poll_interval = 10ms;
+// How often connections are checked in the tests: often, so that a test
+// waits little for what a check finds.
+constexpr auto check_interval = 10ms;
 
 // The header that gives a body's length, as a line of a message's head.
 constexpr std::string_view length_line = "Content-Length: ";
@@ -173,7 +178,7 @@ bool eventually(const Condition& condition) {
             return false;
         }
 
-        std::this_thread::sleep_for(10ms);
+        std::this_thread::sleep_for(poll_interval);
     }
 
     return true;
@@ -373,7 +378,7 @@ protected:
         made.limits.connect_timeout = 2s;
         made.limits.request_timeout = patience;
         made.seeds = std::move(seeds);
-        made.check_interval = 10ms;
+        made.check_interval = check_interval;
         return made;
     }
 

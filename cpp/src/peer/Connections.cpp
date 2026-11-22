@@ -163,7 +163,7 @@ Connections::~Connections() {
         jobs.swap(m_jobs);
     }
 
-    for (auto& job : jobs) {
+    for (const auto& job : jobs) {
         job.wait();
     }
 }
@@ -202,8 +202,9 @@ void Connections::_take_nodes(const NodeList& nodes, const NodeList& added) {
         return;
     }
 
-    _start([this, added, sessions = std::move(sessions)] {
-        (void)m_publisher.publish(added, sessions);
+    // Captured as copies of their own, so that moving the job moves them.
+    _start([this, to_post = added, sessions = std::move(sessions)] {
+        (void)m_publisher.publish(to_post, sessions);
     });
 }
 
@@ -267,7 +268,7 @@ void Connections::_maintain() {
 
     for (const auto& candidate : m_plan.to_dial(*m_candidates, server_ids)) {
         m_dialing.emplace(candidate.node_id.to_string(), candidate.node_id);
-        _start([this, candidate] { _dial(candidate); });
+        _start([this, to_dial = candidate] { _dial(to_dial); });
     }
 }
 
@@ -290,7 +291,7 @@ void Connections::_dial_seeds() {
         }
 
         m_seeds_dialing.insert(seed.endpoint);
-        _start([this, seed] { _dial_seed(seed); });
+        _start([this, to_dial = seed] { _dial_seed(to_dial); });
     }
 }
 
