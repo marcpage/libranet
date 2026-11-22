@@ -104,8 +104,8 @@ def parse_includes(file_path: Path) -> list[str]:
 
                 if m:
                     includes.append(m.group(1).strip())
-    except OSError:
-        pass
+    except OSError as err:
+        print(f"warning: failed to parse includes from {file_path}: {err}", file=stderr)
 
     return includes
 
