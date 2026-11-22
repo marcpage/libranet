@@ -1,0 +1,174 @@
+#include "Service.hpp"
+
+#include <exception>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <vector>
+
+#include "NodesHandler.hpp"
+#include "http/Request.hpp"
+#include "http/Response.hpp"
+#include "identity/KnownKeys.hpp"
+#include "identity/MessageSigner.hpp"
+#include "identity/MessageVerifier.hpp"
+#include "identity/NodeIdentity.hpp"
+#include "logger/Logger.hpp"
+#include "msg/IMessage.hpp"
+#include "msg/Message.hpp"
+#include "net/Address.hpp"
+#include "stats/Recorder.hpp"
+#include "storage/HashPrefix.hpp"
+#include "storage/IDataSource.hpp"
+#include "storage/SearchAnswers.hpp"
+#include "web/ConnectionInfo.hpp"
+#include "web/Server.hpp"
+
+using api::NodesHandler;
+using api::Service;
+using http::Request;
+using http::Response;
+using identity::KnownKeys;
+using identity::MessageSigner;
+using identity::MessageVerifier;
+using identity::NodeIdentity;
+using msg::IMessage;
+using msg::Message;
+using net::Address;
+using std::exception;
+using std::make_shared;
+using std::shared_ptr;
+using std::string;
+using std::string_view;
+using std::terminate;
+using std::thread;
+using std::to_string;
+using std::vector;
+using storage::HashPrefix;
+using storage::IDataSource;
+using storage::SearchAnswers;
+using web::ConnectionInfo;
+using web::Server;
+
+// The thread keeping the lists takes these events, which stats::Recorder
+// posts from another file, so nothing here would make their messages'
+// virtual to_string(), which value_of() casts to.
+template class msg::Message<stats::Recorder::NodesUpdated>;
+template class msg::Message<stats::Recorder::SeekUpdated>;
+
+namespace {
+
+using NodesUpdated = stats::Recorder::NodesUpdated;
+using SeekUpdated = stats::Recorder::SeekUpdated;
+
+// Where the handlers other than NodesHandler are registered with the server.
+constexpr string_view data_path = "/data";
+constexpr string_view seek_path = "/data/seek";
+constexpr string_view search_path = "/data/search";
+
+// The value message holds, if it is a Type.
+template<typename Type>
+const Type* value_of(const IMessage::Ptr& message) {
+    const auto* const typed = dynamic_cast<const Message<Type>*>(message.get());
+
+    return nullptr == typed ? nullptr : &typed->value();
+}
+
+// The answers to searches of what store holds, kept as settings says.
+// Throws invalid_argument for a ttl that is not more than zero.
+shared_ptr<SearchAnswers> answers_of(const IDataSource::Ptr& store,
+                                     const Service::Settings& settings) {
+    return make_shared<SearchAnswers>(
+        [store](const HashPrefix& prefix) { return store->starting_with(prefix); },
+        settings.search_min_bits, settings.search_cache_ttl);
+}
+
+// The endpoints the node names itself by in its node list, with no external
+// address or port set: localhost, meaning the address its list comes from,
+// at the port it listens on (HttpApi §10.1).
+vector<string> own_endpoints(const Address& local_address) {
+    return {"http://localhost:" + to_string(local_address.port())};
+}
+
+// Reports what the thread keeping the lists could not handle.
+void log_error(const string& text) {
+    lErr << text;
+}
+
+} // namespace
+
+namespace api {
+
+Service::Service(const Address& address, const IDataSource::Ptr& store,
+                 const NodeIdentity& identity, Settings settings)
+    : m_data_handler(store)
+    , m_search_handler(answers_of(store, settings))
+    , m_guard(MessageVerifier(make_shared<KnownKeys>(store), MessageVerifier::Window{}),
+              MessageSigner(identity))
+    , m_server(address)
+    , m_local_address(m_server.local_address())
+    , m_nodes_handler(identity.id(), own_endpoints(m_local_address))
+    , m_lists(vector<string>{NodesUpdated::name, SeekUpdated::name},
+              [this](const IMessage::Ptr& message) { _keep(message); }, log_error) {
+    _register(data_path, [this](const Request& request, Response& response,
+                                ConnectionInfo& connection) {
+        m_data_handler(request, response, connection);
+    });
+    _register(NodesHandler::path, [this](const Request& request, Response& response,
+                                         ConnectionInfo& connection) {
+        m_nodes_handler(request, response, connection);
+    });
+    _register(seek_path, [this](const Request& request, Response& response,
+                                ConnectionInfo& connection) {
+        m_seek_handler(request, response, connection);
+    });
+    _register(search_path, [this](const Request& request, Response& response,
+                                  ConnectionInfo& connection) {
+        m_search_handler(request, response, connection);
+    });
+    m_server_thread = thread([this] {
+        _serve();
+    });
+}
+
+Service::~Service() {
+    // A thread that cannot be stopped would outlive this object, so then
+    // nothing is safe but to end the program, as thread's destructor
+    // would.
+    try {
+        m_server.stop();
+        m_server_thread.join();
+    } catch (...) {
+        terminate();
+    }
+}
+
+const Address& Service::local_address() const noexcept {
+    return m_local_address;
+}
+
+// Registers handler at path, with the guard in front of it.
+void Service::_register(string_view path, const Server::RequestHandler& handler) {
+    m_server.register_handler(path, m_guard.in_front_of(handler));
+}
+
+void Service::_keep(const IMessage::Ptr& message) {
+    if (const auto* const nodes = value_of<NodesUpdated>(message)) {
+        m_nodes_handler.set_nodes(nodes->nodes);
+    } else if (const auto* const seek = value_of<SeekUpdated>(message)) {
+        m_seek_handler.set_list(seek->seek);
+    } else {
+        lWarn << "Not a list the web server serves:" << message->to_string();
+    }
+}
+
+void Service::_serve() {
+    try {
+        m_server.start(backlog);
+    } catch (const exception& error) {
+        lErr << "The web server stopped:" << error;
+    }
+}
+
+} // namespace api
