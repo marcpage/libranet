@@ -18,12 +18,14 @@
 #include "NodeListPublisher.hpp"
 #include "PeerConnection.hpp"
 #include "PeerSession.hpp"
+#include "SeekFulfiller.hpp"
 #include "identity/MessageVerifier.hpp"
 #include "identity/NodeIdentity.hpp"
 #include "msg/AsyncChannel.hpp"
 #include "msg/IMessage.hpp"
 #include "msg/Timer.hpp"
 #include "protocol/NodeList.hpp"
+#include "protocol/SeekList.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
 
@@ -87,6 +89,7 @@ public:
         PeerConnection::Limits limits;
         std::vector<Seed> seeds;
         Milliseconds check_interval = default_check_interval;
+        SeekFulfiller::Settings fulfiller;
     };
 
     // Makes first contact as identity, which must outlive it, naming
@@ -97,7 +100,7 @@ public:
     // interval that is not more than zero.
     Connections(const identity::NodeIdentity& identity,
                 const std::vector<std::string>& own_endpoints,
-                storage::IDataSource::Ptr store, identity::MessageVerifier verifier,
+                const storage::IDataSource::Ptr& store, identity::MessageVerifier verifier,
                 Settings settings, Now now = &Clock::now);
     // Stops its threads, waits for each dial under way, which ends within
     // the connect and request timeouts, and closes every connection.
@@ -132,6 +135,7 @@ private:
     DialPlan m_plan;                                          // Guarded by m_mutex
     std::optional<std::vector<Candidate>> m_candidates;       // Guarded: none until the first
     protocol::NodeList m_own_list;                            // Guarded: posted at first contact
+    protocol::SeekList m_own_seek;                            // Guarded: asked at first contact
     std::map<std::string, Peer> m_peers;                      // Guarded: by node id
     std::map<std::string, storage::Identifier> m_dialing;     // Guarded: by node id
     std::set<std::string> m_seeds_dialing;                    // Guarded: by endpoint
