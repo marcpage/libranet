@@ -35,6 +35,7 @@ using identity::MessageVerifier;
 using identity::NodeIdentity;
 using msg::IMessage;
 using msg::Message;
+using msg::value_of;
 using net::Address;
 using std::exception;
 using std::make_shared;
@@ -66,14 +67,6 @@ using SeekUpdated = stats::Recorder::SeekUpdated;
 constexpr string_view data_path = "/data";
 constexpr string_view seek_path = "/data/seek";
 constexpr string_view search_path = "/data/search";
-
-// The value message holds, if it is a Type.
-template<typename Type>
-const Type* value_of(const IMessage::Ptr& message) {
-    const auto* const typed = dynamic_cast<const Message<Type>*>(message.get());
-
-    return nullptr == typed ? nullptr : &typed->value();
-}
 
 // The answers to searches of what store holds, kept as settings says.
 // Throws invalid_argument for a ttl that is not more than zero.
