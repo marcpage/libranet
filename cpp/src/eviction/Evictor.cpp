@@ -42,7 +42,6 @@ using std::to_string;
 using std::uintmax_t;
 using std::vector;
 using std::filesystem::path;
-using std::filesystem::space;
 using storage::DataDeleted;
 using storage::DataStored;
 using storage::IDataSource;
@@ -181,7 +180,12 @@ Evictor::HandedOff::operator string() const {
 }
 
 Evictor::FreeSpace Evictor::free_space_in(path directory) {
-    return [directory = std::move(directory)] { return space(directory).available; };
+    // Named in full: with space() brought in by a using-declaration,
+    // cppcheck takes the variable Json's serializer names space for it, and
+    // reports that variable unread.
+    return [directory = std::move(directory)] {
+        return std::filesystem::space(directory).available;
+    };
 }
 
 Evictor::Evictor(Identifier own_id, IDataSource::Ptr store, Peers peers, FreeSpace free_space,
