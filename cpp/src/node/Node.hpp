@@ -1,17 +1,13 @@
 #pragma once
 
 #include <filesystem>
-#include <thread>
 
-#include "api/DataHandler.hpp"
-#include "api/NodesHandler.hpp"
-#include "api/SignatureGuard.hpp"
+#include "api/Service.hpp"
 #include "identity/NodeIdentity.hpp"
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
 #include "node/SettingsFile.hpp"
 #include "storage/Manager.hpp"
-#include "web/Server.hpp"
 
 namespace node {
 
@@ -48,7 +44,7 @@ public:
     // std::runtime_error when it cannot lay out the data directory, keep its
     // key, or listen.
     explicit Node(const SettingsFile& settings);
-    ~Node();
+    ~Node() = default;
     Node(const Node&) = delete;
     Node& operator=(const Node&) = delete;
     Node(Node&&) = delete;
@@ -69,15 +65,7 @@ private:
     identity::NodeIdentity m_identity;
 
     // The parts.
-    api::DataHandler m_data_handler;
-    api::SignatureGuard m_guard; // In front of each of m_server's handlers
-    web::Server m_server;
-    net::Address m_local_address; // Where m_server listens
-    // Naming m_local_address's port as the node's own, so made after it.
-    api::NodesHandler m_nodes_handler;
-    std::thread m_server_thread;
-
-    void _serve();
+    api::Service m_service;
 };
 
 } // namespace node

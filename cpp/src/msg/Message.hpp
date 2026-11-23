@@ -20,6 +20,13 @@ private:
 };
 
 template<typename Type>
+const Type* value_of(const IMessage::Ptr& message) {
+    const auto* const typed = dynamic_cast<const Message<Type>*>(message.get());
+
+    return nullptr == typed ? nullptr : &typed->value();
+}
+
+template<typename Type>
 Message<Type>::Message(Type value)
     : m_value(std::move(value)) {}
 

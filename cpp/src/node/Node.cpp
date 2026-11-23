@@ -6,37 +6,22 @@
 #include <csignal>
 #include <cstddef>
 #include <cstdlib>
-#include <exception>
 #include <filesystem>
 #include <limits>
-#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
-#include <thread>
-#include <vector>
 
-#include "api/NodesHandler.hpp"
-#include "http/Request.hpp"
-#include "http/Response.hpp"
-#include "identity/KnownKeys.hpp"
-#include "identity/MessageSigner.hpp"
-#include "identity/MessageVerifier.hpp"
+#include "api/Service.hpp"
 #include "identity/NodeIdentity.hpp"
 #include "io/Directories.hpp"
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
 #include "node/SettingsFile.hpp"
 #include "storage/Manager.hpp"
-#include "web/ConnectionInfo.hpp"
 
-using api::NodesHandler;
-using http::Request;
-using http::Response;
-using identity::KnownKeys;
-using identity::MessageSigner;
-using identity::MessageVerifier;
+using api::Service;
 using io::Directories;
 using logger::Logger;
 using net::Address;
@@ -44,25 +29,19 @@ using node::Node;
 using node::SettingsFile;
 using std::array;
 using std::domain_error;
-using std::exception;
 using std::find;
 using std::generic_category;
 using std::invalid_argument;
-using std::make_shared;
 using std::numeric_limits;
 using std::size_t;
 using std::stoul;
 using std::string;
 using std::string_view;
 using std::system_error;
-using std::terminate;
-using std::thread;
 using std::to_string;
-using std::vector;
 using std::filesystem::create_directories;
 using std::filesystem::path;
 using storage::Manager;
-using web::ConnectionInfo;
 
 namespace {
 
@@ -86,9 +65,6 @@ constexpr auto default_log_level = "INFO";
 
 // The file in the data directory that holds the node's key.
 constexpr auto key_file_name = "node-key.pem";
-
-// The connections the system queues until the web server takes them.
-constexpr int backlog = 128;
 
 // The value of the setting name, or fallback when the settings do not give
 // it.
@@ -193,13 +169,6 @@ Address listen_address(const SettingsFile& settings) {
             listen_port(settings)};
 }
 
-// The endpoints the node names itself by in its node list, with no external
-// address or port set: localhost, meaning the address its list comes from,
-// at the port it listens on (HttpApi §10.1).
-vector<string> own_endpoints(const Address& local_address) {
-    return {"http://localhost:" + to_string(local_address.port())};
-}
-
 // The data directory's cas/, where content is stored, and incoming/, made if
 // they are not there, with each directory in incoming/ read too.
 Manager::Ptr lay_out(const path& directory) {
@@ -292,58 +261,18 @@ Node::Node(const SettingsFile& settings)
     , m_listen_address(listen_address(settings))
     , m_store(lay_out(m_data_dir))
     , m_identity(m_data_dir / key_file_name, *m_store)
-    , m_data_handler(m_store)
-    , m_guard(MessageVerifier(make_shared<KnownKeys>(m_store), MessageVerifier::Window{}),
-              MessageSigner(m_identity))
-    , m_server(m_listen_address)
-    , m_local_address(m_server.local_address())
-    , m_nodes_handler(m_identity.id(), own_endpoints(m_local_address)) {
+    , m_service(m_listen_address, m_store, m_identity, Service::Settings{}) {
     lInfo << data_dir_setting << "=" << m_data_dir.string();
     lInfo << listen_address_setting << "=" << m_listen_address.host();
     lInfo << listen_port_setting << "=" << m_listen_address.port();
     lInfo << log_level_setting << "=" << text(settings, log_level_setting, default_log_level);
     warn_of_unused(settings);
     lInfo << "Node id:" << m_identity.id().to_string();
-    lInfo << "Listening on" << m_local_address.to_string();
-
-    m_server.register_handler(
-        "/data", m_guard.in_front_of(
-                     [this](const Request& request, Response& response, ConnectionInfo& connection) {
-        m_data_handler(request, response, connection);
-    }));
-    m_server.register_handler(
-        NodesHandler::path,
-        m_guard.in_front_of(
-            [this](const Request& request, Response& response, ConnectionInfo& connection) {
-        m_nodes_handler(request, response, connection);
-    }));
-    m_server_thread = thread([this] {
-        _serve();
-    });
-}
-
-Node::~Node() {
-    // A thread that cannot be stopped would outlive this object, so then
-    // nothing is safe but to end the program, as thread's destructor
-    // would.
-    try {
-        m_server.stop();
-        m_server_thread.join();
-    } catch (...) {
-        terminate();
-    }
+    lInfo << "Listening on" << local_address().to_string();
 }
 
 const Address& Node::local_address() const noexcept {
-    return m_local_address;
-}
-
-void Node::_serve() {
-    try {
-        m_server.start(backlog);
-    } catch (const exception& error) {
-        lErr << "The web server stopped:" << error;
-    }
+    return m_service.local_address();
 }
 
 } // namespace node
