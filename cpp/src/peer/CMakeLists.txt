@@ -8,6 +8,7 @@ add_library(libranet_peer STATIC
     PeerConnection.cpp
     PeerSearch.cpp
     PeerSession.cpp
+    Pusher.cpp
 )
 add_library(libranet::peer ALIAS libranet_peer)
 target_include_directories(libranet_peer PUBLIC ${PROJECT_SOURCE_DIR}/src)
@@ -36,6 +37,7 @@ if(BUILD_TESTING)
         tests/TestPeerConnection.cpp
         tests/TestPeerSearch.cpp
         tests/TestPeerSession.cpp
+        tests/TestPusher.cpp
     )
     target_link_libraries(peer_tests PRIVATE libranet::peer GTest::gtest_main)
     gtest_discover_tests(peer_tests)
