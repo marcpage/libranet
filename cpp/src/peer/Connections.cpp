@@ -40,6 +40,7 @@ using msg::Channel;
 using msg::IMessage;
 using msg::Message;
 using msg::Timer;
+using msg::value_of;
 using net::Address;
 using peer::Connections;
 using peer::PeerConnection;
@@ -69,6 +70,7 @@ using ConnectionFailed = Recorder::ConnectionFailed;
 using ConnectionOpened = Recorder::ConnectionOpened;
 using NodesUpdated = Recorder::NodesUpdated;
 
+
 // The thread takes these events, which stats::Recorder posts from another
 // file, so nothing here would make their messages' virtual to_string(),
 // which value_of() casts to.
@@ -78,14 +80,6 @@ template class msg::Message<NodesUpdated>;
 namespace {
 
 using Milliseconds = Connections::Milliseconds;
-
-// The value message holds, if it is a Type.
-template<typename Type>
-const Type* value_of(const IMessage::Ptr& message) {
-    const auto* const typed = dynamic_cast<const Message<Type>*>(message.get());
-
-    return nullptr == typed ? nullptr : &typed->value();
-}
 
 // interval, once it is known to be more than zero. Throws invalid_argument
 // when it is not.
