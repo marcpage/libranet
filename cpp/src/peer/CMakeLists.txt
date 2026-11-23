@@ -4,6 +4,7 @@ add_library(libranet_peer STATIC
     DialPlan.cpp
     Fetch.cpp
     FirstContact.cpp
+    HandOff.cpp
     NodeListPublisher.cpp
     PeerConnection.cpp
     PeerSearch.cpp
@@ -33,6 +34,7 @@ if(BUILD_TESTING)
         tests/TestDialPlan.cpp
         tests/TestFetch.cpp
         tests/TestFirstContact.cpp
+        tests/TestHandOff.cpp
         tests/TestNodeListPublisher.cpp
         tests/TestPeerConnection.cpp
         tests/TestPeerSearch.cpp
