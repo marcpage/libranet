@@ -422,14 +422,14 @@ bool Connections::_admit(const shared_ptr<PeerSession>& session, const string& e
         Channel::post(ConnectionOpened::name, ConnectionOpened{node_id, endpoint});
     }
 
-    if (refusal.empty()) {
-        lInfo << "Connected to" << node << "at" << endpoint;
-        return true;
+    if (!refusal.empty()) {
+        lInfo << "Closing the connection to" << node << "at" << endpoint + ":" << refusal;
+        session->close();
+        return false;
     }
 
-    lInfo << "Closing the connection to" << node << "at" << endpoint + ":" << refusal;
-    session->close();
-    return false;
+    lInfo << "Connected to" << node << "at" << endpoint;
+    return true;
 }
 
 // Posts the nodes connected now. Called holding m_mutex, so that each list
