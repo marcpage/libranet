@@ -205,6 +205,14 @@ TEST(ResponseTest, Serialization) {
     EXPECT_EQ(serialized, expected);
 }
 
+// A status line without a reason phrase is written without one.
+TEST(ResponseTest, SerializationWithoutAReasonPhrase) {
+    Response response;
+
+    ASSERT_TRUE(response.parse_status_line("HTTP/1.1 299"));
+    EXPECT_EQ(response.to_string(), "HTTP/1.1 299\r\n\r\n");
+}
+
 TEST(ResponseTest, StatusCodeFromAStatus) {
     Response response;
 
@@ -446,7 +454,7 @@ TEST(ResponseTest, ReadOfABadStatusLineThrows) {
 // A length is digits alone (RFC 9110 §8.6), as anything else leaves where
 // the body ends in doubt.
 TEST(ResponseTest, ReadOfALengthNotDigitsThrows) {
-    for (const auto* const length : {"five", "-5", "+5", "5 5", "5, 5", "0x5"}) {
+    for (const auto* const length : {"", "five", "-5", "+5", "5 5", "5, 5", "0x5"}) {
         auto reader = connection_of(std::string("HTTP/1.1 200 OK\r\nContent-Length: ") + length
                                     + "\r\n\r\nhello");
 

@@ -117,4 +117,22 @@ TEST(QueryTest, EmptyNameIsKept) {
     EXPECT_EQ(Query::parse("?" + query.to_string()).to_string(), "=&=");
 }
 
+// Nothing between two '&', or after the last, is no parameter.
+TEST(QueryTest, EmptyPairsAreSkipped) {
+    EXPECT_TRUE(Query::parse("").empty());
+    EXPECT_TRUE(Query::parse("?").empty());
+    EXPECT_EQ(Query::parse("a=1&&b=2").to_string(), "a=1&b=2");
+    EXPECT_EQ(Query::parse("a=1&").to_string(), "a=1");
+}
+
+TEST(QueryTest, NothingToStreamIn) {
+    std::istringstream in_stream("");
+    Query query = Query::parse("a=1");
+
+    in_stream >> query;
+
+    EXPECT_TRUE(in_stream.fail());
+    EXPECT_EQ(query.to_string(), "a=1");
+}
+
 // NOLINTEND(bugprone-unchecked-optional-access)

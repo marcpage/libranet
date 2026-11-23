@@ -125,6 +125,21 @@ TEST(ManagerTest, RemoveTakesFromEverySource) {
     EXPECT_FALSE(manager->remove(identifier));
 }
 
+// What one source removed is removed, though the sources after it hold none.
+TEST(ManagerTest, RemoveFromOneSourceOfTwo) {
+    const auto manager = Manager::create();
+    const auto first = std::make_shared<MemorySource>();
+    const auto second = std::make_shared<MemorySource>();
+    const Identifier identifier("sha256", hello_hash);
+
+    manager->add(first);
+    manager->add(second);
+    first->put(identifier, bytes_of(hello));
+
+    EXPECT_TRUE(manager->remove(identifier));
+    EXPECT_FALSE(manager->has(identifier));
+}
+
 TEST(ManagerTest, RemoveFromNoSourceRemovesNothing) {
     const auto manager = Manager::create();
 

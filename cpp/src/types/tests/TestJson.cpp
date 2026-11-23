@@ -409,3 +409,76 @@ TEST(JsonTest, NonFiniteRealsNotWritten) {
     EXPECT_THROW((void)infinite.dump(), std::domain_error);
     EXPECT_THROW((void)not_a_number.dump(), std::domain_error);
 }
+
+// No arguments make null, and arguments that are not all [key, value] pairs
+// make an array: a pair whose key is not a string, a list of one, or a value
+// that is not a list.
+TEST(JsonTest, InitializerListsThatMakeNoObject) {
+    const Json none(std::initializer_list<Json>{});
+    const Json keys_not_strings = {{1, 2}, {3, 4}};
+    const Json too_short = {{"a", 1}, {"b"}};
+    const Json not_a_list = {{"a", 1}, 1};
+
+    EXPECT_TRUE(none.is_null());
+    EXPECT_TRUE(keys_not_strings.is_array());
+    EXPECT_TRUE(too_short.is_array());
+    EXPECT_TRUE(not_a_list.is_array());
+}
+
+TEST(JsonTest, EmptyArray) {
+    EXPECT_TRUE(Json::parse("[]").empty());
+    EXPECT_FALSE(Json::parse("[1]").empty());
+    EXPECT_FALSE(Json::parse(R"({"a":1})").empty());
+}
+
+TEST(JsonTest, AtFindsMembers) {
+    Json value = {{"a", 1}, {"b", {2, 3}}};
+    const Json& const_value = value;
+
+    EXPECT_EQ(value.at("a").integer(), 1);
+    EXPECT_EQ(const_value.at("a").integer(), 1);
+    EXPECT_EQ(const_value.at("b").at(1).integer(), 3);
+    EXPECT_THROW((void)value.at("c"), std::out_of_range);
+    EXPECT_THROW((void)const_value.at("c"), std::out_of_range);
+    EXPECT_THROW((void)value.at("b").at("a"), std::domain_error);
+    EXPECT_THROW((void)const_value.at("b").at("a"), std::domain_error);
+}
+
+TEST(JsonTest, PrettyPrinted) {
+    const Json value = {{"a", {1, 2}}, {"b", {{"c", true}}}, {"d", Json::Array()}};
+
+    EXPECT_EQ(value.dump(2), "{\n"
+                             "  \"a\": [\n"
+                             "    1,\n"
+                             "    2\n"
+                             "  ],\n"
+                             "  \"b\": {\n"
+                             "    \"c\": true\n"
+                             "  },\n"
+                             "  \"d\": []\n"
+                             "}");
+    EXPECT_EQ(value.dump(), R"({"a":[1,2],"b":{"c":true},"d":[]})");
+    EXPECT_EQ(Json::parse(value.dump(2)), value);
+}
+
+TEST(JsonTest, EveryKindOfWhitespaceSkipped) {
+    EXPECT_EQ(Json::parse("\t[\r\n 1 ,\t2\r]\n"), Json({1, 2}));
+}
+
+TEST(JsonTest, ExponentsWithSigns) {
+    EXPECT_DOUBLE_EQ(Json::parse("1e+2").real(), 100.0);
+    EXPECT_DOUBLE_EQ(Json::parse("1E-2").real(), 0.01);
+    EXPECT_TRUE(refused("1e+"));
+    EXPECT_TRUE(refused("1e999"));
+}
+
+TEST(JsonTest, CodePointsPastTheSurrogates) {
+    EXPECT_EQ(Json::parse(R"("\ue000")").string(), "\xee\x80\x80");
+    EXPECT_EQ(Json::parse(R"("\uffff")").string(), "\xef\xbf\xbf");
+}
+
+TEST(JsonTest, HalfASurrogatePairFollowedByAnotherEscape) {
+    // Another escape than \u, or one past the low surrogates.
+    EXPECT_TRUE(refused(R"("\ud83d\n")"));
+    EXPECT_TRUE(refused(R"("\ud83d\ue000")"));
+}

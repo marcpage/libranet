@@ -402,6 +402,7 @@ TEST(SignatureBaseTest, ComponentNamedTwiceIsRefused) {
 
     EXPECT_TRUE(refused(request, R"(sig=("@method" "@path" "@method"))"));
     EXPECT_TRUE(refused(request, R"(sig=("date" "date"))"));
+    EXPECT_TRUE(refused(response_of(rfc_response), R"(sig=("@status" "@status"))"));
 }
 
 TEST(SignatureBaseTest, ComponentNotTakenIsRefused) {
@@ -450,6 +451,24 @@ TEST(SignatureBaseTest, UnprintableValueIsRefused) {
     EXPECT_TRUE(refused(request, R"(sig=("x-control"))"));
 }
 
+TEST(SignatureBaseTest, UnprintableResponseValueIsRefused) {
+    auto response = response_of(rfc_response);
+
+    response.headers().set("X-Delete", std::string{'a', '\x7F', 'b'});
+
+    EXPECT_TRUE(refused(response, R"(sig=("x-delete"))"));
+}
+
+// RFC 9421 §2.1: a field's value may hold a tab.
+TEST(SignatureBaseTest, TabInValueIsKept) {
+    auto request = request_of(rfc_request);
+
+    request.headers().set("X-Tab", "a\tb");
+
+    EXPECT_EQ(SignatureBase(request, signature_input(R"(sig=("x-tab"))")).to_string(),
+              "\"x-tab\": a\tb\n\"@signature-params\": (\"x-tab\")");
+}
+
 // A target in asterisk form has no path, and one in absolute form is not
 // sent between nodes.
 TEST(SignatureBaseTest, TargetWithoutPathIsRefused) {
@@ -460,6 +479,8 @@ TEST(SignatureBaseTest, TargetWithoutPathIsRefused) {
 
     EXPECT_TRUE(refused(request, R"(sig=("@path"))"));
     request.set_uri("http://example.com/foo");
+    EXPECT_TRUE(refused(request, R"(sig=("@path"))"));
+    request.set_uri("");
     EXPECT_TRUE(refused(request, R"(sig=("@path"))"));
 }
 
