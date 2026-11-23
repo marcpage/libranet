@@ -273,12 +273,13 @@ void Connections::_dial_seeds() {
 
     for (const auto& seed : m_seeds) {
         const auto resting = m_seeds_resting.find(seed.endpoint);
+        const auto resting_found = m_seeds_resting.end() != resting;
         const auto connected = any_of(m_peers.begin(), m_peers.end(), [&seed](const auto& entry) {
             return entry.second.endpoint == seed.endpoint;
         });
 
         if (connected || 0 != m_seeds_dialing.count(seed.endpoint)
-            || (m_seeds_resting.end() != resting && now < resting->second)) {
+            || (resting_found && now < resting->second)) {
             continue;
         }
 
