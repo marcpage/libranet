@@ -21,6 +21,7 @@
 #include "msg/IMessage.hpp"
 #include "msg/Message.hpp"
 #include "storage/DataStored.hpp"
+#include "storage/HashPrefix.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
 #include "types/Converter.hpp"
@@ -44,6 +45,7 @@ using std::string_view;
 using std::to_string;
 using std::vector;
 using storage::DataStored;
+using storage::HashPrefix;
 using storage::IDataSource;
 using storage::Identifier;
 using types::Converter;
@@ -101,6 +103,11 @@ void log_error(const string& text) {
     lErr << text;
 }
 
+// How many leading bits session's node id shares with identifier's hash.
+size_t matching_bits(const PeerSession& session, const Identifier& identifier) {
+    return HashPrefix::parse(session.node_id().hash()).matching_bits(identifier);
+}
+
 // The best outgoing connection for identifier: the open one of sessions
 // whose node id shares the most leading bits with its hash, and the first
 // given of those that share alike. Nothing when none is open.
@@ -113,7 +120,7 @@ Session best_for(const vector<Session>& sessions, const Identifier& identifier) 
             continue;
         }
 
-        const auto bits = session->matching_bits(identifier);
+        const auto bits = matching_bits(*session, identifier);
 
         if (!best || bits > best_bits) {
             best = session;

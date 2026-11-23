@@ -19,6 +19,7 @@
 #include "NodeListPublisher.hpp"
 #include "PeerConnection.hpp"
 #include "PeerSession.hpp"
+#include "SeekFulfiller.hpp"
 #include "http/Url.hpp"
 #include "identity/MessageVerifier.hpp"
 #include "identity/NodeIdentity.hpp"
@@ -29,6 +30,7 @@
 #include "msg/Timer.hpp"
 #include "net/Address.hpp"
 #include "protocol/NodeList.hpp"
+#include "protocol/SeekList.hpp"
 #include "stats/Recorder.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
@@ -46,7 +48,9 @@ using net::Address;
 using peer::Connections;
 using peer::PeerConnection;
 using peer::PeerSession;
+using peer::SeekFulfiller;
 using protocol::NodeList;
+using protocol::SeekList;
 using stats::Recorder;
 using std::any_of;
 using std::exception;
@@ -71,6 +75,7 @@ using CandidatesUpdated = Recorder::CandidatesUpdated;
 using ConnectionFailed = Recorder::ConnectionFailed;
 using ConnectionOpened = Recorder::ConnectionOpened;
 using NodesUpdated = Recorder::NodesUpdated;
+using SeekUpdated = Recorder::SeekUpdated;
 
 
 // The thread takes these events, which stats::Recorder posts from another
@@ -78,6 +83,7 @@ using NodesUpdated = Recorder::NodesUpdated;
 // which value_of() casts to.
 template class msg::Message<CandidatesUpdated>;
 template class msg::Message<NodesUpdated>;
+template class msg::Message<SeekUpdated>;
 
 namespace {
 
@@ -121,11 +127,12 @@ Connections::PeersConnected::operator string() const {
 }
 
 Connections::Connections(const NodeIdentity& identity, const vector<string>& own_endpoints,
-                         IDataSource::Ptr store, MessageVerifier verifier, Settings settings,
+                         const IDataSource::Ptr& store, MessageVerifier verifier, Settings settings,
                          Now now)
     : m_check_interval(checked_interval(settings.check_interval))
     , m_own_id(identity.id())
-    , m_first_contact(identity, std::move(store), std::move(verifier))
+    , m_first_contact(identity, store, std::move(verifier),
+                      make_shared<SeekFulfiller>(store, settings.fulfiller))
     , m_publisher(m_own_id, own_endpoints)
     , m_limits(settings.limits)
     , m_seeds(std::move(settings.seeds))
@@ -133,7 +140,7 @@ Connections::Connections(const NodeIdentity& identity, const vector<string>& own
     , m_now(now)
     , m_plan(m_own_id, settings.sizes, settings.rests, std::move(now))
     , m_own_list(m_own_id, own_endpoints)
-    , m_channel({CandidatesUpdated::name, NodesUpdated::name, check_due},
+    , m_channel({CandidatesUpdated::name, NodesUpdated::name, SeekUpdated::name, check_due},
                 [this](const IMessage::Ptr& message) { _handle(message); }, log_error)
     , m_timer(check_due, m_check_interval) {
     const scoped_lock lock(m_mutex);
@@ -173,6 +180,9 @@ void Connections::_handle(const IMessage::Ptr& message) {
         _maintain();
     } else if (const auto* const nodes = value_of<NodesUpdated>(message)) {
         _take_nodes(nodes->nodes, nodes->added);
+    } else if (const auto* const seek = value_of<SeekUpdated>(message)) {
+        const scoped_lock lock(m_mutex);
+        m_own_seek = seek->seek;
     } else if (nullptr != value_of<Timer::Tick>(message)) {
         _check_closed();
         _maintain();
@@ -362,14 +372,16 @@ bool Connections::_reach(const string& endpoint, const optional<Identifier>& exp
 
     try {
         NodeList own_list;
+        SeekList own_seek;
 
         {
             const scoped_lock lock(m_mutex);
             own_list = m_own_list;
+            own_seek = m_own_seek;
         }
 
         contact.emplace(m_first_contact.make(
-            make_unique<PeerConnection>(address_of(endpoint), m_limits), own_list));
+            make_unique<PeerConnection>(address_of(endpoint), m_limits), own_list, own_seek));
     } catch (const exception& error) {
         lInfo << "Could not reach" << endpoint + ":" << error.what();
 
