@@ -10,6 +10,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -60,6 +61,7 @@ using std::optional;
 using std::scoped_lock;
 using std::shared_ptr;
 using std::string;
+using std::string_view;
 using std::to_string;
 using std::vector;
 using storage::IDataSource;
@@ -401,7 +403,7 @@ bool Connections::_admit(const shared_ptr<PeerSession>& session, const string& e
     const auto& node_id = session->node_id();
     const auto node = node_id.to_string();
     const auto is_this_node = node == m_own_id.to_string();
-    string refusal;
+    string_view refusal;
 
     {
         const scoped_lock lock(m_mutex);
