@@ -21,6 +21,7 @@ target_compile_definitions(libranet_storage PRIVATE ZLIB_CONST)
 
 if(BUILD_TESTING)
     add_executable(storage_tests
+        tests/TestDataDeleted.cpp
         tests/TestDataDir.cpp
         tests/TestDataNotFound.cpp
         tests/TestDataRequested.cpp
