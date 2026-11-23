@@ -31,6 +31,7 @@
 #include "peer/FirstContact.hpp"
 #include "peer/PeerConnection.hpp"
 #include "peer/PeerSession.hpp"
+#include "peer/SeekFulfiller.hpp"
 #include "protocol/NodeList.hpp"
 #include "protocol/SeekList.hpp"
 #include "stats/NodeAddresses.hpp"
@@ -54,6 +55,7 @@ using net::ISocket;
 using peer::FirstContact;
 using peer::PeerConnection;
 using peer::PeerSession;
+using peer::SeekFulfiller;
 using protocol::NodeList;
 using protocol::SeekList;
 using stats::Recorder;
@@ -248,12 +250,21 @@ protected:
         , m_peer(m_directory.path() / "peer.pem", *m_peer_store)
         , m_other(m_directory.path() / "other.pem", *m_store) {}
 
-    // First contact with the node at address, posting own_list().
-    [[nodiscard]] FirstContact::Contact contact_at(const Address& address) const {
-        const FirstContact first_contact(m_this_node, m_store, verifier_of(m_store));
+    // First contact with the node at address, posting own_list(), as this
+    // node seeks what own_seek names.
+    [[nodiscard]] FirstContact::Contact contact_at(const Address& address,
+                                                   const SeekList& own_seek = {}) const {
+        const FirstContact first_contact(m_this_node, m_store, verifier_of(m_store), fulfiller());
 
         return first_contact.make(
-            std::make_unique<PeerConnection>(address, PeerConnection::Limits{}), own_list());
+            std::make_unique<PeerConnection>(address, PeerConnection::Limits{}), own_list(),
+            own_seek);
+    }
+
+    // A fulfiller of what peers seek from this node's store, with the
+    // settings the Python node's are by default.
+    [[nodiscard]] std::shared_ptr<SeekFulfiller> fulfiller() const {
+        return std::make_shared<SeekFulfiller>(m_store, SeekFulfiller::Settings{});
     }
 
     // How the peer answers, each answer signed by it: it takes this node's
@@ -285,9 +296,10 @@ protected:
         return list;
     }
 
-    // What the peer seeks: "hello", and what begins with ab.
+    // What the peer seeks: "hello", and what begins with abcdef, which no
+    // key the tests make is likely to: one in 2^24 shares as many bits.
     [[nodiscard]] static SeekList peer_seek() {
-        return {{Identifier("sha256", fixtures::hello_hash)}, {HashPrefix::parse("ab")}};
+        return {{Identifier("sha256", fixtures::hello_hash)}, {HashPrefix::parse("abcdef")}};
     }
 
     [[nodiscard]] static std::string peer_seek_text() {
@@ -448,7 +460,7 @@ TEST_F(FirstContactTest, PeersSeekListIsGiven) {
     ASSERT_EQ(contact.seek.data().size(), 1U);
     EXPECT_EQ(contact.seek.data().at(0).to_string(), peer_seek().data().at(0).to_string());
     ASSERT_EQ(contact.seek.search().size(), 1U);
-    EXPECT_EQ(contact.seek.search().at(0).to_string(), "ab");
+    EXPECT_EQ(contact.seek.search().at(0).to_string(), "abcdef");
 }
 
 // The peer named itself at localhost, which is the host dialed, and at a
@@ -479,7 +491,124 @@ TEST_F(FirstContactTest, PeersNodeListIsPosted) {
                                }));
 }
 
+// Step 6: what the peer seeks that this node holds is put, once the lists
+// have been swapped.
+TEST_F(FirstContactTest, HeldContentThePeerSeeksIsPut) {
+    hold_peer_key();
+
+    const Identifier hello("sha256", fixtures::hello_hash);
+    auto answers = peer_answers();
+
+    store()->put(hello, fixtures::bytes_of(fixtures::hello));
+    answers["PUT " + data_path(hello)] = signed_by(peer_signer(), answer(Status::Created));
+
+    const StandInNode node(std::move(answers));
+    const auto contact = contact_at(node.address());
+    const auto put = request_named(node, "PUT " + data_path(hello));
+
+    EXPECT_EQ(node.asked(),
+              (std::vector<std::string>{put_line(), "POST /data/nodes", "GET /data/seek",
+                                        "GET /data/nodes", "PUT " + data_path(hello)}));
+    ASSERT_TRUE(put.has_value());
+    EXPECT_EQ(put->body(), fixtures::hello);
+    EXPECT_TRUE(contact.session.is_open());
+}
+
+// Step 7: what this node seeks and does not hold is asked for, and what the
+// peer sends that is the content is kept, as coming from the peer.
+TEST_F(FirstContactTest, ContentThisNodeSeeksIsAskedForAndKept) {
+    hold_peer_key();
+
+    const auto world = Identifier::from(fixtures::bytes_of("world"));
+    auto answers = peer_answers();
+
+    answers["GET " + data_path(world)] = signed_by(peer_signer(), answer(Status::Ok, "world"));
+
+    Channel stored(DataStored::name);
+    const StandInNode node(std::move(answers));
+    const auto contact = contact_at(node.address(), SeekList({world}, {}));
+    const auto posted = stored.next<DataStored>(0ms);
+
+    EXPECT_EQ(node.asked().back(), "GET " + data_path(world));
+    EXPECT_EQ(store()->get(world), fixtures::bytes_of("world"));
+    ASSERT_TRUE(posted.has_value());
+    EXPECT_EQ(posted->identifier.to_string(), world.to_string());
+    ASSERT_TRUE(posted->node.has_value());
+    EXPECT_EQ(posted->node->to_string(), peer().id().to_string());
+    EXPECT_EQ(posted->size, 5U);
+    EXPECT_TRUE(contact.session.is_open());
+}
+
 // NOLINTEND(bugprone-unchecked-optional-access)
+
+TEST_F(FirstContactTest, ContentThisNodeHoldsIsNotAskedFor) {
+    hold_peer_key();
+
+    const auto world = Identifier::from(fixtures::bytes_of("world"));
+
+    store()->put(world, fixtures::bytes_of("world"));
+
+    const StandInNode node(peer_answers());
+    const auto contact = contact_at(node.address(), SeekList({world}, {}));
+
+    EXPECT_EQ(node.asked(), (std::vector<std::string>{put_line(), "POST /data/nodes",
+                                                      "GET /data/seek", "GET /data/nodes"}));
+}
+
+// The peer sends one thing that is not what was asked for, and does not
+// send the other while it looks for it; neither is kept.
+TEST_F(FirstContactTest, ContentNotSentIsNotKept) {
+    hold_peer_key();
+
+    const auto world = Identifier::from(fixtures::bytes_of("world"));
+    const auto there = Identifier::from(fixtures::bytes_of("there"));
+    auto answers = peer_answers();
+
+    answers["GET " + data_path(world)] = signed_by(peer_signer(), answer(Status::Ok, "jello"));
+    answers["GET " + data_path(there)] =
+        signed_by(peer_signer(), answer(Status::ServiceUnavailable));
+
+    Channel stored(DataStored::name);
+    const StandInNode node(std::move(answers));
+    const auto contact = contact_at(node.address(), SeekList({world, there}, {}));
+
+    EXPECT_EQ(node.asked().size(), 6U);
+    EXPECT_FALSE(store()->has(world));
+    EXPECT_FALSE(store()->has(there));
+    EXPECT_FALSE(stored.next<DataStored>(0ms).has_value());
+    EXPECT_TRUE(contact.session.is_open());
+}
+
+// A peer may turn this node away in any answer, here the first of two
+// puts. It is asked for nothing more, and the one dialing it is told.
+TEST_F(FirstContactTest, PeerTurningThisNodeAwayWhileFulfilledIsTold) {
+    hold_peer_key();
+
+    const Identifier hello("sha256", fixtures::hello_hash);
+    const auto world = Identifier::from(fixtures::bytes_of("world"));
+    const auto there = Identifier::from(fixtures::bytes_of("there"));
+    const SeekList sought({hello, world}, {});
+    auto answers = peer_answers();
+    auto closing = answer(Status::Created);
+
+    store()->put(hello, fixtures::bytes_of(fixtures::hello));
+    store()->put(world, fixtures::bytes_of("world"));
+    closing.headers().set("Connection", "close");
+    answers["GET /data/seek"] =
+        signed_by(peer_signer(), answer(Status::Ok, Converter::text_of(sought.write())));
+    answers["PUT " + data_path(hello)] = signed_by(peer_signer(), closing);
+    answers["PUT " + data_path(world)] = signed_by(peer_signer(), answer(Status::Created));
+    answers["GET " + data_path(there)] = signed_by(peer_signer(), answer(Status::Ok, "there"));
+
+    const StandInNode node(std::move(answers));
+    const auto contact = contact_at(node.address(), SeekList({there}, {}));
+    const auto asked = node.asked();
+
+    EXPECT_TRUE(contact.session.was_turned_away());
+    EXPECT_FALSE(contact.session.is_open());
+    EXPECT_EQ(std::count(asked.begin(), asked.end(), "GET " + data_path(there)), 0);
+    EXPECT_FALSE(store()->has(there));
+}
 
 TEST_F(FirstContactTest, ListNamingOnlyThisNodeIsNotPosted) {
     auto answers = peer_answers();
@@ -590,10 +719,13 @@ TEST_F(FirstContactTest, KeyBroughtUnderAnotherSignatureIsRefused) {
     EXPECT_FALSE(stored.next<DataStored>(0ms).has_value());
 }
 
-TEST_F(FirstContactTest, NeedsAStoreAndAConnection) {
-    EXPECT_THROW((void)FirstContact(this_node(), nullptr, verifier()), std::invalid_argument);
+TEST_F(FirstContactTest, NeedsAStoreAFulfillerAndAConnection) {
+    EXPECT_THROW((void)FirstContact(this_node(), nullptr, verifier(), fulfiller()),
+                 std::invalid_argument);
+    EXPECT_THROW((void)FirstContact(this_node(), store(), verifier(), nullptr),
+                 std::invalid_argument);
 
-    const FirstContact first_contact(this_node(), store(), verifier());
+    const FirstContact first_contact(this_node(), store(), verifier(), fulfiller());
 
-    EXPECT_THROW((void)first_contact.make(nullptr, own_list()), std::invalid_argument);
+    EXPECT_THROW((void)first_contact.make(nullptr, own_list(), {}), std::invalid_argument);
 }
