@@ -16,6 +16,7 @@
 
 #include "db/Database.hpp"
 #include "db/tests/Fixtures.hpp"
+#include "eviction/Evictor.hpp"
 #include "msg/Channel.hpp"
 #include "msg/Message.hpp"
 #include "protocol/NodeList.hpp"
@@ -23,6 +24,7 @@
 #include "stats/ContentUses.hpp"
 #include "stats/NodeAddresses.hpp"
 #include "stats/Recorder.hpp"
+#include "storage/DataDeleted.hpp"
 #include "storage/DataNotFound.hpp"
 #include "storage/DataRequested.hpp"
 #include "storage/DataStored.hpp"
@@ -31,6 +33,7 @@
 
 using db::Database;
 using db::SqliteError;
+using eviction::Evictor;
 using fixtures::ScratchDirectory;
 using msg::Channel;
 using protocol::NodeList;
@@ -38,6 +41,7 @@ using protocol::SeekList;
 using stats::ContentUses;
 using stats::NodeAddresses;
 using stats::Recorder;
+using storage::DataDeleted;
 using storage::DataNotFound;
 using storage::DataRequested;
 using storage::DataStored;
@@ -51,10 +55,12 @@ using namespace std::chrono_literals;
 template class msg::Message<Recorder::NodesUpdated>;
 template class msg::Message<Recorder::CandidatesUpdated>;
 template class msg::Message<Recorder::SeekUpdated>;
+template class msg::Message<Evictor::Candidates>;
 
 namespace {
 
 using Candidate = NodeAddresses::Candidate;
+using CandidatesRequested = Evictor::CandidatesRequested;
 using CandidatesUpdated = Recorder::CandidatesUpdated;
 using Clock = Recorder::Clock;
 using ConnectionFailed = Recorder::ConnectionFailed;
@@ -87,8 +93,10 @@ constexpr auto derive_interval = 2ms;
 // How long the tests seek each entry for.
 constexpr auto seek_entry_ttl = 10s;
 
-// How many bytes the content the tests store takes.
+// How many bytes the content the tests store takes, and as much as content
+// may take (HighLevelDesign §4.3).
 constexpr std::size_t stored_size = 5;
+constexpr std::size_t largest_size = 1'048'576;
 
 // When the tests' clock starts, in whole seconds, as the table keeps times
 // to the millisecond. With every time the same, the lists are in the order
@@ -205,6 +213,10 @@ protected:
     [[nodiscard]] SeekUpdated next_seek();
     // Whether no list is posted for a while.
     [[nodiscard]] bool quiet();
+    // The identifier and size of each object the recorder answers request
+    // with, in order. Throws std::runtime_error if it does not answer in
+    // time.
+    [[nodiscard]] Texts answer_to(CandidatesRequested request);
     // The addresses of the node of digit, read from the database once the
     // recorder has stopped.
     [[nodiscard]] std::vector<NodeAddresses::Address> addresses_of(char digit) const;
@@ -217,6 +229,7 @@ private:
     Channel m_nodes{NodesUpdated::name};
     Channel m_candidates{CandidatesUpdated::name};
     Channel m_seek{SeekUpdated::name};
+    Channel m_answers{Evictor::Candidates::name};
     // How far the clock has moved on from start.
     std::atomic<std::int64_t> m_elapsed_milliseconds{0};
     std::unique_ptr<Recorder> m_recorder;
@@ -275,6 +288,23 @@ bool RecorderTest::quiet() {
     return !nodes && !candidates && !seek;
 }
 
+Texts RecorderTest::answer_to(CandidatesRequested request) {
+    Channel::post(CandidatesRequested::name, std::move(request));
+
+    const auto answer = m_answers.next<Evictor::Candidates>(post_timeout);
+    Texts objects;
+
+    if (!answer) {
+        throw std::runtime_error("No candidates were listed");
+    }
+
+    std::transform(answer->objects.begin(), answer->objects.end(), std::back_inserter(objects),
+                   [](const Evictor::Held& object) {
+        return object.identifier.to_string() + " " + std::to_string(object.size);
+    });
+    return objects;
+}
+
 std::vector<NodeAddresses::Address> RecorderTest::addresses_of(char digit) const {
     Database database(m_directory.database(), NodeAddresses::schema);
     const NodeAddresses addresses(database, NodeAddresses::Limits());
@@ -300,6 +330,30 @@ StartedRecorderTest::StartedRecorderTest() {
     (void)next_nodes();
     (void)next_candidates();
     (void)next_seek();
+}
+
+// The identifier and size of the content of digit, as a list of what to
+// let go of names it.
+std::string listed(char digit, std::size_t size) {
+    return content(digit).to_string() + " " + std::to_string(size);
+}
+
+// Has the recorder hold, all stored now: b and c, small and never asked
+// for, alike but for their hashes; d, as large as content may be; e, small
+// and asked for twice; f, deleted since; and this node's own key. None of
+// their hashes shares a leading bit with this node's id, so how far each
+// is plays no part, and none has gone unused for any time, so neither does
+// that.
+void store_to_rank() {
+    Channel::post(DataStored::name, DataStored{content('c'), std::nullopt, stored_size});
+    Channel::post(DataStored::name, DataStored{content('b'), std::nullopt, stored_size});
+    Channel::post(DataStored::name, DataStored{content('d'), std::nullopt, largest_size});
+    Channel::post(DataStored::name, DataStored{content('e'), std::nullopt, stored_size});
+    Channel::post(DataRequested::name, DataRequested{content('e')});
+    Channel::post(DataRequested::name, DataRequested{content('e')});
+    Channel::post(DataStored::name, DataStored{content('f'), std::nullopt, stored_size});
+    Channel::post(DataDeleted::name, DataDeleted{content('f'), stored_size});
+    Channel::post(DataStored::name, DataStored{own_id(), std::nullopt, stored_size});
 }
 
 } // namespace
@@ -439,6 +493,50 @@ TEST_F(StartedRecorderTest, HowContentIsUsedIsRecorded) {
     EXPECT_FALSE(uses_of('e').has_value());
 }
 
+TEST_F(StartedRecorderTest, ContentDeletedIsRecorded) {
+    Channel::post(DataStored::name, DataStored{content('c'), std::nullopt, stored_size});
+    Channel::post(DataDeleted::name, DataDeleted{content('c'), stored_size});
+    Channel::post(ConnectionOpened::name, ConnectionOpened{node('a'), std::string(first)});
+    (void)next_nodes();
+    stop_recording();
+
+    const auto deleted = uses_of('c').value_or(ContentUses::Uses());
+
+    EXPECT_FALSE(deleted.size.has_value());
+    EXPECT_EQ(deleted.last_stored, start);
+}
+
+// Small content never asked for scores highest, then content of 1 MiB,
+// whose size counts for a tenth, then content asked for most, which counts
+// for a hundredth (eviction::Score).
+TEST_F(StartedRecorderTest, WhatIsHeldIsListedInTheOrderToLetItGo) {
+    store_to_rank();
+
+    EXPECT_EQ(answer_to({largest_size * 2, {}}),
+              (Texts{listed('b', stored_size), listed('c', stored_size),
+                     listed('d', largest_size), listed('e', stored_size)}));
+}
+
+TEST_F(StartedRecorderTest, OnlyAsMuchIsListedAsFreesTheBytesAskedFor) {
+    store_to_rank();
+
+    EXPECT_EQ(answer_to({stored_size + 1, {}}),
+              (Texts{listed('b', stored_size), listed('c', stored_size)}));
+    EXPECT_EQ(answer_to({1, {content('b'), content('c')}}), Texts{listed('d', largest_size)});
+    EXPECT_TRUE(answer_to({1, {content('b'), content('c'), content('d'), content('e')}}).empty());
+}
+
+TEST_F(RecorderTest, NoMoreAreListedThanMayBe) {
+    auto settings = test_settings();
+
+    settings.max_candidates = 2;
+    start_recording(settings);
+    store_to_rank();
+
+    EXPECT_EQ(answer_to({largest_size * 2, {}}),
+              (Texts{listed('b', stored_size), listed('c', stored_size)}));
+}
+
 TEST_F(StartedRecorderTest, KeepsRecordingAfterAnEventItCannotRecord) {
     Channel::post(ConnectionOpened::name, ConnectionOpened{node('a'), "not an endpoint"});
     Channel::post(ConnectionOpened::name, ConnectionOpened{node('b'), std::string(third)});
@@ -536,6 +634,7 @@ TEST(RecorderSettingsTest, WhatItCannotUseIsRefused) {
     EXPECT_TRUE(refused(directory, own_endpoints, {derive_interval, {}, -1ms}));
     EXPECT_TRUE(refused(directory, own_endpoints, test_settings({0, 1})));
     EXPECT_TRUE(refused(directory, own_endpoints, test_settings({1, 0})));
+    EXPECT_TRUE(refused(directory, own_endpoints, {derive_interval, {}, seek_entry_ttl, 0}));
 }
 
 TEST(RecorderSettingsTest, ADatabaseThatCannotBeOpenedIsRefused) {

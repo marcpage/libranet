@@ -7,6 +7,7 @@ add_library(libranet::stats ALIAS libranet_stats)
 target_include_directories(libranet_stats PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(libranet_stats PUBLIC
     libranet::db
+    libranet::eviction
     libranet::logger
     libranet::msg
     libranet::protocol

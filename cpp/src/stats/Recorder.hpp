@@ -25,15 +25,25 @@ namespace stats {
 // What the node remembers of the network, kept in its database, which only
 // this opens. From a thread of its own, it records the addresses each node
 // list received names and what came of each dial; how content is used
-// (ContentUses), from each storage::DataStored and storage::DataRequested;
-// and what the node seeks (Sought): the content each data.not_found names,
-// until a data.stored names it, and the prefix of each search. Every derive
-// interval it derives the node list (HttpApi §10.6), the candidates to dial
-// (NodeAddresses), and the seek list (§10.7.1), posting each when it has
-// changed. The seek list is posted at once, too, when an event changes what
-// it names, so that the peers reading it learn of the change as soon as
-// they can. The first derivation is made as the thread starts, and posts
-// all three, so that what takes them knows them from the start.
+// (ContentUses), from each storage::DataStored, storage::DataRequested, and
+// storage::DataDeleted; and what the node seeks (Sought): the content each
+// data.not_found names, until a data.stored names it, and the prefix of
+// each search. Every derive interval it derives the node list (HttpApi
+// §10.6), the candidates to dial (NodeAddresses), and the seek list
+// (§10.7.1), posting each when it has changed. The seek list is posted at
+// once, too, when an event changes what it names, so that the peers reading
+// it learn of the change as soon as they can. The first derivation is made
+// as the thread starts, and posts all three, so that what takes them knows
+// them from the start.
+//
+// Asked for the objects to let go of first
+// (eviction::Evictor::CandidatesRequested), it ranks what is held,
+// measured against all of it, its own key aside, as eviction::Score
+// scores it, ties in order of hash, then algorithm, as the Python node
+// orders them. It answers with eviction.candidates, listing those first
+// until their sizes add up to the bytes asked for, or the list holds
+// storage.max_candidates, leaving out its own key and those the request
+// names.
 //
 // The events it takes and posts are below, each under its name, as the
 // Python node names it where it has the same event. An event is a plain
@@ -129,22 +139,25 @@ public:
 
     // NOLINTEND(*-non-private-member-variables-in-classes)
 
-    // What stats.derive_interval_seconds is when not set, as the Python
-    // node's is.
+    // What stats.derive_interval_seconds and storage.max_candidates are when
+    // not set, as the Python node's are.
     static constexpr Milliseconds default_derive_interval{60'000};
+    static constexpr std::size_t default_max_candidates = 256;
 
     struct Settings {
         Milliseconds derive_interval = default_derive_interval; // stats.derive_interval_seconds
         NodeAddresses::Limits limits;
         Milliseconds seek_entry_ttl = Sought::default_entry_ttl; // stats.seek_entry_ttl_seconds
+        std::size_t max_candidates = default_max_candidates;     // storage.max_candidates
     };
 
     // Opens the database at database_path, making it and its tables if they
     // are missing, and starts the thread. own_id and own_endpoints are this
     // node's, which the node list names first. Throws std::invalid_argument
     // for an own endpoint that is not one, a derive interval or seek entry
-    // ttl that is not more than zero, a limit less than 1, or now with no
-    // function; and db::SqliteError when the database cannot be opened.
+    // ttl that is not more than zero, a limit or max candidates less than 1,
+    // or now with no function; and db::SqliteError when the database cannot
+    // be opened.
     Recorder(const std::filesystem::path& database_path, storage::Identifier own_id,
              std::vector<std::string> own_endpoints, Settings settings,
              Now now = &Clock::now);
@@ -163,6 +176,12 @@ private:
     storage::Identifier m_own_id;
     std::vector<std::string> m_own_endpoints;
     Milliseconds m_derive_interval;
+    // Mistaken: the constructor sets m_max_candidates. cppcheck loses the
+    // class's constructor in Recorder.cpp, which names it with
+    // `using stats::Recorder;`.
+    // cppcheck-suppress uninitMemberVarPrivate
+    std::size_t m_max_candidates;
+    Now m_now;
     db::Database m_database;
     // Mistaken: the constructor sets m_addresses. cppcheck loses
     // NodeAddresses's constructors, as NodeAddresses.hpp says.

@@ -1,12 +1,16 @@
 #include "Recorder.hpp"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <iterator>
 #include <map>
+#include <optional>
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -14,6 +18,8 @@
 #include "NodeAddresses.hpp"
 #include "Sought.hpp"
 #include "db/Database.hpp"
+#include "eviction/Evictor.hpp"
+#include "eviction/Score.hpp"
 #include "logger/Logger.hpp"
 #include "msg/Channel.hpp"
 #include "msg/IMessage.hpp"
@@ -21,12 +27,16 @@
 #include "msg/Timer.hpp"
 #include "protocol/NodeList.hpp"
 #include "protocol/SeekList.hpp"
+#include "storage/DataDeleted.hpp"
 #include "storage/DataNotFound.hpp"
 #include "storage/DataRequested.hpp"
 #include "storage/DataStored.hpp"
+#include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
 
 using db::Database;
+using eviction::Evictor;
+using eviction::Score;
 using msg::Channel;
 using msg::IMessage;
 using msg::Message;
@@ -39,28 +49,39 @@ using stats::NodeAddresses;
 using stats::Recorder;
 using stats::Sought;
 using std::back_inserter;
+using std::copy_if;
 using std::equal;
 using std::inserter;
 using std::invalid_argument;
 using std::map;
+using std::max;
+using std::optional;
 using std::pair;
 using std::set;
+using std::size_t;
+using std::stable_sort;
 using std::string;
+using std::tie;
 using std::to_string;
 using std::transform;
+using std::uintmax_t;
 using std::vector;
 using std::filesystem::path;
+using storage::DataDeleted;
 using storage::DataNotFound;
 using storage::DataRequested;
 using storage::DataStored;
+using storage::HashPrefix;
 using storage::Identifier;
 
 // The thread takes these events, which others post from other files, so
 // nothing here would make their messages' virtual to_string(), which
 // value_of() casts to.
+template class msg::Message<DataDeleted>;
 template class msg::Message<DataNotFound>;
 template class msg::Message<DataRequested>;
 template class msg::Message<DataStored>;
+template class msg::Message<Evictor::CandidatesRequested>;
 template class msg::Message<Recorder::ConnectionFailed>;
 template class msg::Message<Recorder::ConnectionOpened>;
 template class msg::Message<Recorder::NodesReceived>;
@@ -69,8 +90,18 @@ template class msg::Message<Recorder::SearchRequested>;
 namespace {
 
 using Candidate = NodeAddresses::Candidate;
+using CandidatesRequested = Evictor::CandidatesRequested;
+using Clock = Recorder::Clock;
+using Held = ContentUses::Held;
 using Milliseconds = Recorder::Milliseconds;
 using Source = NodeAddresses::Source;
+using Uses = ContentUses::Uses;
+
+// An object held, and how soon it goes.
+struct Scored {
+    double score = 0.0;
+    Held held;
+};
 
 // Runs record in a transaction of its own on database, so that what it
 // records is kept whole or not at all.
@@ -194,6 +225,119 @@ Milliseconds checked_interval(Milliseconds interval) {
     return interval;
 }
 
+// most, once it is known to be at least 1. Throws invalid_argument, naming
+// the setting, when it is not.
+size_t checked_max_candidates(size_t most) {
+    if (most < 1) {
+        throw invalid_argument("storage.max_candidates must be at least 1");
+    }
+
+    return most;
+}
+
+// When uses says its object was last used: asked for or stored, whichever
+// was later.
+optional<Clock::time_point> last_used(const Uses& uses) {
+    if (!uses.last_requested || !uses.last_stored) {
+        return uses.last_requested ? uses.last_requested : uses.last_stored;
+    }
+
+    return max(*uses.last_requested, *uses.last_stored);
+}
+
+// The extremes of held, at now, that each of it is scored against, with
+// node the node id's hash.
+Score::Extremes extremes_of(const vector<Held>& held, const HashPrefix& node,
+                            Clock::time_point now) {
+    Score::Extremes extremes;
+
+    for (const auto& object : held) {
+        const auto used = last_used(object.uses);
+
+        if (used) {
+            extremes.longest_unused = max(extremes.longest_unused, now - *used);
+        }
+
+        extremes.most_requests = max(extremes.most_requests, object.uses.requests);
+        extremes.most_matching_bits =
+            max(extremes.most_matching_bits, node.matching_bits(object.identifier));
+    }
+
+    return extremes;
+}
+
+// Whether left goes before right: it scores higher, or as high with a hash,
+// then an algorithm, that sorts first.
+bool goes_before(const Scored& left, const Scored& right) {
+    if (left.score != right.score) {
+        return left.score > right.score;
+    }
+
+    const auto& one = left.held.identifier;
+    const auto& other = right.held.identifier;
+
+    return tie(one.hash(), one.algorithm()) < tie(other.hash(), other.algorithm());
+}
+
+// held, but for the object identifier names.
+vector<Held> but_for(const vector<Held>& held, const Identifier& identifier) {
+    const auto name = identifier.to_string();
+    vector<Held> others;
+
+    copy_if(held.begin(), held.end(), back_inserter(others),
+            [&name](const Held& object) { return object.identifier.to_string() != name; });
+    return others;
+}
+
+// What held holds, but for own_id's key, in the order to let it go, at now.
+vector<Scored> ranked(const vector<Held>& held, const Identifier& own_id, Clock::time_point now) {
+    const auto others = but_for(held, own_id);
+    const Score score(own_id, now, extremes_of(others, HashPrefix::parse(own_id.hash()), now));
+    vector<Scored> scored;
+
+    transform(others.begin(), others.end(), back_inserter(scored), [&score](const Held& object) {
+        const auto& uses = object.uses;
+        const auto soon = score.of(object.identifier, uses.size.value_or(0), uses.requests,
+                                   last_used(uses));
+
+        return Scored{soon, object};
+    });
+    stable_sort(scored.begin(), scored.end(), goes_before);
+    return scored;
+}
+
+// The objects held to let go of first, at now, but for own_id's key and
+// those asked names: enough to free the bytes asked for, or most.
+Evictor::Candidates candidates_for(const ContentUses& content_uses, const Identifier& own_id,
+                                   Clock::time_point now, const CandidatesRequested& asked,
+                                   size_t most) {
+    set<string> excluded;
+    Evictor::Candidates candidates;
+    uintmax_t covered = 0;
+
+    transform(asked.exclude.begin(), asked.exclude.end(), inserter(excluded, excluded.end()),
+              [](const Identifier& identifier) { return identifier.to_string(); });
+
+    for (const auto& [score, object] : ranked(content_uses.held(), own_id, now)) {
+        if (candidates.objects.size() >= most) {
+            break;
+        }
+
+        if (0 != excluded.count(object.identifier.to_string())) {
+            continue;
+        }
+
+        candidates.objects.push_back({object.identifier, object.uses.size.value_or(0)});
+        covered += candidates.objects.back().size;
+
+        if (covered >= asked.bytes) {
+            break;
+        }
+    }
+
+    return candidates;
+}
+
 // Reports what the thread could not handle.
 void log_error(const string& text) {
     lErr << text;
@@ -244,14 +388,18 @@ Recorder::Recorder(const path& database_path, Identifier own_id, vector<string> 
     : m_own_id(std::move(own_id))
     , m_own_endpoints(checked_endpoints(m_own_id, std::move(own_endpoints)))
     , m_derive_interval(checked_interval(settings.derive_interval))
+    , m_max_candidates(checked_max_candidates(settings.max_candidates))
+    , m_now(now)
     , m_database(database_path, schema())
     , m_addresses(m_database, settings.limits, now)
     , m_content_uses(m_database, now)
     , m_sought(m_database, settings.seek_entry_ttl, std::move(now))
     , m_node_list(m_own_id, m_own_endpoints)
     , m_channel({
+                    CandidatesRequested::name,
                     ConnectionFailed::name,
                     ConnectionOpened::name,
+                    DataDeleted::name,
                     DataNotFound::name,
                     DataRequested::name,
                     DataStored::name,
@@ -290,6 +438,11 @@ void Recorder::_handle(const IMessage::Ptr& message) {
             _post_seek_list();
         }
         m_content_uses.record_stored(stored->identifier, stored->size);
+    } else if (const auto* const deleted = value_of<DataDeleted>(message)) {
+        m_content_uses.record_deleted(deleted->identifier);
+    } else if (const auto* const asked = value_of<CandidatesRequested>(message)) {
+        Channel::post(Evictor::Candidates::name, candidates_for(m_content_uses, m_own_id, m_now(),
+                                                                *asked, m_max_candidates));
     } else if (nullptr != value_of<Timer::Tick>(message)) {
         _derive();
     } else {
