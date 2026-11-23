@@ -16,6 +16,7 @@
 #include "identity/MessageSigner.hpp"
 #include "identity/MessageVerifier.hpp"
 #include "net/Address.hpp"
+#include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
 
 using http::Request;
@@ -28,9 +29,11 @@ using std::future;
 using std::invalid_argument;
 using std::nullopt;
 using std::optional;
+using std::size_t;
 using std::string;
 using std::string_view;
 using std::vector;
+using storage::HashPrefix;
 using storage::Identifier;
 
 namespace {
@@ -102,7 +105,7 @@ vector<Response> PeerSession::exchange(vector<Request> requests) {
     }
 
     // Each is checked as it comes, while its signature is fresh.
-    for (std::size_t index = 0; index < answers.size(); ++index) {
+    for (size_t index = 0; index < answers.size(); ++index) {
         auto answer = answers.at(index).get();
 
         _check(answer, asked.at(index));
@@ -130,6 +133,10 @@ bool PeerSession::was_turned_away() const {
 
 void PeerSession::close() {
     m_connection->close();
+}
+
+size_t PeerSession::matching_bits(const Identifier& identifier) const {
+    return HashPrefix::parse(node_id().hash()).matching_bits(identifier);
 }
 
 // Ends the session, and throws Unauthenticated, unless answer is shown to
