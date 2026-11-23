@@ -31,6 +31,7 @@ using msg::Channel;
 using msg::IMessage;
 using msg::Message;
 using msg::Timer;
+using msg::value_of;
 using protocol::NodeList;
 using protocol::SeekList;
 using stats::ContentUses;
@@ -70,14 +71,6 @@ namespace {
 using Candidate = NodeAddresses::Candidate;
 using Milliseconds = Recorder::Milliseconds;
 using Source = NodeAddresses::Source;
-
-// The value message holds, if it is a Type.
-template<typename Type>
-const Type* value_of(const IMessage::Ptr& message) {
-    const auto* const typed = dynamic_cast<const Message<Type>*>(message.get());
-
-    return nullptr == typed ? nullptr : &typed->value();
-}
 
 // Runs record in a transaction of its own on database, so that what it
 // records is kept whole or not at all.

@@ -5,6 +5,7 @@ add_library(libranet_api STATIC
     NodesHandler.cpp
     SearchHandler.cpp
     SeekHandler.cpp
+    Service.cpp
     SignatureGuard.cpp)
 add_library(libranet::api ALIAS libranet_api)
 target_include_directories(libranet_api PUBLIC ${PROJECT_SOURCE_DIR}/src)
@@ -25,6 +26,7 @@ if(BUILD_TESTING)
         tests/TestNodesHandler.cpp
         tests/TestSearchHandler.cpp
         tests/TestSeekHandler.cpp
+        tests/TestService.cpp
         tests/TestSignatureGuard.cpp)
     target_link_libraries(api_tests PRIVATE libranet::api GTest::gtest_main)
     gtest_discover_tests(api_tests)

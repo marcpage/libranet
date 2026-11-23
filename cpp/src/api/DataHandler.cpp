@@ -45,6 +45,7 @@ using namespace std::string_view_literals;
 
 namespace {
 
+using Seconds = api::DataHandler::Seconds;
 using Status = ResponseCode::Status;
 
 // The algorithm and hash a path names, not yet checked.
@@ -125,6 +126,33 @@ optional<Identifier> identifier_of(DataPath path, Response& response) {
     }
 }
 
+// retry_after, once checked, as the Python node checks it.
+Seconds checked(Seconds retry_after) {
+    if (retry_after < Seconds::zero()) {
+        throw invalid_argument("network.retry_after_seconds is less than zero");
+    }
+
+    return retry_after;
+}
+
+// Answers 503 for content not held yet, which the node looks for, telling
+// the client to ask again after retry_after (HttpApi §5.2), and that the
+// answer is not to be kept, as a retry is meant to find the content
+// (HttpApi §20). The problem's retry_after repeats Retry-After (HttpApi
+// §17.2).
+void answer_unavailable(Seconds retry_after, Response& response) {
+    const Problem problem(Problem::Type::ContentUnavailable, Status::ServiceUnavailable,
+                          "The content is not stored here yet; it is being looked for.");
+    auto body = problem.to_json();
+    const auto seconds = retry_after.count();
+
+    body["retry_after"] = seconds;
+    problem.answer(response);
+    response.set_body(body.dump());
+    response.headers().set("Retry-After", to_string(seconds));
+    response.headers().set("Cache-Control", "no-store");
+}
+
 // Answers 413 for a body of size bytes, larger than a PUT may have.
 void answer_too_large(size_t size, Response& response) {
     Problem(Problem::Type::ContentTooLarge, Status::PayloadTooLarge,
@@ -146,9 +174,12 @@ void answer_not_content(const Identifier& identifier, size_t limit, Response& re
 
 namespace api {
 
-DataHandler::DataHandler(IDataSource::Ptr store, size_t content_bytes)
+DataHandler::DataHandler(IDataSource::Ptr store, size_t content_bytes, Seconds retry_after,
+                         IsHeldOff is_held_off)
     : m_store(std::move(store))
-    , m_content_bytes(content_bytes) {}
+    , m_content_bytes(content_bytes)
+    , m_retry_after(checked(retry_after))
+    , m_is_held_off(std::move(is_held_off)) {}
 
 void DataHandler::operator()(const Request& request, Response& response,
                              const ConnectionInfo& connection) const {
@@ -179,16 +210,23 @@ void DataHandler::operator()(const Request& request, Response& response,
     }
 }
 
-// The body stored, as it was put; or 404, telling the node's other parts
-// that the content was needed. Either way, tells them it was asked for.
+// The body stored, as it was put; or 503, telling the node's other parts
+// that the content was needed, so that they look for it; or 404, while a
+// search for it is held off. Either way, tells them it was asked for.
 void DataHandler::_get(const Identifier& identifier, Response& response) const {
     const auto body = m_store->get(identifier);
 
     Channel::post(DataRequested::name, DataRequested{identifier});
 
+    if (!body && m_is_held_off && m_is_held_off(identifier)) {
+        Problem(Status::NotFound, "The content is not stored here, and was not found lately.")
+            .answer(response);
+        return;
+    }
+
     if (!body) {
         Channel::post(DataNotFound::name, DataNotFound{identifier});
-        Problem(Status::NotFound, "The content is not stored here.").answer(response);
+        answer_unavailable(m_retry_after, response);
         return;
     }
 
