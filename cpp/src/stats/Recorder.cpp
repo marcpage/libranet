@@ -292,15 +292,15 @@ vector<Held> but_for(const vector<Held>& held, const Identifier& identifier) {
 // What held holds, but for own_id's key, in the order to let it go, at now.
 vector<Scored> ranked(const vector<Held>& held, const Identifier& own_id, Clock::time_point now) {
     const auto others = but_for(held, own_id);
-    const Score score(own_id, now, extremes_of(others, HashPrefix::parse(own_id.hash()), now));
+    const Score scoring(own_id, now, extremes_of(others, HashPrefix::parse(own_id.hash()), now));
     vector<Scored> scored;
 
-    transform(others.begin(), others.end(), back_inserter(scored), [&score](const Held& object) {
+    transform(others.begin(), others.end(), back_inserter(scored), [&scoring](const Held& object) {
         const auto& uses = object.uses;
-        const auto soon = score.of(object.identifier, uses.size.value_or(0), uses.requests,
-                                   last_used(uses));
+        const auto score = scoring.of(object.identifier, uses.size.value_or(0), uses.requests,
+                                      last_used(uses));
 
-        return Scored{soon, object};
+        return Scored{score, object};
     });
     stable_sort(scored.begin(), scored.end(), goes_before);
     return scored;
