@@ -6,7 +6,6 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "PeerSession.hpp"
 #include "http/Request.hpp"
@@ -22,8 +21,6 @@ using std::invalid_argument;
 using std::nullopt;
 using std::optional;
 using std::string;
-using std::vector;
-using storage::HashPrefix;
 using std::string_view;
 using storage::IDataSource;
 using storage::Identifier;
@@ -32,9 +29,6 @@ using types::data_path_prefix;
 using types::octet_stream_content_type;
 
 namespace {
-
-// The type of content put (HttpApi §7).
-constexpr string_view octet_stream = "application/octet-stream";
 
 // A PUT of body, as identifier's content (HttpApi §7).
 Request offer_of(const Identifier& identifier, string body) {
