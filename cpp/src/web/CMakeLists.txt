@@ -15,7 +15,7 @@ target_link_libraries(libranet_web PUBLIC
 
 if(BUILD_TESTING)
     add_executable(web_tests
-        tests/TestConnection.cpp
+        tests/TestConnectionInfo.cpp
         tests/TestServer.cpp
     )
     target_link_libraries(web_tests PRIVATE libranet::web GTest::gtest_main)

@@ -38,14 +38,14 @@ std::string node_of(const ConnectionInfo& connection) {
 
 } // namespace
 
-TEST(ConnectionTest, KeepsTheAddressItCameFrom) {
+TEST(ConnectionInfoTest, KeepsTheAddressItCameFrom) {
     const auto connection = from_remote();
 
     EXPECT_EQ(connection.remote_address().host(), remote_host);
     EXPECT_EQ(connection.remote_address().port(), remote_port);
 }
 
-TEST(ConnectionTest, CountsEachRequest) {
+TEST(ConnectionInfoTest, CountsEachRequest) {
     auto connection = from_remote();
 
     EXPECT_EQ(connection.requests(), 0U);
@@ -58,7 +58,7 @@ TEST(ConnectionTest, CountsEachRequest) {
     EXPECT_EQ(connection.requests(), 3U);
 }
 
-TEST(ConnectionTest, KnowsNoNodeUntilOneIsSet) {
+TEST(ConnectionInfoTest, KnowsNoNodeUntilOneIsSet) {
     const auto connection = from_remote();
 
     EXPECT_FALSE(connection.node().has_value());
@@ -66,7 +66,7 @@ TEST(ConnectionTest, KnowsNoNodeUntilOneIsSet) {
 
 // The node set last is the one known, as a later request may be signed by
 // another.
-TEST(ConnectionTest, KnowsTheNodeSetLast) {
+TEST(ConnectionInfoTest, KnowsTheNodeSetLast) {
     auto connection = from_remote();
 
     connection.set_node(Identifier::parse(first_node));
@@ -76,7 +76,7 @@ TEST(ConnectionTest, KnowsTheNodeSetLast) {
     EXPECT_EQ(node_of(connection), second_node);
 }
 
-TEST(ConnectionTest, StaysOpenUntilClosedAfterTheAnswer) {
+TEST(ConnectionInfoTest, StaysOpenUntilClosedAfterTheAnswer) {
     auto connection = from_remote();
 
     EXPECT_FALSE(connection.is_closing());
