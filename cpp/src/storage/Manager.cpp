@@ -44,7 +44,7 @@ void Manager::scan(const path& directory) {
         return;
     }
 
-    for (auto const& dir_entry : directory_iterator(directory)) {
+    for (const auto& dir_entry : directory_iterator(directory)) {
         if (dir_entry.is_directory()) {
             add(dir_entry.path());
         }
