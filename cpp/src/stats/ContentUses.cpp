@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "db/Database.hpp"
 #include "db/Statement.hpp"
@@ -21,6 +22,7 @@ using std::nullopt;
 using std::optional;
 using std::size_t;
 using std::string_view;
+using std::vector;
 using std::chrono::duration_cast;
 using std::chrono::milliseconds;
 using storage::Identifier;
@@ -28,14 +30,17 @@ using storage::Identifier;
 namespace {
 
 using Clock = ContentUses::Clock;
+using Held = ContentUses::Held;
 using Uses = ContentUses::Uses;
 
-// The columns uses_sql reads, in the order it reads them.
+// The columns uses_sql and held_sql read, in the order they read them:
+// held_sql reads the identifier after the rest.
 enum class Column : std::uint8_t {
     Size,
     LastStored,
     LastRequested,
     Requests,
+    Identifier,
 };
 
 // Records content stored: ?1 is its identifier, ?2 its size, and ?3 when.
@@ -50,9 +55,16 @@ constexpr string_view requested_sql =
     "ON CONFLICT (identifier) DO UPDATE SET last_requested = excluded.last_requested, "
     "requests = requests + 1";
 
+// Records content no longer held: ?1 is its identifier.
+constexpr string_view deleted_sql = "UPDATE content_uses SET size = NULL WHERE identifier = ?1";
+
 // What is known of the content ?1.
 constexpr string_view uses_sql = "SELECT size, last_stored, last_requested, requests "
                                  "FROM content_uses WHERE identifier = ?1";
+
+// What is known of each object held, and its identifier.
+constexpr string_view held_sql = "SELECT size, last_stored, last_requested, requests, identifier "
+                                 "FROM content_uses WHERE size IS NOT NULL";
 
 // The milliseconds since the Unix epoch of time, as the table holds a time.
 int64_t milliseconds_of(Clock::time_point time) {
@@ -82,6 +94,16 @@ optional<size_t> optional_size(const Statement& statement) {
     return static_cast<size_t>(statement.integer(place_of(Column::Size)));
 }
 
+// What the row statement is on says is known of its content.
+Uses uses_in(const Statement& statement) {
+    return Uses{
+        optional_size(statement),
+        optional_time(statement, Column::LastStored),
+        optional_time(statement, Column::LastRequested),
+        statement.integer(place_of(Column::Requests)),
+    };
+}
+
 } // namespace
 
 namespace stats {
@@ -109,6 +131,13 @@ void ContentUses::record_requested(const Identifier& identifier) {
     (void)statement.step();
 }
 
+void ContentUses::record_deleted(const Identifier& identifier) {
+    Statement statement(*m_database, deleted_sql);
+
+    statement.bind(identifier.to_string());
+    (void)statement.step();
+}
+
 optional<Uses> ContentUses::uses(const Identifier& identifier) const {
     Statement statement(*m_database, uses_sql);
 
@@ -118,12 +147,20 @@ optional<Uses> ContentUses::uses(const Identifier& identifier) const {
         return nullopt;
     }
 
-    return Uses{
-        optional_size(statement),
-        optional_time(statement, Column::LastStored),
-        optional_time(statement, Column::LastRequested),
-        statement.integer(place_of(Column::Requests)),
-    };
+    return uses_in(statement);
+}
+
+vector<Held> ContentUses::held() const {
+    Statement statement(*m_database, held_sql);
+    vector<Held> held;
+
+    while (statement.step()) {
+        auto identifier = Identifier::from(statement.text(place_of(Column::Identifier)));
+
+        held.push_back({std::move(identifier), uses_in(statement)});
+    }
+
+    return held;
 }
 
 } // namespace stats

@@ -1,10 +1,13 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <iterator>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "db/Database.hpp"
 #include "stats/ContentUses.hpp"
@@ -64,6 +67,8 @@ protected:
     [[nodiscard]] ContentUses& content_uses() noexcept;
     // What is known of the content of digit, which must be something.
     [[nodiscard]] Uses uses_of(char digit) const;
+    // The identifier and size of each object held, sorted.
+    [[nodiscard]] std::vector<std::string> held() const;
 
 private:
     Database m_database;
@@ -95,6 +100,18 @@ Uses ContentUsesTest::uses_of(char digit) const {
     }
 
     return *found;
+}
+
+std::vector<std::string> ContentUsesTest::held() const {
+    const auto objects = m_content_uses.held();
+    std::vector<std::string> held;
+
+    std::transform(objects.begin(), objects.end(), std::back_inserter(held),
+                   [](const ContentUses::Held& object) {
+        return object.identifier.to_string() + " " + std::to_string(object.uses.size.value_or(0));
+    });
+    std::sort(held.begin(), held.end());
+    return held;
 }
 
 } // namespace
@@ -166,6 +183,57 @@ TEST_F(ContentUsesTest, ContentStoredAgainTakesItsNewSizeAndTime) {
     EXPECT_EQ(uses.requests, 1);
 }
 
+TEST_F(ContentUsesTest, ContentDeletedIsNoLongerHeldButIsRemembered) {
+    content_uses().record_stored(content('a'), small);
+    content_uses().record_requested(content('a'));
+    advance(1s);
+    content_uses().record_deleted(content('a'));
+
+    const auto uses = uses_of('a');
+
+    EXPECT_FALSE(uses.size.has_value());
+    EXPECT_EQ(uses.last_stored, start);
+    EXPECT_EQ(uses.last_requested, start);
+    EXPECT_EQ(uses.requests, 1);
+    EXPECT_TRUE(held().empty());
+}
+
+TEST_F(ContentUsesTest, ContentStoredAgainOnceDeletedIsHeldAgain) {
+    content_uses().record_stored(content('a'), small);
+    content_uses().record_deleted(content('a'));
+    content_uses().record_stored(content('a'), large);
+
+    EXPECT_EQ(held(), std::vector<std::string>{content('a').to_string() + " 1048576"});
+}
+
+TEST_F(ContentUsesTest, OnlyWhatIsHeldIsListedAsHeld) {
+    content_uses().record_stored(content('a'), small);
+    content_uses().record_stored(content('b'), large);
+    content_uses().record_requested(content('c'));
+    content_uses().record_stored(content('d'), small);
+    content_uses().record_deleted(content('d'));
+    content_uses().record_deleted(content('e'));
+
+    EXPECT_EQ(held(), (std::vector<std::string>{content('a').to_string() + " 5",
+                                                content('b').to_string() + " 1048576"}));
+    EXPECT_FALSE(content_uses().uses(content('e')).has_value());
+}
+
+TEST_F(ContentUsesTest, WhatIsHeldIsListedWithWhatIsKnownOfIt) {
+    content_uses().record_stored(content('a'), small);
+    advance(1s);
+    content_uses().record_requested(content('a'));
+
+    const auto held = content_uses().held();
+
+    ASSERT_EQ(held.size(), 1U);
+    EXPECT_EQ(held.at(0).identifier.to_string(), content('a').to_string());
+    EXPECT_EQ(held.at(0).uses.size, small);
+    EXPECT_EQ(held.at(0).uses.last_stored, start);
+    EXPECT_EQ(held.at(0).uses.last_requested, start + 1s);
+    EXPECT_EQ(held.at(0).uses.requests, 1);
+}
+
 TEST_F(ContentUsesTest, EachObjectIsKeptApart) {
     content_uses().record_stored(content('a'), small);
     content_uses().record_requested(content('b'));
@@ -204,4 +272,6 @@ TEST_F(ContentUsesTest, TheTableIsNeeded) {
     EXPECT_THROW(elsewhere.record_stored(content('a'), small), SqliteError);
     EXPECT_THROW(elsewhere.record_requested(content('a')), SqliteError);
     EXPECT_THROW((void)elsewhere.uses(content('a')), SqliteError);
+    EXPECT_THROW(elsewhere.record_deleted(content('a')), SqliteError);
+    EXPECT_THROW((void)elsewhere.held(), SqliteError);
 }
