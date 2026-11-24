@@ -254,20 +254,23 @@ protected:
         , m_other(m_directory.path() / "other.pem", *m_store) {}
 
     // First contact with the node at address, posting own_list(), as this
-    // node seeks what own_seek names.
-    [[nodiscard]] FirstContact::Contact contact_at(const Address& address,
-                                                   const SeekList& own_seek = {}) const {
-        const FirstContact first_contact(m_this_node, m_store, verifier_of(m_store), fulfiller());
+    // node seeks what own_seek names, with a fulfiller of settings.
+    [[nodiscard]] FirstContact::Contact contact_at(
+        const Address& address, const SeekList& own_seek = {},
+        const SeekFulfiller::Settings& settings = {}) const {
+        const FirstContact first_contact(m_this_node, m_store, verifier_of(m_store),
+                                         fulfiller(settings));
 
         return first_contact.make(
             std::make_unique<PeerConnection>(address, PeerConnection::Limits{}), own_list(),
             own_seek);
     }
 
-    // A fulfiller of what peers seek from this node's store, with the
-    // settings the Python node's are by default.
-    [[nodiscard]] std::shared_ptr<SeekFulfiller> fulfiller() const {
-        return std::make_shared<SeekFulfiller>(m_store, SeekFulfiller::Settings{});
+    // A fulfiller of what peers seek from this node's store, with settings,
+    // by default those the Python node's are.
+    [[nodiscard]] std::shared_ptr<SeekFulfiller> fulfiller(
+        const SeekFulfiller::Settings& settings = {}) const {
+        return std::make_shared<SeekFulfiller>(m_store, settings);
     }
 
     // How the peer answers, each answer signed by it: it takes this node's
@@ -676,6 +679,32 @@ TEST_F(FirstContactTest, ListsThatCannotBeReadAreNone) {
     Channel received(NodesReceived::name);
     const StandInNode node(std::move(answers));
     const auto contact = contact_at(node.address());
+
+    EXPECT_TRUE(contact.seek.data().empty());
+    EXPECT_TRUE(contact.seek.search().empty());
+    EXPECT_FALSE(received.next<NodesReceived>(0ms).has_value());
+    EXPECT_TRUE(contact.session.is_open());
+}
+
+// Lists sent compressed are read only if they decompress to no more than
+// the fulfiller takes.
+TEST_F(FirstContactTest, ListsTooLargeOnceDecompressedAreNone) {
+    constexpr std::size_t list_bytes = 16;
+    const auto compressed = [](const std::string& text) {
+        return Converter::text_of(Zlib::compress(Converter::bytes_of(text), Zlib::max_level));
+    };
+    auto answers = peer_answers();
+    SeekFulfiller::Settings settings;
+
+    settings.list_bytes = list_bytes;
+    answers["GET /data/seek"] =
+        signed_by(peer_signer(), answer(Status::Ok, compressed(peer_seek_text())));
+    answers["GET /data/nodes"] =
+        signed_by(peer_signer(), answer(Status::Ok, compressed(peer_list().to_string())));
+
+    Channel received(NodesReceived::name);
+    const StandInNode node(std::move(answers));
+    const auto contact = contact_at(node.address(), {}, settings);
 
     EXPECT_TRUE(contact.seek.data().empty());
     EXPECT_TRUE(contact.seek.search().empty());

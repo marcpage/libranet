@@ -62,6 +62,8 @@ using Status = http::ResponseCode::Status;
 
 namespace {
 
+using Matches = std::map<string, vector<Identifier>>; // By prefix
+
 // store, once it is known to be one. Throws invalid_argument for none.
 IDataSource::Ptr checked(IDataSource::Ptr store) {
     if (!store) {
@@ -160,16 +162,17 @@ Request post_of(const string& prefix, const vector<Identifier>& identifiers) {
     return request;
 }
 
-// The seek list answer carries, from the node from describes: nothing when
-// it carries none that can be read, as when it is not 200 OK.
-optional<SeekList> seek_list_in(const Response& answer, const string& from) {
+// The seek list answer carries, from the node from describes, decompressed
+// to no more than list_bytes: nothing when it carries none that can be read,
+// as when it is not 200 OK.
+optional<SeekList> seek_list_in(const Response& answer, const string& from, size_t list_bytes) {
     if (static_cast<int>(Status::Ok) != answer.status_code()) {
         lDebug << from << "sent no seek list but answered" << answer.status_code();
         return nullopt;
     }
 
     try {
-        return SeekList::from_body(Converter::bytes_of(answer.body()));
+        return SeekList::from_body(Converter::bytes_of(answer.body()), list_bytes);
     } catch (const invalid_argument& error) {
         lDebug << "Ignoring the seek list from" << from + ":" << error.what();
         return nullopt;
@@ -182,6 +185,29 @@ bool is_taken(const Response& answer) {
 
     return static_cast<int>(Status::Ok) <= status
            && status < static_cast<int>(Status::MultipleChoices);
+}
+
+// What a search of each of searches finds in found, best first, less what
+// pushed names, by prefix, each once.
+Matches matches_of(SearchAnswers& found, const vector<HashPrefix>& searches,
+                   const set<string>& pushed) {
+    Matches matches;
+
+    for (const auto& prefix : searches) {
+        auto [matching, is_new] = matches.try_emplace(prefix.to_string());
+
+        if (!is_new) {
+            continue;
+        }
+
+        for (auto& identifier : found.answer(prefix)) {
+            if (pushed.end() == pushed.find(identifier.to_string())) {
+                matching->second.push_back(std::move(identifier));
+            }
+        }
+    }
+
+    return matches;
 }
 
 } // namespace
@@ -228,6 +254,10 @@ size_t SeekFulfiller::refresh(const Sessions& sessions) {
 
 size_t SeekFulfiller::pipeline_depth() const noexcept {
     return m_settings.pipeline_depth;
+}
+
+size_t SeekFulfiller::list_bytes() const noexcept {
+    return m_settings.list_bytes;
 }
 
 // Of sessions, those that are open and whose node's list is due to be read,
@@ -280,7 +310,7 @@ bool SeekFulfiller::_refresh(PeerSession& session) {
 
     try {
         const auto answers = session.exchange({seek_get()});
-        const auto seek = seek_list_in(answers.at(0), from);
+        const auto seek = seek_list_in(answers.at(0), from, m_settings.list_bytes);
 
         if (seek) {
             _fulfill(session, *seek);
@@ -356,7 +386,7 @@ void SeekFulfiller::_push_run(PeerSession& session, const vector<Identifier>& ru
 // What is posted counts as named from now on. One not accepted is logged.
 void SeekFulfiller::_name(PeerSession& session, const vector<HashPrefix>& searches) {
     const auto node_id = session.node_id().to_string();
-    const auto unnamed = _unnamed(node_id, _matches(searches, _pushed(node_id)));
+    const auto unnamed = _unnamed(node_id, matches_of(m_found, searches, _pushed(node_id)));
     vector<string> prefixes;
 
     for (const auto& [prefix, identifiers] : unnamed) {
@@ -383,29 +413,6 @@ void SeekFulfiller::_name(PeerSession& session, const vector<HashPrefix>& search
             }
         }
     }
-}
-
-// What a search of each of searches finds, best first, less what pushed
-// names, by prefix, each once.
-SeekFulfiller::Matches SeekFulfiller::_matches(const vector<HashPrefix>& searches,
-                                               const set<string>& pushed) {
-    Matches matches;
-
-    for (const auto& prefix : searches) {
-        auto [matching, is_new] = matches.try_emplace(prefix.to_string());
-
-        if (!is_new) {
-            continue;
-        }
-
-        for (auto& identifier : m_found.answer(prefix)) {
-            if (pushed.end() == pushed.find(identifier.to_string())) {
-                matching->second.push_back(std::move(identifier));
-            }
-        }
-    }
-
-    return matches;
 }
 
 // What has been pushed to node_id on the connection to it now.

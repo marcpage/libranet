@@ -168,9 +168,9 @@ optional<Converter::Bytes> list_body(const Response& answer, string_view asked,
     return Converter::bytes_of(answer.body());
 }
 
-// The seek list answer carries, from address: none when it carries none that
-// can be read.
-SeekList seek_list_in(const Response& answer, const Address& address) {
+// The seek list answer carries, from address, decompressed to no more than
+// list_bytes: none when it carries none that can be read.
+SeekList seek_list_in(const Response& answer, const Address& address, size_t list_bytes) {
     const string asked = "GET " + string(seek_path);
     const auto body = list_body(answer, asked, address);
 
@@ -179,16 +179,17 @@ SeekList seek_list_in(const Response& answer, const Address& address) {
     }
 
     try {
-        return SeekList::from_body(*body);
+        return SeekList::from_body(*body, list_bytes);
     } catch (const invalid_argument& error) {
         lDebug << "Ignoring the seek list from" << address.to_string() + ":" << error.what();
         return {};
     }
 }
 
-// The node list answer carries, from address: nothing when it carries none
-// that can be read.
-optional<NodeList> node_list_in(const Response& answer, const Address& address) {
+// The node list answer carries, from address, decompressed to no more than
+// list_bytes: nothing when it carries none that can be read.
+optional<NodeList> node_list_in(const Response& answer, const Address& address,
+                                size_t list_bytes) {
     const string asked = "GET " + string(nodes_path);
     const auto body = list_body(answer, asked, address);
 
@@ -197,7 +198,7 @@ optional<NodeList> node_list_in(const Response& answer, const Address& address) 
     }
 
     try {
-        return NodeList::from_body(*body);
+        return NodeList::from_body(*body, list_bytes);
     } catch (const invalid_argument& error) {
         lDebug << "Ignoring the node list from" << address.to_string() + ":" << error.what();
         return nullopt;
@@ -333,6 +334,71 @@ void trade(PeerSession& session, const SeekList& seek, const SeekList& own_seek,
     }
 }
 
+// Step 2: fetches the key of node_id, which signed the first answer on
+// connection, and keeps it, once it is shown to be the key, and to have
+// signed the answer that brought it, in store. Requests are signed with
+// signer, and answers checked with verifier. Throws Unauthenticated, keeping
+// nothing, where it is not.
+void hold_key(const IDataSource& store, const MessageSigner& signer,
+              const MessageVerifier& verifier, PeerConnection& connection,
+              const Identifier& node_id) {
+    auto get = request_of("GET", data_path(node_id));
+    const auto asked = request_line(get);
+    const auto& address = connection.address();
+    const auto answer = answer_to(connection, signer, std::move(get));
+    const auto key = Converter::bytes_of(answer.body());
+
+    if (static_cast<int>(Status::Ok) != answer.status_code()
+        || !node_id.content_of(key, KnownKeys::max_key_size)) {
+        throw unauthenticated(asked, address, "It did not send the key of " + node_id.to_string());
+    }
+
+    // The store holds no key for node_id, or the first answer could have
+    // been checked with it, so removing what is put here leaves it as it was.
+    store.put(node_id, key);
+
+    try {
+        const auto answered_by = signer_of(answer, asked, address, verifier);
+
+        if (answered_by.node_id.to_string() != node_id.to_string()) {
+            throw unauthenticated(asked, address,
+                                  "It was signed by " + answered_by.node_id.to_string()
+                                      + ", where the answer before was signed by "
+                                      + node_id.to_string());
+        }
+
+        if (!answered_by.verified) {
+            throw unauthenticated(asked, address, "The node's key is not held");
+        }
+    } catch (const Unauthenticated&) {
+        (void)store.remove(node_id);
+        throw;
+    }
+
+    Channel::post(DataStored::name, DataStored{node_id, node_id, key.size()});
+}
+
+// Steps 1 and, where it is needed, 2: the node at the other end of
+// connection, once it has been given this node's key, identity's, and has
+// shown it holds the key of the node it names, which is fetched into store
+// when it is not held. Requests are signed with signer, and answers checked
+// with verifier. Throws Unauthenticated where it has not.
+Identifier identify(const NodeIdentity& identity, const IDataSource& store,
+                    const MessageSigner& signer, const MessageVerifier& verifier,
+                    PeerConnection& connection) {
+    auto put = request_of("PUT", data_path(identity.id()), own_key(identity, store),
+                          octet_stream_content_type);
+    const auto asked = request_line(put);
+    const auto answer = answer_to(connection, signer, std::move(put));
+    const auto answered_by = signer_of(answer, asked, connection.address(), verifier);
+
+    if (!answered_by.verified) {
+        hold_key(store, signer, verifier, connection, answered_by.node_id);
+    }
+
+    return answered_by.node_id;
+}
+
 } // namespace
 
 namespace peer {
@@ -360,7 +426,7 @@ FirstContact::Contact FirstContact::make(unique_ptr<PeerConnection> connection,
         throw invalid_argument("First contact needs a connection to the node");
     }
 
-    const auto node_id = _identify(*connection);
+    const auto node_id = identify(*m_identity, *m_store, m_signer, m_verifier, *connection);
     PeerSession session(std::move(connection), node_id, m_signer, m_verifier);
 
     // Steps 3 to 5. The peer's answer to the list posted tells nothing that
@@ -372,7 +438,9 @@ FirstContact::Contact FirstContact::make(unique_ptr<PeerConnection> connection,
         request_of("GET", string(nodes_path)),
     });
 
-    if (const auto nodes = node_list_in(answers.at(2), session.address())) {
+    const auto list_bytes = m_fulfiller->list_bytes();
+
+    if (const auto nodes = node_list_in(answers.at(2), session.address(), list_bytes)) {
         auto received =
             received_from(*nodes, node_id, m_identity->id(), session.address().host());
 
@@ -381,69 +449,10 @@ FirstContact::Contact FirstContact::make(unique_ptr<PeerConnection> connection,
         }
     }
 
-    auto seek = seek_list_in(answers.at(1), session.address());
+    auto seek = seek_list_in(answers.at(1), session.address(), list_bytes);
 
     trade(session, seek, own_seek, *m_fulfiller, *m_store);
     return {std::move(session), std::move(seek)};
-}
-
-// Steps 1 and, where it is needed, 2: the node at the other end of
-// connection, once it has been given this node's key, and has shown it holds
-// the key of the node it names, which is fetched when it is not held. Throws
-// Unauthenticated where it has not.
-Identifier FirstContact::_identify(PeerConnection& connection) const {
-    auto put = request_of("PUT", data_path(m_identity->id()), own_key(*m_identity, *m_store),
-                          octet_stream_content_type);
-    const auto asked = request_line(put);
-    const auto answer = answer_to(connection, m_signer, std::move(put));
-    const auto signer = signer_of(answer, asked, connection.address(), m_verifier);
-
-    if (!signer.verified) {
-        _hold_key(connection, signer.node_id);
-    }
-
-    return signer.node_id;
-}
-
-// Step 2: fetches the key of node_id, which signed the first answer on
-// connection, and keeps it, once it is shown to be the key, and to have
-// signed the answer that brought it. Throws Unauthenticated, keeping nothing,
-// where it is not.
-void FirstContact::_hold_key(PeerConnection& connection, const Identifier& node_id) const {
-    auto get = request_of("GET", data_path(node_id));
-    const auto asked = request_line(get);
-    const auto& address = connection.address();
-    const auto answer = answer_to(connection, m_signer, std::move(get));
-    const auto key = Converter::bytes_of(answer.body());
-
-    if (static_cast<int>(Status::Ok) != answer.status_code()
-        || !node_id.content_of(key, KnownKeys::max_key_size)) {
-        throw unauthenticated(asked, address, "It did not send the key of " + node_id.to_string());
-    }
-
-    // The store holds no key for node_id, or the first answer could have
-    // been checked with it, so removing what is put here leaves it as it was.
-    m_store->put(node_id, key);
-
-    try {
-        const auto signer = signer_of(answer, asked, address, m_verifier);
-
-        if (signer.node_id.to_string() != node_id.to_string()) {
-            throw unauthenticated(asked, address,
-                                  "It was signed by " + signer.node_id.to_string()
-                                      + ", where the answer before was signed by "
-                                      + node_id.to_string());
-        }
-
-        if (!signer.verified) {
-            throw unauthenticated(asked, address, "The node's key is not held");
-        }
-    } catch (const Unauthenticated&) {
-        (void)m_store->remove(node_id);
-        throw;
-    }
-
-    Channel::post(DataStored::name, DataStored{node_id, node_id, key.size()});
 }
 
 } // namespace peer

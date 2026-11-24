@@ -19,6 +19,7 @@
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 #include "types/Json.hpp"
 #include "web/ConnectionInfo.hpp"
@@ -183,6 +184,19 @@ TEST(SeekHandlerTest, ListSetIsServed) {
                                R"(7425e73043362938b9824"],"search":["2cf2"]})");
     handler.set_list(SeekList());
     EXPECT_EQ(served(handler), R"({"data":[],"search":[]})");
+}
+
+// The list served is sent in fewer bytes than the handler is told.
+TEST(SeekHandlerTest, ListSetIsServedWithinTheBytesItIsGiven) {
+    constexpr std::size_t served_bytes = 32;
+    SeekHandler cramped(types::max_decompressed_list_size, served_bytes);
+    SeekHandler roomy;
+
+    cramped.set_list(hello_list());
+    roomy.set_list(hello_list());
+
+    EXPECT_LT(served(cramped).size(), served_bytes);
+    EXPECT_GE(served(roomy).size(), served_bytes);
 }
 
 // A query does not change what the path names.

@@ -16,7 +16,10 @@ namespace api {
 // logged, as nothing acts on it yet.
 class SeekHandler {
 public:
-    explicit SeekHandler(std::size_t list_bytes = types::max_decompressed_list_size);
+    // list_bytes is the most a list posted may decompress to, and the list
+    // served is sent in fewer than served_bytes.
+    explicit SeekHandler(std::size_t list_bytes = types::max_decompressed_list_size,
+                         std::size_t served_bytes = protocol::SeekList::max_size);
 
     // Throws what protocol::SeekList::body() throws.
     void set_list(const protocol::SeekList& new_list);
@@ -35,12 +38,9 @@ public:
 
 private:
     std::size_t m_list_bytes;
+    std::size_t m_served_bytes;
     mutable std::mutex m_mutex;
     std::string m_body; // Guarded by m_mutex
-
-    void _get(http::Response& response) const;
-    void _post(const http::Request& request, http::Response& response,
-               const web::ConnectionInfo& connection) const;
 };
 
 } // namespace api

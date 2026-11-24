@@ -71,7 +71,6 @@ private:
                                web::ConnectionInfo& connection);
     [[nodiscard]] std::size_t _attempt(const storage::Identifier& node_id);
     void _forget(const storage::Identifier& node_id);
-    void _sign(const http::Request& request, http::Response& response) const;
 };
 
 } // namespace api

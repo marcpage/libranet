@@ -151,15 +151,17 @@ optional<Response> answer_from(PeerSession& session, const Request& request) {
 }
 
 // The identifiers answer names, best first: nothing for an answer that is
-// not 200 OK, or that is not a search's answer, from the peer node_id.
-optional<vector<Identifier>> results_in(const Response& answer, const Identifier& node_id) {
+// not 200 OK, or that is not a search's answer decompressing to no more than
+// list_bytes, from the peer node_id.
+optional<vector<Identifier>> results_in(const Response& answer, const Identifier& node_id,
+                                        size_t list_bytes) {
     if (answer.code() != ResponseCode::Status::Ok) {
         lDebug << node_id.to_string() << "answered a search with status" << answer.status_code();
         return nullopt;
     }
 
     try {
-        return SearchResults::from_body(answer.body()).results();
+        return SearchResults::from_body(answer.body(), list_bytes).results();
     } catch (const invalid_argument& error) {
         lDebug << "Leaving out the answer of" << node_id.to_string() << "to a search:" << error;
         return nullopt;
@@ -168,14 +170,14 @@ optional<vector<Identifier>> results_in(const Response& answer, const Identifier
 
 // Asks session's peer for prefix, telling it it may pass the search on
 // relays times more, and posts what it answered, unless it named nothing.
-void ask(PeerSession& session, const HashPrefix& prefix, size_t relays) {
+void ask(PeerSession& session, const HashPrefix& prefix, size_t relays, size_t list_bytes) {
     const auto answer = answer_from(session, search_request(prefix, relays));
 
     if (!answer) {
         return;
     }
 
-    auto results = results_in(*answer, session.node_id());
+    auto results = results_in(*answer, session.node_id(), list_bytes);
 
     if (!results || results->empty()) {
         return;
@@ -232,7 +234,7 @@ bool PeerSearch::start(const HashPrefix& prefix, const optional<Asker>& asker) {
 optional<PeerSearch::Clock::time_point> PeerSearch::make_passes(const Sessions& sessions) {
     while (const auto pass = _take_due()) {
         for (const auto& session : ranked(sessions, pass->prefix, pass->asker)) {
-            ask(*session, pass->prefix, pass->relays);
+            ask(*session, pass->prefix, pass->relays, m_settings.list_bytes);
         }
 
         _made(*pass);

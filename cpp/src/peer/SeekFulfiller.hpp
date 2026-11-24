@@ -16,6 +16,7 @@
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/SearchAnswers.hpp"
+#include "types/Constants.hpp"
 
 namespace peer {
 
@@ -45,6 +46,8 @@ public:
         // How many requests are sent at once, each put holding its content in
         // memory until it is answered.
         std::size_t pipeline_depth = default_pipeline_depth;
+        // The most a list sent compressed may decompress to.
+        std::size_t list_bytes = types::max_decompressed_list_size;
     };
 
     // Throws std::invalid_argument, naming the setting, for one it cannot use,
@@ -63,6 +66,7 @@ public:
     [[nodiscard]] std::size_t refresh(const Sessions& sessions);
 
     [[nodiscard]] std::size_t pipeline_depth() const noexcept;
+    [[nodiscard]] std::size_t list_bytes() const noexcept;
 
     ~SeekFulfiller() = default;
 
@@ -96,8 +100,6 @@ private:
     void _push(PeerSession& session, const std::vector<storage::Identifier>& sought);
     void _push_run(PeerSession& session, const std::vector<storage::Identifier>& run);
     void _name(PeerSession& session, const std::vector<storage::HashPrefix>& searches);
-    [[nodiscard]] Matches _matches(const std::vector<storage::HashPrefix>& searches,
-                                   const std::set<std::string>& pushed);
     [[nodiscard]] std::set<std::string> _pushed(const std::string& node_id);
     void _note_pushed(const std::string& node_id,
                       const std::vector<storage::Identifier>& identifiers);
