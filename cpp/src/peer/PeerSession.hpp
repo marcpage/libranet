@@ -55,6 +55,7 @@ public:
     // Whether the node turned this node away, answering with
     // Connection: close.
     [[nodiscard]] bool was_turned_away() const;
+    [[nodiscard]] std::size_t matching_bits(const storage::Identifier& identifier) const;
 
     // Ends the session, failing every request still waiting.
     void close();

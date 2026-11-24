@@ -24,7 +24,6 @@
 #include "logger/Logger.hpp"
 #include "msg/Channel.hpp"
 #include "storage/DataStored.hpp"
-#include "storage/HashPrefix.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
 #include "types/Converter.hpp"
@@ -48,7 +47,6 @@ using std::string_view;
 using std::to_string;
 using std::vector;
 using storage::DataStored;
-using storage::HashPrefix;
 using storage::IDataSource;
 using storage::Identifier;
 using types::Converter;
@@ -124,11 +122,6 @@ void let_go(Until& until, Clock::time_point now) {
     }
 }
 
-// How many leading bits session's node id shares with identifier's hash.
-size_t matching_bits(const PeerSession& session, const Identifier& identifier) {
-    return HashPrefix::parse(session.node_id().hash()).matching_bits(identifier);
-}
-
 // The sessions of peers still open, those whose node ids best match
 // identifier first, and those that match alike in the order given.
 vector<Session> ranked(vector<Session> peers, const Identifier& identifier) {
@@ -137,7 +130,7 @@ vector<Session> ranked(vector<Session> peers, const Identifier& identifier) {
     peers.erase(std::remove_if(peers.begin(), peers.end(), is_closed), peers.end());
     std::stable_sort(peers.begin(), peers.end(),
                      [&identifier](const Session& left, const Session& right) {
-        return matching_bits(*left, identifier) > matching_bits(*right, identifier);
+        return left->matching_bits(identifier) > right->matching_bits(identifier);
     });
     return peers;
 }
