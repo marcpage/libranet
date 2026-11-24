@@ -45,7 +45,7 @@ public:
 
     [[nodiscard]] const Query& query() const noexcept;
     Query& query() noexcept;
-    [[nodiscard]] std::optional<std::string> get_query(std::string_view key) const;
+    [[nodiscard]] std::optional<std::string> query(std::string_view key) const;
     void set_query(std::string_view key, std::string_view value);
     [[nodiscard]] bool has_query(std::string_view key) const noexcept;
     void remove_query(std::string_view key);
@@ -246,8 +246,8 @@ inline Query& Url::query() noexcept {
     return m_query;
 }
 
-inline std::optional<std::string> Url::get_query(std::string_view key) const {
-    const auto value = m_query.get_first(key);
+inline std::optional<std::string> Url::query(std::string_view key) const {
+    const auto value = m_query.first(key);
 
     if (!value.has_value()) {
         return std::nullopt;
@@ -272,7 +272,7 @@ inline void Url::set_query_parameters(
 
 inline bool Url::has_query(std::string_view key) const noexcept {
     const std::string encoded_key = encode(key, EncodeContext::FormUrl);
-    return m_query.get_first(encoded_key).has_value();
+    return m_query.first(encoded_key).has_value();
 }
 
 inline void Url::remove_query(std::string_view key) {

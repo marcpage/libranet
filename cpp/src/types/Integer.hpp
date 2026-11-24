@@ -112,7 +112,7 @@ private:
                                           std::vector<word_t>& remainder);
     static void _shift_left_magnitude(std::vector<word_t>& value, unsigned shift);
     static void _shift_right_magnitude(std::vector<word_t>& value, unsigned shift);
-    static unsigned _get_normalization_shift(word_t high_word) noexcept;
+    static unsigned _normalization_shift(word_t high_word) noexcept;
     static double_word_t _calculate_estimated_quotient(
         const std::vector<word_t>& remainder,
         std::size_t divisor_size,
@@ -227,7 +227,7 @@ Integer::_multiply_magnitudes(const std::vector<word_t>& left,
 }
 
 
-inline unsigned Integer::_get_normalization_shift(word_t high_word) noexcept {
+inline unsigned Integer::_normalization_shift(word_t high_word) noexcept {
     unsigned shift = 0;
 
     while (0 == (high_word & (static_cast<word_t>(1) << (word_bits - 1)))) {
@@ -316,7 +316,7 @@ inline void Integer::_divide_modulo_magnitudes(const std::vector<word_t>& numera
     const auto divisor_size = denominator.size();
 
     // 1. Normalize divisor and remainder
-    const auto shift = _get_normalization_shift(denominator.back());
+    const auto shift = _normalization_shift(denominator.back());
     auto normalized_divisor = denominator;
 
     _shift_left_magnitude(remainder, shift);

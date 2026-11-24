@@ -13,12 +13,12 @@ class Query {
 public:
     [[nodiscard]] static Query parse(std::string_view query_string);
 
-    [[nodiscard]] std::optional<std::string_view> get_first(std::string_view key) const;
+    [[nodiscard]] std::optional<std::string_view> first(std::string_view key) const;
     void set(std::string_view key, std::string_view value);
 
     std::string& operator[](std::string_view key);
 
-    [[nodiscard]] std::vector<std::string_view> get_all(std::string_view key) const;
+    [[nodiscard]] std::vector<std::string_view> all(std::string_view key) const;
     void add(std::string_view key, std::string_view value);
     void remove(std::string_view key);
     void clear() noexcept;
@@ -57,7 +57,7 @@ inline const std::vector<std::pair<std::string, std::string>>& Query::items() co
     return m_parameters;
 }
 
-inline std::vector<std::string_view> Query::get_all(std::string_view key) const {
+inline std::vector<std::string_view> Query::all(std::string_view key) const {
     std::vector<std::string_view> values;
 
     for (const auto& [name, value] : m_parameters) {
@@ -69,7 +69,7 @@ inline std::vector<std::string_view> Query::get_all(std::string_view key) const 
     return values;
 }
 
-inline std::optional<std::string_view> Query::get_first(std::string_view key) const {
+inline std::optional<std::string_view> Query::first(std::string_view key) const {
     for (const auto& [name, value] : m_parameters) {
         if (name == key) {
             return value;

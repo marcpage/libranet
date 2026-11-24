@@ -37,7 +37,7 @@ namespace {
     return result;
 }
 
-[[nodiscard]] std::string get_numeric_ip(const addrinfo* info) {
+[[nodiscard]] std::string numeric_ip_of(const addrinfo* info) {
     std::array<char, NI_MAXHOST> ip_text{};
     const int error = getnameinfo(info->ai_addr, info->ai_addrlen,
                                   ip_text.data(), static_cast<socklen_t>(ip_text.size()),
@@ -50,8 +50,8 @@ namespace {
     return {};
 }
 
-[[nodiscard]] std::string get_reverse_dns_name(const addrinfo* info,
-                                               const std::string& numeric_ip) {
+[[nodiscard]] std::string reverse_dns_name_of(const addrinfo* info,
+                                              const std::string& numeric_ip) {
     std::array<char, NI_MAXHOST> host_text{};
     const int error = getnameinfo(info->ai_addr, info->ai_addrlen,
                                   host_text.data(), static_cast<socklen_t>(host_text.size()),
@@ -88,7 +88,7 @@ void add_unique(std::string_view value, std::vector<std::string>& results) {
     return AF_INET == family || AF_INET6 == family;
 }
 
-[[nodiscard]] socklen_t get_sockaddr_length(int family) {
+[[nodiscard]] socklen_t sockaddr_length_of(int family) {
     return (AF_INET == family) ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
 }
 
@@ -100,7 +100,7 @@ void add_unique(std::string_view value, std::vector<std::string>& results) {
     }
 
     std::array<char, NI_MAXHOST> host{};
-    const socklen_t length = get_sockaddr_length(family);
+    const socklen_t length = sockaddr_length_of(family);
 
     const int error = getnameinfo(interface_entry->ifa_addr, length, host.data(),
                                   static_cast<socklen_t>(host.size()), nullptr, 0, NI_NUMERICHOST);
@@ -128,17 +128,17 @@ std::vector<std::string> Address::resolve() const {
     addrinfo* result = fetch_address_info(m_host, m_port);
 
     for (const addrinfo* entry = result; entry != nullptr; entry = entry->ai_next) {
-        const auto numeric_ip = get_numeric_ip(entry);
+        const auto numeric_ip = numeric_ip_of(entry);
 
         add_unique(numeric_ip, results);
-        add_unique(get_reverse_dns_name(entry, numeric_ip), results);
+        add_unique(reverse_dns_name_of(entry, numeric_ip), results);
     }
 
     freeaddrinfo(result);
     return results;
 }
 
-std::vector<std::string> Address::get_local_addresses() {
+std::vector<std::string> Address::local_addresses() {
     ifaddrs* interfaces = fetch_interface_addresses();
     std::vector<std::string> addresses;
 

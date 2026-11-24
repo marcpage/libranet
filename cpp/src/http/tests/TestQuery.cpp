@@ -16,14 +16,14 @@ TEST(QueryTest, ConstructorsAndBasicAccessors) {
     Query query;
     EXPECT_TRUE(query.items().empty());
     EXPECT_TRUE(query.to_string().empty());
-    EXPECT_FALSE(query.get_first("foo").has_value());
+    EXPECT_FALSE(query.first("foo").has_value());
 
     // Add and retrieve elements
     query.add("foo", "bar");
     EXPECT_FALSE(query.items().empty());
     EXPECT_EQ(query.items().size(), 1U);
 
-    auto value = query.get_first("foo");
+    auto value = query.first("foo");
     ASSERT_TRUE(value.has_value());
     EXPECT_EQ(value.value(), "bar");
 
@@ -41,21 +41,21 @@ TEST(QueryTest, ConstructorsAndBasicAccessors) {
 TEST(QueryTest, DuplicateKeysAndMultivalueGetters) {
     const Query query = Query::parse("tag=cpp&tag=programming&tag=web&name=alice");
 
-    // Test get_all for duplicate keys
-    auto tags = query.get_all("tag");
+    // Test all() for duplicate keys
+    auto tags = query.all("tag");
     ASSERT_EQ(tags.size(), 3U);
     EXPECT_EQ(tags.at(0), "cpp");
     EXPECT_EQ(tags.at(1), "programming");
     EXPECT_EQ(tags.at(2), "web");
 
-    // Test get_first returns the first occurrence
-    auto first_tag = query.get_first("tag");
+    // Test first() returns the first occurrence
+    auto first_tag = query.first("tag");
     ASSERT_TRUE(first_tag.has_value());
     EXPECT_EQ(first_tag.value(), "cpp");
 
     // Test non-existent key retrieval
-    EXPECT_TRUE(query.get_all("missing").empty());
-    EXPECT_FALSE(query.get_first("missing").has_value());
+    EXPECT_TRUE(query.all("missing").empty());
+    EXPECT_FALSE(query.first("missing").has_value());
 }
 
 TEST(QueryTest, MutationsAndExclusiveSet) {
@@ -64,32 +64,32 @@ TEST(QueryTest, MutationsAndExclusiveSet) {
     // Add duplicate keys
     query.add("item", "apple");
     query.add("item", "banana");
-    EXPECT_EQ(query.get_all("item").size(), 2U);
+    EXPECT_EQ(query.all("item").size(), 2U);
 
     // Set item (replaces all occurrences of the key with a single value)
     query.set("item", "orange");
-    EXPECT_EQ(query.get_all("item").size(), 1U);
-    EXPECT_EQ(query.get_first("item"), "orange");
+    EXPECT_EQ(query.all("item").size(), 1U);
+    EXPECT_EQ(query.first("item"), "orange");
 
     // Set a non-existent item acts like an add
     query.set("price", "99");
-    EXPECT_EQ(query.get_first("price"), "99");
+    EXPECT_EQ(query.first("price"), "99");
 
     // Remove all instances of a key
     query.add("item", "grape");
-    EXPECT_EQ(query.get_all("item").size(), 2U);
+    EXPECT_EQ(query.all("item").size(), 2U);
     query.remove("item");
-    EXPECT_TRUE(query.get_all("item").empty());
+    EXPECT_TRUE(query.all("item").empty());
 }
 
 TEST(QueryTest, StreamOperatorsAndParsing) {
     // Test static parsing with and without leading '?'
     const Query query = Query::parse("?foo=bar&baz=123");
-    EXPECT_EQ(query.get_first("foo"), "bar");
-    EXPECT_EQ(query.get_first("baz"), "123");
+    EXPECT_EQ(query.first("foo"), "bar");
+    EXPECT_EQ(query.first("baz"), "123");
 
     const Query query_without_mark = Query::parse("key=value_only");
-    EXPECT_EQ(query_without_mark.get_first("key"), "value_only");
+    EXPECT_EQ(query_without_mark.first("key"), "value_only");
 
     // Test serialization output format (to_string)
     const std::string serialized = query.to_string();
@@ -106,8 +106,8 @@ TEST(QueryTest, StreamOperatorsAndParsing) {
     in_stream >> parsed_stream_query;
 
     EXPECT_FALSE(in_stream.fail());
-    EXPECT_EQ(parsed_stream_query.get_first("alpha"), "one");
-    EXPECT_EQ(parsed_stream_query.get_first("beta"), "two");
+    EXPECT_EQ(parsed_stream_query.first("alpha"), "one");
+    EXPECT_EQ(parsed_stream_query.first("beta"), "two");
 }
 
 TEST(QueryTest, EmptyNameIsKept) {

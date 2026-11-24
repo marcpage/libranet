@@ -22,7 +22,7 @@ public:
     [[nodiscard]] Port port() const noexcept;
     [[nodiscard]] std::string to_string() const;
     [[nodiscard]] std::vector<std::string> resolve() const;
-    [[nodiscard]] static std::vector<std::string> get_local_addresses();
+    [[nodiscard]] static std::vector<std::string> local_addresses();
 
 private:
     std::string m_host;
