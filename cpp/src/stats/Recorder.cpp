@@ -437,6 +437,7 @@ void Recorder::_handle(const IMessage::Ptr& message) {
         if (m_sought.found(stored->identifier)) {
             _post_seek_list();
         }
+
         m_content_uses.record_stored(stored->identifier, stored->size);
     } else if (const auto* const deleted = value_of<DataDeleted>(message)) {
         m_content_uses.record_deleted(deleted->identifier);

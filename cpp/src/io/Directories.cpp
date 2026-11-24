@@ -12,6 +12,7 @@ using std::string;
 using std::filesystem::path;
 
 namespace {
+
 // The value of the environment variable name, or "" if it is not set.
 string environment(const char* name) {
     // Read before the node starts a thread, and never set by the node.

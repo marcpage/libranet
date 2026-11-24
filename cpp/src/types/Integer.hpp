@@ -227,7 +227,6 @@ Integer::_multiply_magnitudes(const std::vector<word_t>& left,
     return result;
 }
 
-
 inline unsigned Integer::_normalization_shift(word_t high_word) noexcept {
     unsigned shift = 0;
 
@@ -339,7 +338,6 @@ inline void Integer::_divide_modulo_magnitudes(const std::vector<word_t>& numera
 }
 
 inline void Integer::_shift_left_magnitude(std::vector<word_t>& value, unsigned shift) {
-
     if (0 == shift || value.empty()) {
         return;
     }

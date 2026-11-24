@@ -48,7 +48,6 @@ private:
     std::thread m_thread;
 };
 
-
 inline Timer::Tick::operator std::string() const {
     return name + " tick " + std::to_string(count);
 }

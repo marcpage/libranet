@@ -156,7 +156,6 @@ std::vector<std::string> Address::local_addresses() {
     return addresses;
 }
 
-
 } // namespace net
 
 #endif // __linux__ || __APPLE__

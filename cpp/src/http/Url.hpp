@@ -405,7 +405,6 @@ inline std::string Url::to_string() const {
     return result;
 }
 
-
 inline std::istream& operator>>(std::istream& in_stream, Url& url) {
     std::string url_text;
 

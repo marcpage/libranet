@@ -24,6 +24,7 @@ public:
     AsyncChannelOf& operator=(const AsyncChannelOf&) = delete;
     AsyncChannelOf(AsyncChannelOf&&) = delete;
     AsyncChannelOf& operator=(AsyncChannelOf&&) = delete;
+
 private:
     TypeCallback m_type_callback;
 

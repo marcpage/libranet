@@ -116,5 +116,4 @@ inline Pem::Unwrapped Pem::unwrap(std::string_view pem_string) {
     return Unwrapped{std::move(label), Base64::decode(cleaned_base64)};
 }
 
-
 } // namespace crypto
