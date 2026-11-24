@@ -57,6 +57,7 @@ template class msg::Message<eviction::Evictor::Candidates>;
 namespace {
 
 using Clock = eviction::Evictor::Clock;
+using FreeSpace = eviction::Evictor::FreeSpace;
 using HandOff = function<optional<Identifier>(const Identifier&)>;
 using Held = eviction::Evictor::Held;
 using Milliseconds = eviction::Evictor::Milliseconds;
@@ -157,6 +158,44 @@ optional<Identifier> taker_of(const HandOff& hand_off, const Identifier& identif
     return nullopt;
 }
 
+// Whether identifier is to be kept for now: it is one of kept, is being
+// handed off, as handing_off names, or was stored within its grace, as stored
+// names.
+bool passes_over(const map<string, Held>& handing_off,
+                 const map<string, Clock::time_point>& stored, const Identifier& identifier,
+                 const vector<Identifier>& kept) {
+    const auto name = identifier.to_string();
+
+    return names(kept, identifier) || 0 != handing_off.count(name) || 0 != stored.count(name);
+}
+
+// The keys signatures are checked against now: those of the nodes connected
+// either way, as peers says, and this node's own, own_id.
+vector<Identifier> kept_keys(const Peers& peers, const Identifier& own_id) {
+    auto kept = peers.connected();
+
+    kept.push_back(own_id);
+    return kept;
+}
+
+// The bytes to let go of for storage to be headroom within each of the limits
+// settings sets, with free_space() bytes free and held bytes held; 0 when it
+// is.
+uintmax_t excess_of(const Settings& settings, const FreeSpace& free_space, uintmax_t held,
+                    uintmax_t headroom) {
+    uintmax_t excess = 0;
+
+    if (settings.min_free_bytes > 0) {
+        excess = beyond(settings.min_free_bytes + headroom, free_space());
+    }
+
+    if (settings.max_storage_bytes) {
+        excess = max(excess, beyond(held + headroom, *settings.max_storage_bytes));
+    }
+
+    return excess;
+}
+
 // Reports what the thread could not handle.
 void log_error(const string& text) {
     lErr << text;
@@ -250,7 +289,7 @@ void Evictor::_take(const Candidates& candidates) {
         return;
     }
 
-    const auto over = _excess(0);
+    const auto over = excess_of(m_settings, m_free_space, m_held, 0);
 
     if (over > 0 && m_handing_off.empty()) {
         lWarn << "Storage is" << over << "bytes over its limits, with nothing left to let go of";
@@ -272,7 +311,7 @@ void Evictor::_handed_off(const HandedOff& handed_off) {
         return;
     }
 
-    if (_passes_over(held.identifier, _kept())) {
+    if (passes_over(m_handing_off, m_stored, held.identifier, kept_keys(m_peers, m_own_id))) {
         lInfo << held.identifier.to_string() << "is to be kept now, so it is not deleted";
     } else {
         _delete(held, *handed_off.holder);
@@ -285,7 +324,7 @@ void Evictor::_handed_off(const HandedOff& handed_off) {
 // those under way would bring storage the headroom within its limits once
 // they are deleted, or as many are under way as may be.
 void Evictor::_evict() {
-    const auto excess = _excess(headroom_of(m_settings));
+    const auto excess = excess_of(m_settings, m_free_space, m_held, headroom_of(m_settings));
 
     if (0 == excess) {
         m_candidates.clear();
@@ -296,7 +335,7 @@ void Evictor::_evict() {
         return;
     }
 
-    const auto kept = _kept();
+    const auto kept = kept_keys(m_peers, m_own_id);
     auto freeing = bytes_of(m_handing_off);
 
     while (freeing < excess && m_handing_off.size() < m_settings.max_hand_offs) {
@@ -309,7 +348,7 @@ void Evictor::_evict() {
 
         m_candidates.pop_front();
 
-        if (_passes_over(held.identifier, kept)) {
+        if (passes_over(m_handing_off, m_stored, held.identifier, kept)) {
             continue;
         }
 
@@ -386,39 +425,6 @@ void Evictor::_forget(const Held& held) {
     m_held -= min(m_held, static_cast<uintmax_t>(held.size));
     m_may_ask = true;
     Channel::post(DataDeleted::name, DataDeleted{held.identifier, held.size});
-}
-
-// Whether identifier is to be kept for now: it is one of kept, is being
-// handed off, or was stored within its grace.
-bool Evictor::_passes_over(const Identifier& identifier, const Identifiers& kept) const {
-    const auto name = identifier.to_string();
-
-    return names(kept, identifier) || 0 != m_handing_off.count(name) || 0 != m_stored.count(name);
-}
-
-// The keys signatures are checked against now: those of the nodes connected
-// either way, and this node's own.
-Evictor::Identifiers Evictor::_kept() const {
-    auto kept = m_peers.connected();
-
-    kept.push_back(m_own_id);
-    return kept;
-}
-
-// The bytes to let go of for storage to be headroom within each of its
-// limits; 0 when it is.
-uintmax_t Evictor::_excess(uintmax_t headroom) const {
-    uintmax_t excess = 0;
-
-    if (m_settings.min_free_bytes > 0) {
-        excess = beyond(m_settings.min_free_bytes + headroom, m_free_space());
-    }
-
-    if (m_settings.max_storage_bytes) {
-        excess = max(excess, beyond(m_held + headroom, *m_settings.max_storage_bytes));
-    }
-
-    return excess;
 }
 
 } // namespace eviction

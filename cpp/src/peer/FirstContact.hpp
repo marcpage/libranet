@@ -11,7 +11,6 @@
 #include "protocol/NodeList.hpp"
 #include "protocol/SeekList.hpp"
 #include "storage/IDataSource.hpp"
-#include "storage/Identifier.hpp"
 
 namespace peer {
 
@@ -47,9 +46,6 @@ private:
     identity::MessageSigner m_signer;
     identity::MessageVerifier m_verifier;
     std::shared_ptr<SeekFulfiller> m_fulfiller;
-
-    [[nodiscard]] storage::Identifier _identify(PeerConnection& connection) const;
-    void _hold_key(PeerConnection& connection, const storage::Identifier& node_id) const;
 };
 
 } // namespace peer

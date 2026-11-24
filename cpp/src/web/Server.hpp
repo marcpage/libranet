@@ -15,7 +15,6 @@
 #include "ConnectionInfo.hpp"
 #include "http/Request.hpp"
 #include "http/Response.hpp"
-#include "io/MeteredReader.hpp"
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
 #include "types/Constants.hpp"
@@ -91,13 +90,10 @@ private:
     std::list<Client> m_connections;   // Guarded by m_lock
     std::unordered_map<std::string, RequestHandler> m_handlers;
 
-    [[nodiscard]] RequestHandler _find_handler(std::string_view uri) const;
     [[nodiscard]] bool _listen(int backlog);
     [[nodiscard]] bool _wait_for_room();
     void _serve(net::ISocket::Ptr client);
     void _converse(Client& client);
-    [[nodiscard]] bool _answer(net::ISocket& client, io::MeteredReader& reader,
-                               ConnectionInfo& connection) const;
     void _end_all();
 };
 

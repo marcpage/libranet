@@ -43,10 +43,6 @@ private:
     storage::IDataSource::Ptr m_store;
     std::mutex m_mutex;
     std::map<std::string, Key> m_keys; // By node id; guarded by m_mutex
-
-    [[nodiscard]] std::optional<Key> _kept(const storage::Identifier& node_id);
-    [[nodiscard]] std::optional<Key> _read(const storage::Identifier& node_id);
-    [[nodiscard]] Key _keep(const storage::Identifier& node_id, Key key);
 };
 
 } // namespace identity

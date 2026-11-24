@@ -44,8 +44,6 @@ private:
     storage::HashPrefix m_node;
     Clock::time_point m_now;
     Extremes m_extremes;
-
-    [[nodiscard]] double _unused(std::optional<Clock::time_point> last_used) const;
 };
 
 } // namespace eviction

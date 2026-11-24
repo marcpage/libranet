@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -16,7 +15,6 @@
 #include "identity/MessageVerifier.hpp"
 #include "identity/NodeIdentity.hpp"
 #include "msg/AsyncChannel.hpp"
-#include "msg/IMessage.hpp"
 #include "net/Address.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/SearchAnswers.hpp"
@@ -70,8 +68,6 @@ public:
     Service& operator=(Service&&) = delete;
 
 private:
-    static constexpr int backlog = 128;
-
     DataHandler m_data_handler;
     SeekHandler m_seek_handler;
     std::shared_ptr<storage::SearchAnswers> m_answers; // What m_search_handler answers from
@@ -88,10 +84,6 @@ private:
     // Made last, and so stopped first.
     msg::AsyncChannel m_lists;
     std::thread m_server_thread;
-
-    void _register(std::string_view path, const web::Server::RequestHandler& handler);
-    void _keep(const msg::IMessage::Ptr& message);
-    void _serve();
 };
 
 } // namespace api

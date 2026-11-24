@@ -137,6 +137,28 @@ vector<string> write_to_outputs(Shared& state, string_view line) {
     return failures;
 }
 
+// Writes text, what line holds, to each output, if line's level shows lines
+// from its file.
+void write_line(const Logger& line, const string& text) {
+    auto& state = shared();
+    const scoped_lock lock(state.guard);
+
+    if (!shown(state.levels, line.level(), line.file())) {
+        return;
+    }
+
+    const auto index = thread_index(state.threads);
+    const auto failures = write_to_outputs(state, state.formatter->format(text, index, line));
+
+    // Those left are told of each output that failed. One that fails then is
+    // removed too.
+    for (const auto& failure : failures) {
+        const auto report = "Stopped writing the log to an output that failed: " + failure;
+
+        (void)write_to_outputs(state, state.formatter->format(report, index, line));
+    }
+}
+
 } // namespace
 
 namespace logger {
@@ -221,7 +243,7 @@ Logger::~Logger() {
     // written is only reported, where it can be.
     try {
         if (Level::Fatal == m_level || !m_text.empty()) {
-            _write();
+            write_line(*this, m_text);
         }
     } catch (const exception& error) {
         (void)std::fputs("Cannot write a line of the log: ", stderr);
@@ -294,26 +316,6 @@ Logger& Logger::_append(string_view value) {
 
     m_text += value;
     return *this;
-}
-
-void Logger::_write() const {
-    auto& state = shared();
-    const scoped_lock lock(state.guard);
-
-    if (!shown(state.levels, m_level, m_file)) {
-        return;
-    }
-
-    const auto index = thread_index(state.threads);
-    const auto failures = write_to_outputs(state, state.formatter->format(m_text, index, *this));
-
-    // Those left are told of each output that failed. One that fails then is
-    // removed too.
-    for (const auto& failure : failures) {
-        const auto report = "Stopped writing the log to an output that failed: " + failure;
-
-        (void)write_to_outputs(state, state.formatter->format(report, index, *this));
-    }
 }
 
 } // namespace logger

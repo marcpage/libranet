@@ -273,6 +273,18 @@ void SectionReader::_add(const std::string& name, const YAML::Node& setting) {
     }
 }
 
+// The value of the setting in settings named name. Throws std::out_of_range
+// when there is none.
+const Value& setting_at(const Settings& settings, const std::string& name) {
+    const auto found = settings.find(name);
+
+    if (found == settings.end()) {
+        throw std::out_of_range("No such setting: " + name);
+    }
+
+    return found->second;
+}
+
 } // namespace
 
 namespace node {
@@ -325,7 +337,7 @@ bool SettingsFile::has(const std::string& name) const {
 }
 
 const std::string& SettingsFile::value(const std::string& name) const {
-    const auto* text = std::get_if<std::string>(&_at(name));
+    const auto* text = std::get_if<std::string>(&setting_at(m_settings, name));
 
     if (nullptr == text) {
         throw std::domain_error("Setting is a list, not a value: " + name);
@@ -335,7 +347,7 @@ const std::string& SettingsFile::value(const std::string& name) const {
 }
 
 const SettingsFile::List& SettingsFile::list(const std::string& name) const {
-    const auto* list = std::get_if<List>(&_at(name));
+    const auto* list = std::get_if<List>(&setting_at(m_settings, name));
 
     if (nullptr == list) {
         throw std::domain_error("Setting is a value, not a list: " + name);
@@ -374,16 +386,6 @@ std::string SettingsFile::to_string() const {
 
     out << YAML::EndMap;
     return {out.c_str(), out.size()};
-}
-
-const SettingsFile::Value& SettingsFile::_at(const std::string& name) const {
-    const auto found = m_settings.find(name);
-
-    if (found == m_settings.end()) {
-        throw std::out_of_range("No such setting: " + name);
-    }
-
-    return found->second;
 }
 
 bool operator==(const SettingsFile& left, const SettingsFile& right) {

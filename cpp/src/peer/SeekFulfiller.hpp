@@ -96,8 +96,6 @@ private:
     void _push(PeerSession& session, const std::vector<storage::Identifier>& sought);
     void _push_run(PeerSession& session, const std::vector<storage::Identifier>& run);
     void _name(PeerSession& session, const std::vector<storage::HashPrefix>& searches);
-    [[nodiscard]] Matches _matches(const std::vector<storage::HashPrefix>& searches,
-                                   const std::set<std::string>& pushed);
     [[nodiscard]] std::set<std::string> _pushed(const std::string& node_id);
     void _note_pushed(const std::string& node_id,
                       const std::vector<storage::Identifier>& identifiers);

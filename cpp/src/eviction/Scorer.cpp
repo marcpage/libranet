@@ -22,6 +22,8 @@ using types::Megabyte;
 
 namespace {
 
+using Clock = Scorer::Clock;
+
 // part as a fraction of whole, kept within 0 and 1; 0 of a whole of 0.
 double share(double part, double whole) {
     if (whole <= 0.0) {
@@ -34,6 +36,19 @@ double share(double part, double whole) {
 // fraction, of one, raised to at least least, with one left at one.
 double raised(double fraction, double least) {
     return least + ((1.0 - least) * fraction);
+}
+
+// The time from last_used to now, over longest_unused, the longest any object
+// held has gone unused; one when either is unknown or none has gone unused at
+// all.
+double unused(Clock::time_point now, Clock::duration longest_unused,
+              optional<Clock::time_point> last_used) {
+    if (!last_used.has_value() || longest_unused <= Clock::duration::zero()) {
+        return 1.0;
+    }
+
+    return share(duration<double>(now - *last_used).count(),
+                 duration<double>(longest_unused).count());
 }
 
 } // namespace
@@ -55,21 +70,11 @@ double Scorer::of(const Identifier& identifier,
     const auto far = 1.0
                      - share(static_cast<double>(m_node.matching_bits(identifier)),
                              static_cast<double>(m_extremes.most_matching_bits));
+    const auto idle = unused(m_now, m_extremes.longest_unused, last_used);
 
     // Multiplied in the order the Python node multiplies them, so that the
     // two score alike to the last bit.
     return raised(small, size_factor_floor)
-           * (raised(_unused(last_used), factor_floor) * raised(rarely_asked_for, factor_floor)
+           * (raised(idle, factor_floor) * raised(rarely_asked_for, factor_floor)
               * raised(far, factor_floor));
-}
-
-// The time since last_used, over the longest any object held has gone
-// unused; one when either is unknown or none has gone unused at all.
-double Scorer::_unused(optional<Clock::time_point> last_used) const {
-    if (!last_used.has_value() || m_extremes.longest_unused <= Clock::duration::zero()) {
-        return 1.0;
-    }
-
-    return share(duration<double>(m_now - *last_used).count(),
-                 duration<double>(m_extremes.longest_unused).count());
 }

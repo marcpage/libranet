@@ -75,6 +75,21 @@ size_t checked_signers(size_t tracked_signers) {
     return tracked_signers;
 }
 
+// Signs response with signer as it is sent: an answer to a HEAD goes
+// without its body, so its signature covers none.
+void sign_answer(const MessageSigner& signer, const Request& request, Response& response) {
+    if ("HEAD" != request.method()) {
+        signer.sign(response);
+        return;
+    }
+
+    auto body = string(response.body());
+
+    response.set_body("");
+    signer.sign(response);
+    response.set_body(std::move(body));
+}
+
 } // namespace
 
 namespace api {
@@ -100,7 +115,7 @@ void SignatureGuard::_serve(const Handler& handler, const Request& request, Resp
         handler(request, response, connection);
     }
 
-    _sign(request, response);
+    sign_answer(m_signer, request, response);
 }
 
 // Whether request is to be served; when not, it has been answered.
@@ -178,21 +193,6 @@ void SignatureGuard::_forget(const Identifier& node_id) {
         m_attempts.erase(found->second);
         m_signers.erase(found);
     }
-}
-
-// Signs response as it is sent: an answer to a HEAD goes without its body,
-// so its signature covers none.
-void SignatureGuard::_sign(const Request& request, Response& response) const {
-    if ("HEAD" != request.method()) {
-        m_signer.sign(response);
-        return;
-    }
-
-    auto body = string(response.body());
-
-    response.set_body("");
-    m_signer.sign(response);
-    response.set_body(std::move(body));
 }
 
 } // namespace api
