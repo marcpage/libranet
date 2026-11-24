@@ -7,13 +7,13 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "HashPrefix.hpp"
 #include "Identifier.hpp"
+#include "types/Constants.hpp"
 
 using std::equal;
 using std::invalid_argument;
@@ -26,18 +26,16 @@ using std::scoped_lock;
 using std::size_t;
 using std::sort;
 using std::string;
-using std::string_view;
 using std::tie;
 using std::unique;
 using std::vector;
 using storage::HashPrefix;
 using storage::Identifier;
 using storage::SearchAnswers;
+using types::bits_per_hex_digit;
+using types::hex_digits;
 
 namespace {
-
-// A hex digit is four bits.
-constexpr size_t bits_per_digit = 4;
 
 // The fewest leading bits a match for prefix shares with it: min_bits, or
 // all of a shorter prefix (HttpApi §6).
@@ -108,8 +106,7 @@ vector<Identifier> matching(const HashPrefix& prefix,
 // with one of: as many of prefix's digits as those bits fill, or, when they
 // fill none, each digit that shares them.
 vector<HashPrefix> scanned(const HashPrefix& prefix, size_t least) {
-    constexpr string_view hex_digits = "0123456789abcdef";
-    const auto digits = least / bits_per_digit;
+    const auto digits = least / bits_per_hex_digit;
     vector<HashPrefix> prefixes;
 
     if (digits > 0) {

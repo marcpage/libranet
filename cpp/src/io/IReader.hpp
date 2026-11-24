@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "types/Constants.hpp"
+
 namespace io {
 
 class IReader {
@@ -45,13 +47,11 @@ protected:
 // Reads a piece at a time, so that a size larger than the input takes no
 // more memory than the input has.
 inline std::vector<std::byte> IReader::read_exact(std::size_t size) {
-    // 64 KiB, as ISocket::read_exact() reads.
-    constexpr std::size_t piece_size = 65536;
     std::vector<std::byte> result;
     std::vector<std::byte> piece;
 
     while (result.size() < size) {
-        piece.resize(std::min(piece_size, size - result.size()));
+        piece.resize(std::min(types::piece_size, size - result.size()));
 
         const auto read = read_some(piece.data(), piece.size());
 

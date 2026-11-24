@@ -1,11 +1,25 @@
 #pragma once
 
+#include <cstddef>
 #include <string_view>
 
 namespace types {
 
 constexpr auto Kilobyte = 1024UL;
 constexpr auto Megabyte = 1024UL * Kilobyte;
+
+constexpr std::size_t bits_per_byte = 8;
+
+// The digits of hex, in the lower case a node writes them in, and in either
+// case, as a node reads them. Each is four bits, which the mask keeps.
+constexpr std::string_view hex_digits = "0123456789abcdef";
+constexpr std::string_view hex_digits_either_case = "0123456789abcdefABCDEF";
+constexpr std::size_t bits_per_hex_digit = 4;
+constexpr auto hex_digit_mask = 0x0FU;
+
+// How much is read at a time, where what is asked for may be more than the
+// input holds, so that it takes no more memory than the input has.
+constexpr std::size_t piece_size = 64 * Kilobyte;
 
 // The media types of what nodes send one another: JSON, and content, which
 // is put and served as it is stored (HttpApi §5, §7).

@@ -9,7 +9,7 @@ add_library(libranet_crypto STATIC
 )
 add_library(libranet::crypto ALIAS libranet_crypto)
 target_include_directories(libranet_crypto PUBLIC ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(libranet_crypto PUBLIC OpenSSL::Crypto)
+target_link_libraries(libranet_crypto PUBLIC OpenSSL::Crypto libranet::types)
 if(APPLE)
     target_link_libraries(libranet_crypto PUBLIC
         "-framework CoreFoundation"

@@ -7,6 +7,8 @@
 #include <string_view>
 #include <vector>
 
+#include "types/Constants.hpp"
+
 namespace crypto {
 
 class Base64 {
@@ -27,7 +29,6 @@ private:
                                                    "abcdefghijklmnopqrstuvwxyz0123456789+/";
 
     // Each group of 3 bytes is written as 4 characters of 6 bits each.
-    static constexpr std::size_t bits_per_byte = 8;
     static constexpr std::size_t bits_per_character = 6;
     static constexpr std::size_t bytes_per_group = 3;
     static constexpr std::size_t characters_per_group = 4;
@@ -52,8 +53,8 @@ inline std::string Base64::encode(const std::vector<std::byte>& data) {
                            * characters_per_group);
 
     for (const auto byte_item : data) {
-        accumulator = (accumulator << bits_per_byte) | std::to_integer<unsigned int>(byte_item);
-        pending_bits += bits_per_byte;
+        accumulator = (accumulator << types::bits_per_byte) | std::to_integer<unsigned int>(byte_item);
+        pending_bits += types::bits_per_byte;
 
         while (pending_bits >= bits_per_character) {
             pending_bits -= bits_per_character;
@@ -125,10 +126,10 @@ inline std::vector<std::byte> Base64::decode(std::string_view encoded_string) {
 
         // Extract the decoded bytes based on padding presence
         decoded_bytes.push_back(
-            static_cast<std::byte>((triple >> (2 * bits_per_byte)) & byte_mask));
+            static_cast<std::byte>((triple >> (2 * types::bits_per_byte)) & byte_mask));
 
         if (group.at(2) != padding) {
-            decoded_bytes.push_back(static_cast<std::byte>((triple >> bits_per_byte) & byte_mask));
+            decoded_bytes.push_back(static_cast<std::byte>((triple >> types::bits_per_byte) & byte_mask));
         }
 
         if (group.at(3) != padding) {

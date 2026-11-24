@@ -20,6 +20,8 @@
 #include <variant>
 #include <vector>
 
+#include "Constants.hpp"
+
 namespace types {
 
 // MARK: Interface
@@ -508,14 +510,9 @@ inline void Json::_escape_string(const std::string& text, std::ostringstream& ou
                 const unsigned code = static_cast<unsigned char>(character);
 
                 if (code < first_unescaped) {
-                    out_stream << "\\u00";
-
-                    constexpr std::string_view hex = "0123456789abcdef";
-                    constexpr auto nibble_bits = 4U;
-                    constexpr auto nibble_mask = 0xFU;
-
-                    out_stream << hex.at((code >> nibble_bits) & nibble_mask)
-                               << hex.at(code & nibble_mask);
+                    out_stream << "\\u00"
+                               << hex_digits.at((code >> bits_per_hex_digit) & hex_digit_mask)
+                               << hex_digits.at(code & hex_digit_mask);
                 } else {
                     out_stream << character;
                 }
@@ -885,12 +882,12 @@ inline std::string Json::Parser::_parse_raw_string() {
 
 // The four hex digits of a \u escape.
 inline std::uint32_t Json::Parser::_parse_hex4() {
-    constexpr int hex_digits = 4;
+    constexpr int escape_digits = 4;
     constexpr std::uint32_t hex_base = 16;
     constexpr int letter_values_from = 10;
     std::uint32_t value = 0;
 
-    for (int digit = 0; digit < hex_digits; ++digit) {
+    for (int digit = 0; digit < escape_digits; ++digit) {
         const auto character = static_cast<unsigned char>(_get());
 
         if (0 == std::isxdigit(character)) {

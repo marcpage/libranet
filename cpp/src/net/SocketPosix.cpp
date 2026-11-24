@@ -39,6 +39,10 @@ constexpr int send_flags = 0;
 constexpr int send_flags = MSG_NOSIGNAL;
 #endif
 
+// The most bytes one send() or recv() is asked for: what it returns, a
+// ssize_t, can count no more.
+constexpr auto max_count = std::numeric_limits<ssize_t>::max();
+
 void assert_socket(bool condition, const char* operation, int error = errno) {
     if (!condition) {
         throw std::system_error(error, std::generic_category(), operation);
@@ -364,7 +368,6 @@ std::size_t SocketPosix::send(std::string_view data) {
         return 0;
     }
 
-    constexpr auto max_count = std::numeric_limits<ssize_t>::max();
     const std::size_t count = data.size() > static_cast<std::size_t>(max_count)
                                   ? static_cast<std::size_t>(max_count)
                                   : data.size();
@@ -385,7 +388,6 @@ bool SocketPosix::receive(std::vector<std::byte>& buffer) {
         return false;
     }
 
-    constexpr auto max_count = std::numeric_limits<ssize_t>::max();
     const auto count = buffer.size() > static_cast<std::size_t>(max_count)
                            ? static_cast<std::size_t>(max_count)
                            : buffer.size();
