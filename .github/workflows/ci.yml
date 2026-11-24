@@ -179,6 +179,20 @@ jobs:
           uv tool install "gcovr==8.*"
           uv tool dir --bin >> "$GITHUB_PATH"
 
+      # CMake compiles through ccache when it finds it. Each build has a
+      # ccache directory of its own, kept in a cache of its own from one run
+      # to the next: restored from the newest one this run can read, its
+      # pull request's or else main's, and saved under this run's commit
+      # right after the build, even one that fails, so that the next run
+      # starts from it. A run of the same commit again finds its own and
+      # does not save. ccache marks each entry it uses with the time, so
+      # once a build passes, the entries older than its step, which it did
+      # not use, are dropped, and each cache holds one build.
+      - name: Install ccache
+        run: |
+          bash ../scripts/install_ccache.sh "$RUNNER_TEMP/ccache-bin"
+          echo "$RUNNER_TEMP/ccache-bin" >> "$GITHUB_PATH"
+
       # The profile names the compiler and its version, so its hash is part
       # of the key of the cache below.
       - name: Conan profile
@@ -200,18 +214,58 @@ jobs:
           path: ~/.conan2/p
           key: conan-${{ github.job }}-${{ runner.os }}-${{ steps.profile.outputs.hash }}-${{ hashFiles('cpp/conanfile.py') }}
 
+      - name: Restore the Debug build's ccache
+        id: ccache-debug
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/ccache/debug
+          key: ccache-${{ runner.os }}-debug-${{ github.sha }}
+          restore-keys: ccache-${{ runner.os }}-debug-
+
       - name: Build for Debug, with coverage
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache/debug
         run: |
+          ccache --zero-stats
           conan install . -s build_type=Debug --build=missing
           cmake --preset conan-debug -DLIBRANET_COVERAGE=ON
           cmake --build --preset conan-debug
+          ccache --evict-older-than "$((SECONDS + 60))s"
+          ccache --show-stats
+
+      - name: Save the Debug build's ccache
+        if: ${{ !cancelled() && steps.ccache-debug.outcome == 'success' && steps.ccache-debug.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/ccache/debug
+          key: ${{ steps.ccache-debug.outputs.cache-primary-key }}
+
+      - name: Restore the Release build's ccache
+        id: ccache-release
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/ccache/release
+          key: ccache-${{ runner.os }}-release-${{ github.sha }}
+          restore-keys: ccache-${{ runner.os }}-release-
 
       # Some warnings, such as GCC's -Wnull-dereference, need the optimizer.
       - name: Build for Release
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache/release
         run: |
+          ccache --zero-stats
           conan install . --build=missing
           cmake --preset conan-release
           cmake --build --preset conan-release
+          ccache --evict-older-than "$((SECONDS + 60))s"
+          ccache --show-stats
+
+      - name: Save the Release build's ccache
+        if: ${{ !cancelled() && steps.ccache-release.outcome == 'success' && steps.ccache-release.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/ccache/release
+          key: ${{ steps.ccache-release.outputs.cache-primary-key }}
 
       # What Conan built its packages from is not needed once they are made,
       # and is two thirds of its cache.
@@ -301,6 +355,12 @@ jobs:
           uv tool install ninja
           uv tool dir --bin >> "$GITHUB_PATH"
 
+      # ccache, and a cache for each build's, as in the cpp job.
+      - name: Install ccache
+        run: |
+          bash ../scripts/install_ccache.sh "$RUNNER_TEMP/ccache-bin"
+          echo "$RUNNER_TEMP/ccache-bin" >> "$GITHUB_PATH"
+
       - name: Conan profile
         id: profile
         run: |
@@ -318,6 +378,14 @@ jobs:
           conan install . -s build_type=Debug --build=missing
           conan cache clean
 
+      - name: Restore the AddressSanitizer build's ccache
+        id: ccache-address
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/ccache/address
+          key: ccache-${{ runner.os }}-address-${{ github.sha }}
+          restore-keys: ccache-${{ runner.os }}-address-
+
       # AddressSanitizer and ThreadSanitizer cannot share a build, so each
       # has one of its own. UndefinedBehaviorSanitizer runs with
       # AddressSanitizer only: GCC's checks of an object's type probe memory
@@ -325,18 +393,50 @@ jobs:
       # reports as races between threads. On Linux, AddressSanitizer finds
       # leaks too. Both use the Debug build's Conan files.
       - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache/address
         run: |
+          ccache --zero-stats
           cmake -S . -B build/address -G Ninja -DCMAKE_BUILD_TYPE=Debug \
             --toolchain "$PWD/build/Debug/generators/conan_toolchain.cmake" \
             -DLIBRANET_SANITIZERS=address,undefined
           cmake --build build/address
+          ccache --evict-older-than "$((SECONDS + 60))s"
+          ccache --show-stats
+
+      - name: Save the AddressSanitizer build's ccache
+        if: ${{ !cancelled() && steps.ccache-address.outcome == 'success' && steps.ccache-address.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/ccache/address
+          key: ${{ steps.ccache-address.outputs.cache-primary-key }}
+
+      - name: Restore the ThreadSanitizer build's ccache
+        id: ccache-thread
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/ccache/thread
+          key: ccache-${{ runner.os }}-thread-${{ github.sha }}
+          restore-keys: ccache-${{ runner.os }}-thread-
 
       - name: Build with ThreadSanitizer
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache/thread
         run: |
+          ccache --zero-stats
           cmake -S . -B build/thread -G Ninja -DCMAKE_BUILD_TYPE=Debug \
             --toolchain "$PWD/build/Debug/generators/conan_toolchain.cmake" \
             -DLIBRANET_SANITIZERS=thread
           cmake --build build/thread
+          ccache --evict-older-than "$((SECONDS + 60))s"
+          ccache --show-stats
+
+      - name: Save the ThreadSanitizer build's ccache
+        if: ${{ !cancelled() && steps.ccache-thread.outcome == 'success' && steps.ccache-thread.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/ccache/thread
+          key: ${{ steps.ccache-thread.outputs.cache-primary-key }}
 
       # Some sanitizer runtimes fail as a program starts when Linux spreads
       # memory over 32 bits of random addresses, as recent Ubuntu does. 28
@@ -380,6 +480,12 @@ jobs:
           uv tool install ninja
           uv tool dir --bin >> "$GITHUB_PATH"
 
+      # ccache, and a cache for the build's, as in the cpp job.
+      - name: Install ccache
+        run: |
+          bash ../scripts/install_ccache.sh "$RUNNER_TEMP/ccache-bin"
+          echo "$RUNNER_TEMP/ccache-bin" >> "$GITHUB_PATH"
+
       - name: Conan profile
         id: profile
         run: |
@@ -397,6 +503,14 @@ jobs:
           conan install . -s build_type=Debug --build=missing
           conan cache clean
 
+      - name: Restore the fuzzers build's ccache
+        id: ccache-fuzz
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/ccache/fuzz
+          key: ccache-${{ runner.os }}-fuzz-${{ github.sha }}
+          restore-keys: ccache-${{ runner.os }}-fuzz-
+
       # The fuzzers build without the tests, but the crypto library needs
       # OpenSSL 3.2 or newer, for Argon2id, which is newer than Ubuntu's: it
       # comes from the Debug build's Conan files.
@@ -404,12 +518,23 @@ jobs:
         env:
           CC: clang
           CXX: clang++
+          CCACHE_DIR: ${{ runner.temp }}/ccache/fuzz
         run: |
+          ccache --zero-stats
           cmake -S . -B build/fuzz -G Ninja -DCMAKE_BUILD_TYPE=Debug \
             --toolchain "$PWD/build/Debug/generators/conan_toolchain.cmake" \
             -DBUILD_TESTING=OFF -DLIBRANET_FUZZERS=ON \
             -DLIBRANET_SANITIZERS=address,undefined
           cmake --build build/fuzz
+          ccache --evict-older-than "$((SECONDS + 60))s"
+          ccache --show-stats
+
+      - name: Save the fuzzers build's ccache
+        if: ${{ !cancelled() && steps.ccache-fuzz.outcome == 'success' && steps.ccache-fuzz.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/ccache/fuzz
+          key: ${{ steps.ccache-fuzz.outputs.cache-primary-key }}
 
       # As in cpp-sanitizers: the fuzzers are built with AddressSanitizer.
       - name: Address randomization the sanitizers can run with
