@@ -149,10 +149,10 @@ jobs:
 
   # The C++ implementation, run from its own directory. It is built for
   # Debug, instrumented for coverage, and for Release; the tests of the
-  # Debug build are run. Sanitizers and fuzzers run in a separate parallel
-  # job (cpp-sanitizers). gcovr reads its settings, and the floor below
-  # which the job fails, from cpp/gcovr.cfg. The program itself is built but
-  # not run: it is to be a server.
+  # Debug build are run. Sanitizers and fuzzers run in separate parallel
+  # jobs (cpp-sanitizers, cpp-fuzzers). gcovr reads its settings, and the
+  # floor below which the job fails, from cpp/gcovr.cfg. The program itself
+  # is built but not run: it is to be a server.
   cpp:
     name: C++ build (${{ matrix.os }})
     needs: changes
@@ -274,10 +274,10 @@ jobs:
           path: cpp/coverage.xml
           if-no-files-found: ignore
 
-  # Runs C++ sanitizer builds/tests and (on Ubuntu) fuzzers in parallel with
-  # the main C++ build and lint jobs.
+  # Runs C++ sanitizer builds/tests in parallel with the main C++ build and
+  # lint jobs.
   cpp-sanitizers:
-    name: C++ sanitizers & fuzzers (${{ matrix.os }})
+    name: C++ sanitizers (${{ matrix.os }})
     needs: changes
     if: needs.changes.outputs.cpp == 'true'
     runs-on: ${{ matrix.os }}
@@ -338,22 +338,6 @@ jobs:
             -DLIBRANET_SANITIZERS=thread
           cmake --build build/thread
 
-      # libFuzzer comes with LLVM's Clang, which Ubuntu has, and not with
-      # Apple's, so only Ubuntu fuzzes. The fuzzers build without the tests,
-      # but the crypto library needs OpenSSL 3.2 or newer, for Argon2id, which
-      # is newer than Ubuntu's: it comes from the Debug build's Conan files.
-      - name: Build fuzzers
-        if: runner.os == 'Linux'
-        env:
-          CC: clang
-          CXX: clang++
-        run: |
-          cmake -S . -B build/fuzz -G Ninja -DCMAKE_BUILD_TYPE=Debug \
-            --toolchain "$PWD/build/Debug/generators/conan_toolchain.cmake" \
-            -DBUILD_TESTING=OFF -DLIBRANET_FUZZERS=ON \
-            -DLIBRANET_SANITIZERS=address,undefined
-          cmake --build build/fuzz
-
       # Some sanitizer runtimes fail as a program starts when Linux spreads
       # memory over 32 bits of random addresses, as recent Ubuntu does. 28
       # bits was the default before.
@@ -373,11 +357,68 @@ jobs:
       - name: Test with ThreadSanitizer
         run: bash ../scripts/run_test_shards.sh build/thread
 
+  # libFuzzer comes with LLVM's Clang, which Ubuntu has, and not with
+  # Apple's, so only Ubuntu fuzzes, in its own job beside the sanitizers.
+  cpp-fuzzers:
+    name: C++ fuzzers
+    needs: changes
+    if: needs.changes.outputs.cpp == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: false
+
+      - name: Install Conan and Ninja
+        run: |
+          uv tool install "conan>=2,<3"
+          uv tool install ninja
+          uv tool dir --bin >> "$GITHUB_PATH"
+
+      - name: Conan profile
+        id: profile
+        run: |
+          conan profile detect --exist-ok
+          echo "hash=$(shasum -a 256 "$(conan profile path default)" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Conan packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.conan2/p
+          key: conan-${{ github.job }}-${{ runner.os }}-${{ steps.profile.outputs.hash }}-${{ hashFiles('cpp/conanfile.py') }}
+
+      - name: Install Debug dependencies for toolchain
+        run: |
+          conan install . -s build_type=Debug --build=missing
+          conan cache clean
+
+      # The fuzzers build without the tests, but the crypto library needs
+      # OpenSSL 3.2 or newer, for Argon2id, which is newer than Ubuntu's: it
+      # comes from the Debug build's Conan files.
+      - name: Build fuzzers
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -S . -B build/fuzz -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            --toolchain "$PWD/build/Debug/generators/conan_toolchain.cmake" \
+            -DBUILD_TESTING=OFF -DLIBRANET_FUZZERS=ON \
+            -DLIBRANET_SANITIZERS=address,undefined
+          cmake --build build/fuzz
+
+      # As in cpp-sanitizers: the fuzzers are built with AddressSanitizer.
+      - name: Address randomization the sanitizers can run with
+        run: sudo sysctl vm.mmap_rnd_bits=28
+
       # Every fuzzer runs for two minutes, all at once. One that finds a
       # fault stops, shows the end of its log here, and saves the input that
       # caused it in build/fuzz/findings/, which the next step uploads.
       - name: Fuzz
-        if: runner.os == 'Linux'
         env:
           ASAN_OPTIONS: detect_stack_use_after_return=1
           UBSAN_OPTIONS: print_stacktrace=1
@@ -408,7 +449,7 @@ jobs:
           exit "$failed"
 
       - name: Upload fuzzing findings
-        if: ${{ failure() && runner.os == 'Linux' }}
+        if: ${{ failure() }}
         uses: actions/upload-artifact@v6
         with:
           name: fuzz-findings
@@ -550,7 +591,7 @@ jobs:
   cpp-checks:
     name: C++
     if: always()
-    needs: [changes, cpp, cpp-sanitizers, cpp-lint]
+    needs: [changes, cpp, cpp-sanitizers, cpp-fuzzers, cpp-lint]
     runs-on: ubuntu-latest
     defaults:
       run:
