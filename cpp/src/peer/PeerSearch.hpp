@@ -22,8 +22,8 @@ namespace peer {
 // later one (HTTP API §6, High-Level Design §4.7). A search asks each peer it
 // is given, those whose ids best match the prefix first, in
 // peers.search_passes passes, network.retry_after_seconds apart, as each peer
-// searches its own meanwhile, and posts what each answered under
-// data.search_answered.
+// searches its own meanwhile, and posts what each answered as
+// storage::SearchAnswered.
 //
 // Each peer is told in X-Search-Relays how many times more it may pass the
 // search on: peers.search_relays for a search no peer asked, and for one a
@@ -40,25 +40,6 @@ public:
     using Milliseconds = std::chrono::milliseconds;
     using Now = std::function<Clock::time_point()>;
     using Sessions = std::vector<std::shared_ptr<PeerSession>>;
-
-    // NOLINTBEGIN(*-non-private-member-variables-in-classes)
-
-    // What a peer, node, answered a search for prefix with: the identifiers
-    // it named, best first. An event is a plain struct, read by whatever
-    // takes it. Its conversion to text, which msg::Message says what it holds
-    // with, is a member, as a conversion must be, so the check takes it for a
-    // class.
-    struct SearchAnswered {
-        static constexpr auto name = "data.search_answered";
-
-        storage::HashPrefix prefix;
-        storage::Identifier node;
-        std::vector<storage::Identifier> results;
-
-        explicit operator std::string() const;
-    };
-
-    // NOLINTEND(*-non-private-member-variables-in-classes)
 
     // The peer, node, that asked this node a search, and how many times more
     // it said the search may be passed on, as its X-Search-Relays said.

@@ -36,6 +36,7 @@
 #include "storage/HashPrefix.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
+#include "storage/SearchAnswered.hpp"
 #include "storage/tests/Fixtures.hpp"
 #include "types/Converter.hpp"
 
@@ -56,18 +57,18 @@ using protocol::SearchResults;
 using storage::HashPrefix;
 using storage::IDataSource;
 using storage::Identifier;
+using storage::SearchAnswered;
 using types::Converter;
 
 // The tests only take what the search posts, from another file, so nothing
 // here would make its messages' virtual to_string(), which next<>() casts
 // to.
-template class msg::Message<PeerSearch::SearchAnswered>;
+template class msg::Message<SearchAnswered>;
 
 namespace {
 
 using Clock = PeerSearch::Clock;
 using Milliseconds = PeerSearch::Milliseconds;
-using SearchAnswered = PeerSearch::SearchAnswered;
 
 // How long a peer waits, at most, for this node to connect or send
 // something, so that a test fails rather than waits forever when it does
@@ -694,11 +695,4 @@ TEST_F(PeerSearchTest, PassesMayFollowAtOnce) {
     // With no peers, every pass is made at once, and the search ends.
     EXPECT_FALSE(search.make_passes({}).has_value());
     EXPECT_FALSE(search.start(HashPrefix::parse("a")));
-}
-
-TEST_F(PeerSearchTest, SearchAnsweredSaysWhatItHolds) {
-    const std::vector<Identifier> results{identifier_of('a'), identifier_of('b')};
-    const SearchAnswered event{HashPrefix::parse("ab"), identifier_of('f'), results};
-
-    EXPECT_EQ(std::string(event), identifier_of('f').to_string() + " named 2 for ab");
 }

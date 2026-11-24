@@ -22,6 +22,7 @@
 #include "protocol/SearchResults.hpp"
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
+#include "storage/SearchAnswered.hpp"
 
 using http::Request;
 using http::Response;
@@ -48,6 +49,7 @@ using std::to_string;
 using std::vector;
 using storage::HashPrefix;
 using storage::Identifier;
+using storage::SearchAnswered;
 
 namespace {
 
@@ -182,18 +184,13 @@ void ask(PeerSession& session, const HashPrefix& prefix, size_t relays) {
         return;
     }
 
-    Channel::post(PeerSearch::SearchAnswered::name,
-                  PeerSearch::SearchAnswered{prefix, session.node_id(), std::move(*results)});
+    Channel::post(SearchAnswered::name,
+                  SearchAnswered{prefix, session.node_id(), std::move(*results)});
 }
 
 } // namespace
 
 namespace peer {
-
-PeerSearch::SearchAnswered::operator std::string() const {
-    return node.to_string() + " named " + to_string(results.size()) + " for "
-           + prefix.to_string();
-}
 
 PeerSearch::PeerSearch(const Settings& settings, Now now)
     : m_settings(checked(settings))
