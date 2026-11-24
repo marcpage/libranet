@@ -1,6 +1,7 @@
 #include "Statement.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -34,6 +35,8 @@ using std::size_t;
 using std::string;
 using std::string_view;
 using std::to_string;
+using std::chrono::duration_cast;
+using std::chrono::milliseconds;
 
 namespace {
 
@@ -183,6 +186,10 @@ Statement& Statement::bind(nullopt_t /*null*/) {
     return *this;
 }
 
+Statement& Statement::bind(Time value) {
+    return bind(duration_cast<milliseconds>(value.time_since_epoch()).count());
+}
+
 bool Statement::step() {
     validate<logic_error>(m_next_parameter > sqlite3_bind_parameter_count(m_statement.get()),
                           "Cannot run a statement before each of its parameters is bound");
@@ -243,6 +250,10 @@ Statement::Data Statement::blob(int column) const {
 
     copy_n(bytes, size, data.begin());
     return data;
+}
+
+Statement::Time Statement::time(int column) const {
+    return Time(milliseconds(integer(column)));
 }
 
 string Statement::label(int column) const {

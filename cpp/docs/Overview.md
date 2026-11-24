@@ -871,6 +871,7 @@ classDiagram
             +step() bool
             +text(column) string
             +integer(column) int64_t
+            +time(column) Time
         }
         class SqliteError
     }

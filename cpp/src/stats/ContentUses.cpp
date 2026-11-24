@@ -23,8 +23,6 @@ using std::optional;
 using std::size_t;
 using std::string_view;
 using std::vector;
-using std::chrono::duration_cast;
-using std::chrono::milliseconds;
 using storage::Identifier;
 
 namespace {
@@ -66,11 +64,6 @@ constexpr string_view uses_sql = "SELECT size, last_stored, last_requested, requ
 constexpr string_view held_sql = "SELECT size, last_stored, last_requested, requests, identifier "
                                  "FROM content_uses WHERE size IS NOT NULL";
 
-// The milliseconds since the Unix epoch of time, as the table holds a time.
-int64_t milliseconds_of(Clock::time_point time) {
-    return duration_cast<milliseconds>(time.time_since_epoch()).count();
-}
-
 // Where column is in the row uses_sql reads, as Statement numbers columns.
 int place_of(Column column) {
     return static_cast<int>(column);
@@ -82,7 +75,7 @@ optional<Clock::time_point> optional_time(const Statement& statement, Column col
         return nullopt;
     }
 
-    return Clock::time_point(milliseconds(statement.integer(place_of(column))));
+    return statement.time(place_of(column));
 }
 
 // The size the row statement is on holds, if any.
@@ -120,14 +113,14 @@ void ContentUses::record_stored(const Identifier& identifier, size_t size) {
     Statement statement(*m_database, stored_sql);
 
     statement.bind(identifier.to_string()).bind(static_cast<int64_t>(size));
-    statement.bind(milliseconds_of(m_clock()));
+    statement.bind(m_clock());
     (void)statement.step();
 }
 
 void ContentUses::record_requested(const Identifier& identifier) {
     Statement statement(*m_database, requested_sql);
 
-    statement.bind(identifier.to_string()).bind(milliseconds_of(m_clock()));
+    statement.bind(identifier.to_string()).bind(m_clock());
     (void)statement.step();
 }
 

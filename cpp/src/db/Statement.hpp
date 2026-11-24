@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -23,6 +24,7 @@ namespace db {
 class Statement {
 public:
     using Data = std::vector<std::byte>;
+    using Time = std::chrono::system_clock::time_point;
 
     // Prepares the one statement that sql holds on database. Throws
     // SqliteError for SQL that SQLite cannot prepare, as when it names a
@@ -47,6 +49,9 @@ public:
     Statement& bind(std::string_view value);
     Statement& bind(const Data& value);
     Statement& bind(std::nullopt_t /*null*/);
+    // The milliseconds since the Unix epoch of value, as a table holds a
+    // time.
+    Statement& bind(Time value);
     // NULL when value is empty.
     template<typename Type>
     Statement& bind(const std::optional<Type>& value);
@@ -68,6 +73,8 @@ public:
     [[nodiscard]] double real(int column) const;
     [[nodiscard]] std::string text(int column) const;
     [[nodiscard]] Data blob(int column) const;
+    // The time an integer column holds, as bind() holds one.
+    [[nodiscard]] Time time(int column) const;
 
     // The label of column in the rows the statement gives, whether it is on
     // one or not: the name its AS clause gives it, or without one, a name
