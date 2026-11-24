@@ -63,6 +63,8 @@ using Status = http::ResponseCode::Status;
 
 namespace {
 
+using Matches = std::map<string, vector<Identifier>>; // By prefix
+
 // store, once it is known to be one. Throws invalid_argument for none.
 IDataSource::Ptr checked(IDataSource::Ptr store) {
     if (!store) {
@@ -183,6 +185,29 @@ bool is_taken(const Response& answer) {
 
     return static_cast<int>(Status::Ok) <= status
            && status < static_cast<int>(Status::MultipleChoices);
+}
+
+// What a search of each of searches finds in found, best first, less what
+// pushed names, by prefix, each once.
+Matches matches_of(SearchAnswers& found, const vector<HashPrefix>& searches,
+                   const set<string>& pushed) {
+    Matches matches;
+
+    for (const auto& prefix : searches) {
+        auto [matching, is_new] = matches.try_emplace(prefix.to_string());
+
+        if (!is_new) {
+            continue;
+        }
+
+        for (auto& identifier : found.answer(prefix)) {
+            if (pushed.end() == pushed.find(identifier.to_string())) {
+                matching->second.push_back(std::move(identifier));
+            }
+        }
+    }
+
+    return matches;
 }
 
 } // namespace
@@ -357,7 +382,7 @@ void SeekFulfiller::_push_run(PeerSession& session, const vector<Identifier>& ru
 // What is posted counts as named from now on. One not accepted is logged.
 void SeekFulfiller::_name(PeerSession& session, const vector<HashPrefix>& searches) {
     const auto node_id = session.node_id().to_string();
-    const auto unnamed = _unnamed(node_id, _matches(searches, _pushed(node_id)));
+    const auto unnamed = _unnamed(node_id, matches_of(m_found, searches, _pushed(node_id)));
     vector<string> prefixes;
 
     for (const auto& [prefix, identifiers] : unnamed) {
@@ -384,29 +409,6 @@ void SeekFulfiller::_name(PeerSession& session, const vector<HashPrefix>& search
             }
         }
     }
-}
-
-// What a search of each of searches finds, best first, less what pushed
-// names, by prefix, each once.
-SeekFulfiller::Matches SeekFulfiller::_matches(const vector<HashPrefix>& searches,
-                                               const set<string>& pushed) {
-    Matches matches;
-
-    for (const auto& prefix : searches) {
-        auto [matching, is_new] = matches.try_emplace(prefix.to_string());
-
-        if (!is_new) {
-            continue;
-        }
-
-        for (auto& identifier : m_found.answer(prefix)) {
-            if (pushed.end() == pushed.find(identifier.to_string())) {
-                matching->second.push_back(std::move(identifier));
-            }
-        }
-    }
-
-    return matches;
 }
 
 // What has been pushed to node_id on the connection to it now.

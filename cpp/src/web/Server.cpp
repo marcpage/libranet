@@ -15,6 +15,7 @@
 #include <string_view>
 #include <system_error>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -57,11 +58,14 @@ using std::string_view;
 using std::system_error;
 using std::thread;
 using std::unique_lock;
+using std::unordered_map;
 using web::ConnectionInfo;
 using web::Server;
 using Status = http::ResponseCode::Status;
 
 namespace {
+
+using Handlers = unordered_map<string, Server::RequestHandler>;
 
 // The header that names the request an answer answers.
 constexpr auto request_path_header = "X-Request-Path";
@@ -388,6 +392,59 @@ Server::Limits checked(const Server::Limits& limits) {
     return limits;
 }
 
+// The handler in handlers, by path, that has uri: the one at uri itself, or
+// else the one at the longest path uri is under; file_not_found when none has
+// it.
+Server::RequestHandler handler_for(const Handlers& handlers, string_view uri) {
+    const string uri_str(uri);
+    const auto found_handler = handlers.find(uri_str);
+
+    if (found_handler != handlers.end()) {
+        return found_handler->second;
+    }
+
+    string best_prefix;
+    Server::RequestHandler best_handler = file_not_found;
+
+    for (const auto& [prefix, handler] : handlers) {
+        if (is_under(uri_str, prefix) && prefix.size() > best_prefix.size()) {
+            best_prefix = prefix;
+            best_handler = handler;
+        }
+    }
+
+    return best_handler;
+}
+
+// Reads the next request on the connection, from the reader, within limits,
+// and answers it with the handler in handlers that has it. Returns whether
+// the connection stays open for another.
+bool answer_next(const Server::Limits& limits, const Handlers& handlers, ISocket& client,
+                 MeteredReader& reader, ConnectionInfo& connection) {
+    const auto received = read_request(reader, limits);
+
+    if (!received.has_value()) {
+        return false;
+    }
+
+    connection.add_a_request();
+
+    Response response;
+
+    if (received->refusal.has_value()) {
+        received->refusal->answer(response);
+    } else {
+        respond(handler_for(handlers, received->request.uri()), received->request, response,
+                connection);
+    }
+
+    const auto closing = closes(*received, response, connection);
+
+    make_ready(response, *received, closing);
+    client.send_all(response.to_string());
+    return !closing;
+}
+
 } // namespace
 
 namespace web {
@@ -457,27 +514,6 @@ void Server::stop() {
         // NOLINTNEXTLINE(bugprone-empty-catch)
     } catch (const exception&) {
     }
-}
-
-Server::RequestHandler Server::_find_handler(string_view uri) const {
-    const string uri_str(uri);
-    const auto found_handler = m_handlers.find(uri_str);
-
-    if (found_handler != m_handlers.end()) {
-        return found_handler->second;
-    }
-
-    string best_prefix;
-    RequestHandler best_handler = file_not_found;
-
-    for (const auto& [prefix, handler] : m_handlers) {
-        if (is_under(uri_str, prefix) && prefix.size() > best_prefix.size()) {
-            best_prefix = prefix;
-            best_handler = handler;
-        }
-    }
-
-    return best_handler;
 }
 
 // Listens, unless stop() has been called. stop() wakes accept() only once
@@ -580,7 +616,7 @@ void Server::_converse(Client& client) {
         auto buffered = std::make_unique<BufferedReader>(std::make_unique<SocketReader>(socket));
         MeteredReader reader(std::move(buffered), m_limits.head_bytes);
 
-        while (m_running && _answer(socket, reader, connection)) {
+        while (m_running && answer_next(m_limits, m_handlers, socket, reader, connection)) {
         }
         // The client may go, send nothing for too long, or its connection
         // fail. Only that connection ends; the server goes on.
@@ -592,32 +628,6 @@ void Server::_converse(Client& client) {
 
     client.socket.reset();
     m_changed.notify_all();
-}
-
-// Reads the next request on the connection, from the reader, and answers
-// it. Returns whether the connection stays open for another.
-bool Server::_answer(ISocket& client, MeteredReader& reader, ConnectionInfo& connection) const {
-    const auto received = read_request(reader, m_limits);
-
-    if (!received.has_value()) {
-        return false;
-    }
-
-    connection.add_a_request();
-
-    Response response;
-
-    if (received->refusal.has_value()) {
-        received->refusal->answer(response);
-    } else {
-        respond(_find_handler(received->request.uri()), received->request, response, connection);
-    }
-
-    const auto closing = closes(*received, response, connection);
-
-    make_ready(response, *received, closing);
-    client.send_all(response.to_string());
-    return !closing;
 }
 
 // Stops listening, once start() is to return, and ends every connection,

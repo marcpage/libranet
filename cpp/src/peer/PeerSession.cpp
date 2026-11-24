@@ -26,6 +26,7 @@ using identity::MessageSigner;
 using identity::MessageVerifier;
 using net::Address;
 using peer::PeerConnection;
+using peer::PeerSession;
 using std::future;
 using std::invalid_argument;
 using std::nullopt;
@@ -72,6 +73,22 @@ optional<string> fault_of(const Response& answer, const Identifier& node_id,
     return nullopt;
 }
 
+// Ends session, and throws Unauthenticated, unless answer is shown, as
+// verifier finds, to come from its node. asked names its request.
+void check_answer(const MessageVerifier& verifier, PeerSession& session, const Response& answer,
+                  string_view asked) {
+    const auto fault = fault_of(answer, session.node_id(), verifier);
+
+    if (!fault) {
+        return;
+    }
+
+    session.close();
+    throw PeerSession::Unauthenticated("The answer to " + string(asked) + " from "
+                                       + session.address().to_string() + " is not from "
+                                       + session.node_id().to_string() + ": " + *fault);
+}
+
 } // namespace
 
 namespace peer {
@@ -110,7 +127,7 @@ vector<Response> PeerSession::exchange(vector<Request> requests) {
     for (size_t index = 0; index < answers.size(); ++index) {
         auto answer = answers.at(index).get();
 
-        _check(answer, asked.at(index));
+        check_answer(m_verifier, *this, answer, asked.at(index));
         checked.push_back(std::move(answer));
     }
 
@@ -154,21 +171,6 @@ vector<shared_ptr<PeerSession>> PeerSession::ranked(vector<shared_ptr<PeerSessio
         return left->matching_bits(identifier) > right->matching_bits(identifier);
     });
     return sessions;
-}
-
-// Ends the session, and throws Unauthenticated, unless answer is shown to
-// come from the node. asked names its request.
-void PeerSession::_check(const Response& answer, string_view asked) {
-    const auto fault = fault_of(answer, m_node_id, m_verifier);
-
-    if (!fault) {
-        return;
-    }
-
-    close();
-    throw Unauthenticated("The answer to " + string(asked) + " from "
-                          + address().to_string() + " is not from "
-                          + m_node_id.to_string() + ": " + *fault);
 }
 
 } // namespace peer

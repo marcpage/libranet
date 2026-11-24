@@ -39,10 +39,6 @@ public:
 private:
     mutable std::mutex m_mutex;
     std::string m_body; // Guarded by m_mutex: the list served, as it is sent
-
-    void _get(http::Response& response) const;
-    static void _post(const http::Request& request, http::Response& response,
-                      const web::ConnectionInfo& connection);
 };
 
 } // namespace api

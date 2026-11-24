@@ -56,8 +56,6 @@ private:
     std::map<std::string, Value> m_settings;
 
     explicit SettingsFile(std::map<std::string, Value> settings);
-
-    [[nodiscard]] const Value& _at(const std::string& name) const;
 };
 
 } // namespace node
