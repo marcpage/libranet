@@ -302,7 +302,7 @@ void ask_for(PeerSession& session, const vector<Identifier>& sought, const IData
 }
 
 // Steps 6 and 7, unless the node of session has turned this node away, as
-// it may in any answer, and so takes no more requests: fulfils seek, the
+// it may in any answer, and so takes no more requests: fulfills seek, the
 // list it sent, with fulfiller, then asks it for what own_seek names by
 // identifier. Throws what PeerSession::exchange() throws, but for the
 // connection having closed as the node turned this node away.
@@ -310,7 +310,7 @@ void trade(PeerSession& session, const SeekList& seek, const SeekList& own_seek,
            SeekFulfiller& fulfiller, const IDataSource& store) {
     try {
         if (session.is_open()) {
-            fulfiller.fulfil(session, seek);
+            fulfiller.fulfill(session, seek);
         }
 
         if (session.is_open()) {

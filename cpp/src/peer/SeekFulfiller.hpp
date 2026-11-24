@@ -19,14 +19,14 @@
 
 namespace peer {
 
-// Fulfils what the nodes this node is connected to seek (High-Level Design
+// Fulfills what the nodes this node is connected to seek (High-Level Design
 // §4.8). It reads each node's seek list (HttpApi §10.7.1) at first contact,
 // and again every peers.seek_refresh_seconds while the connection lasts
 // (Handshake Protocol §3.3), and puts what it holds of the data entries
 // (§3, step 6). For each search entry, it posts the identifiers of what it
 // holds that a search of the prefix finds (HttpApi §6), best match first,
 // for the node to list by identifier what it lacks and wants, which a later
-// read fulfils (HttpApi §10.7.2). It names each once while the entry stays
+// read fulfills (HttpApi §10.7.2). It names each once while the entry stays
 // listed, and none it has pushed on that connection, and pushes each once on
 // it. What a search finds is kept for peers.seek_refresh_seconds, for every
 // connection to share, since each node's list is read that often, and nodes
@@ -71,15 +71,15 @@ public:
     SeekFulfiller& operator=(SeekFulfiller&&) = delete;
 
     // Step 6 of first contact with the node of session, on a new connection:
-    // fulfils seek, the list it has just sent. What was pushed and named to
+    // fulfills seek, the list it has just sent. What was pushed and named to
     // the node on a connection before is let go. Its list is due to be read
     // again once peers.seek_refresh_seconds have passed. Throws what
     // PeerSession::exchange() throws.
-    void fulfil(PeerSession& session, const protocol::SeekList& seek);
+    void fulfill(PeerSession& session, const protocol::SeekList& seek);
 
     // Reads again the seek list of each of sessions that is open, whose list
     // was read peers.seek_refresh_seconds ago or more, or not at all, and
-    // fulfils it, each on a thread of its own, so that a node slow to answer
+    // fulfills it, each on a thread of its own, so that a node slow to answer
     // holds up none of the others, and waits for each. What was pushed and
     // named to a node none of sessions is open to is let go once its list is
     // due, as its connection has ended. A list that cannot be read, or a
@@ -111,7 +111,7 @@ private:
     [[nodiscard]] Sessions _due(const Sessions& sessions);
     void _let_go(const ByNode& open, Clock::time_point now);
     [[nodiscard]] bool _refresh(PeerSession& session);
-    void _fulfil(PeerSession& session, const protocol::SeekList& seek);
+    void _fulfill(PeerSession& session, const protocol::SeekList& seek);
     void _push(PeerSession& session, const std::vector<storage::Identifier>& sought);
     void _push_run(PeerSession& session, const std::vector<storage::Identifier>& run);
     void _name(PeerSession& session, const std::vector<storage::HashPrefix>& searches);

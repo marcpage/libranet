@@ -372,7 +372,7 @@ TEST_F(SeekFulfillerTest, HeldDataEntriesArePutInTheirOrder) {
     const StandInNode node(first_signer());
     const auto session = first_at(node.address());
 
-    fulfiller()->fulfil(*session, seeking({second, lacked, first}));
+    fulfiller()->fulfill(*session, seeking({second, lacked, first}));
 
     const auto puts = node.requests_of("PUT");
 
@@ -393,7 +393,7 @@ TEST_F(SeekFulfillerTest, EntryListedTwiceIsPutOnce) {
     const StandInNode node(first_signer());
     const auto session = first_at(node.address());
 
-    fulfiller()->fulfil(*session, seeking({held, held}));
+    fulfiller()->fulfill(*session, seeking({held, held}));
 
     EXPECT_EQ(node.requests_of("PUT").size(), 1U);
 }
@@ -413,7 +413,7 @@ TEST_F(SeekFulfillerTest, EachHeldIsPutWhateverThePipelineDepth) {
     const StandInNode node(first_signer());
     const auto session = first_at(node.address());
 
-    fulfiller(settings)->fulfil(*session, seeking(held));
+    fulfiller(settings)->fulfill(*session, seeking(held));
 
     EXPECT_EQ(node.requests_of("PUT").size(), 3U);
 }
@@ -430,7 +430,7 @@ TEST_F(SeekFulfillerTest, SearchEntryIsAnsweredWithWhatMatchesBestFirst) {
     const StandInNode node(first_signer());
     const auto session = first_at(node.address());
 
-    fulfiller()->fulfil(*session, seeking({}, {"abcdef1"}));
+    fulfiller()->fulfill(*session, seeking({}, {"abcdef1"}));
 
     const auto posts = node.requests_of("POST");
 
@@ -448,7 +448,7 @@ TEST_F(SeekFulfillerTest, SearchEntryNothingMatchesIsPostedNothing) {
     const StandInNode node(first_signer());
     const auto session = first_at(node.address());
 
-    fulfiller()->fulfil(*session, seeking({}, {searched}));
+    fulfiller()->fulfill(*session, seeking({}, {searched}));
 
     EXPECT_TRUE(node.asked().empty());
 }
@@ -465,7 +465,7 @@ TEST_F(SeekFulfillerTest, EachMatchIsNamedOnceWhileTheEntryIsListed) {
 
     hold(earlier);
     node.seeks(list);
-    fulfilling->fulfil(*session, list);
+    fulfilling->fulfill(*session, list);
     advance(SeekFulfiller::Settings::default_refresh);
     EXPECT_EQ(fulfilling->refresh({session}), 1U);
     hold(later);
@@ -487,7 +487,7 @@ TEST_F(SeekFulfillerTest, EntryListedAgainIsNamedAgain) {
     const auto session = first_at(node.address());
 
     hold(held);
-    fulfilling->fulfil(*session, list);
+    fulfilling->fulfill(*session, list);
     node.seeks(SeekList());
     advance(SeekFulfiller::Settings::default_refresh);
     EXPECT_EQ(fulfilling->refresh({session}), 1U);
@@ -513,7 +513,7 @@ TEST_F(SeekFulfillerTest, WhatWasPushedIsNotNamed) {
     const StandInNode node(first_signer());
     const auto session = first_at(node.address());
 
-    fulfiller()->fulfil(*session, seeking({pushed}, {searched}));
+    fulfiller()->fulfill(*session, seeking({pushed}, {searched}));
 
     const auto posts = node.requests_of("POST");
 
@@ -533,7 +533,7 @@ TEST_F(SeekFulfillerTest, WhatWasPushedIsNotPushedAgain) {
 
     hold(held);
     node.seeks(list);
-    fulfilling->fulfil(*session, list);
+    fulfilling->fulfill(*session, list);
     advance(SeekFulfiller::Settings::default_refresh);
     EXPECT_EQ(fulfilling->refresh({session}), 1U);
     EXPECT_EQ(node.asked(), (std::vector<std::string>{"PUT /data/" + held.to_string(),
@@ -550,8 +550,8 @@ TEST_F(SeekFulfillerTest, NewConnectionStartsAfresh) {
     const StandInNode after(first_signer());
 
     hold(held);
-    fulfilling->fulfil(*first_at(before.address()), list);
-    fulfilling->fulfil(*first_at(after.address()), list);
+    fulfilling->fulfill(*first_at(before.address()), list);
+    fulfilling->fulfill(*first_at(after.address()), list);
 
     EXPECT_EQ(after.asked(), before.asked());
     EXPECT_EQ(after.requests_of("PUT").size(), 1U);
@@ -562,7 +562,7 @@ TEST_F(SeekFulfillerTest, ListIsReadAgainOnlyOnceDue) {
     const StandInNode node(first_signer());
     const auto session = first_at(node.address());
 
-    fulfilling->fulfil(*session, SeekList());
+    fulfilling->fulfill(*session, SeekList());
     advance(SeekFulfiller::Settings::default_refresh - 1ms);
     EXPECT_EQ(fulfilling->refresh({session}), 0U);
     EXPECT_TRUE(node.asked().empty());
@@ -615,7 +615,7 @@ TEST_F(SeekFulfillerTest, NodeNoLongerConnectedIsLetGo) {
 
     hold(held);
     node.seeks(list);
-    fulfilling->fulfil(*session, list);
+    fulfilling->fulfill(*session, list);
     advance(SeekFulfiller::Settings::default_refresh);
     EXPECT_EQ(fulfilling->refresh({}), 0U);
     EXPECT_EQ(fulfilling->refresh({session}), 1U);
@@ -642,7 +642,7 @@ TEST_F(SeekFulfillerTest, ListNotSentIsNotCounted) {
     const auto session = first_at(node.address());
 
     hold(held);
-    fulfilling->fulfil(*session, list);
+    fulfilling->fulfill(*session, list);
     node.answers_seek_with(Status::ServiceUnavailable);
     advance(SeekFulfiller::Settings::default_refresh);
     EXPECT_EQ(fulfilling->refresh({session}), 0U);
@@ -671,18 +671,18 @@ TEST_F(SeekFulfillerTest, ReadThatFailsIsLoggedAndNotCounted) {
     const auto session = first_at(node.address());
 
     EXPECT_EQ(fulfiller()->refresh({session}), 0U);
-    EXPECT_TRUE(logged("Could not fulfil the seek list of"));
+    EXPECT_TRUE(logged("Could not fulfill the seek list of"));
     EXPECT_FALSE(session->is_open());
 }
 
-TEST_F(SeekFulfillerTest, FulfilThrowsWhatTheSessionThrows) {
+TEST_F(SeekFulfillerTest, FulfillThrowsWhatTheSessionThrows) {
     const auto held = id_of(other_digits, 1);
     const StandInNode node(std::nullopt);
     const auto session = first_at(node.address());
 
     hold(held);
 
-    EXPECT_THROW(fulfiller()->fulfil(*session, seeking({held})), PeerSession::Unauthenticated);
+    EXPECT_THROW(fulfiller()->fulfill(*session, seeking({held})), PeerSession::Unauthenticated);
 }
 
 TEST_F(SeekFulfillerTest, PipelineDepthIsGiven) {
