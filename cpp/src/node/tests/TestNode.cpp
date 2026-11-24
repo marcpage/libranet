@@ -225,11 +225,11 @@ Values loopback(const path& data_dir) {
     };
 }
 
-// What making a node with values says, when it turns them down as
+// What making a node with values and seeds says, when it turns them down as
 // unusable, or nothing if it does not.
-string refusal(const Values& values) {
+string refusal(const Values& values, const vector<string>& seeds = {}) {
     try {
-        const Node node(settings_of(values));
+        const Node node(settings_of(values), seeds);
     } catch (const invalid_argument& error) {
         return error.what();
     }
@@ -350,6 +350,7 @@ TEST_F(NodeTest, LogsItsSettings) {
     auto values = loopback(data_dir());
 
     values["storage.max_storage_bytes"] = "5000000";
+    values["karma.mining"] = "false";
 
     const Node node(settings_of(values));
 
@@ -357,8 +358,78 @@ TEST_F(NodeTest, LogsItsSettings) {
     EXPECT_TRUE(logged("network.listen_address = 127.0.0.1"));
     EXPECT_TRUE(logged("network.listen_port = 0"));
     EXPECT_TRUE(logged("logging.level = INFO"));
+    EXPECT_TRUE(logged("storage.max_storage_bytes = 5000000"));
+    EXPECT_TRUE(logged("Seeds: 0"));
     EXPECT_TRUE(logged("Listening on " + node.local_address().to_string()));
-    EXPECT_TRUE(logged("Setting not used: storage.max_storage_bytes"));
+    EXPECT_TRUE(logged("Setting not used: karma.mining"));
+}
+
+// What it remembers of the network is kept in its database.
+TEST_F(NodeTest, KeepsItsDatabase) {
+    const Node node(settings_of(loopback(data_dir())));
+
+    EXPECT_TRUE(std::filesystem::is_regular_file(data_dir() / "libranet.sqlite3"));
+}
+
+// The seeds are those the command line names, then those of the seed file.
+TEST_F(NodeTest, TakesItsSeedsFromTheCommandLineAndTheSeedFile) {
+    const auto seed_file = data_dir() / "seeds.json";
+    auto values = loopback(data_dir());
+
+    write_file(seed_file, R"({"nodes": {"http://127.0.0.1:9": null, "http://127.0.0.1:7": )"
+                          R"("sha256/2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"}})");
+    values["peers.seed_file"] = "'" + seed_file.string() + "'";
+
+    const vector<string> seeds{
+        "http://127.0.0.1:8",
+        "http://127.0.0.1:6=sha256/" + string(hello_hash),
+    };
+    const Node node(settings_of(values), seeds);
+
+    EXPECT_TRUE(logged("Seeds: 4"));
+}
+
+// A seed that is not an http URL, or names what is not a node id, is turned
+// down, before the node makes anything.
+TEST_F(NodeTest, RefusesSeedsItCannotUse) {
+    const auto unmade = data_dir() / "unmade";
+
+    for (const auto* const seed : {
+             "ftp://127.0.0.1:9",
+             "127.0.0.1:9",
+             "http://127.0.0.1:9=x",
+             "http://127.0.0.1:9=sha256/abc",
+         }) {
+        EXPECT_NE(refusal(loopback(unmade), {seed}).find("--seed:"), string::npos) << seed;
+        EXPECT_FALSE(std::filesystem::exists(unmade)) << seed;
+    }
+}
+
+// A seed file it cannot read, or that is not a node list of http endpoints
+// and node ids, is turned down, before the node makes anything.
+TEST_F(NodeTest, RefusesASeedFileItCannotUse) {
+    const auto unmade = data_dir() / "unmade";
+    const auto not_json = data_dir() / "not.json";
+    const auto not_a_list = data_dir() / "not-a-list.json";
+    const auto bad_id = data_dir() / "bad-id.json";
+
+    write_file(not_json, "{");
+    write_file(not_a_list, R"({"peers": {}})");
+    write_file(bad_id, R"({"nodes": {"http://127.0.0.1:9": "sha256/abc"}})");
+
+    for (const auto& file : {
+             data_dir() / "missing.json",
+             not_json,
+             not_a_list,
+             bad_id,
+         }) {
+        auto values = loopback(unmade);
+
+        values["peers.seed_file"] = "'" + file.string() + "'";
+
+        EXPECT_NE(refusal(values).find("peers.seed_file:"), string::npos) << file;
+        EXPECT_FALSE(std::filesystem::exists(unmade)) << file;
+    }
 }
 
 // What cas/ holds is served from /data.
@@ -505,6 +576,40 @@ TEST_F(NodeTest, RefusesSettingsItCannotUse) {
         {"logging.level", "LOUD"},
         {"logging.level", "info"},
         {"storage.data_dir", "''"},
+        {"network.retry_after_seconds", "1.5"},
+        {"network.retry_after_seconds", "-1"},
+        {"peers.min_outgoing_connections", "0"},
+        {"peers.min_outgoing_connections", "17"},
+        {"peers.bucket_prefix_bits", "17"},
+        {"peers.min_neighborhood_connections", "17"},
+        {"peers.neighborhood_prefix_bits", "0"},
+        {"peers.connect_timeout_seconds", "0"},
+        {"peers.request_timeout_seconds", "x"},
+        {"peers.retry_delay_seconds", "-1"},
+        {"peers.turned_away_rest_seconds", ".nan"},
+        {"peers.seek_refresh_seconds", "60"},
+        {"peers.search_passes", "1"},
+        {"peers.search_relays", "-1"},
+        {"peers.failed_search_hold_seconds", "10"},
+        {"peers.broadcast_hold_seconds", "0.0001"},
+        {"peers.search_workers", "0"},
+        {"peers.pipeline_depth", "0"},
+        {"peers.seed_file", "''"},
+        {"storage.min_free_bytes", "-1"},
+        {"storage.max_storage_bytes", "99999999999999999999999"},
+        {"storage.max_hand_offs", "0"},
+        {"storage.candidates_timeout_seconds", "0"},
+        {"storage.max_candidates", "0"},
+        {"storage.stored_grace_seconds", "-1"},
+        {"storage.search_cache_ttl_seconds", "0"},
+        {"storage.search_min_bits", "257"},
+        {"identity.provisional_trust_attempts", "1"},
+        {"identity.signature_max_age_seconds", "0"},
+        {"identity.signature_clock_skew_seconds", "-1"},
+        {"stats.derive_interval_seconds", "1e10"},
+        {"stats.seek_entry_ttl_seconds", "0"},
+        {"stats.max_address_failures", "0"},
+        {"stats.max_node_failures", "0"},
     };
 
     for (const auto& [name, value] : unusable) {

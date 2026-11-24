@@ -131,8 +131,8 @@ Connections::Connections(const NodeIdentity& identity, const vector<string>& own
                          ClockFunction clock)
     : m_check_interval(checked_interval(settings.check_interval))
     , m_own_id(identity.id())
-    , m_first_contact(identity, store, std::move(verifier),
-                      make_shared<SeekFulfiller>(store, settings.fulfiller))
+    , m_fulfiller(make_shared<SeekFulfiller>(store, settings.fulfiller))
+    , m_first_contact(identity, store, std::move(verifier), m_fulfiller)
     , m_publisher(m_own_id, own_endpoints)
     , m_limits(settings.limits)
     , m_seeds(std::move(settings.seeds))
@@ -159,10 +159,16 @@ Connections::~Connections() {
     m_channel.stop();
 
     // No job starts once it is stopping, so those taken are all there are.
+    // Each connection is closed first, so that a job waiting on one ends.
     std::list<future<void>> jobs;
 
     {
         const scoped_lock lock(m_mutex);
+
+        for (const auto& [node, peer] : m_peers) {
+            peer.session->close();
+        }
+
         jobs.swap(m_jobs);
     }
 
@@ -186,6 +192,7 @@ void Connections::_handle(const IMessage::Ptr& message) {
     } else if (nullptr != value_of<Timer::Tick>(message)) {
         _check_closed();
         _maintain();
+        _refresh_seek_lists();
     } else {
         lWarn << "Not an event connections takes:" << message->to_string();
     }
@@ -244,6 +251,28 @@ void Connections::_check_closed() {
     if (changed) {
         _post_connected();
     }
+}
+
+// Reads again the seek lists of the nodes connected that are due, and
+// fulfills them, on a thread of its own, unless that thread is still at it.
+void Connections::_refresh_seek_lists() {
+    const scoped_lock lock(m_mutex);
+
+    if (m_stopping || m_refreshing || m_peers.empty()) {
+        return;
+    }
+
+    m_refreshing = true;
+    _start([this, open = _open()] {
+        try {
+            (void)m_fulfiller->refresh(open);
+        } catch (const exception& error) {
+            lErr << "Could not read the seek lists of the nodes connected:" << error.what();
+        }
+
+        const scoped_lock done(m_mutex);
+        m_refreshing = false;
+    });
 }
 
 // Dials what the plan says, once the candidates are known; or the seeds,
@@ -444,6 +473,41 @@ bool Connections::_admit(const shared_ptr<PeerSession>& session, const string& e
 
     lInfo << "Connected to" << node << "at" << endpoint;
     return true;
+}
+
+vector<shared_ptr<PeerSession>> Connections::open_sessions() const {
+    const scoped_lock lock(m_mutex);
+
+    return _open();
+}
+
+vector<Identifier> Connections::connected_ids() const {
+    const scoped_lock lock(m_mutex);
+    vector<Identifier> node_ids;
+
+    node_ids.reserve(m_peers.size());
+
+    for (const auto& [node, peer] : m_peers) {
+        node_ids.push_back(peer.session->node_id());
+    }
+
+    return node_ids;
+}
+
+// The sessions of the nodes connected whose connections are open. Called
+// holding m_mutex.
+vector<shared_ptr<PeerSession>> Connections::_open() const {
+    vector<shared_ptr<PeerSession>> open;
+
+    open.reserve(m_peers.size());
+
+    for (const auto& [node, peer] : m_peers) {
+        if (peer.session->is_open()) {
+            open.push_back(peer.session);
+        }
+    }
+
+    return open;
 }
 
 // Posts the nodes connected now. Called holding m_mutex, so that each list
