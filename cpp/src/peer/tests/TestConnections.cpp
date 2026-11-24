@@ -77,6 +77,9 @@ constexpr auto poll_interval = 10ms;
 // How often connections are checked in the tests: often, so that a test
 // waits little for what a check finds.
 constexpr auto check_interval = 10ms;
+// How often a peer's seek list is read again in the test of that: often,
+// so that it is read several times while the test waits.
+constexpr auto seek_refresh = 20ms;
 
 // The header that gives a body's length, as a line of a message's head.
 constexpr std::string_view length_line = "Content-Length: ";
@@ -730,7 +733,7 @@ TEST_F(ConnectionsTest, SeekListsAreReadAgainWhileConnected) {
     Channel opened(ConnectionOpened::name);
     auto often = settings();
 
-    often.fulfiller.refresh = 20ms;
+    often.fulfiller.refresh = seek_refresh;
 
     const auto made = connections_with(often);
     const auto seek_reads = [&node] {
