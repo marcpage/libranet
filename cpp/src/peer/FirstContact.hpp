@@ -19,7 +19,7 @@ namespace peer {
 // value before asking for any: it puts this node's public key, so that the
 // peer can check what follows; gets the peer's key, which the signature on
 // the first answer names, unless it is held; posts this node's node list;
-// reads the peer's seek list and node list; fulfils the peer's seek list,
+// reads the peer's seek list and node list; fulfills the peer's seek list,
 // with a SeekFulfiller; and asks the peer for what this node seeks. The
 // nodes the peer's list names are posted as nodes.received, for
 // stats::Recorder to keep. Nothing changes once it is made, so any thread

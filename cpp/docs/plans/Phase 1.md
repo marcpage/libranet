@@ -96,7 +96,7 @@ The parts that run threads of their own:
 | --- | --- | --- |
 | Web | `api::Service` | Runs `web::Server` and the `/data` handlers, checks each upload as it arrives, and keeps the latest lists `stats::Recorder` derives |
 | Stats | `stats::Recorder` | The only one that opens `libranet.sqlite3`; records the addresses of nodes and how content is used; derives the node, candidate, and seek lists; ranks content for eviction |
-| Connections | `peer::Connections` | Owns every outgoing connection and keeps up the peer mix; makes first contact; fetches, searches peers, fulfils their seek lists, pushes new content, and hands content off |
+| Connections | `peer::Connections` | Owns every outgoing connection and keeps up the peer mix; makes first contact; fetches, searches peers, fulfills their seek lists, pushes new content, and hands content off |
 | Eviction | `eviction::Evictor` | Keeps storage within its limits |
 
 The Python node checks an upload in a validator process of its own. Here

@@ -197,7 +197,7 @@ SeekFulfiller::SeekFulfiller(IDataSource::Ptr store, const Settings& settings, N
     , m_now(checked(std::move(now)))
     , m_found(held_in(m_store), m_settings.search_min_bits, m_settings.refresh, m_now) {}
 
-void SeekFulfiller::fulfil(PeerSession& session, const SeekList& seek) {
+void SeekFulfiller::fulfill(PeerSession& session, const SeekList& seek) {
     const auto now = m_now();
 
     {
@@ -206,7 +206,7 @@ void SeekFulfiller::fulfil(PeerSession& session, const SeekList& seek) {
         m_served.insert_or_assign(session.node_id().to_string(), Served{{}, {}, now});
     }
 
-    _fulfil(session, seek);
+    _fulfill(session, seek);
 }
 
 size_t SeekFulfiller::refresh(const Sessions& sessions) {
@@ -276,7 +276,7 @@ void SeekFulfiller::_let_go(const ByNode& open, Clock::time_point now) {
     }
 }
 
-// Reads the seek list of the node of session again and fulfils it, and says
+// Reads the seek list of the node of session again and fulfills it, and says
 // whether it was read. What fails is logged.
 bool SeekFulfiller::_refresh(PeerSession& session) {
     const auto from = described(session);
@@ -286,19 +286,19 @@ bool SeekFulfiller::_refresh(PeerSession& session) {
         const auto seek = seek_list_in(answers.at(0), from);
 
         if (seek) {
-            _fulfil(session, *seek);
+            _fulfill(session, *seek);
         }
 
         return seek.has_value();
     } catch (const exception& error) {
-        lInfo << "Could not fulfil the seek list of" << from + ":" << error.what();
+        lInfo << "Could not fulfill the seek list of" << from + ":" << error.what();
         return false;
     }
 }
 
 // Puts what seek names that the store holds, then names what matches the
 // searches it names.
-void SeekFulfiller::_fulfil(PeerSession& session, const SeekList& seek) {
+void SeekFulfiller::_fulfill(PeerSession& session, const SeekList& seek) {
     _push(session, seek.data());
     _name(session, seek.search());
 }
