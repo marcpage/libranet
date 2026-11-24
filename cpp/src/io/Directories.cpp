@@ -29,7 +29,7 @@ namespace io {
 optional<path> Directories::user_app_data() {
     const auto home = environment("HOME");
 
-#ifndef __APPLE__
+#if !__APPLE__
     if (const auto data_home = environment("XDG_DATA_HOME"); !data_home.empty()) {
         return path(data_home);
     }
@@ -39,7 +39,7 @@ optional<path> Directories::user_app_data() {
         return nullopt;
     }
 
-#ifdef __APPLE__
+#if __APPLE__
     return path(home) / "Library" / "Application Support";
 #else
     return path(home) / ".local" / "share";

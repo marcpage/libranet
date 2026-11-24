@@ -684,7 +684,7 @@ TEST_F(NodeTest, DefaultDataDirectory) {
 
     const auto node = node_of(settings_of(values));
 
-#ifdef __APPLE__
+#if __APPLE__
     EXPECT_TRUE(std::filesystem::is_directory(data_dir() / "Library" / "Application Support"
                                               / "libranet" / "cas"));
 #else
@@ -693,7 +693,7 @@ TEST_F(NodeTest, DefaultDataDirectory) {
 #endif
 }
 
-#ifndef __APPLE__
+#if !__APPLE__
 TEST_F(NodeTest, DefaultDataDirectoryInXdgDataHome) {
     const ScopedVariable data_home("XDG_DATA_HOME", (data_dir() / "data").string());
     auto values = loopback(data_dir());
