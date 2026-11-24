@@ -26,7 +26,8 @@ else()
         -Wold-style-cast -Woverloaded-virtual -Wconversion -Wsign-conversion
         -Wimplicit-fallthrough -Wsuggest-override -Wextra-semi
         -Wzero-as-null-pointer-constant
-        "$<$<CXX_COMPILER_ID:GNU>:-Wduplicated-cond;-Wduplicated-branches;-Wlogical-op>")
+        "$<$<CXX_COMPILER_ID:GNU>:-Wduplicated-cond;-Wduplicated-branches;-Wlogical-op>"
+    )
 endif()
 
 # In Debug builds, the ones the tests run in, the C++ standard library
@@ -38,7 +39,8 @@ endif()
 # links.
 add_compile_definitions(
     "$<$<CONFIG:Debug>:_GLIBCXX_ASSERTIONS>"
-    "$<$<CONFIG:Debug>:_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE>")
+    "$<$<CONFIG:Debug>:_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE>"
+)
 
 # Coverage: configure a Debug build with -DLIBRANET_COVERAGE=ON, run the
 # tests, and gcovr reports which lines they ran. GCC and Clang both write
@@ -69,7 +71,8 @@ if(LIBRANET_SANITIZERS)
     endif()
     add_compile_options(
         -fsanitize=${LIBRANET_SANITIZERS} -fno-sanitize-recover=all
-        -fno-omit-frame-pointer)
+        -fno-omit-frame-pointer
+    )
     add_link_options(-fsanitize=${LIBRANET_SANITIZERS})
 endif()
 

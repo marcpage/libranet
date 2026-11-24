@@ -1,11 +1,9 @@
-# The node itself, which makes its parts and runs them, and its settings
-# file, read with yaml-cpp, which Conan provides. Only SettingsFile.cpp
-# includes yaml-cpp, so it is linked privately.
 find_package(yaml-cpp REQUIRED)
 
 add_library(libranet_node STATIC
     Node.cpp
-    SettingsFile.cpp)
+    SettingsFile.cpp
+)
 add_library(libranet::node ALIAS libranet_node)
 target_include_directories(libranet_node PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(libranet_node
@@ -16,12 +14,14 @@ target_link_libraries(libranet_node
         libranet::storage
         libranet::web
     PRIVATE
-        yaml-cpp::yaml-cpp)
+        yaml-cpp::yaml-cpp
+)
 
 if(BUILD_TESTING)
     add_executable(node_tests
         tests/TestNode.cpp
-        tests/TestSettingsFile.cpp)
+        tests/TestSettingsFile.cpp
+    )
     target_link_libraries(node_tests PRIVATE libranet::node GTest::gtest_main)
     gtest_discover_tests(node_tests)
 endif()
