@@ -69,7 +69,6 @@ using types::Converter;
 using types::data_path_prefix;
 using types::json_content_type;
 using types::max_decompressed_content_size;
-using types::max_decompressed_list_size;
 using types::nodes_path;
 using types::octet_stream_content_type;
 using types::seek_path;
@@ -180,7 +179,7 @@ SeekList seek_list_in(const Response& answer, const Address& address) {
     }
 
     try {
-        return SeekList::read(*body, max_decompressed_list_size);
+        return SeekList::from_body(*body);
     } catch (const invalid_argument& error) {
         lDebug << "Ignoring the seek list from" << address.to_string() + ":" << error.what();
         return {};

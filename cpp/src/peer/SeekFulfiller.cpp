@@ -55,7 +55,6 @@ using storage::SearchAnswers;
 using types::Converter;
 using types::data_path_prefix;
 using types::json_content_type;
-using types::max_decompressed_list_size;
 using types::octet_stream_content_type;
 using types::search_path_prefix;
 using types::seek_path;
@@ -170,7 +169,7 @@ optional<SeekList> seek_list_in(const Response& answer, const string& from) {
     }
 
     try {
-        return SeekList::read(Converter::bytes_of(answer.body()), max_decompressed_list_size);
+        return SeekList::from_body(Converter::bytes_of(answer.body()));
     } catch (const invalid_argument& error) {
         lDebug << "Ignoring the seek list from" << from + ":" << error.what();
         return nullopt;

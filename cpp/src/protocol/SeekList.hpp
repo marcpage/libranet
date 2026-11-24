@@ -27,12 +27,13 @@ public:
     using Data = std::vector<std::byte>;
 
     // As it is sent, compressed or not (HttpApi §10.7.1).
-    static constexpr std::size_t max_bytes = 1 * types::Megabyte;
+    static constexpr std::size_t max_size = 1 * types::Megabyte;
 
     // JSON, or one zlib stream of JSON of no more than decompressed_limit
     // bytes. An entry that is not valid is left out, and logged. Throws
     // std::invalid_argument for a body that is neither, or not a seek list.
-    [[nodiscard]] static SeekList read(const Data& body, std::size_t decompressed_limit);
+    [[nodiscard]] static SeekList from_body(
+        const Data& body, std::size_t decompressed_limit = types::max_decompressed_list_size);
 
     SeekList(std::vector<storage::Identifier> data, std::vector<storage::HashPrefix> search);
 
@@ -42,7 +43,7 @@ public:
     // Fewer than limit bytes, compressed only where the JSON would not fit,
     // leaving out from the end alike of each kind what does not fit even then.
     // Throws std::invalid_argument for a limit too small for an empty list.
-    [[nodiscard]] Data write(std::size_t limit = max_bytes) const;
+    [[nodiscard]] Data body(std::size_t limit = max_size) const;
 
     SeekList() = default;
 
@@ -74,7 +75,7 @@ private:
     [[nodiscard]] static std::string _text(const Data& body);
 };
 
-inline SeekList SeekList::read(const Data& body, std::size_t decompressed_limit) {
+inline SeekList SeekList::from_body(const Data& body, std::size_t decompressed_limit) {
     const auto list = _decode(body, decompressed_limit);
 
     if (!list.is_object()) {
@@ -101,12 +102,12 @@ inline const std::vector<storage::HashPrefix>& SeekList::search() const noexcept
     return m_search;
 }
 
-inline SeekList::Data SeekList::write(std::size_t limit) const {
+inline SeekList::Data SeekList::body(std::size_t limit) const {
     const auto all = std::max(m_data.size(), m_search.size());
-    auto body = _body(all, limit);
+    auto whole = _body(all, limit);
 
-    if (body.size() < limit) {
-        return body;
+    if (whole.size() < limit) {
+        return whole;
     }
 
     return _longest_within(all, limit);
@@ -208,9 +209,9 @@ inline storage::Identifier SeekList::_identifier(std::string_view text) {
 // many as do not is halved until they are one apart.
 inline SeekList::Data SeekList::_longest_within(std::size_t too_many, std::size_t limit) const {
     std::size_t fitting = 0;
-    auto body = _body(fitting, limit);
+    auto longest = _body(fitting, limit);
 
-    if (body.size() >= limit) {
+    if (longest.size() >= limit) {
         throw std::invalid_argument("A seek list cannot be written in fewer than "
                                     + std::to_string(limit) + " bytes");
     }
@@ -221,13 +222,13 @@ inline SeekList::Data SeekList::_longest_within(std::size_t too_many, std::size_
 
         if (candidate.size() < limit) {
             fitting = count;
-            body = std::move(candidate);
+            longest = std::move(candidate);
         } else {
             too_many = count;
         }
     }
 
-    return body;
+    return longest;
 }
 
 // The first count of each kind, as compact JSON, or zlib-compressed where the

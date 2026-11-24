@@ -18,7 +18,7 @@ class SeekHandler {
 public:
     explicit SeekHandler(std::size_t list_bytes = types::max_decompressed_list_size);
 
-    // Throws what protocol::SeekList::write() throws.
+    // Throws what protocol::SeekList::body() throws.
     void set_list(const protocol::SeekList& new_list);
 
     // Called from the threads serving connections, several at once, while

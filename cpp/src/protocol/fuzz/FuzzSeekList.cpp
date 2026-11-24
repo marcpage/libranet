@@ -1,8 +1,8 @@
-// libFuzzer calls this with inputs it makes up. SeekList::read() turns down
-// a body that is not a seek list, as JSON or as zlib-compressed JSON, with
-// std::invalid_argument; anything else it does with an input, such as crash,
-// hang, or throw something else, is a fault. What it reads, it must write as
-// a body it reads back as the same list, and writes again the same.
+// libFuzzer calls this with inputs it makes up. SeekList::from_body() turns
+// down a body that is not a seek list, as JSON or as zlib-compressed JSON,
+// with std::invalid_argument; anything else it does with an input, such as
+// crash, hang, or throw something else, is a fault. What it reads, it must
+// write as a body it reads back as the same list, and writes again the same.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -47,15 +47,15 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     SeekList list;
 
     try {
-        list = SeekList::read(input, decompressed_limit);
+        list = SeekList::from_body(input, decompressed_limit);
     } catch (const std::invalid_argument&) {
         return 0;
     }
 
-    const auto body = list.write();
-    const auto reread = SeekList::read(body, decompressed_limit);
+    const auto body = list.body();
+    const auto reread = SeekList::from_body(body, decompressed_limit);
 
-    if (!same(reread, list) || reread.write() != body) {
+    if (!same(reread, list) || reread.body() != body) {
         std::cerr << "SeekList did not read back what it wrote, of " << body.size()
                   << " bytes\n";
         std::abort();

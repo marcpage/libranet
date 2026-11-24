@@ -306,7 +306,7 @@ protected:
     }
 
     [[nodiscard]] static std::string peer_seek_text() {
-        return Converter::text_of(peer_seek().write());
+        return Converter::text_of(peer_seek().body());
     }
 
     // The request putting this node's key, and the one getting the peer's.
@@ -638,7 +638,7 @@ TEST_F(FirstContactTest, PeerTurningThisNodeAwayWhileFulfilledIsTold) {
     store()->put(world, fixtures::bytes_of("world"));
     closing.headers().set("Connection", "close");
     answers["GET /data/seek"] =
-        signed_by(peer_signer(), answer(Status::Ok, Converter::text_of(sought.write())));
+        signed_by(peer_signer(), answer(Status::Ok, Converter::text_of(sought.body())));
     answers["PUT " + data_path(hello)] = signed_by(peer_signer(), closing);
     answers["PUT " + data_path(world)] = signed_by(peer_signer(), answer(Status::Created));
     answers["GET " + data_path(there)] = signed_by(peer_signer(), answer(Status::Ok, "there"));

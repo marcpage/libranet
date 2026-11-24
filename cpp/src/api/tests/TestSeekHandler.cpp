@@ -279,7 +279,7 @@ TEST(SeekHandlerTest, ListIsSetWhileServed) {
     constexpr auto rounds = 100;
     SeekHandler handler;
     const auto empty = served(handler);
-    const auto hello = Converter::text_of(hello_list().write());
+    const auto hello = Converter::text_of(hello_list().body());
     std::thread setter([&] {
         for (auto round = 0; round < rounds; ++round) {
             handler.set_list(hello_list());

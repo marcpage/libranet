@@ -49,7 +49,7 @@ bool is_seek_path(string_view uri) {
 
 // The list as it is sent, as text.
 string body_of(const SeekList& list) {
-    return Converter::text_of(list.write());
+    return Converter::text_of(list.body());
 }
 
 // The list the body of request, on connection, holds, decompressed to no
@@ -58,7 +58,7 @@ string body_of(const SeekList& list) {
 optional<SeekList> posted_list(const Request& request, size_t list_bytes, Response& response,
                                const ConnectionInfo& connection) {
     try {
-        return SeekList::read(Converter::bytes_of(request.body()), list_bytes);
+        return SeekList::from_body(Converter::bytes_of(request.body()), list_bytes);
     } catch (const invalid_argument& error) {
         lDebug << "Refused the seek list from" << connection.remote_address().to_string() + ":"
                << error.what();
