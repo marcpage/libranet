@@ -276,6 +276,24 @@ TEST(NodesHandlerTest, CompressedListIsRead) {
               (std::vector<Named>{named("http://192.0.2.5:4300", '2')}));
 }
 
+// A compressed list that holds more than the handler takes once
+// decompressed is refused, and not posted. One sent as it is is held to
+// none.
+TEST(NodesHandlerTest, ListTooLargeOnceDecompressedIsInvalid) {
+    constexpr std::size_t list_bytes = 16;
+    const NodesHandler handler(own_id(), {std::string(own_endpoint)}, list_bytes);
+    Channel received(NodesReceived::name);
+    const auto sent = list_of({{"http://192.0.2.5:4300", '2'}});
+    const auto compressed = Zlib::compress(Converter::bytes_of(sent.to_string()), Zlib::max_level);
+
+    const auto response = answer(handler, post(Converter::text_of(compressed)));
+
+    EXPECT_EQ(response.status_code(), 400);
+    EXPECT_EQ(problem_type(response), "https://libranet.org/problems/invalid-list");
+    EXPECT_TRUE(received.empty());
+    EXPECT_EQ(answer(handler, post(sent.to_string())).status_code(), 202);
+}
+
 // A list from this machine keeps its loopback endpoints as sent, since the
 // sender's loopback address is this node's too (HttpApi §10.2).
 TEST(NodesHandlerTest, LoopbackEndpointFromThisMachineIsKeptAsSent) {

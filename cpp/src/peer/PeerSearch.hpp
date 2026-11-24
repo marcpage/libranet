@@ -13,6 +13,7 @@
 #include "PeerSession.hpp"
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 
 namespace peer {
 
@@ -45,6 +46,8 @@ public:
         Milliseconds pass_interval = default_pass_interval;
         // How long after a search ends another for its prefix starts none.
         Milliseconds hold = default_hold;
+        // The most an answer sent compressed may decompress to.
+        std::size_t list_bytes = types::max_decompressed_list_size;
     };
 
     // Throws std::invalid_argument, naming the setting, for one the Python

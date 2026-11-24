@@ -352,6 +352,7 @@ TEST_F(NodeTest, LogsItsSettings) {
     auto values = loopback(data_dir());
 
     values["storage.max_storage_bytes"] = "5000000";
+    values["storage.max_decompressed_list_bytes"] = "8388608";
     values["karma.mining"] = "false";
 
     const Node node(settings_of(values));
@@ -361,6 +362,7 @@ TEST_F(NodeTest, LogsItsSettings) {
     EXPECT_TRUE(logged("network.listen_port = 0"));
     EXPECT_TRUE(logged("logging.level = INFO"));
     EXPECT_TRUE(logged("storage.max_storage_bytes = 5000000"));
+    EXPECT_TRUE(logged("storage.max_decompressed_list_bytes = 8388608"));
     EXPECT_TRUE(logged("Seeds: 0"));
     EXPECT_TRUE(logged("Listening on " + node.local_address().to_string()));
     EXPECT_TRUE(logged("Setting not used: karma.mining"));
@@ -605,6 +607,7 @@ TEST_F(NodeTest, RefusesSettingsItCannotUse) {
         {"storage.stored_grace_seconds", "-1"},
         {"storage.search_cache_ttl_seconds", "0"},
         {"storage.search_min_bits", "257"},
+        {"storage.max_decompressed_list_bytes", "0"},
         {"identity.provisional_trust_attempts", "1"},
         {"identity.signature_max_age_seconds", "0"},
         {"identity.signature_clock_skew_seconds", "-1"},

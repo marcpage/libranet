@@ -20,6 +20,7 @@
 #include "net/Address.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/SearchAnswers.hpp"
+#include "types/Constants.hpp"
 #include "web/Server.hpp"
 
 namespace api {
@@ -48,6 +49,8 @@ public:
         identity::MessageVerifier::Window window;
         std::size_t provisional_trust_attempts =
             SignatureGuard::default_provisional_trust_attempts;
+        // The most a list sent compressed may decompress to.
+        std::size_t list_bytes = types::max_decompressed_list_size;
     };
 
     // identity must outlive this. Throws std::invalid_argument for a setting

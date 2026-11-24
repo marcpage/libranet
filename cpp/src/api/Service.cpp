@@ -105,14 +105,15 @@ Service::Service(const Address& address, const IDataSource::Ptr& store,
                  const NodeIdentity& identity, Settings settings)
     : m_data_handler(store, max_decompressed_content_size, settings.retry_after,
                      std::move(settings.is_held_off))
+    , m_seek_handler(settings.list_bytes)
     , m_answers(answers_of(store, settings))
-    , m_search_handler(m_answers)
+    , m_search_handler(m_answers, settings.list_bytes)
     , m_guard(MessageVerifier(make_shared<KnownKeys>(store), settings.window),
               MessageSigner(identity), settings.provisional_trust_attempts)
     , m_server(address)
     , m_local_address(m_server.local_address())
     , m_own_endpoints(endpoints_at(m_local_address))
-    , m_nodes_handler(identity.id(), m_own_endpoints)
+    , m_nodes_handler(identity.id(), m_own_endpoints, settings.list_bytes)
     , m_lists(vector<string>{NodesUpdated::name, SeekUpdated::name, SearchAnswered::name},
               [this](const IMessage::Ptr& message) { _keep(message); }, log_error) {
     _register(data_path, [this](const Request& request, Response& response,

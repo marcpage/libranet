@@ -37,6 +37,7 @@
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/SearchAnswered.hpp"
+#include "storage/Zlib.hpp"
 #include "storage/tests/Fixtures.hpp"
 #include "types/Converter.hpp"
 
@@ -58,6 +59,7 @@ using storage::HashPrefix;
 using storage::IDataSource;
 using storage::Identifier;
 using storage::SearchAnswered;
+using storage::Zlib;
 using types::Converter;
 
 // The tests only take what the search posts, from another file, so nothing
@@ -235,6 +237,24 @@ Answering finding(std::vector<Identifier> results) {
         Response response;
 
         SearchResults(results).answer(response);
+        return sent(std::move(response), &signer);
+    };
+}
+
+// Answers each search with results, compressed though they would fit as
+// they are, in an answer it signs.
+Answering finding_compressed(const std::vector<Identifier>& results) {
+    const auto text = SearchResults(results).body().text;
+    auto compressed =
+        Converter::text_of(Zlib::compress(Converter::bytes_of(text), Zlib::max_level));
+
+    return [compressed = std::move(compressed)](const Request& /*request*/,
+                                                const MessageSigner& signer) {
+        Response response;
+
+        response.headers().set("Content-Type", "application/json");
+        response.headers().set("Content-Encoding", "deflate");
+        response.set_body(compressed);
         return sent(std::move(response), &signer);
     };
 }
@@ -647,6 +667,30 @@ TEST_F(PeerSearchTest, PostsOnlyAnswersNamingSomething) {
     advance(settings.pass_interval);
     (void)search.make_passes(sessions);
     EXPECT_EQ(asked().size(), 4U);
+    EXPECT_EQ(answered().size(), 1U);
+}
+
+// An answer sent compressed is read only if it decompresses to no more
+// than the search takes.
+TEST_F(PeerSearchTest, LeavesOutAnAnswerTooLargeOnceDecompressed) {
+    constexpr std::size_t list_bytes = 16;
+    const auto& finder = add_peer(finding_compressed({identifier_of('a')}));
+    const auto sessions = sessions_with({&finder});
+    auto settings = two_passes();
+    PeerSearch roomy(settings, clock());
+
+    settings.list_bytes = list_bytes;
+
+    PeerSearch cramped(settings, clock());
+
+    EXPECT_TRUE(cramped.start(HashPrefix::parse("a")));
+    (void)cramped.make_passes(sessions);
+    EXPECT_EQ(asked().size(), 1U);
+    EXPECT_TRUE(answered().empty());
+
+    EXPECT_TRUE(roomy.start(HashPrefix::parse("a")));
+    (void)roomy.make_passes(sessions);
+    EXPECT_EQ(asked().size(), 1U);
     EXPECT_EQ(answered().size(), 1U);
 }
 

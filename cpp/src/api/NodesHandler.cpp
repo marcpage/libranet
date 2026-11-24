@@ -1,5 +1,6 @@
 #include "NodesHandler.hpp"
 
+#include <cstddef>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -38,6 +39,7 @@ using std::nullopt;
 using std::optional;
 using std::scoped_lock;
 using std::set;
+using std::size_t;
 using std::string;
 using std::string_view;
 using std::vector;
@@ -60,12 +62,13 @@ string body_of(const NodeList& list) {
     return Converter::text_of(list.body());
 }
 
-// The list the body of request, on connection, names, or nothing when it
-// names none, having answered 400 saying why (HttpApi §10.5).
+// The list the body of request, on connection, names, decompressed to no
+// more than list_bytes, or nothing when it names none, having answered 400
+// saying why (HttpApi §10.5).
 optional<NodeList> list_in(const Request& request, Response& response,
-                           const ConnectionInfo& connection) {
+                           const ConnectionInfo& connection, size_t list_bytes) {
     try {
-        return NodeList::from_body(Converter::bytes_of(request.body()));
+        return NodeList::from_body(Converter::bytes_of(request.body()), list_bytes);
     } catch (const invalid_argument& error) {
         lDebug << "Refused the node list from" << connection.remote_address().to_string() + ":"
                << error.what();
@@ -114,8 +117,10 @@ map<string, Source> sources_of(const NodeList& sent, const NodeList& received,
 
 namespace api {
 
-NodesHandler::NodesHandler(const Identifier& own_id, const vector<string>& own_endpoints)
-    : m_body(body_of(NodeList(own_id, own_endpoints))) {}
+NodesHandler::NodesHandler(const Identifier& own_id, const vector<string>& own_endpoints,
+                           size_t list_bytes)
+    : m_list_bytes(list_bytes)
+    , m_body(body_of(NodeList(own_id, own_endpoints))) {}
 
 void NodesHandler::set_nodes(const NodeList& nodes) {
     auto body = body_of(nodes);
@@ -162,8 +167,8 @@ void NodesHandler::_get(Response& response) const {
 // Tells the node's other parts of the list a peer sent, resolved by the
 // address its connection came from; or says why it is not one.
 void NodesHandler::_post(const Request& request, Response& response,
-                         const ConnectionInfo& connection) {
-    const auto sent = list_in(request, response, connection);
+                         const ConnectionInfo& connection) const {
+    const auto sent = list_in(request, response, connection, m_list_bytes);
 
     if (!sent) {
         return;

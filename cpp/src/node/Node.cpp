@@ -116,6 +116,7 @@ constexpr auto max_candidates_setting = "storage.max_candidates";
 constexpr auto stored_grace_setting = "storage.stored_grace_seconds";
 constexpr auto search_ttl_setting = "storage.search_cache_ttl_seconds";
 constexpr auto search_min_bits_setting = "storage.search_min_bits";
+constexpr auto list_bytes_setting = "storage.max_decompressed_list_bytes";
 constexpr auto trust_attempts_setting = "identity.provisional_trust_attempts";
 constexpr auto max_age_setting = "identity.signature_max_age_seconds";
 constexpr auto clock_skew_setting = "identity.signature_clock_skew_seconds";
@@ -153,6 +154,7 @@ constexpr array used_settings{
     stored_grace_setting,
     search_ttl_setting,
     search_min_bits_setting,
+    list_bytes_setting,
     trust_attempts_setting,
     max_age_setting,
     clock_skew_setting,
@@ -696,6 +698,7 @@ Node::PartSettings Node::_settings_of(const SettingsFile& settings, const vector
         seconds(settings, clock_skew_setting, service.window.clock_skew, Zero::Allowed);
     service.provisional_trust_attempts =
         whole(settings, trust_attempts_setting, service.provisional_trust_attempts, 2);
+    service.list_bytes = whole(settings, list_bytes_setting, service.list_bytes, 1);
 
     // The searches of the peers, for content and for prefixes.
     fetch.retry_after = service.retry_after;
@@ -705,6 +708,7 @@ Node::PartSettings Node::_settings_of(const SettingsFile& settings, const vector
     search.pass_interval = fetch.retry_after;
     search.relays = whole(settings, search_relays_setting, search.relays, 0);
     search.hold = seconds(settings, broadcast_hold_setting, search.hold);
+    search.list_bytes = service.list_bytes;
     parts.seeker.workers = whole(settings, search_workers_setting, parts.seeker.workers, 1);
     check_outlasts_searches(failed_hold_setting, fetch.failed_search_hold, fetch.passes,
                             fetch.retry_after);
@@ -735,6 +739,7 @@ Node::PartSettings Node::_settings_of(const SettingsFile& settings, const vector
     fulfiller.refresh = seconds(settings, seek_refresh_setting, fulfiller.refresh);
     fulfiller.search_min_bits = service.search_min_bits;
     fulfiller.pipeline_depth = whole(settings, pipeline_depth_setting, fulfiller.pipeline_depth, 1);
+    fulfiller.list_bytes = service.list_bytes;
 
     if (fulfiller.refresh >= idle_timeout) {
         throw invalid_argument(string(seek_refresh_setting) + ": must be less than the "

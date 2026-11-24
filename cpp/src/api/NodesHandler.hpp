@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -8,6 +9,7 @@
 #include "http/Response.hpp"
 #include "protocol/NodeList.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 #include "web/ConnectionInfo.hpp"
 
 namespace api {
@@ -17,8 +19,10 @@ namespace api {
 // alone.
 class NodesHandler {
 public:
-    // Throws std::invalid_argument for an own endpoint that is not one.
-    NodesHandler(const storage::Identifier& own_id, const std::vector<std::string>& own_endpoints);
+    // list_bytes is the most a list posted may decompress to. Throws
+    // std::invalid_argument for an own endpoint that is not one.
+    NodesHandler(const storage::Identifier& own_id, const std::vector<std::string>& own_endpoints,
+                 std::size_t list_bytes = types::max_decompressed_list_size);
 
     // Called from any thread, while requests are answered.
     void set_nodes(const protocol::NodeList& nodes);
@@ -37,12 +41,13 @@ public:
     NodesHandler& operator=(NodesHandler&&) = delete;
 
 private:
+    std::size_t m_list_bytes;
     mutable std::mutex m_mutex;
     std::string m_body; // Guarded by m_mutex: the list served, as it is sent
 
     void _get(http::Response& response) const;
-    static void _post(const http::Request& request, http::Response& response,
-                      const web::ConnectionInfo& connection);
+    void _post(const http::Request& request, http::Response& response,
+               const web::ConnectionInfo& connection) const;
 };
 
 } // namespace api

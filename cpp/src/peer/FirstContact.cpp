@@ -69,7 +69,6 @@ using types::Converter;
 using types::data_path_prefix;
 using types::json_content_type;
 using types::max_decompressed_content_size;
-using types::max_decompressed_list_size;
 using types::nodes_path;
 using types::octet_stream_content_type;
 using types::seek_path;
@@ -169,9 +168,9 @@ optional<Converter::Bytes> list_body(const Response& answer, string_view asked,
     return Converter::bytes_of(answer.body());
 }
 
-// The seek list answer carries, from address: none when it carries none that
-// can be read.
-SeekList seek_list_in(const Response& answer, const Address& address) {
+// The seek list answer carries, from address, decompressed to no more than
+// list_bytes: none when it carries none that can be read.
+SeekList seek_list_in(const Response& answer, const Address& address, size_t list_bytes) {
     const string asked = "GET " + string(seek_path);
     const auto body = list_body(answer, asked, address);
 
@@ -180,16 +179,17 @@ SeekList seek_list_in(const Response& answer, const Address& address) {
     }
 
     try {
-        return SeekList::read(*body, max_decompressed_list_size);
+        return SeekList::read(*body, list_bytes);
     } catch (const invalid_argument& error) {
         lDebug << "Ignoring the seek list from" << address.to_string() + ":" << error.what();
         return {};
     }
 }
 
-// The node list answer carries, from address: nothing when it carries none
-// that can be read.
-optional<NodeList> node_list_in(const Response& answer, const Address& address) {
+// The node list answer carries, from address, decompressed to no more than
+// list_bytes: nothing when it carries none that can be read.
+optional<NodeList> node_list_in(const Response& answer, const Address& address,
+                                size_t list_bytes) {
     const string asked = "GET " + string(nodes_path);
     const auto body = list_body(answer, asked, address);
 
@@ -198,7 +198,7 @@ optional<NodeList> node_list_in(const Response& answer, const Address& address) 
     }
 
     try {
-        return NodeList::from_body(*body);
+        return NodeList::from_body(*body, list_bytes);
     } catch (const invalid_argument& error) {
         lDebug << "Ignoring the node list from" << address.to_string() + ":" << error.what();
         return nullopt;
@@ -373,7 +373,9 @@ FirstContact::Contact FirstContact::make(unique_ptr<PeerConnection> connection,
         request_of("GET", string(nodes_path)),
     });
 
-    if (const auto nodes = node_list_in(answers.at(2), session.address())) {
+    const auto list_bytes = m_fulfiller->list_bytes();
+
+    if (const auto nodes = node_list_in(answers.at(2), session.address(), list_bytes)) {
         auto received =
             received_from(*nodes, node_id, m_identity->id(), session.address().host());
 
@@ -382,7 +384,7 @@ FirstContact::Contact FirstContact::make(unique_ptr<PeerConnection> connection,
         }
     }
 
-    auto seek = seek_list_in(answers.at(1), session.address());
+    auto seek = seek_list_in(answers.at(1), session.address(), list_bytes);
 
     trade(session, seek, own_seek, *m_fulfiller, *m_store);
     return {std::move(session), std::move(seek)};
