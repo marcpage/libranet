@@ -16,11 +16,7 @@ namespace api {
 // logged, as nothing acts on it yet.
 class SeekHandler {
 public:
-    // Once decompressed, as the Python node's
-    // storage.max_decompressed_list_bytes; only a safeguard (HttpApi §10.7.1).
-    static constexpr std::size_t default_list_bytes = 4 * types::Megabyte;
-
-    explicit SeekHandler(std::size_t list_bytes = default_list_bytes);
+    explicit SeekHandler(std::size_t list_bytes = types::max_decompressed_list_size);
 
     // Throws what protocol::SeekList::write() throws.
     void set_list(const protocol::SeekList& new_list);

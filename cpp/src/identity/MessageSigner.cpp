@@ -26,31 +26,23 @@ using std::string_view;
 
 namespace {
 
-// The label a libranet signature has (HTTP API §11.2).
-constexpr string_view label = "libranet";
-
-// The fields a signed message has (RFC 9530 §2, RFC 9421 §4).
-constexpr string_view digest_field = "Content-Digest";
-constexpr string_view signature_input_field = "Signature-Input";
-constexpr string_view signature_field = "Signature";
-
 // Adds to message the Content-Digest of its body, when it has one, and the
 // signature identity makes of it at created. The digest goes first, as the
 // signature covers it.
 template<typename Message>
 void sign_as(const NodeIdentity& identity, SignatureBase::Time created, Message& message) {
     if (!message.body().empty()) {
-        message.headers().set(string(digest_field), ContentDigest::of(message.body()).to_string());
+        message.headers().set(string(ContentDigest::field_name), ContentDigest::of(message.body()).to_string());
     }
 
     const auto base = SignatureBase::of(message, {created, identity.id().to_string(), nullopt});
     StructuredField signature_input;
     StructuredField signature;
 
-    signature_input.set(string(label), base.signature_params());
-    signature.set(string(label), StructuredField::Item{identity.sign(base.to_string()), {}});
-    message.headers().set(string(signature_input_field), signature_input.to_string());
-    message.headers().set(string(signature_field), signature.to_string());
+    signature_input.set(string(SignatureBase::label), base.signature_params());
+    signature.set(string(SignatureBase::label), StructuredField::Item{identity.sign(base.to_string()), {}});
+    message.headers().set(string(SignatureBase::signature_input_field), signature_input.to_string());
+    message.headers().set(string(SignatureBase::signature_field), signature.to_string());
 }
 
 } // namespace

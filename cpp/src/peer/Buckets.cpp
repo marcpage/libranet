@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 
 using peer::Buckets;
@@ -26,12 +27,10 @@ using std::to_string;
 using std::uint64_t;
 using std::vector;
 using storage::Identifier;
+using types::bits_per_hex_digit;
 using types::Converter;
 
 namespace {
-
-// A hex digit is four bits.
-constexpr size_t bits_per_digit = 4;
 
 // The most bits that tell one set's buckets apart, as the Python node
 // allows: 65,536 buckets.
@@ -78,7 +77,7 @@ Buckets::ExpectedSizes checked(const Buckets::ExpectedSizes& sizes) {
 // invalid_argument for a hash shorter than that, as an identifier made with no hash has.
 uint64_t leading_bits(const Identifier& node_id, size_t bits) {
     const auto& hash = node_id.hash();
-    const auto digits = (bits + bits_per_digit - 1) / bits_per_digit;
+    const auto digits = (bits + bits_per_hex_digit - 1) / bits_per_hex_digit;
 
     if (hash.size() < digits) {
         throw invalid_argument("A node id with no hash falls in no bucket");
@@ -87,7 +86,7 @@ uint64_t leading_bits(const Identifier& node_id, size_t bits) {
     const auto leading = string_view(hash).substr(0, digits);
     const auto value = Converter::parse_hex(leading);
 
-    return value >> ((digits * bits_per_digit) - bits);
+    return value >> ((digits * bits_per_hex_digit) - bits);
 }
 
 // The buckets, of the ones bits tells apart, that filled leaves empty,

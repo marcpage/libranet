@@ -12,6 +12,7 @@
 
 #include "Ed25519OpenSsl.hpp"
 #include "Pem.hpp"
+#include "types/Constants.hpp"
 
 using Ed25519Key = crypto::Ed25519OpenSsl;
 
@@ -60,7 +61,6 @@ std::optional<Contents> contents_at(const std::vector<std::byte>& der, std::size
     // it, big-endian; a key's lengths take no more than four.
     constexpr std::size_t long_length = 0x80;
     constexpr std::size_t most_length_bytes = 4;
-    constexpr std::size_t bits_per_byte = 8;
 
     if (limit > der.size() || offset >= limit || limit - offset < 2 || der.at(offset) != tag) {
         return std::nullopt;
@@ -80,7 +80,7 @@ std::optional<Contents> contents_at(const std::vector<std::byte>& der, std::size
         size = 0;
 
         for (std::size_t index = 0; index < length_bytes; ++index) {
-            size = (size << bits_per_byte) | std::to_integer<std::size_t>(der.at(start + index));
+            size = (size << types::bits_per_byte) | std::to_integer<std::size_t>(der.at(start + index));
         }
 
         start += length_bytes;

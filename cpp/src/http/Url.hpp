@@ -80,6 +80,12 @@ public:
     Url& operator=(Url&&) noexcept = default;
 
 private:
+    // The characters a username or password keeps unencoded (RFC 3986
+    // §3.2.1), and that the setters do not write a space as '+', as only a
+    // form does.
+    static constexpr std::string_view userinfo_allowed = "-_.~!$&'()*+,;=";
+    static constexpr bool not_space_to_plus = false;
+
     std::string m_scheme;
     std::string m_username;
     std::string m_password;
@@ -279,16 +285,10 @@ inline void Url::set_scheme(std::string new_scheme) {
 }
 
 inline void Url::set_username(const std::string& new_username) {
-    constexpr std::string_view userinfo_allowed = "-_.~!$&'()*+,;=";
-    constexpr auto not_space_to_plus = false;
-
     m_username = encode(new_username, userinfo_allowed, not_space_to_plus);
 }
 
 inline void Url::set_password(const std::string& new_password) {
-    constexpr std::string_view userinfo_allowed = "-_.~!$&'()*+,;=";
-    constexpr auto not_space_to_plus = false;
-
     m_password = encode(new_password, userinfo_allowed, not_space_to_plus);
 }
 
@@ -307,7 +307,6 @@ inline void Url::set_port(uint16_t new_port) {
 
 inline void Url::set_path(const std::string& new_path) {
     constexpr std::string_view unreserved_and_slash = "-_.~/";
-    constexpr auto not_space_to_plus = false;
 
     m_path = encode(new_path, unreserved_and_slash, not_space_to_plus);
 }
@@ -318,7 +317,6 @@ inline void Url::set_query(Query new_query) {
 
 inline void Url::set_fragment(const std::string& new_fragment) {
     constexpr std::string_view fragment_allowed = "-_.~!$&'()*+,;=/?";
-    constexpr auto not_space_to_plus = false;
 
     m_fragment = encode(new_fragment, fragment_allowed, not_space_to_plus);
 }

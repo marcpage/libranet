@@ -13,7 +13,6 @@
 #include <set>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -22,19 +21,18 @@
 #include "http/Response.hpp"
 #include "http/ResponseCode.hpp"
 #include "logger/Logger.hpp"
-#include "protocol/NodeList.hpp"
 #include "protocol/SearchResults.hpp"
 #include "protocol/SeekList.hpp"
 #include "storage/HashPrefix.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/SearchAnswers.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 
 using http::Request;
 using http::Response;
 using peer::PeerSession;
-using protocol::NodeList;
 using protocol::SearchResults;
 using protocol::SeekList;
 using std::exception;
@@ -48,7 +46,6 @@ using std::scoped_lock;
 using std::set;
 using std::size_t;
 using std::string;
-using std::string_view;
 using std::to_string;
 using std::vector;
 using storage::HashPrefix;
@@ -56,14 +53,15 @@ using storage::IDataSource;
 using storage::Identifier;
 using storage::SearchAnswers;
 using types::Converter;
+using types::data_path_prefix;
+using types::json_content_type;
+using types::max_decompressed_list_size;
+using types::octet_stream_content_type;
+using types::search_path_prefix;
+using types::seek_path;
 using Status = http::ResponseCode::Status;
 
 namespace {
-
-// Where a node's seek list is, and where what matches one of its search
-// entries is posted, under the entry's prefix (HttpApi §10.7, §10.7.2).
-constexpr string_view seek_path = "/data/seek";
-constexpr string_view search_path = "/data/search/";
 
 // store, once it is known to be one. Throws invalid_argument for none.
 IDataSource::Ptr checked(IDataSource::Ptr store) {
@@ -138,8 +136,8 @@ Request put_of(const Identifier& identifier, const IDataSource::Data& body) {
     Request request;
 
     request.set_method("PUT");
-    request.set_uri("/data/" + identifier.to_string());
-    request.headers().set("Content-Type", "application/octet-stream");
+    request.set_uri(string(data_path_prefix) + identifier.to_string());
+    request.headers().set("Content-Type", string(octet_stream_content_type));
     request.set_body(Converter::text_of(body));
     return request;
 }
@@ -152,8 +150,8 @@ Request post_of(const string& prefix, const vector<Identifier>& identifiers) {
     Request request;
 
     request.set_method("POST");
-    request.set_uri(string(search_path) + prefix);
-    request.headers().set("Content-Type", string(SearchResults::content_type));
+    request.set_uri(string(search_path_prefix) + prefix);
+    request.headers().set("Content-Type", string(json_content_type));
 
     if (body.compressed) {
         request.headers().set("Content-Encoding", "deflate");
@@ -172,7 +170,7 @@ optional<SeekList> seek_list_in(const Response& answer, const string& from) {
     }
 
     try {
-        return SeekList::read(Converter::bytes_of(answer.body()), NodeList::max_decompressed_size);
+        return SeekList::read(Converter::bytes_of(answer.body()), max_decompressed_list_size);
     } catch (const invalid_argument& error) {
         lDebug << "Ignoring the seek list from" << from + ":" << error.what();
         return nullopt;

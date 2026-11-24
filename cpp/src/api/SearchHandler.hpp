@@ -17,15 +17,9 @@ namespace api {
 // that matches a search the node seeks (§10.7.2).
 class SearchHandler {
 public:
-    // HttpApi §6.
-    static constexpr auto search_relays_header = "X-Search-Relays";
-    // Once decompressed, as the Python node's
-    // storage.max_decompressed_list_bytes; only a safeguard (HttpApi §21).
-    static constexpr std::size_t default_decompressed_bytes = 4 * types::Megabyte;
-
     // Throws std::invalid_argument for no answers.
     explicit SearchHandler(std::shared_ptr<storage::SearchAnswers> answers,
-                           std::size_t decompressed_bytes = default_decompressed_bytes);
+                           std::size_t decompressed_bytes = types::max_decompressed_list_size);
 
     // Called from the threads serving connections, several at once. Throws
     // what the store throws, and std::bad_alloc if zlib runs out of memory.

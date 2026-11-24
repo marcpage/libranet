@@ -27,9 +27,6 @@ public:
 
     // As it is sent, compressed or not (HttpApi §10.6).
     static constexpr std::size_t max_size = 1 * types::Megabyte;
-    // The protocol does not limit a list once decompressed, so this does, as
-    // the Python node's max_decompressed_list_bytes does.
-    static constexpr std::size_t max_decompressed_size = 4UL * types::Megabyte;
 
     // An entry that is not valid is left out, rather than costing the sender
     // the rest of its list. Throws std::invalid_argument for text that is not
@@ -38,8 +35,8 @@ public:
     // JSON, or a zlib stream of JSON of no more than decompressed_limit bytes.
     // Throws std::invalid_argument as parse() does, or for a body that is
     // neither.
-    [[nodiscard]] static NodeList from_body(const Data& body,
-                                            std::size_t decompressed_limit = max_decompressed_size);
+    [[nodiscard]] static NodeList from_body(
+        const Data& body, std::size_t decompressed_limit = types::max_decompressed_list_size);
 
     // Names own_endpoints first. Throws std::invalid_argument for an endpoint
     // that is not one.

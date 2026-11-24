@@ -13,7 +13,6 @@
 #include "PeerSession.hpp"
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
-#include "types/Constants.hpp"
 
 namespace peer {
 
@@ -47,10 +46,6 @@ public:
         // How long after a search ends another for its prefix starts none.
         Milliseconds hold = default_hold;
     };
-
-    // The protocol does not limit an answer once decompressed, so this does,
-    // as the Python node does.
-    static constexpr std::size_t max_decompressed_size = 4UL * types::Megabyte;
 
     // Throws std::invalid_argument, naming the setting, for one the Python
     // node refuses, or for no clock.

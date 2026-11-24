@@ -3,6 +3,7 @@
 #include <chrono>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "http/Request.hpp"
 #include "http/Response.hpp"
@@ -24,6 +25,25 @@ public:
         std::string keyid;
         std::optional<Time> expires;
     };
+
+    // The label a libranet signature has (HTTP API §11.2), and the fields
+    // that give it: Signature-Input its parameters, under the label, and
+    // Signature the signature (RFC 9421 §4).
+    static constexpr std::string_view label = "libranet";
+    static constexpr std::string_view signature_input_field = "Signature-Input";
+    static constexpr std::string_view signature_field = "Signature";
+
+    // The components a node's signature covers (HTTP API §11).
+    static constexpr std::string_view method_component = "@method";
+    static constexpr std::string_view path_component = "@path";
+    static constexpr std::string_view status_component = "@status";
+    static constexpr std::string_view digest_component = "content-digest";
+
+    // The parameters a libranet signature has (RFC 9421 §2.3, HTTP API
+    // §11.2).
+    static constexpr std::string_view created_parameter = "created";
+    static constexpr std::string_view keyid_parameter = "keyid";
+    static constexpr std::string_view expires_parameter = "expires";
 
     // The base of a node's signature on a request (HTTP API §11). Throws
     // std::invalid_argument as the constructor does.

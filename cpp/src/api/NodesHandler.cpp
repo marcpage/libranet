@@ -20,6 +20,7 @@
 #include "stats/NodeAddresses.hpp"
 #include "stats/Recorder.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 #include "web/ConnectionInfo.hpp"
 
@@ -42,6 +43,8 @@ using std::string_view;
 using std::vector;
 using storage::Identifier;
 using types::Converter;
+using types::json_content_type;
+using types::nodes_path;
 using web::ConnectionInfo;
 
 namespace {
@@ -51,10 +54,6 @@ using Status = ResponseCode::Status;
 
 // The methods /data/nodes takes, as Allow names them.
 constexpr string_view allowed_methods = "GET, POST";
-
-// What a node list is served as, compressed or not, as the Python node
-// serves one.
-constexpr string_view content_type = "application/json";
 
 // list, as it is sent.
 string body_of(const NodeList& list) {
@@ -129,7 +128,7 @@ void NodesHandler::operator()(const Request& request, Response& response,
                               const ConnectionInfo& connection) const {
     const auto uri = request.uri();
 
-    if (uri.substr(0, uri.find('?')) != path) {
+    if (uri.substr(0, uri.find('?')) != nodes_path) {
         Problem(Status::NotFound, "No resource exists at this path.").answer(response);
         return;
     }
@@ -156,7 +155,7 @@ void NodesHandler::_get(Response& response) const {
     }
 
     response.set_status_code(Status::Ok);
-    response.headers().set("Content-Type", string(content_type));
+    response.headers().set("Content-Type", string(json_content_type));
     response.set_body(std::move(body));
 }
 

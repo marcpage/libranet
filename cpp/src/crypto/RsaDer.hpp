@@ -8,6 +8,8 @@
 #include <stdexcept>
 #include <vector>
 
+#include "types/Constants.hpp"
+
 namespace crypto {
 
 // RSA keys in DER, between PKCS #1 and SubjectPublicKeyInfo or PKCS #8, the
@@ -48,7 +50,6 @@ private:
     // A length under 0x80 is its one byte. Otherwise, that byte is 0x80 plus
     // how many bytes follow it, big-endian, with none to spare.
     static constexpr unsigned int long_length = 0x80U;
-    static constexpr std::size_t bits_per_byte = 8;
     static constexpr std::size_t most_length_bytes = 4;
 
     // The AlgorithmIdentifier of an RSA key: rsaEncryption,
@@ -171,14 +172,14 @@ inline RsaDer::Data RsaDer::_element(std::byte tag, const Data& octets) {
     } else {
         std::size_t length_bytes = 0;
 
-        for (auto rest = size; rest > 0; rest >>= bits_per_byte) {
+        for (auto rest = size; rest > 0; rest >>= types::bits_per_byte) {
             ++length_bytes;
         }
 
         der.push_back(static_cast<std::byte>(long_length | length_bytes));
 
         for (auto index = length_bytes; index-- > 0;) {
-            der.push_back(static_cast<std::byte>(size >> (index * bits_per_byte)));
+            der.push_back(static_cast<std::byte>(size >> (index * types::bits_per_byte)));
         }
     }
 
@@ -220,7 +221,7 @@ inline RsaDer::Element RsaDer::_read(const Data& der, std::size_t& offset, std::
         size = 0;
 
         for (std::size_t index = 0; index < length_bytes; ++index) {
-            size = (size << bits_per_byte) | std::to_integer<std::size_t>(der.at(offset + index));
+            size = (size << types::bits_per_byte) | std::to_integer<std::size_t>(der.at(offset + index));
         }
 
         offset += length_bytes;

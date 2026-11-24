@@ -15,6 +15,7 @@
 #include "logger/Logger.hpp"
 #include "protocol/NodeList.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 
 using http::Request;
@@ -33,11 +34,10 @@ using std::to_string;
 using std::vector;
 using storage::Identifier;
 using types::Converter;
+using types::json_content_type;
+using types::nodes_path;
 
 namespace {
-
-// Where a node list is posted (HttpApi §10.5).
-constexpr auto nodes_path = "/data/nodes";
 
 // own_id, once it is known to have a hash. Throws invalid_argument when it
 // has none.
@@ -56,8 +56,8 @@ Request post_of(const NodeList& list) {
     Request request;
 
     request.set_method("POST");
-    request.set_uri(nodes_path);
-    request.headers().set("Content-Type", "application/json");
+    request.set_uri(string(nodes_path));
+    request.headers().set("Content-Type", string(json_content_type));
     request.set_body(Converter::text_of(list.body()));
     return request;
 }

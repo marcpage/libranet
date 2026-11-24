@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "Identifier.hpp"
+#include "types/Constants.hpp"
 
 namespace storage {
 
@@ -30,7 +31,6 @@ public:
     [[nodiscard]] const std::string& to_string() const noexcept;
 
 private:
-    static constexpr std::size_t bits_per_digit = 4;
     static constexpr unsigned top_bit = 0x8U;
 
     std::string m_hex;
@@ -47,7 +47,7 @@ inline HashPrefix HashPrefix::parse(std::string_view text) {
 }
 
 inline std::size_t HashPrefix::bits() const noexcept {
-    return m_hex.size() * bits_per_digit;
+    return m_hex.size() * types::bits_per_hex_digit;
 }
 
 inline std::size_t HashPrefix::matching_bits(const Identifier& identifier) const {
@@ -64,10 +64,9 @@ inline const std::string& HashPrefix::to_string() const noexcept {
 
 inline HashPrefix::HashPrefix(std::string hex)
     : m_hex(std::move(hex)) {
-    constexpr std::string_view hex_digits = "0123456789abcdefABCDEF";
 
     if (m_hex.empty() || m_hex.size() > Identifier::longest_hash_digits()
-        || m_hex.find_first_not_of(hex_digits) != std::string::npos) {
+        || m_hex.find_first_not_of(types::hex_digits_either_case) != std::string::npos) {
         throw std::invalid_argument("Invalid hash prefix: not 1 to "
                                     + std::to_string(Identifier::longest_hash_digits())
                                     + " hex digits");
@@ -85,7 +84,7 @@ inline std::size_t HashPrefix::_matching_bits(std::string_view hash) const {
     const std::string_view prefix(m_hex);
     const auto differing = std::mismatch(prefix.begin(), prefix.end(), hash.begin(), hash.end());
     const auto digits = static_cast<std::size_t>(std::distance(prefix.begin(), differing.first));
-    const auto shared_bits = digits * bits_per_digit;
+    const auto shared_bits = digits * types::bits_per_hex_digit;
 
     if (differing.first == prefix.end() || differing.second == hash.end()) {
         return shared_bits;
@@ -96,9 +95,7 @@ inline std::size_t HashPrefix::_matching_bits(std::string_view hash) const {
 
 // The value of a lower-case hex digit.
 inline unsigned HashPrefix::_value(char digit) {
-    constexpr std::string_view digits = "0123456789abcdef";
-
-    return static_cast<unsigned>(digits.find(digit));
+    return static_cast<unsigned>(types::hex_digits.find(digit));
 }
 
 // How many of a digit's four bits are clear, from the top, before the first
@@ -106,7 +103,7 @@ inline unsigned HashPrefix::_value(char digit) {
 inline std::size_t HashPrefix::_leading_clear_bits(unsigned digit) {
     std::size_t clear_bits = 0;
 
-    for (unsigned mask = top_bit; clear_bits < bits_per_digit && 0U == (digit & mask);
+    for (unsigned mask = top_bit; clear_bits < types::bits_per_hex_digit && 0U == (digit & mask);
          mask >>= 1U) {
         ++clear_bits;
     }

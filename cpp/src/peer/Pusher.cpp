@@ -9,7 +9,6 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -23,6 +22,7 @@
 #include "storage/DataStored.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 
 using http::Request;
@@ -40,13 +40,14 @@ using std::nullopt;
 using std::optional;
 using std::size_t;
 using std::string;
-using std::string_view;
 using std::to_string;
 using std::vector;
 using storage::DataStored;
 using storage::IDataSource;
 using storage::Identifier;
 using types::Converter;
+using types::data_path_prefix;
+using types::octet_stream_content_type;
 
 // The thread takes data.stored, which others post from other files, so
 // nothing here would make its message's virtual to_string(), which
@@ -56,9 +57,6 @@ template class msg::Message<DataStored>;
 namespace {
 
 using Session = Pusher::Session;
-
-// The type of content put as it is stored (HttpApi §7).
-constexpr string_view octet_stream = "application/octet-stream";
 
 // What is bound for one peer: its session, and the content to put to it, in
 // the order it was stored.
@@ -182,8 +180,8 @@ optional<Request> put_of(const IDataSource& store, const Identifier& identifier)
     Request request;
 
     request.set_method("PUT");
-    request.set_uri("/data/" + identifier.to_string());
-    request.headers().set("Content-Type", string(octet_stream));
+    request.set_uri(string(data_path_prefix) + identifier.to_string());
+    request.headers().set("Content-Type", string(octet_stream_content_type));
     request.set_body(Converter::text_of(*body));
     return request;
 }

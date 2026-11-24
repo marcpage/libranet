@@ -7,13 +7,13 @@
 #include <string>
 #include <string_view>
 #include <utility>
-#include <vector>
 
 #include "PeerSession.hpp"
 #include "http/Request.hpp"
 #include "logger/Logger.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 
 using http::Request;
@@ -26,19 +26,18 @@ using std::string_view;
 using storage::IDataSource;
 using storage::Identifier;
 using types::Converter;
+using types::data_path_prefix;
+using types::octet_stream_content_type;
 
 namespace {
-
-// The type of content put (HttpApi §7).
-constexpr string_view octet_stream = "application/octet-stream";
 
 // A PUT of body, as identifier's content (HttpApi §7).
 Request offer_of(const Identifier& identifier, string body) {
     Request request;
 
     request.set_method("PUT");
-    request.set_uri("/data/" + identifier.to_string());
-    request.headers().set("Content-Type", string(octet_stream));
+    request.set_uri(string(data_path_prefix) + identifier.to_string());
+    request.headers().set("Content-Type", string(octet_stream_content_type));
     request.set_body(std::move(body));
     return request;
 }

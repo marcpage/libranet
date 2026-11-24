@@ -23,6 +23,7 @@
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 #include "types/Json.hpp"
 #include "web/ConnectionInfo.hpp"
@@ -256,8 +257,8 @@ TEST(DataHandlerTest, ContentNotHeldIsUnavailable) {
 // The client is told to ask again after network.retry_after_seconds.
 TEST(DataHandlerTest, ContentNotHeldIsRetriedAfterTheSettingsSay) {
     const auto store = std::make_shared<MemoryStore>();
-    const DataHandler later(store, DataHandler::default_content_bytes, 30s);
-    const DataHandler at_once(store, DataHandler::default_content_bytes, 0s);
+    const DataHandler later(store, types::max_decompressed_content_size, 30s);
+    const DataHandler at_once(store, types::max_decompressed_content_size, 0s);
 
     const auto response = answer(later, get(hello_path()));
     const auto immediate = answer(at_once, get(hello_path()));
@@ -275,7 +276,7 @@ TEST(DataHandlerTest, ContentNotHeldIsRetriedAfterTheSettingsSay) {
 // posted as asked for.
 TEST(DataHandlerTest, ContentHeldOffIsNotFound) {
     const auto asked = std::make_shared<std::vector<std::string>>();
-    const DataHandler handler(std::make_shared<MemoryStore>(), DataHandler::default_content_bytes,
+    const DataHandler handler(std::make_shared<MemoryStore>(), types::max_decompressed_content_size,
                               DataHandler::default_retry_after, all_held_off(asked));
     Channel not_found(DataNotFound::name);
     Channel requested(DataRequested::name);
@@ -295,7 +296,7 @@ TEST(DataHandlerTest, ContentHeldOffIsNotFound) {
 // captures nothing, so that moving it cannot throw.
 TEST(DataHandlerTest, OnlyContentHeldOffIsNotFound) {
     const auto world_id = Identifier::from(Converter::bytes_of("world"));
-    const DataHandler handler(std::make_shared<MemoryStore>(), DataHandler::default_content_bytes,
+    const DataHandler handler(std::make_shared<MemoryStore>(), types::max_decompressed_content_size,
                               DataHandler::default_retry_after,
                               [](const Identifier& identifier) {
         return identifier.hash() == hello_hash;
@@ -310,7 +311,7 @@ TEST(DataHandlerTest, OnlyContentHeldOffIsNotFound) {
 TEST(DataHandlerTest, HeldContentIsServedWhileHeldOff) {
     const auto store = std::make_shared<MemoryStore>();
     const auto asked = std::make_shared<std::vector<std::string>>();
-    const DataHandler handler(store, DataHandler::default_content_bytes,
+    const DataHandler handler(store, types::max_decompressed_content_size,
                               DataHandler::default_retry_after, all_held_off(asked));
     store->put(hello_id(), Converter::bytes_of(hello));
 
@@ -325,7 +326,7 @@ TEST(DataHandlerTest, NegativeRetryAfterIsRefused) {
     const auto store = std::make_shared<MemoryStore>();
 
     try {
-        const DataHandler refused(store, DataHandler::default_content_bytes, -1s);
+        const DataHandler refused(store, types::max_decompressed_content_size, -1s);
         FAIL() << "A retry after of -1s was taken";
     } catch (const std::invalid_argument& error) {
         EXPECT_STREQ(error.what(), "network.retry_after_seconds is less than zero");

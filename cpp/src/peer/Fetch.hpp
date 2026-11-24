@@ -45,9 +45,6 @@ public:
         static constexpr std::size_t default_passes = 3;
         static constexpr Milliseconds default_failed_search_hold = std::chrono::minutes(5);
         static constexpr Milliseconds default_retry_after = std::chrono::seconds(5);
-        // As large as the Python node reads a bundle; only a safeguard
-        // (HttpApi §21).
-        static constexpr std::size_t default_content_bytes = 16 * types::Megabyte;
 
         std::size_t passes = default_passes;
         Milliseconds failed_search_hold = default_failed_search_hold;
@@ -55,7 +52,7 @@ public:
         // pass waits to begin.
         Milliseconds retry_after = default_retry_after;
         // Once decompressed.
-        std::size_t content_bytes = default_content_bytes;
+        std::size_t content_bytes = types::max_decompressed_content_size;
     };
 
     // Throws std::invalid_argument, naming the setting, for one it cannot use,

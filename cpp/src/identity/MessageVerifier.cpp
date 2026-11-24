@@ -50,25 +50,9 @@ using Window = MessageVerifier::Window;
 // cannot overflow.
 using Moment = std::chrono::time_point<MessageVerifier::Clock, MessageVerifier::Duration>;
 
-// The label of the one signature a message carries, and the fields that
-// give it (HTTP API §11.2, RFC 9421 §4).
-constexpr string_view label = "libranet";
-constexpr string_view signature_input_field = "Signature-Input";
-constexpr string_view signature_field = "Signature";
-constexpr string_view content_digest_field = "Content-Digest";
-
-// The components a node's signature must cover (HTTP API §11).
-constexpr string_view method_component = "@method";
-constexpr string_view path_component = "@path";
-constexpr string_view status_component = "@status";
-constexpr string_view digest_component = "content-digest";
-
-// The parameters a libranet signature has (RFC 9421 §2.3, HTTP API §11.2),
-// and the one algorithm a node's key signs with, which alg may name, though
-// a node does not send it (RFC 9421 §3.3.6).
-constexpr string_view created_parameter = "created";
-constexpr string_view keyid_parameter = "keyid";
-constexpr string_view expires_parameter = "expires";
+// A parameter a libranet signature may have besides its own (HTTP API
+// §11.2), and the one algorithm a node's key signs with, which alg may name,
+// though a node does not send it (RFC 9421 §3.3.6).
 constexpr string_view alg_parameter = "alg";
 constexpr string_view ed25519_algorithm = "ed25519";
 
@@ -92,9 +76,9 @@ StructuredField::Member libranet_member(string_view text, string_view field_name
     const auto field = StructuredField::parse(text);
     const auto& members = field.members();
 
-    if (1 != members.size() || label != members.front().first) {
+    if (1 != members.size() || SignatureBase::label != members.front().first) {
         throw invalid_argument(string(field_name) + " must give exactly one signature, labelled "
-                               + string(label));
+                               + string(SignatureBase::label));
     }
 
     return members.front().second;
@@ -103,7 +87,7 @@ StructuredField::Member libranet_member(string_view text, string_view field_name
 // The covered components and parameters Signature-Input gives (RFC 9421
 // §4.1).
 InnerList signature_params_of(string_view signature_input) {
-    const auto member = libranet_member(signature_input, signature_input_field);
+    const auto member = libranet_member(signature_input, SignatureBase::signature_input_field);
     const auto* const signature_params = get_if<InnerList>(&member);
 
     if (nullptr == signature_params) {
@@ -115,7 +99,7 @@ InnerList signature_params_of(string_view signature_input) {
 
 // The signature Signature gives (RFC 9421 §4.2).
 Bytes signature_of(string_view signature) {
-    const auto member = libranet_member(signature, signature_field);
+    const auto member = libranet_member(signature, SignatureBase::signature_field);
     const auto* const item = get_if<StructuredField::Item>(&member);
     const auto* const bytes = nullptr == item ? nullptr : get_if<Bytes>(&item->value);
 
@@ -130,8 +114,8 @@ Bytes signature_of(string_view signature) {
 // Signature-Input nor Signature. Throws std::invalid_argument when they give
 // one without the other, or either is not as HTTP API §11.2 says.
 optional<LibranetSignature> libranet_signature(const Headers& headers) {
-    const auto signature_input = headers.get(signature_input_field);
-    const auto signature = headers.get(signature_field);
+    const auto signature_input = headers.get(SignatureBase::signature_input_field);
+    const auto signature = headers.get(SignatureBase::signature_field);
 
     if (!signature_input && !signature) {
         return nullopt;
@@ -160,8 +144,8 @@ bool covers(const InnerList& signature_params, string_view name) {
 // has none (HTTP API §11).
 template<typename Message>
 vector<string_view> must_cover(const Message& message, vector<string_view> components) {
-    if (!message.body().empty() || message.headers().has(content_digest_field)) {
-        components.emplace_back(digest_component);
+    if (!message.body().empty() || message.headers().has(ContentDigest::field_name)) {
+        components.emplace_back(SignatureBase::digest_component);
     }
 
     return components;
@@ -218,7 +202,7 @@ optional<Moment> time_parameter(const InnerList& signature_params, string_view n
 // {hash}", and nothing more. Throws std::invalid_argument when it names
 // none, as when its algorithm is not one the node knows, which is warned of.
 Identifier node_id_of(const InnerList& signature_params) {
-    const auto keyid = parameter(signature_params, keyid_parameter);
+    const auto keyid = parameter(signature_params, SignatureBase::keyid_parameter);
     const auto* const text = keyid ? get_if<string>(&*keyid) : nullptr;
 
     if (nullptr == text) {
@@ -249,14 +233,14 @@ void check_algorithm(const InnerList& signature_params) {
 // for a keyid that is not a node id, a created time that is missing, a time
 // that is not an integer, or an alg other than ed25519.
 Claims claims_of(const InnerList& signature_params) {
-    const auto created = time_parameter(signature_params, created_parameter);
+    const auto created = time_parameter(signature_params, SignatureBase::created_parameter);
 
     if (!created) {
         throw invalid_argument("A signature must say when it was created");
     }
 
     auto node_id = node_id_of(signature_params);
-    const auto expires = time_parameter(signature_params, expires_parameter);
+    const auto expires = time_parameter(signature_params, SignatureBase::expires_parameter);
 
     check_algorithm(signature_params);
     return Claims{std::move(node_id), *created, expires};
@@ -285,11 +269,11 @@ void check_fresh(const Claims& claims, Moment now, const Window& window) {
 // and headers give no Content-Digest, or one that is not body's (HTTP API
 // §11.2).
 void check_digest(const InnerList& signature_params, const Headers& headers, string_view body) {
-    if (!covers(signature_params, digest_component)) {
+    if (!covers(signature_params, SignatureBase::digest_component)) {
         return;
     }
 
-    const auto digest = headers.get(content_digest_field);
+    const auto digest = headers.get(ContentDigest::field_name);
 
     if (!digest) {
         throw invalid_argument("A signature covers a Content-Digest the message does not have");
@@ -372,12 +356,12 @@ MessageVerifier::MessageVerifier(std::shared_ptr<KnownKeys> keys, Window window,
 }
 
 optional<MessageVerifier::Signer> MessageVerifier::verify(const Request& request) const {
-    return signer_of(request, {method_component, path_component}, *m_keys, m_window,
+    return signer_of(request, {SignatureBase::method_component, SignatureBase::path_component}, *m_keys, m_window,
                      std::chrono::time_point_cast<Duration>(m_clock()));
 }
 
 optional<MessageVerifier::Signer> MessageVerifier::verify(const Response& response) const {
-    return signer_of(response, {status_component}, *m_keys, m_window,
+    return signer_of(response, {SignatureBase::status_component}, *m_keys, m_window,
                      std::chrono::time_point_cast<Duration>(m_clock()));
 }
 

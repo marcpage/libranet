@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "Address.hpp"
+#include "types/Constants.hpp"
 
 #if defined(__linux__) || defined(__APPLE__)
 #include "SocketPosix.hpp"
@@ -44,12 +45,11 @@ void ISocket::send_all(std::string_view data) {
 // Reads size bytes a piece at a time, so that a size larger than what the
 // peer sends takes no more memory than the peer sends.
 std::vector<std::byte> ISocket::read_exact(std::size_t size) {
-    constexpr std::size_t piece_bytes = 65536;
     std::vector<std::byte> total_buffer;
     std::vector<std::byte> chunk;
 
     while (total_buffer.size() < size) {
-        chunk.resize(std::min(piece_bytes, size - total_buffer.size()));
+        chunk.resize(std::min(types::piece_size, size - total_buffer.size()));
 
         const auto success = receive(chunk);
 

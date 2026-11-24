@@ -66,24 +66,18 @@ using storage::DataStored;
 using storage::IDataSource;
 using storage::Identifier;
 using types::Converter;
+using types::data_path_prefix;
+using types::json_content_type;
+using types::max_decompressed_content_size;
+using types::max_decompressed_list_size;
+using types::nodes_path;
+using types::octet_stream_content_type;
+using types::seek_path;
 using Source = stats::NodeAddresses::Source;
 using Status = http::ResponseCode::Status;
 using Unauthenticated = PeerSession::Unauthenticated;
 
 namespace {
-
-// Where a node's node list and seek list are (HttpApi §10.5, §10.7).
-constexpr string_view nodes_path = "/data/nodes";
-constexpr string_view seek_path = "/data/seek";
-
-// The types of a key put as content, and of a list posted.
-constexpr string_view octet_stream = "application/octet-stream";
-constexpr string_view json = "application/json";
-
-// How large content a peer sends compressed may be once decompressed, as
-// the data handler takes it from a client by default: as large as the
-// Python node reads a bundle.
-constexpr size_t max_content_bytes = 16 * types::Megabyte;
 
 // A request of method for target, with body, of content_type when it has one.
 Request request_of(string method, string target, string body = "",
@@ -103,7 +97,7 @@ Request request_of(string method, string target, string body = "",
 
 // Where the content identifier names is (HttpApi §5).
 string data_path(const Identifier& identifier) {
-    return "/data/" + identifier.to_string();
+    return string(data_path_prefix) + identifier.to_string();
 }
 
 // This node's key, as peers know it: as store holds it under identity's id,
@@ -186,7 +180,7 @@ SeekList seek_list_in(const Response& answer, const Address& address) {
     }
 
     try {
-        return SeekList::read(*body, NodeList::max_decompressed_size);
+        return SeekList::read(*body, max_decompressed_list_size);
     } catch (const invalid_argument& error) {
         lDebug << "Ignoring the seek list from" << address.to_string() + ":" << error.what();
         return {};
@@ -277,7 +271,7 @@ void keep(const Identifier& identifier, const Response& answer, const Identifier
 
     const auto body = Converter::bytes_of(answer.body());
 
-    if (!identifier.content_of(body, max_content_bytes)) {
+    if (!identifier.content_of(body, max_decompressed_content_size)) {
         lInfo << node_id.to_string() << "sent what is not" << identifier.to_string();
         return;
     }
@@ -373,7 +367,8 @@ FirstContact::Contact FirstContact::make(unique_ptr<PeerConnection> connection,
     // Steps 3 to 5. The peer's answer to the list posted tells nothing that
     // first contact needs.
     const auto answers = session.exchange({
-        request_of("POST", string(nodes_path), Converter::text_of(own_list.body()), json),
+        request_of("POST", string(nodes_path), Converter::text_of(own_list.body()),
+                   json_content_type),
         request_of("GET", string(seek_path)),
         request_of("GET", string(nodes_path)),
     });
@@ -399,7 +394,7 @@ FirstContact::Contact FirstContact::make(unique_ptr<PeerConnection> connection,
 // Unauthenticated where it has not.
 Identifier FirstContact::_identify(PeerConnection& connection) const {
     auto put = request_of("PUT", data_path(m_identity->id()), own_key(*m_identity, *m_store),
-                          octet_stream);
+                          octet_stream_content_type);
     const auto asked = request_line(put);
     const auto answer = answer_to(connection, m_signer, std::move(put));
     const auto signer = signer_of(answer, asked, connection.address(), m_verifier);

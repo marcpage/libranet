@@ -19,6 +19,9 @@ namespace identity {
 // the rest (HTTP API §11.2).
 class ContentDigest {
 public:
+    // The name of the field (RFC 9530 §2).
+    static constexpr std::string_view field_name = "Content-Digest";
+
     // Its sha-256.
     [[nodiscard]] static ContentDigest of(std::string_view body);
     // Throws std::invalid_argument for text that is not a dictionary, names no

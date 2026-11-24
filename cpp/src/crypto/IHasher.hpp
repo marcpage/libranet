@@ -6,6 +6,8 @@
 #include <string_view>
 #include <vector>
 
+#include "types/Constants.hpp"
+
 namespace crypto {
 
 class IHasher {
@@ -43,9 +45,6 @@ inline IHasher::Data IHasher::digest() {
 }
 
 inline std::string IHasher::hex_digest(const Data& data) {
-    constexpr std::string_view hex_chars = "0123456789abcdef";
-    constexpr auto nibble_bits = 4U;
-    constexpr auto nibble_mask = 0x0FU;
     const Data raw = digest(data);
     std::string hex;
 
@@ -54,8 +53,8 @@ inline std::string IHasher::hex_digest(const Data& data) {
     for (const std::byte byte : raw) {
         const auto value = std::to_integer<unsigned int>(byte);
 
-        hex.push_back(hex_chars.at(value >> nibble_bits));
-        hex.push_back(hex_chars.at(value & nibble_mask));
+        hex.push_back(types::hex_digits.at(value >> types::bits_per_hex_digit));
+        hex.push_back(types::hex_digits.at(value & types::hex_digit_mask));
     }
 
     return hex;

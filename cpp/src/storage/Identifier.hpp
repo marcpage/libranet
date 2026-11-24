@@ -13,6 +13,7 @@
 #include "crypto/IHasher.hpp"
 #include "logger/Logger.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Constants.hpp"
 #include "types/Json.hpp"
 
 namespace storage {
@@ -120,15 +121,13 @@ inline std::optional<Identifier> Identifier::from(const types::Json& value) {
 
 inline Identifier::Identifier(std::string algorithm, std::string hash)
     : m_algorithm(std::move(algorithm)), m_hash(std::move(hash)) {
-    constexpr std::string_view hex_digits = "0123456789abcdefABCDEF";
-
     if (!is_supported(m_algorithm)) {
         _warn_unsupported(m_algorithm);
         throw std::invalid_argument("Invalid identifier format: unsupported algorithm");
     }
 
     if (m_hash.size() != _sha256_digits()
-        || m_hash.find_first_not_of(hex_digits) != std::string::npos) {
+        || m_hash.find_first_not_of(types::hex_digits_either_case) != std::string::npos) {
         throw std::invalid_argument("Invalid identifier format: hash is not hex digits, as many "
                                     "as the algorithm's digest has");
     }

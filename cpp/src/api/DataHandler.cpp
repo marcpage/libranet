@@ -19,6 +19,7 @@
 #include "storage/DataStored.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 #include "web/ConnectionInfo.hpp"
 
@@ -40,6 +41,8 @@ using storage::DataStored;
 using storage::IDataSource;
 using storage::Identifier;
 using types::Converter;
+using types::data_path_prefix;
+using types::octet_stream_content_type;
 using web::ConnectionInfo;
 using namespace std::string_view_literals;
 
@@ -53,8 +56,6 @@ struct DataPath {
     string algorithm;
     string hash;
 };
-
-constexpr string_view data_prefix = "/data/";
 
 // The methods /data/{algorithm}/{hash} takes, as Allow names them.
 constexpr string_view allowed_methods = "GET, PUT";
@@ -91,11 +92,11 @@ constexpr std::array endpoint_names{
 optional<DataPath> data_path(string_view uri) {
     const auto path = uri.substr(0, uri.find('?'));
 
-    if (path.substr(0, data_prefix.size()) != data_prefix) {
+    if (path.substr(0, data_path_prefix.size()) != data_path_prefix) {
         return nullopt;
     }
 
-    const auto rest = path.substr(data_prefix.size());
+    const auto rest = path.substr(data_path_prefix.size());
     const auto slash = rest.find('/');
 
     if (0 == slash || string_view::npos == slash) {
@@ -231,7 +232,7 @@ void DataHandler::_get(const Identifier& identifier, Response& response) const {
     }
 
     response.set_status_code(Status::Ok);
-    response.headers().set("Content-Type", "application/octet-stream");
+    response.headers().set("Content-Type", string(octet_stream_content_type));
     response.set_body(Converter::text_of(*body));
 }
 

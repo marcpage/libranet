@@ -38,22 +38,9 @@ namespace {
 
 using InnerList = SignatureBase::InnerList;
 
-// The label a libranet signature has, under which Signature-Input gives its
-// parameters (HTTP API §11.2).
-constexpr string_view label = "libranet";
-
-// The components a node's signature covers (HTTP API §11), and @authority,
-// which RFC 9421's own examples cover (§2.2).
-constexpr string_view method_component = "@method";
-constexpr string_view path_component = "@path";
+// A component RFC 9421's own examples cover (§2.2), besides those a node's
+// signature covers.
 constexpr string_view authority_component = "@authority";
-constexpr string_view status_component = "@status";
-constexpr string_view digest_component = "content-digest";
-
-// The parameters a libranet signature has (RFC 9421 §2.3, HTTP API §11.2).
-constexpr string_view created_parameter = "created";
-constexpr string_view keyid_parameter = "keyid";
-constexpr string_view expires_parameter = "expires";
 
 // A field's component name is its name, a token (RFC 9110 §5.6.2), in lower
 // case (RFC 9421 §2.1).
@@ -74,11 +61,11 @@ InnerList libranet_params(const vector<string_view>& components,
         signature_params.items.push_back(StructuredField::Item{string(component), {}});
     }
 
-    signature_params.parameters.emplace_back(created_parameter, timestamp(parameters.created));
-    signature_params.parameters.emplace_back(keyid_parameter, parameters.keyid);
+    signature_params.parameters.emplace_back(SignatureBase::created_parameter, timestamp(parameters.created));
+    signature_params.parameters.emplace_back(SignatureBase::keyid_parameter, parameters.keyid);
 
     if (parameters.expires) {
-        signature_params.parameters.emplace_back(expires_parameter,
+        signature_params.parameters.emplace_back(SignatureBase::expires_parameter,
                                                  timestamp(*parameters.expires));
     }
 
@@ -91,8 +78,8 @@ InnerList libranet_params(const vector<string_view>& components,
 string serialized(const InnerList& signature_params) {
     StructuredField field;
 
-    field.set(string(label), signature_params);
-    return field.to_string().substr(label.size() + 1);
+    field.set(string(SignatureBase::label), signature_params);
+    return field.to_string().substr(SignatureBase::label.size() + 1);
 }
 
 // The name of the component item covers: a string, with no parameters of
@@ -161,11 +148,11 @@ string status_of(const Response& response) {
 
 // The value of a request's component named name (RFC 9421 §2.1, §2.2).
 string value_of(const Request& request, string_view name) {
-    if (method_component == name) {
+    if (SignatureBase::method_component == name) {
         return string(request.method());
     }
 
-    if (path_component == name) {
+    if (SignatureBase::path_component == name) {
         return path_of(request.uri());
     }
 
@@ -178,7 +165,7 @@ string value_of(const Request& request, string_view name) {
 
 // The value of an answer's component named name (RFC 9421 §2.1, §2.2).
 string value_of(const Response& response, string_view name) {
-    if (status_component == name) {
+    if (SignatureBase::status_component == name) {
         return status_of(response);
     }
 

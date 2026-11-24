@@ -26,6 +26,7 @@
 #include "storage/DataStored.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 
 using http::Headers;
@@ -50,6 +51,7 @@ using storage::DataStored;
 using storage::IDataSource;
 using storage::Identifier;
 using types::Converter;
+using types::data_path_prefix;
 
 namespace {
 
@@ -157,7 +159,7 @@ Request request_for(const Identifier& identifier) {
     Request request;
 
     request.set_method("GET");
-    request.set_uri("/data/" + identifier.to_string());
+    request.set_uri(string(data_path_prefix) + identifier.to_string());
     return request;
 }
 

@@ -2,7 +2,6 @@
 
 #include <mutex>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "http/Request.hpp"
@@ -18,8 +17,6 @@ namespace api {
 // alone.
 class NodesHandler {
 public:
-    static constexpr std::string_view path = "/data/nodes";
-
     // Throws std::invalid_argument for an own endpoint that is not one.
     NodesHandler(const storage::Identifier& own_id, const std::vector<std::string>& own_endpoints);
 

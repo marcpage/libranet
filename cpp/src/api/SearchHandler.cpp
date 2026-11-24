@@ -22,6 +22,7 @@
 #include "storage/HashPrefix.hpp"
 #include "storage/SearchAnswered.hpp"
 #include "storage/SearchAnswers.hpp"
+#include "types/Constants.hpp"
 #include "web/ConnectionInfo.hpp"
 
 using http::Problem;
@@ -42,14 +43,14 @@ using std::string_view;
 using storage::HashPrefix;
 using storage::SearchAnswered;
 using storage::SearchAnswers;
+using types::search_path_prefix;
+using types::search_relays_header;
 using web::ConnectionInfo;
 
 namespace {
 
 using Status = http::ResponseCode::Status;
 using SearchRequested = stats::Recorder::SearchRequested;
-
-constexpr string_view search_prefix = "/data/search/";
 
 // The methods /data/search/{prefix} takes, as Allow names them.
 constexpr string_view allowed_methods = "GET, POST";
@@ -59,11 +60,11 @@ constexpr string_view allowed_methods = "GET, POST";
 optional<string_view> search_path(string_view uri) {
     const auto path = uri.substr(0, uri.find('?'));
 
-    if (path.substr(0, search_prefix.size()) != search_prefix) {
+    if (path.substr(0, search_path_prefix.size()) != search_path_prefix) {
         return nullopt;
     }
 
-    const auto prefix = path.substr(search_prefix.size());
+    const auto prefix = path.substr(search_path_prefix.size());
 
     if (prefix.empty() || string_view::npos != prefix.find('/')) {
         return nullopt;
@@ -89,7 +90,7 @@ optional<HashPrefix> prefix_of(string_view text, Response& response) {
 // counted when it says more, which the node then holds to what it allows
 // (HttpApi §6).
 size_t relays_of(const Request& request) {
-    const auto said = request.headers().get(api::SearchHandler::search_relays_header);
+    const auto said = request.headers().get(search_relays_header);
 
     if (!said) {
         return 0;
