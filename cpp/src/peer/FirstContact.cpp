@@ -68,6 +68,8 @@ using storage::Identifier;
 using types::Converter;
 using types::data_path_prefix;
 using types::json_content_type;
+using types::max_decompressed_content_size;
+using types::max_decompressed_list_size;
 using types::nodes_path;
 using types::octet_stream_content_type;
 using types::seek_path;
@@ -76,11 +78,6 @@ using Status = http::ResponseCode::Status;
 using Unauthenticated = PeerSession::Unauthenticated;
 
 namespace {
-
-// How large content a peer sends compressed may be once decompressed, as
-// the data handler takes it from a client by default: as large as the
-// Python node reads a bundle.
-constexpr size_t max_content_bytes = 16 * types::Megabyte;
 
 // A request of method for target, with body, of content_type when it has one.
 Request request_of(string method, string target, string body = "",
@@ -183,7 +180,7 @@ SeekList seek_list_in(const Response& answer, const Address& address) {
     }
 
     try {
-        return SeekList::read(*body, NodeList::max_decompressed_size);
+        return SeekList::read(*body, max_decompressed_list_size);
     } catch (const invalid_argument& error) {
         lDebug << "Ignoring the seek list from" << address.to_string() + ":" << error.what();
         return {};
@@ -274,7 +271,7 @@ void keep(const Identifier& identifier, const Response& answer, const Identifier
 
     const auto body = Converter::bytes_of(answer.body());
 
-    if (!identifier.content_of(body, max_content_bytes)) {
+    if (!identifier.content_of(body, max_decompressed_content_size)) {
         lInfo << node_id.to_string() << "sent what is not" << identifier.to_string();
         return;
     }

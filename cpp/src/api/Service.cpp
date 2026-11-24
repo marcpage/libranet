@@ -52,6 +52,7 @@ using storage::HashPrefix;
 using storage::IDataSource;
 using storage::SearchAnswered;
 using storage::SearchAnswers;
+using types::max_decompressed_content_size;
 using types::nodes_path;
 using types::search_path_prefix;
 using types::seek_path;
@@ -102,7 +103,7 @@ namespace api {
 
 Service::Service(const Address& address, const IDataSource::Ptr& store,
                  const NodeIdentity& identity, Settings settings)
-    : m_data_handler(store, DataHandler::default_content_bytes, settings.retry_after,
+    : m_data_handler(store, max_decompressed_content_size, settings.retry_after,
                      std::move(settings.is_held_off))
     , m_answers(answers_of(store, settings))
     , m_search_handler(m_answers)

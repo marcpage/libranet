@@ -64,9 +64,6 @@ public:
         static constexpr std::size_t default_passes = 3;
         static constexpr Milliseconds default_failed_search_hold = std::chrono::minutes(5);
         static constexpr Milliseconds default_retry_after = std::chrono::seconds(5);
-        // As large as the Python node reads a bundle. The protocol sets no
-        // limit; this is only a safeguard (HttpApi §21).
-        static constexpr std::size_t default_content_bytes = 16 * types::Megabyte;
 
         // peers.search_passes
         std::size_t passes = default_passes;
@@ -76,7 +73,7 @@ public:
         // Retry-After is left, and the longest a pass waits to begin.
         Milliseconds retry_after = default_retry_after;
         // How large content sent compressed may be once decompressed.
-        std::size_t content_bytes = default_content_bytes;
+        std::size_t content_bytes = types::max_decompressed_content_size;
     };
 
     // Asks the peers get_peers gives for what is sought, and keeps what they

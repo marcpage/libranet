@@ -20,14 +20,9 @@ namespace api {
 // /data/seek is 404: it names nothing.
 class SeekHandler {
 public:
-    // How large a list sent compressed may be once decompressed, by default,
-    // as the Python node's storage.max_decompressed_list_bytes. The protocol
-    // sets no limit; this is only a safeguard (HttpApi §10.7.1).
-    static constexpr std::size_t default_list_bytes = 4 * types::Megabyte;
-
     // A POST whose list decompresses to more than list_bytes is refused, as
     // one that is not a seek list is.
-    explicit SeekHandler(std::size_t list_bytes = default_list_bytes);
+    explicit SeekHandler(std::size_t list_bytes = types::max_decompressed_list_size);
     ~SeekHandler() = default;
 
     SeekHandler(const SeekHandler&) = delete;

@@ -21,7 +21,6 @@
 #include "http/Response.hpp"
 #include "http/ResponseCode.hpp"
 #include "logger/Logger.hpp"
-#include "protocol/NodeList.hpp"
 #include "protocol/SearchResults.hpp"
 #include "protocol/SeekList.hpp"
 #include "storage/HashPrefix.hpp"
@@ -34,7 +33,6 @@
 using http::Request;
 using http::Response;
 using peer::PeerSession;
-using protocol::NodeList;
 using protocol::SearchResults;
 using protocol::SeekList;
 using std::exception;
@@ -57,6 +55,7 @@ using storage::SearchAnswers;
 using types::Converter;
 using types::data_path_prefix;
 using types::json_content_type;
+using types::max_decompressed_list_size;
 using types::octet_stream_content_type;
 using types::search_path_prefix;
 using types::seek_path;
@@ -171,7 +170,7 @@ optional<SeekList> seek_list_in(const Response& answer, const string& from) {
     }
 
     try {
-        return SeekList::read(Converter::bytes_of(answer.body()), NodeList::max_decompressed_size);
+        return SeekList::read(Converter::bytes_of(answer.body()), max_decompressed_list_size);
     } catch (const invalid_argument& error) {
         lDebug << "Ignoring the seek list from" << from + ":" << error.what();
         return nullopt;

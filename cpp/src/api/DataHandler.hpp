@@ -38,10 +38,6 @@ public:
 
     // The largest body a PUT may have, as sent (HttpApi §7.1).
     static constexpr std::size_t max_body_bytes = 1 * types::Megabyte;
-    // How large content sent compressed may be once decompressed, by
-    // default: as large as the Python node reads a bundle. The protocol sets
-    // no limit; this is only a safeguard (HttpApi §21).
-    static constexpr std::size_t default_content_bytes = 16 * types::Megabyte;
     // What network.retry_after_seconds is when not set, as the Python
     // node's is.
     static constexpr Seconds default_retry_after = std::chrono::seconds(5);
@@ -53,7 +49,7 @@ public:
     // held off; with no function, none is. Throws std::invalid_argument,
     // naming the setting, for a retry after less than zero.
     explicit DataHandler(storage::IDataSource::Ptr store,
-                         std::size_t content_bytes = default_content_bytes,
+                         std::size_t content_bytes = types::max_decompressed_content_size,
                          Seconds retry_after = default_retry_after,
                          IsHeldOff is_held_off = nullptr);
     ~DataHandler() = default;

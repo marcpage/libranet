@@ -31,10 +31,6 @@ public:
     // A list must be less than 1 MiB as it is sent, compressed or not
     // (HttpApi §10.6).
     static constexpr std::size_t max_size = 1 * types::Megabyte;
-    // The protocol does not limit a list once decompressed, so this does, as
-    // the Python node's max_decompressed_list_bytes does: a list is mostly
-    // hex, so 1 MiB sent is about 2 MiB of list.
-    static constexpr std::size_t max_decompressed_size = 4UL * types::Megabyte;
 
     // The list text names, as JSON. An entry whose endpoint is not one, or
     // whose node id is not a string naming an identifier, is left out,
@@ -47,8 +43,8 @@ public:
     // that holds no more than decompressed_limit bytes. Read as parse()
     // reads text, and throws std::invalid_argument as it does, or for a body
     // that is neither.
-    [[nodiscard]] static NodeList from_body(const Data& body,
-                                            std::size_t decompressed_limit = max_decompressed_size);
+    [[nodiscard]] static NodeList from_body(
+        const Data& body, std::size_t decompressed_limit = types::max_decompressed_list_size);
 
     // A list naming no node, as a list received starts.
     NodeList() = default;

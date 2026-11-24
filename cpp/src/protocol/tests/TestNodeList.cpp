@@ -14,6 +14,7 @@
 #include "protocol/NodeList.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Constants.hpp"
 
 using logger::ILogOutput;
 using logger::Logger;
@@ -98,7 +99,7 @@ std::vector<std::string> resolved(const std::vector<std::string>& endpoints,
 // Whether NodeList::from_body() turns down body as no node list, reading no
 // more than decompressed_limit of it.
 bool refused(const NodeList::Data& body,
-             std::size_t decompressed_limit = NodeList::max_decompressed_size) {
+             std::size_t decompressed_limit = types::max_decompressed_list_size) {
     try {
         (void)NodeList::from_body(body, decompressed_limit);
     } catch (const std::invalid_argument&) {

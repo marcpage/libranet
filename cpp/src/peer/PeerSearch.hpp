@@ -13,7 +13,6 @@
 #include "PeerSession.hpp"
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
-#include "types/Constants.hpp"
 
 namespace peer {
 
@@ -66,10 +65,6 @@ public:
         // for its prefix starts none.
         Milliseconds hold = default_hold;
     };
-
-    // The protocol does not limit an answer once decompressed, so this does,
-    // as the Python node's storage.max_decompressed_list_bytes does.
-    static constexpr std::size_t max_decompressed_size = 4UL * types::Megabyte;
 
     // Throws std::invalid_argument, naming the setting, for fewer than two
     // passes, a pass interval less than zero, or a hold that is not more than

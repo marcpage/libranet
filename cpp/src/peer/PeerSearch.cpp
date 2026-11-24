@@ -49,6 +49,7 @@ using std::vector;
 using storage::HashPrefix;
 using storage::Identifier;
 using storage::SearchAnswered;
+using types::max_decompressed_list_size;
 using types::search_path_prefix;
 using types::search_relays_header;
 
@@ -159,7 +160,7 @@ optional<vector<Identifier>> results_in(const Response& answer, const Identifier
     }
 
     try {
-        return SearchResults::parse(answer.body(), PeerSearch::max_decompressed_size).results();
+        return SearchResults::parse(answer.body(), max_decompressed_list_size).results();
     } catch (const invalid_argument& error) {
         lDebug << "Leaving out the answer of" << node_id.to_string() << "to a search:" << error;
         return nullopt;

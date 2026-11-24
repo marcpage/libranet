@@ -32,16 +32,11 @@ namespace api {
 // has, is 400. A path beneath /data/search of another form is 404.
 class SearchHandler {
 public:
-    // How large what a POST names may be once decompressed, by default: as
-    // storage.max_decompressed_list_bytes is in the Python node. The
-    // protocol sets no limit; this is only a safeguard (HttpApi §21).
-    static constexpr std::size_t default_decompressed_bytes = 4 * types::Megabyte;
-
     // Answers searches from answers. A POST whose body decompresses to more
     // than decompressed_bytes is refused, as one that is no answer is.
     // Throws std::invalid_argument for no answers.
     explicit SearchHandler(std::shared_ptr<storage::SearchAnswers> answers,
-                           std::size_t decompressed_bytes = default_decompressed_bytes);
+                           std::size_t decompressed_bytes = types::max_decompressed_list_size);
     ~SearchHandler() = default;
     SearchHandler(SearchHandler&&) = default;
     SearchHandler& operator=(SearchHandler&&) = default;
