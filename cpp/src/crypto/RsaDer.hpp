@@ -10,19 +10,17 @@
 
 namespace crypto {
 
-// RSA keys in DER, between PKCS #1, the RSA key itself, and the standard
-// forms that hold it: SubjectPublicKeyInfo for a public key, and PKCS #8 for
-// a private key, which are what PEM's "PUBLIC KEY" and "PRIVATE KEY" labels
-// name. Only DER is read, in which each value has exactly one encoding, so
-// what is read is written back byte for byte.
+// RSA keys in DER, between PKCS #1 and SubjectPublicKeyInfo or PKCS #8, the
+// forms PEM's "PUBLIC KEY" and "PRIVATE KEY" name. What is read is written
+// back byte for byte.
 class RsaDer {
 public:
     using Data = std::vector<std::byte>;
 
     [[nodiscard]] static Data spki_from_pkcs1(const Data& pkcs1);
     [[nodiscard]] static Data pkcs8_from_pkcs1(const Data& pkcs1);
-    // These throw std::invalid_argument for what is not an RSA key in DER
-    // of that form.
+    // Each throws std::invalid_argument for what is not an RSA key in DER of
+    // that form.
     [[nodiscard]] static Data pkcs1_from_spki(const Data& spki);
     [[nodiscard]] static Data pkcs1_from_pkcs8(const Data& pkcs8);
 

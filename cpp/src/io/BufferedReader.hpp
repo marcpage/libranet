@@ -13,14 +13,12 @@
 
 namespace io {
 
-// Reads from another reader a buffer at a time, so that reading a line a
-// byte at a time does not read the other a byte at a time. What it reads
-// ahead is kept for its next read, so one is kept for as long as the input
-// is read: a connection's, for each request on it.
+// Reads from another reader a buffer at a time, so that reading a line a byte
+// at a time does not read the other a byte at a time. What it reads ahead is
+// kept for its next read.
 class BufferedReader final : public IReader {
 public:
-    // Most requests' line and headers come in one read of this, and it is
-    // small enough to keep one for each connection.
+    // Most requests' line and headers come in one read.
     static constexpr std::size_t default_buffer_size = 4096;
 
     explicit BufferedReader(IReader::Ptr upstream,

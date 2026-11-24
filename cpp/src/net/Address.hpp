@@ -26,8 +26,7 @@ public:
 
 private:
     std::string m_host;
-    // Mistaken: the constructor sets m_port. cppcheck loses the class's
-    // constructors in a file that names it with `using net::Address;`.
+    // Mistaken: cppcheck loses the constructors in files `using` the class.
     // cppcheck-suppress uninitMemberVarNoCtor
     Port m_port;
 };

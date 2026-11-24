@@ -8,17 +8,14 @@
 
 namespace storage {
 
-// Content newly stored, posted under data.stored, as the Python node names
-// it: what it is, how many bytes it takes as stored, and the node it came
-// from, this node for its own. The node is nothing for content from a
-// client that is no node, one whose connection carries no verified
-// signature.
+// Content newly stored, and how many bytes it takes as stored. node is the
+// node it came from, this node for its own, and nothing for a client whose
+// connection carries no verified signature.
 struct DataStored {
     static constexpr auto name = "data.stored";
 
-    // An event is a plain struct, read by whatever takes it. Its conversion
-    // to text, which msg::Message says what it holds with, is a member, as a
-    // conversion must be, so the check takes it for a class.
+    // A plain struct, but for its conversion to text, which makes the check
+    // take it for a class.
     // NOLINTBEGIN(*-non-private-member-variables-in-classes)
     Identifier identifier;
     std::optional<Identifier> node;
