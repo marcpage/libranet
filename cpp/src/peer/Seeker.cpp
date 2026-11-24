@@ -72,12 +72,12 @@ Milliseconds checked_interval(Milliseconds interval) {
     return interval;
 }
 
-Seeker::Peers checked_peers(Seeker::Peers peers) {
-    if (!peers) {
+Seeker::GetPeers checked_get_peers(Seeker::GetPeers get_peers) {
+    if (!get_peers) {
         throw invalid_argument("A seeker needs the peers to search");
     }
 
-    return peers;
+    return get_peers;
 }
 
 // Reports what the thread could not handle.
@@ -89,12 +89,13 @@ void log_error(const string& text) {
 
 namespace peer {
 
-Seeker::Seeker(Fetch& fetch, Peers peers, const Settings& settings, const Now& now)
+Seeker::Seeker(Fetch& fetch, GetPeers get_peers, const Settings& settings,
+               const ClockFunction& clock)
     : m_fetch(&fetch)
-    , m_peers(checked_peers(std::move(peers)))
+    , m_get_peers(checked_get_peers(std::move(get_peers)))
     , m_workers(checked_workers(settings.workers))
-    , m_now(now)
-    , m_search(settings.search, now)
+    , m_clock(clock)
+    , m_search(settings.search, clock)
     , m_channel({DataNotFound::name, SearchRequested::name, pass_due},
                 [this](const IMessage::Ptr& message) { _handle(message); }, log_error)
     , m_timer(pass_due, checked_interval(settings.check_interval)) {}
@@ -191,7 +192,7 @@ void Seeker::_search(const SearchRequested& requested) {
 void Seeker::_pass_if_due() {
     const scoped_lock lock(m_mutex);
 
-    if (m_passing || !m_due || m_now() < *m_due) {
+    if (m_passing || !m_due || m_clock() < *m_due) {
         return;
     }
 
@@ -239,7 +240,7 @@ void Seeker::_make_passes() {
     optional<Clock::time_point> next;
 
     try {
-        next = m_search.make_passes(m_peers());
+        next = m_search.make_passes(m_get_peers());
     } catch (const exception& error) {
         lErr << "Could not search the peers:" << error.what();
     }
@@ -247,7 +248,7 @@ void Seeker::_make_passes() {
     const scoped_lock lock(m_mutex);
 
     m_passing = false;
-    m_due = m_pass_again ? m_now() : next;
+    m_due = m_pass_again ? m_clock() : next;
     m_pass_again = false;
 }
 

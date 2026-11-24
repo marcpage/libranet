@@ -444,9 +444,9 @@ Service::Settings looking_with(Service::Settings settings, const Fetch& fetch) {
     return settings;
 }
 
-// The sessions with the nodes connections has connected to, as they are
-// when asked.
-Fetch::Peers sessions_of(const Connections& connections) {
+// Gives the sessions with the nodes connections has connected to, as they
+// are when asked.
+Fetch::GetPeers sessions_of(const Connections& connections) {
     return [&connections] { return connections.open_sessions(); };
 }
 

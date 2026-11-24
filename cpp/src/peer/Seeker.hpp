@@ -35,11 +35,12 @@ class Seeker {
 public:
     using Clock = PeerSearch::Clock;
     using Milliseconds = std::chrono::milliseconds;
-    using Now = PeerSearch::Now;
+    using ClockFunction = PeerSearch::ClockFunction;
     using Session = std::shared_ptr<PeerSession>;
-    // The sessions with the peers this node has an outgoing connection to,
-    // as they are now, to search. Called from the thread making the passes.
-    using Peers = std::function<std::vector<Session>()>;
+    // Gives the sessions with the peers this node has an outgoing
+    // connection to, as they are now, to search. Called from the thread
+    // making the passes.
+    using GetPeers = std::function<std::vector<Session>()>;
 
     struct Settings {
         // As the Python node's peers.search_workers is.
@@ -54,10 +55,11 @@ public:
     };
 
     // Fetches with fetch, which must outlive this, and searches the peers
-    // peers gives. Throws std::invalid_argument, naming the setting, for no
-    // workers, or what PeerSearch refuses; and for a check interval that is
-    // not more than zero, or peers with no function.
-    Seeker(Fetch& fetch, Peers peers, const Settings& settings, const Now& now = &Clock::now);
+    // get_peers gives. Throws std::invalid_argument, naming the setting, for
+    // no workers, or what PeerSearch refuses; and for a check interval that
+    // is not more than zero, or get_peers or clock with no function.
+    Seeker(Fetch& fetch, GetPeers get_peers, const Settings& settings,
+           const ClockFunction& clock = &Clock::now);
     // Stops its thread, and stops fetch, so that each fetch under way ends
     // before it asks its next peer; then waits for those fetches, and for the
     // passes under way, which end within the request timeout.
@@ -77,10 +79,10 @@ private:
     // `using peer::Seeker;`.
     // cppcheck-suppress uninitMemberVarPrivate
     Fetch* m_fetch;
-    Peers m_peers;
+    GetPeers m_get_peers;
     // cppcheck-suppress uninitMemberVarPrivate
     std::size_t m_workers;
-    Now m_now;
+    ClockFunction m_clock;
     PeerSearch m_search;
 
     std::mutex m_mutex;

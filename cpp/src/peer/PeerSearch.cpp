@@ -192,7 +192,7 @@ void ask(PeerSession& session, const HashPrefix& prefix, size_t relays) {
 
 namespace peer {
 
-PeerSearch::PeerSearch(const Settings& settings, Now now)
+PeerSearch::PeerSearch(const Settings& settings, ClockFunction clock)
     : m_settings(checked(settings))
     , m_clock(std::move(clock)) {
     if (!m_clock) {
