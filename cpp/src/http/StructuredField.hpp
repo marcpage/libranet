@@ -19,15 +19,10 @@
 namespace http {
 
 // A structured field value (RFC 9651) that is a dictionary, as
-// Signature-Input, Signature, and Content-Digest are: keys, each naming an
-// item or an inner list of items, with parameters. An item is an integer, a
-// string, a token, a byte sequence, or a boolean. Decimals are not read or
-// written, nor are dates and display strings, which RFC 9651 added: those
-// three fields are defined against RFC 8941, which it obsoletes, and so
-// cannot hold them (§2.4). It holds as many members, inner list items, and
-// parameters as RFC 9651 asks a parser to take, and no more, so that the time
-// spent looking up keys stays in proportion to the text read (§3.1.1,
-// §3.1.2, §3.2).
+// Signature-Input, Signature, and Content-Digest are. Decimals, dates, and
+// display strings are not read or written, as those fields cannot hold them
+// (§2.4). It holds no more members, inner list items, and parameters than RFC
+// 9651 asks a parser to take (§3.1.1, §3.1.2, §3.2).
 class StructuredField {
 public:
     // Text written bare, where a string is quoted (RFC 9651 §3.3.4).
@@ -53,8 +48,7 @@ public:
         friend bool operator!=(const Item& left, const Item& right);
     };
 
-    // Items in parentheses, with parameters of the list's own (RFC 9651
-    // §3.1.1).
+    // With parameters of the list's own (RFC 9651 §3.1.1).
     struct InnerList {
         std::vector<Item> items;
         Parameters parameters;
@@ -67,23 +61,19 @@ public:
     using Member = std::variant<Item, InnerList>;
     using Members = std::vector<std::pair<std::string, Member>>;
 
-    // Reads a field's value, its lines joined with commas, as RFC 9651 §4.2
-    // reads a dictionary. A key given twice keeps its first place and its
-    // last member, and so does a parameter's. Throws std::invalid_argument
-    // for text that is not a dictionary this can hold.
+    // Its lines joined with commas, as RFC 9651 §4.2 reads a dictionary. A key
+    // given twice keeps its first place and its last member. Throws
+    // std::invalid_argument for text that is not a dictionary this can hold.
     [[nodiscard]] static StructuredField parse(std::string_view text);
 
     [[nodiscard]] const Members& members() const noexcept;
-    // What key names, if the dictionary has it.
     [[nodiscard]] std::optional<Member> member(std::string_view key) const;
-    // Sets key to name value, in the place key has, or after the other keys.
-    // Throws std::invalid_argument for a key, a parameter's key, or a value
-    // that RFC 9651 cannot write, for a parameter's key given twice, or for
-    // more members, items, or parameters than this holds.
+    // In the place key has, or after the other keys. Throws
+    // std::invalid_argument for what RFC 9651 cannot write, a parameter's key
+    // given twice, or more than this holds.
     void set(std::string key, Member value);
 
-    // The dictionary as RFC 9651 §4.1.2 writes it: empty, with no members,
-    // when the field is not to be sent at all.
+    // As RFC 9651 §4.1.2 writes it: empty when the field is not to be sent.
     [[nodiscard]] std::string to_string() const;
 
     friend bool operator==(const StructuredField& left, const StructuredField& right);

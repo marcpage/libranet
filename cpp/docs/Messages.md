@@ -25,7 +25,8 @@ relative to `src/`:
   `peer/Connections.hpp`, and `peer/PeerSearch.hpp` for the rest.
 - Each part's `msg::AsyncChannel`, made in its constructor, lists exactly
   the names it takes.
-- Each class's comment, in its header, says what it posts and takes.
+- Each class posts its messages from its `.cpp` file, with
+  `Channel::post()`.
 
 These are in the code as of 2026-11-24.
 

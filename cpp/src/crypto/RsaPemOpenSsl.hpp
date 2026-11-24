@@ -14,10 +14,8 @@
 
 namespace crypto {
 
-// RSA keys to and from PEM, with OpenSSL. A public key is written as
-// SubjectPublicKeyInfo and a private key as PKCS #8, the forms the Python
-// node writes. Either is read in those forms, or in PKCS #1, labeled
-// "RSA PUBLIC KEY" or "RSA PRIVATE KEY".
+// RSA keys to and from PEM, with OpenSSL, written in the forms the Python node
+// writes, and read in those or in PKCS #1.
 class RsaPemOpenSsl {
 public:
     // A key read from a PEM, and whether it holds the private key.

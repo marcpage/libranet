@@ -12,8 +12,8 @@
 
 namespace storage {
 
-// aggregates sources, reads from all, writes to first added, and removes
-// from all, so that what is removed is not still found in another
+// Reads from every source, writes to the first added, and removes from all, so
+// that what is removed is not still found in another.
 class Manager : public IDataSource {
 public:
     using Ptr = std::shared_ptr<Manager>;

@@ -9,34 +9,25 @@
 
 namespace web {
 
-// What a handler knows of the connection a request came on. The server makes
-// one as it takes a connection, and hands it to each handler with the request
-// and the response, on the thread serving that connection alone.
+// What a handler knows of the connection a request came on, used only by the
+// thread serving it.
 class ConnectionInfo {
 public:
     explicit ConnectionInfo(net::Address remote_address);
 
-    // Where the connection came from, which resolving localhost needs
-    // (HTTP API §10.2).
+    // Which resolving localhost needs (HTTP API §10.2).
     [[nodiscard]] const net::Address& remote_address() const noexcept;
 
-    // How many requests the connection has carried, the one being answered
-    // included.
+    // The one being answered included.
     [[nodiscard]] std::size_t requests() const noexcept;
-    // Counts a request read from the connection, as the server does before
-    // it answers each.
     void add_a_request() noexcept;
 
-    // The node whose signature the connection carries, once verified
-    // (HTTP API §11), and nothing before.
+    // Once verified (HTTP API §11), and nothing before.
     [[nodiscard]] const std::optional<storage::Identifier>& node() const noexcept;
     void set_node(storage::Identifier new_node);
 
-    // Whether the server closes the connection once the answer being made is
-    // sent.
     [[nodiscard]] bool is_closing() const noexcept;
-    // Has the server close the connection once the answer being made is
-    // sent, saying so in its ConnectionInfo header.
+    // Once the answer being made is sent, saying so in its Connection header.
     void close_after_answer() noexcept;
 
 private:

@@ -39,11 +39,9 @@ public:
     using Object = std::map<std::string, Json>;
 
     Json() noexcept;
-    // Json converts implicitly from each kind of value it holds, so that
-    // initializer lists such as {{"age", 30}, {"tags", {"a", "b"}}} work.
-    // It takes long and long long by name: std::int64_t is long on Linux and
-    // long long on macOS, so with only std::int64_t, a value of the other type
-    // would match no constructor exactly, and be ambiguous.
+    // Implicit, so that initializer lists such as {{"age", 30}, {"tags", {"a",
+    // "b"}}} work. long and long long are taken by name, as std::int64_t is
+    // one on Linux and the other on macOS.
     // NOLINTBEGIN(*-explicit-constructor,google-runtime-int)
     // cppcheck-suppress-begin noExplicitConstructor
     Json(std::nullptr_t) noexcept;

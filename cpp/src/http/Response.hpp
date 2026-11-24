@@ -23,11 +23,10 @@ public:
     static constexpr std::size_t default_head_bytes = 64 * types::Kilobyte;
     static constexpr std::size_t default_body_bytes = 1 * types::Megabyte;
 
-    // How much reading a response takes.
     struct Limits {
-        // The most bytes its status line and headers may take, line ends included.
+        // Line ends included.
         std::size_t head_bytes{default_head_bytes};
-        // The largest body it may have. A larger one is not read.
+        // A larger body is not read.
         std::size_t body_bytes{default_body_bytes};
     };
 

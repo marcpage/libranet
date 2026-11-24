@@ -138,6 +138,9 @@ line it is for (§2.1).
   `Zlib::decompress()` stops just past the limit it is given, making room
   64 KiB at a time, and a `StructuredField` holds no more members, inner
   list items, or parameters than RFC 9651 asks a parser to take.
+- **Comments (§8).** What a class's comment leaves out is in the
+  [Overview](Overview.md), for what each part does and how the parts fit
+  together, and in [Messages](Messages.md), for what each posts and takes.
 - **Tests (§11).** `crypto/tests/Fixtures.hpp` holds hex helpers, and an RSA
   key with what Python's `cryptography` package signed and encrypted with
   it, as the Python node does, so that the C++ node is checked against the

@@ -14,53 +14,37 @@
 
 namespace storage {
 
-// The answers to searches for a prefix of a hash (HttpApi §6). A search is
-// answered with the identifiers of what the node holds, and of what its
-// peers named for the prefix, that share at least min_bits leading bits with
-// it, or all of a shorter prefix: what shares fewer is near it, but was
-// placed for something else. They come best first: those that share the
-// most bits, then in order of their algorithm and hash, so that the same
-// identifiers always rank alike.
-//
-// An answer is kept, and searches for its prefix answered from it, until it
-// has gone ttl unchanged, so that content stored meanwhile may not be listed
-// until then. Safe to use from any thread.
+// The answers to searches for a prefix of a hash (HttpApi §6), best first,
+// from what the node holds and what its peers named. An answer is kept until
+// it has gone ttl unchanged. Safe to use from any thread.
 // cppcheck-suppress noConstructor
 class SearchAnswers {
 public:
     using Clock = std::chrono::steady_clock;
     using Milliseconds = std::chrono::milliseconds;
-    // The identifiers of what the node holds whose hash begins with a
-    // prefix, in any order. It is called from whichever threads search,
-    // perhaps several at once.
+    // In any order. Called from the threads searching, several at once.
     using Held = std::function<std::vector<Identifier>(const HashPrefix&)>;
     using ClockFunction = std::function<Clock::time_point()>;
 
-    // The most identifiers an answer keeps, the best, so that what peers
-    // name cannot grow one without end. An answer sent names fewer, as it is
-    // less than 1 MiB even compressed (HttpApi §6.1): 1 MiB at 16 bytes a
-    // hash, less than the 32 a SHA-256 digest is.
+    // So that what peers name cannot grow an answer without end. One sent
+    // names fewer, as it is less than 1 MiB even compressed (HttpApi §6.1).
     static constexpr std::size_t max_identifiers = 65'536;
 
-    // min_bits is storage.search_min_bits, and ttl
-    // storage.search_cache_ttl_seconds. Throws std::invalid_argument for a
-    // ttl that is not more than zero, or held or clock with no function.
+    // Throws std::invalid_argument for a ttl not more than zero, or a function
+    // missing.
     SearchAnswers(Held held, std::size_t min_bits, Milliseconds ttl,
                   ClockFunction clock = &Clock::now);
     ~SearchAnswers() = default;
-    // Its mutex is neither copied nor moved.
     SearchAnswers(const SearchAnswers&) = delete;
     SearchAnswers& operator=(const SearchAnswers&) = delete;
     SearchAnswers(SearchAnswers&&) = delete;
     SearchAnswers& operator=(SearchAnswers&&) = delete;
 
-    // The answer to a search for prefix: the one kept, or else a new one,
-    // of what the node holds.
+    // The one kept, or else a new one, of what the node holds.
     [[nodiscard]] std::vector<Identifier> answer(const HashPrefix& prefix);
 
-    // Adds what a peer named for prefix to its answer, less what does not
-    // match it, as a peer may hold its answers to fewer bits. When no answer
-    // is kept, one is made first, of what the node holds.
+    // Less what does not match prefix, as a peer may hold its answers to fewer
+    // bits.
     void add(const HashPrefix& prefix, const std::vector<Identifier>& named);
 
 private:
@@ -70,9 +54,7 @@ private:
     };
 
     Held m_held;
-    // Mistaken: the constructor sets m_min_bits. cppcheck loses the class's
-    // constructors in a file that names it with `using
-    // storage::SearchAnswers;`.
+    // Mistaken: cppcheck loses the constructors in files `using` the class.
     // cppcheck-suppress uninitMemberVarNoCtor
     std::size_t m_min_bits;
     Milliseconds m_ttl;

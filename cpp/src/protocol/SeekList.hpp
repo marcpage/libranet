@@ -19,26 +19,19 @@
 
 namespace protocol {
 
-// What a node seeks and does not hold (HttpApi §10.7.1): the content it
-// fetches by identifier, as "data", and the hash prefixes it searches for,
-// as "search", each kind in the order given. It is sent as
-// {"data": [...], "search": [...]}, as JSON or as zlib-compressed JSON, in
-// less than 1 MiB.
+// What a node seeks and does not hold (HttpApi §10.7.1): content by
+// identifier, as "data", and hash prefixes, as "search", each in the order
+// given.
 class SeekList {
 public:
     using Data = std::vector<std::byte>;
 
-    // The size a list must be less than as it is sent, compressed or not
-    // (HttpApi §10.7.1).
+    // As it is sent, compressed or not (HttpApi §10.7.1).
     static constexpr std::size_t max_bytes = 1 * types::Megabyte;
 
-    // Reads a list as it is received: JSON, or one zlib stream of JSON that
-    // holds no more than decompressed_limit bytes, as the protocol sets no
-    // limit of its own once decompressed. Throws std::invalid_argument for a
-    // body that is neither, or a list not of the form HttpApi §10.7.1 gives.
-    // A kind the list does not name is none sought. An entry that is not an
-    // identifier or a prefix is left out, so that it does not cost the peer
-    // the rest of its list, and is logged once for the list.
+    // JSON, or one zlib stream of JSON of no more than decompressed_limit
+    // bytes. An entry that is not valid is left out, and logged. Throws
+    // std::invalid_argument for a body that is neither, or not a seek list.
     [[nodiscard]] static SeekList read(const Data& body, std::size_t decompressed_limit);
 
     SeekList() = default;
@@ -47,22 +40,16 @@ public:
     [[nodiscard]] const std::vector<storage::Identifier>& data() const noexcept;
     [[nodiscard]] const std::vector<storage::HashPrefix>& search() const noexcept;
 
-    // The list as it is sent, in fewer than limit bytes: compact JSON, or
-    // zlib-compressed JSON where the JSON would not fit. What does not fit
-    // even compressed is left out from the end, keeping as many of each kind
-    // as of the other, or all of a kind with fewer, so that neither crowds
-    // the other out. Throws std::invalid_argument for a limit too small for
-    // an empty list.
+    // Fewer than limit bytes, compressed only where the JSON would not fit,
+    // leaving out from the end alike of each kind what does not fit even then.
+    // Throws std::invalid_argument for a limit too small for an empty list.
     [[nodiscard]] Data write(std::size_t limit = max_bytes) const;
 
 private:
     static constexpr std::string_view data_key = "data";
     static constexpr std::string_view search_key = "search";
-    // The zlib level a list too large as it is is compressed at, which
-    // HttpApi §10.7.1 leaves to the node. A long list may be compressed many
-    // times over to find how much of it fits, and a list of identifiers is
-    // hardly smaller at a slower level, so the quicker one is worth the
-    // little it loses, as it is to the Python node's search answers.
+    // HttpApi §10.7.1 leaves it to the node. A list may be compressed many
+    // times to find how much fits, and is hardly smaller at a slower level.
     static constexpr int compression_level = storage::Zlib::balance_level;
 
     std::vector<storage::Identifier> m_data;

@@ -31,33 +31,9 @@
 
 namespace peer {
 
-// Owns the outgoing connections, and keeps up the peer mix (High-Level
-// Design §4.6). It dials as the DialPlan says whenever the candidates change
-// (candidates.updated) or a connection opens, fails, or closes, and as each
-// rest ends; and it dials the seeds only while the candidates name no node.
-// It dials nothing until the first candidates come, so that it is made
-// before stats::Recorder, which posts the first as it starts. Each node is
-// dialed at its endpoints in turn, each on a thread of its own, until one
-// reaches it, and first contact is made there (FirstContact), posting the
-// node list last derived (nodes.updated), or this node's own endpoints
-// alone before the first. The entries a node list newly names are posted to
-// each node connected (NodeListPublisher). The seek list of each node
-// connected is read again, and fulfilled, every peers.seek_refresh_seconds
-// while its connection lasts (SeekFulfiller), on a thread of its own.
-//
-// The sessions with the nodes connected are given to whatever asks, for
-// fetching, searching, pushing, and handing off what the node holds through
-// them.
-//
-// What came of each dial is posted for stats::Recorder: connection.opened
-// for an endpoint that reached a node other than this one, which proved its
-// identity there, and connection.failed for one that did not reach the node
-// dialed, as when nothing answered or some other node did. A seed whose
-// node id is not known is not failed, as there is no node to fail. The peers
-// connected are posted as peers.connected as it starts, and whenever one
-// joins or leaves. A node whose connection closed rests, as one that was
-// reached at none of its endpoints does; a seed's endpoint rests after each
-// dial.
+// Owns the outgoing connections, and keeps up the peer mix (High-Level Design
+// §4.6), dialing as the DialPlan says, each dial on a thread of its own. It
+// dials nothing until the first candidates come.
 class Connections {
 public:
     using Candidate = DialPlan::Candidate;
@@ -65,9 +41,9 @@ public:
     using Milliseconds = DialPlan::Milliseconds;
     using ClockFunction = DialPlan::ClockFunction;
 
+    // Events: plain structs, but for their conversion to text.
     // NOLINTBEGIN(*-non-private-member-variables-in-classes)
 
-    // The nodes this node dialed and is connected to, which have changed.
     struct PeersConnected {
         static constexpr auto name = "peers.connected";
 
@@ -78,15 +54,14 @@ public:
 
     // NOLINTEND(*-non-private-member-variables-in-classes)
 
-    // A node to dial while no other is known, from --seed or
-    // peers.seed_file: its endpoint, and its node id where that is known.
+    // From --seed or peers.seed_file.
     struct Seed {
         std::string endpoint;
         std::optional<storage::Identifier> node_id = std::nullopt;
     };
 
-    // How often, when nothing else happens, it looks for connections that
-    // have closed and nodes whose rest is over.
+    // How often, when nothing else happens, it looks for connections that have
+    // closed and nodes whose rest is over.
     static constexpr Milliseconds default_check_interval{1'000};
 
     struct Settings {
@@ -98,18 +73,15 @@ public:
         SeekFulfiller::Settings fulfiller;
     };
 
-    // Makes first contact as identity, which must outlive it, naming
-    // own_endpoints as this node's, and checks answers with verifier. A
-    // peer's key that is not held is put in store, which must be the store
-    // verifier's keys are read from. Throws std::invalid_argument for what
-    // DialPlan, FirstContact, or NodeListPublisher refuse, or a check
-    // interval that is not more than zero.
+    // identity must outlive it. A peer's key that is not held is put in store,
+    // which must be the one verifier reads keys from. Throws
+    // std::invalid_argument for a setting it cannot use.
     Connections(const identity::NodeIdentity& identity,
                 const std::vector<std::string>& own_endpoints,
                 const storage::IDataSource::Ptr& store, identity::MessageVerifier verifier,
                 Settings settings, ClockFunction clock = &Clock::now);
-    // Stops its threads, waits for each dial under way, which ends within
-    // the connect and request timeouts, and closes every connection.
+    // Waits for each dial under way, which ends within the connect and request
+    // timeouts, and closes every connection.
     ~Connections();
     // Its threads hold this object, so it is neither copied nor moved.
     Connections(const Connections&) = delete;
@@ -117,19 +89,15 @@ public:
     Connections(Connections&&) = delete;
     Connections& operator=(Connections&&) = delete;
 
-    // The sessions with the nodes connected now whose connections are open,
-    // for the peers to be asked through. Safe to call from any thread.
+    // Those open now. Safe to call from any thread.
     [[nodiscard]] std::vector<std::shared_ptr<PeerSession>> open_sessions() const;
 
-    // The node ids of the nodes connected now. Safe to call from any thread.
+    // Safe to call from any thread.
     [[nodiscard]] std::vector<storage::Identifier> connected_ids() const;
 
 private:
-    // The name the timer posts under, for the thread to check the
-    // connections.
     static constexpr auto check_due = "peers.check_due";
 
-    // A node connected, and the endpoint it was reached at.
     struct Peer {
         std::shared_ptr<PeerSession> session;
         std::string endpoint;
@@ -158,8 +126,7 @@ private:
     bool m_stopping = false;                                  // Guarded by m_mutex
     std::list<std::future<void>> m_jobs;                      // Guarded: dials, posts, reads
 
-    // Made last, and so stopped first: the timer, then the thread, which
-    // uses all of the above.
+    // Made last, and so stopped first.
     msg::AsyncChannel m_channel;
     msg::Timer m_timer;
 

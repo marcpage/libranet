@@ -12,15 +12,13 @@
 namespace msg {
 
 // Posts a tick under a name every interval, from a thread of its own, until
-// stopped. Stopping does not wait for the end of the interval in hand.
+// stopped.
 class Timer {
 public:
     using Milliseconds = std::chrono::milliseconds;
 
-    // What the timer posts: the name it posts under, so that a channel
-    // listening to several timers can tell them apart, and which tick it
-    // is, counting from 1. An event is a plain struct; this one converts to
-    // a string so that Message can say what it holds.
+    // name tells apart the timers a channel listens to; count is from 1. A
+    // plain struct, but for its conversion to text.
     struct Tick {
         // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
         std::string name;

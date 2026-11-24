@@ -14,41 +14,34 @@
 
 namespace identity {
 
-// A Content-Digest field (RFC 9530 §2): a dictionary of digests of a body,
-// each a byte sequence under the key of its algorithm. A signature covers
-// headers, not the body, so one that covers content-digest covers the body
-// only once the digest is checked against the bytes received (HTTP API §11).
-// A node sends the sha-256 of a body. Of a field it receives, it passes over
-// the algorithms it does not know, but needs at least one it knows, and
-// checks every one it knows against the body (HTTP API §11.2).
+// A Content-Digest field (RFC 9530 §2). A node sends the sha-256 of a body,
+// and of a field it receives, checks every algorithm it knows and passes over
+// the rest (HTTP API §11.2).
 class ContentDigest {
 public:
-    // The field a node sends for body: its sha-256.
+    // Its sha-256.
     [[nodiscard]] static ContentDigest of(std::string_view body);
-    // Reads a Content-Digest field's value. Throws std::invalid_argument for
-    // text that is not a dictionary, that names no algorithm known here, or
-    // that gives a digest of one as other than a byte sequence.
+    // Throws std::invalid_argument for text that is not a dictionary, names no
+    // algorithm known here, or gives a digest that is not a byte sequence.
     [[nodiscard]] static ContentDigest parse(std::string_view text);
 
     // Whether each digest of an algorithm known here is that of body.
     [[nodiscard]] bool matches(std::string_view body) const;
-    // The field's value, as RFC 9651 §4.1.2 writes a dictionary.
+    // As RFC 9651 §4.1.2 writes a dictionary.
     [[nodiscard]] std::string to_string() const;
 
 private:
     using Bytes = http::StructuredField::Bytes;
-    // Makes what hashes with an algorithm.
     using MakeHasher = crypto::IHasher::Ptr (*)();
 
-    // A hash algorithm, by its key in RFC 9530's Hash Algorithms for HTTP
-    // Digest Fields registry.
+    // By its key in RFC 9530's Hash Algorithms for HTTP Digest Fields
+    // registry.
     struct Algorithm {
         std::string_view key;
         MakeHasher make_hasher = nullptr;
     };
 
-    // The algorithms known here, the one a node sends first (HTTP API
-    // §11.2).
+    // The one a node sends first (HTTP API §11.2).
     static constexpr std::array<Algorithm, 1> known_algorithms{
         Algorithm{"sha-256", &crypto::IHasher::Sha256},
     };

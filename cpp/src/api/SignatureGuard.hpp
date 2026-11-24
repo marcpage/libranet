@@ -17,44 +17,30 @@
 
 namespace api {
 
-// Stands in front of the node's handlers: checks the signature on each
-// signed request before its handler sees it, and signs each answer as the
-// node once it is made (HTTP API §11). A request whose signature verifies is
-// served as from its signer, whom its connection then carries. One whose
-// signer's key the node does not hold yet is served while the key is
-// obtained, up to provisional_trust_attempts of them for each signer; the
-// next is answered 401, and its connection closed (HandshakeProtocol §3.2).
-// A signature that fails is answered 401, and its connection closed, at once
-// (HandshakeProtocol §5.3). An unsigned PUT or POST is answered 401, as it
-// names no node to attribute what it sends to, and any other unsigned
-// request, a GET among them, is served (HandshakeProtocol §2.1). Safe to use
-// from the threads serving connections, several at once.
+// Stands in front of the node's handlers: checks the signature on each request
+// before its handler sees it, and signs each answer as the node (HTTP API §11,
+// HandshakeProtocol §2.1, §3.2, §5.3). Safe to use from the threads serving
+// connections, several at once.
 // cppcheck-suppress noConstructor
 class SignatureGuard {
 public:
     using Handler = web::Server::RequestHandler;
 
-    // What identity.provisional_trust_attempts is when not set, and the
-    // least it may be, as the Python node's are (HTTP API §11.1).
+    // And the least it may be, as the Python node's (HTTP API §11.1).
     static constexpr std::size_t default_provisional_trust_attempts = 3;
     static constexpr std::size_t min_provisional_trust_attempts = 2;
-    // How many signers whose keys are not held yet have their requests
-    // counted, by default, as the Python node counts them. The one seen
-    // least recently is forgotten first, so that requests naming endless
-    // made-up node ids cannot grow what is counted without limit.
+    // Signers whose keys are not held yet whose requests are counted, as the
+    // Python node counts them; the one seen least recently is forgotten first.
     static constexpr std::size_t default_tracked_signers = 4096;
 
-    // Checks requests with verifier, and signs answers with signer. Throws
-    // std::invalid_argument for provisional_trust_attempts less than
+    // Throws std::invalid_argument for provisional_trust_attempts less than
     // min_provisional_trust_attempts, or no tracked_signers.
     SignatureGuard(identity::MessageVerifier verifier, identity::MessageSigner signer,
                    std::size_t provisional_trust_attempts = default_provisional_trust_attempts,
                    std::size_t tracked_signers = default_tracked_signers);
 
-    // handler, with this guard in front of it, to be registered with the
-    // server in its place; this must outlive it. What handler throws, or
-    // what the store throws as a key is read, is thrown on unsigned, for the
-    // server to answer with 500.
+    // To be registered with the server in handler's place; this must outlive
+    // it. What handler or the store throws is thrown on.
     [[nodiscard]] Handler in_front_of(Handler handler);
 
     ~SignatureGuard() = default;
@@ -64,14 +50,12 @@ public:
     SignatureGuard& operator=(SignatureGuard&&) = delete;
 
 private:
-    // How many requests each signer whose key is not held yet has sent, by
-    // node id, least recently seen first.
+    // By node id, least recently seen first.
     using Attempts = std::list<std::pair<std::string, std::size_t>>;
 
     identity::MessageVerifier m_verifier;
     identity::MessageSigner m_signer;
-    // Mistaken: the constructor sets both. cppcheck loses the class's
-    // constructors in a file that names it with `using api::SignatureGuard;`.
+    // Mistaken: cppcheck loses the constructors in files `using` the class.
     // cppcheck-suppress-begin uninitMemberVarNoCtor
     std::size_t m_provisional_trust_attempts;
     std::size_t m_tracked_signers;

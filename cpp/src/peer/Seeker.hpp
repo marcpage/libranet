@@ -23,23 +23,15 @@
 namespace peer {
 
 // Seeks from the peers what the node lacks (High-Level Design §4.7), from a
-// thread of its own. For each storage::DataNotFound, content a client asked
-// for that the node does not hold, it fetches the content (Fetch), at most
-// peers.search_workers at once, each on a thread of its own; those beyond
-// wait their turn, in the order they came, each once. For each
-// stats::Recorder::SearchRequested, it starts a search of the peers for the
-// prefix (PeerSearch), and makes each pass of it as it comes due, on a
-// thread of its own, so that a peer slow to answer a search holds up no
-// fetch, nor a fetch a search.
+// thread of its own: it fetches the content of each storage::DataNotFound, and
+// searches the peers for each stats::Recorder::SearchRequested.
 class Seeker {
 public:
     using Clock = PeerSearch::Clock;
     using Milliseconds = std::chrono::milliseconds;
     using ClockFunction = PeerSearch::ClockFunction;
     using Session = std::shared_ptr<PeerSession>;
-    // Gives the sessions with the peers this node has an outgoing
-    // connection to, as they are now, to search. Called from the thread
-    // making the passes.
+    // Called from the thread making the passes.
     using GetPeers = std::function<std::vector<Session>()>;
 
     struct Settings {
@@ -48,21 +40,18 @@ public:
         // How often it looks for a pass that has come due.
         static constexpr Milliseconds default_check_interval{1'000};
 
-        // peers.search_workers: the most fetches under way at once.
+        // The most fetches under way at once.
         std::size_t workers = default_workers;
         PeerSearch::Settings search;
         Milliseconds check_interval = default_check_interval;
     };
 
-    // Fetches with fetch, which must outlive this, and searches the peers
-    // get_peers gives. Throws std::invalid_argument, naming the setting, for
-    // no workers, or what PeerSearch refuses; and for a check interval that
-    // is not more than zero, or get_peers or clock with no function.
+    // fetch must outlive this. Throws std::invalid_argument, naming the
+    // setting, for one it cannot use, or for a function missing.
     Seeker(Fetch& fetch, GetPeers get_peers, const Settings& settings,
            const ClockFunction& clock = &Clock::now);
-    // Stops its thread, and stops fetch, so that each fetch under way ends
-    // before it asks its next peer; then waits for those fetches, and for the
-    // passes under way, which end within the request timeout.
+    // Stops fetch, then waits for the fetches and passes under way, which end
+    // within the request timeout.
     ~Seeker();
     // Its threads hold this object, so it is neither copied nor moved.
     Seeker(const Seeker&) = delete;
@@ -71,12 +60,9 @@ public:
     Seeker& operator=(Seeker&&) = delete;
 
 private:
-    // The name the timer posts under, for the thread to make the passes due.
     static constexpr auto pass_due = "peers.search_pass_due";
 
-    // Mistaken: the constructor sets m_fetch and m_workers. cppcheck loses
-    // the class's constructors in a file that names it with
-    // `using peer::Seeker;`.
+    // Mistaken: cppcheck loses the constructors in files `using` the class.
     // cppcheck-suppress uninitMemberVarPrivate
     Fetch* m_fetch;
     GetPeers m_get_peers;
@@ -94,8 +80,7 @@ private:
     bool m_stopping = false;                   // Guarded by m_mutex
     std::list<std::future<void>> m_jobs;       // Guarded: fetches and passes
 
-    // Made last, and so stopped first: the timer, then the thread, which
-    // uses all of the above.
+    // Made last, and so stopped first.
     msg::AsyncChannel m_channel;
     msg::Timer m_timer;
 
