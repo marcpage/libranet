@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.24)
 
 project(libranet LANGUAGES CXX)
 
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM AND NOT DEFINED CMAKE_CXX_COMPILER_LAUNCHER)
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+endif()
+
 # The node is written to C++17. This is set after project(), so it holds
 # whatever compiler.cppstd the Conan profile names.
 set(CMAKE_CXX_STANDARD 17)
