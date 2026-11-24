@@ -1,5 +1,6 @@
 #include "HandOff.hpp"
 
+#include <algorithm>
 #include <exception>
 #include <optional>
 #include <stdexcept>
@@ -98,11 +99,14 @@ optional<Identifier> HandOff::hand_off(const Identifier& identifier) const {
     }
 
     const auto body = Converter::text_of(*stored);
+    const auto ranked = PeerSession::ranked(m_get_peers(), identifier);
+    const auto taker = std::find_if(ranked.begin(), ranked.end(),
+                                    [&identifier, &body](const Session& session) {
+        return took(*session, identifier, body);
+    });
 
-    for (const auto& session : PeerSession::ranked(m_get_peers(), identifier)) {
-        if (took(*session, identifier, body)) {
-            return session->node_id();
-        }
+    if (taker != ranked.end()) {
+        return (*taker)->node_id();
     }
 
     lDebug << "No peer took" << identifier.to_string();
