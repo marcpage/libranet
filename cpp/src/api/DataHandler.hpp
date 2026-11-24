@@ -28,13 +28,14 @@ public:
     // As the Python node's is.
     static constexpr Seconds default_retry_after = std::chrono::seconds(5);
 
-    // With no is_held_off, no search is held off. Throws
-    // std::invalid_argument, naming the setting, for a retry after less than
-    // zero.
+    // With no is_held_off, no search is held off. A larger body than
+    // body_bytes is refused. Throws std::invalid_argument, naming the
+    // setting, for a retry after less than zero, or body bytes of zero or
+    // more than max_body_bytes.
     explicit DataHandler(storage::IDataSource::Ptr store,
                          std::size_t content_bytes = types::max_decompressed_content_size,
                          Seconds retry_after = default_retry_after,
-                         IsHeldOff is_held_off = nullptr);
+                         IsHeldOff is_held_off = nullptr, std::size_t body_bytes = max_body_bytes);
 
     // Called from the threads serving connections, several at once. Throws
     // what the store throws, and std::bad_alloc if zlib runs out of memory.
@@ -54,6 +55,7 @@ private:
     std::size_t m_content_bytes;
     Seconds m_retry_after;
     IsHeldOff m_is_held_off;
+    std::size_t m_body_bytes;
 
     void _get(const storage::Identifier& identifier, http::Response& response) const;
     void _put(const storage::Identifier& identifier, const http::Request& request,

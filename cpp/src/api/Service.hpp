@@ -51,6 +51,8 @@ public:
             SignatureGuard::default_provisional_trust_attempts;
         // The most a list sent compressed may decompress to.
         std::size_t list_bytes = types::max_decompressed_list_size;
+        // The largest body a request may have, a PUT's content among them.
+        std::size_t object_bytes = DataHandler::max_body_bytes;
     };
 
     // identity must outlive this. Throws std::invalid_argument for a setting

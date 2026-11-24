@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -333,6 +334,23 @@ TEST(DataHandlerTest, NegativeRetryAfterIsRefused) {
     }
 }
 
+// Each limit on a body the Python node's storage.max_object_bytes would
+// refuse is refused, as is one larger than the protocol allows.
+TEST(DataHandlerTest, BodyBytesItCannotUseAreRefused) {
+    const auto store = std::make_shared<MemoryStore>();
+
+    for (const auto body_bytes : {std::size_t{0}, DataHandler::max_body_bytes + 1}) {
+        try {
+            const DataHandler refused(store, types::max_decompressed_content_size,
+                                      DataHandler::default_retry_after, nullptr, body_bytes);
+            FAIL() << "Body bytes of " << body_bytes << " were taken";
+        } catch (const std::invalid_argument& error) {
+            EXPECT_EQ(std::string(error.what()), "storage.max_object_bytes is not from 1 to "
+                                                     + std::to_string(DataHandler::max_body_bytes));
+        }
+    }
+}
+
 TEST(DataHandlerTest, HeldContentIsNotPostedAsNotFound) {
     const auto store = std::make_shared<MemoryStore>();
     const DataHandler handler(store);
@@ -532,6 +550,25 @@ TEST(DataHandlerTest, PutOverOneMebibyteIsTooLarge) {
     EXPECT_EQ(taken.status_code(), 201);
     EXPECT_TRUE(store->has(largest_id));
     EXPECT_EQ(store->size(), DataHandler::max_body_bytes);
+}
+
+// A body larger than the handler is told to take is refused, saying how
+// large one may be.
+TEST(DataHandlerTest, PutOverTheBodyBytesItTakesIsTooLarge) {
+    const auto store = std::make_shared<MemoryStore>();
+    const DataHandler cramped(store, types::max_decompressed_content_size,
+                              DataHandler::default_retry_after, nullptr, hello.size() - 1);
+    const DataHandler roomy(store, types::max_decompressed_content_size,
+                            DataHandler::default_retry_after, nullptr, hello.size());
+
+    const auto refused = answer(cramped, put(hello_path(), std::string(hello)));
+
+    EXPECT_EQ(refused.status_code(), 413);
+    EXPECT_EQ(problem_type(refused), "https://libranet.org/problems/content-too-large");
+    EXPECT_NE(refused.body().find("limited to 4 bytes; this one has 5"), std::string::npos)
+        << refused.body();
+    EXPECT_FALSE(store->has(hello_id()));
+    EXPECT_EQ(status_of(roomy, put(hello_path(), std::string(hello))), 201);
 }
 
 // A body that would decompress to more than the handler takes is refused,

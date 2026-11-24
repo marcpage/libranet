@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "api/DataHandler.hpp"
 #include "api/Service.hpp"
 #include "eviction/Evictor.hpp"
 #include "http/Url.hpp"
@@ -45,6 +46,7 @@
 #include "types/Converter.hpp"
 #include "types/Json.hpp"
 
+using api::DataHandler;
 using api::Service;
 using eviction::Evictor;
 using http::Url;
@@ -117,6 +119,7 @@ constexpr auto stored_grace_setting = "storage.stored_grace_seconds";
 constexpr auto search_ttl_setting = "storage.search_cache_ttl_seconds";
 constexpr auto search_min_bits_setting = "storage.search_min_bits";
 constexpr auto list_bytes_setting = "storage.max_decompressed_list_bytes";
+constexpr auto object_bytes_setting = "storage.max_object_bytes";
 constexpr auto trust_attempts_setting = "identity.provisional_trust_attempts";
 constexpr auto max_age_setting = "identity.signature_max_age_seconds";
 constexpr auto clock_skew_setting = "identity.signature_clock_skew_seconds";
@@ -155,6 +158,7 @@ constexpr array used_settings{
     search_ttl_setting,
     search_min_bits_setting,
     list_bytes_setting,
+    object_bytes_setting,
     trust_attempts_setting,
     max_age_setting,
     clock_skew_setting,
@@ -699,6 +703,8 @@ Node::PartSettings Node::_settings_of(const SettingsFile& settings, const vector
     service.provisional_trust_attempts =
         whole(settings, trust_attempts_setting, service.provisional_trust_attempts, 2);
     service.list_bytes = whole(settings, list_bytes_setting, service.list_bytes, 1);
+    service.object_bytes = whole(settings, object_bytes_setting, service.object_bytes, 1,
+                                 DataHandler::max_body_bytes);
 
     // The searches of the peers, for content and for prefixes.
     fetch.retry_after = service.retry_after;
@@ -731,6 +737,7 @@ Node::PartSettings Node::_settings_of(const SettingsFile& settings, const vector
         seconds(settings, connect_timeout_setting, connections.limits.connect_timeout);
     connections.limits.request_timeout =
         seconds(settings, request_timeout_setting, connections.limits.request_timeout);
+    connections.limits.answer.body_bytes = service.object_bytes;
     connections.rests.retry_delay =
         seconds(settings, retry_delay_setting, connections.rests.retry_delay);
     connections.rests.turned_away_rest =

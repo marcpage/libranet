@@ -84,6 +84,14 @@ shared_ptr<SearchAnswers> answers_of(const IDataSource::Ptr& store,
         settings.search_min_bits, settings.search_cache_ttl);
 }
 
+// The limits of the web server, taking no body larger than settings says.
+Server::Limits limits_of(const Service::Settings& settings) {
+    Server::Limits limits;
+
+    limits.body_bytes = settings.object_bytes;
+    return limits;
+}
+
 // The endpoints the node names itself by in its node list, with no external
 // address or port set: localhost, meaning the address its list comes from,
 // at the port it listens on (HttpApi §10.1).
@@ -104,13 +112,13 @@ namespace api {
 Service::Service(const Address& address, const IDataSource::Ptr& store,
                  const NodeIdentity& identity, Settings settings)
     : m_data_handler(store, max_decompressed_content_size, settings.retry_after,
-                     std::move(settings.is_held_off))
+                     std::move(settings.is_held_off), settings.object_bytes)
     , m_seek_handler(settings.list_bytes)
     , m_answers(answers_of(store, settings))
     , m_search_handler(m_answers, settings.list_bytes)
     , m_guard(MessageVerifier(make_shared<KnownKeys>(store), settings.window),
               MessageSigner(identity), settings.provisional_trust_attempts)
-    , m_server(address)
+    , m_server(address, limits_of(settings))
     , m_local_address(m_server.local_address())
     , m_own_endpoints(endpoints_at(m_local_address))
     , m_nodes_handler(identity.id(), m_own_endpoints, settings.list_bytes)

@@ -494,6 +494,22 @@ TEST_F(NodeTest, SignsItsAnswersAndRefusesUnsignedUploads) {
     EXPECT_FALSE(std::filesystem::exists(data_dir() / "cas" / "sha256" / "2cf" / hello_hash));
 }
 
+// A body larger than storage.max_object_bytes is refused unread.
+TEST_F(NodeTest, RefusesBodiesLargerThanItsSetting) {
+    auto values = loopback(data_dir());
+
+    values["storage.max_object_bytes"] = "4";
+
+    const Node node(settings_of(values));
+    const auto answer = answer_to(node.local_address(),
+                                  string("PUT /data/sha256/") + hello_hash
+                                      + " HTTP/1.1\r\nConnection: close\r\n"
+                                        "Content-Length: 5\r\n\r\nhello");
+
+    EXPECT_EQ(answer.rfind("HTTP/1.1 413 Payload Too Large\r\n", 0), 0U) << answer;
+    EXPECT_TRUE(logged("storage.max_object_bytes = 4"));
+}
+
 // Its node list names it at localhost, the port it listens on, until it is
 // given another (HttpApi §10.1), and is signed as each answer is.
 TEST_F(NodeTest, ServesItsOwnEndpointAsItsNodeList) {
@@ -608,6 +624,8 @@ TEST_F(NodeTest, RefusesSettingsItCannotUse) {
         {"storage.search_cache_ttl_seconds", "0"},
         {"storage.search_min_bits", "257"},
         {"storage.max_decompressed_list_bytes", "0"},
+        {"storage.max_object_bytes", "0"},
+        {"storage.max_object_bytes", "1048577"},
         {"identity.provisional_trust_attempts", "1"},
         {"identity.signature_max_age_seconds", "0"},
         {"identity.signature_clock_skew_seconds", "-1"},
