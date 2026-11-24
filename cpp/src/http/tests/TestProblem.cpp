@@ -101,7 +101,8 @@ TEST(ProblemTest, StatusThatIsNotAnErrorIsRefused) {
 
 TEST(ProblemTest, TypeThatNamesNoneIsRefused) {
     constexpr auto named_by_none = 255;
-    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange): the point of the test
+    // Out of range: the point of the test.
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     const auto type = static_cast<Problem::Type>(named_by_none);
 
     EXPECT_THROW((void)Problem(type, ResponseCode::Status::BadRequest, "detail"),

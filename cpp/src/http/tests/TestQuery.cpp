@@ -111,7 +111,8 @@ TEST(QueryTest, StreamOperatorsAndParsing) {
 }
 
 TEST(QueryTest, EmptyNameIsKept) {
-    // A parameter with no name and no value keeps its '=', or it would be lost.
+    // A parameter with no name and no value keeps its '=', or it would be
+    // lost.
     const Query query = Query::parse("=&=");
     EXPECT_EQ(query.to_string(), "=&=");
     EXPECT_EQ(Query::parse("?" + query.to_string()).to_string(), "=&=");

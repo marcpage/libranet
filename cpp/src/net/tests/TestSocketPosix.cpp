@@ -81,8 +81,8 @@ TEST(SocketPosixTest, BindAndLocalAddress) {
     EXPECT_GT(address.port(), 0);
 
     // A second bind to an address a server is listening on must fail. The
-    // server listens first: with SO_REUSEADDR, Linux lets two sockets bind
-    // the same address until one of them listens, while macOS refuses either way.
+    // server listens first: with SO_REUSEADDR, Linux lets two sockets bind the
+    // same address until one of them listens, while macOS refuses either way.
     server->listen(1);
     EXPECT_THROW((void)SocketPosix::bind(address), std::system_error);
 

@@ -71,7 +71,8 @@ TEST_P(IHasherTest, Reset) {
     hasher->update("garbage data");
     (*hasher).reset();
 
-    // After reset, hashing "abc" should yield the correct "abc" hash, not corrupted state
+    // After reset, hashing "abc" should yield the correct "abc" hash, not
+    // corrupted state
     hasher->update("abc");
     EXPECT_EQ(hasher->hex_digest(), abc_digest);
 }
@@ -90,7 +91,8 @@ TEST_P(IHasherTest, Clone) {
 
     hasher1->update("hello");
 
-    // Clone mid-stream (cloning preserves current active context without affecting hasher1)
+    // Clone mid-stream (cloning preserves current active context without
+    // affecting hasher1)
     const auto hasher2 = hasher1->clone();
 
     // Continue hasher1 with " world" -> "hello world"

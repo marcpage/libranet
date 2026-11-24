@@ -99,7 +99,8 @@ int create_socket(const addrinfo& info) {
         // Allow quick restart of a listening server after it has closed
         (void)::setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled));
 
-        // Disable Nagle's algorithm (common for request/response and low-latency use)
+        // Disable Nagle's algorithm (common for request/response and
+        // low-latency use)
         (void)::setsockopt(socket_fd, IPPROTO_TCP, TCP_NODELAY, &enabled, sizeof(enabled));
 
         // Detect dead peers on long-lived connections

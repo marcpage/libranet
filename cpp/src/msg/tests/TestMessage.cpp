@@ -30,7 +30,8 @@ TEST(MessageTest, ConstructionAndValue) {
     constexpr auto double_value = 3.14159;
     const Message<double> double_message(double_value);
     EXPECT_DOUBLE_EQ(double_message.value(), double_value);
-    // std::to_string precision can vary slightly; just check it starts correctly
+    // std::to_string precision can vary slightly; just check it starts
+    // correctly
     EXPECT_EQ(double_message.to_string().find("3.14"), 0U);
 
     // String-like types

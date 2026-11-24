@@ -75,7 +75,8 @@ inline IMultiKey::Ptr RsaMacos::for_bit_size(std::size_t key_bits) {
         throw std::runtime_error("Failed to generate RSA key pair on macOS");
     }
 
-    // Automatically derive the public counterpart from the generated private key
+    // Automatically derive the public counterpart from the generated private
+    // key
     const CFObject<SecKeyRef> public_key(
         SecKeyCopyPublicKey(private_key),
         CFObject<SecKeyRef>::Policy::TakeOwnership);

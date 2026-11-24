@@ -163,7 +163,8 @@ TEST(ISignKeyTest, Ed25519InvalidInputs) {
                      "-----BEGIN PUBLIC KEY-----\nYWJj\n-----END PUBLIC KEY-----\n"),
                  std::invalid_argument);
 
-    // Verification with invalid signature size should return false rather than throw
+    // Verification with invalid signature size should return false rather than
+    // throw
     const auto signer = ISignKey::Ed25519();
     const ISignKey::Data bad_signature(signature_size / 2, std::byte{0x00});
 

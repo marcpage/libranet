@@ -508,7 +508,8 @@ inline void Url::append(std::string_view relative_url) {
         return;
     }
 
-    // 1. If it's an absolute URL (contains a scheme), parse and replace entirely
+    // 1. If it's an absolute URL (contains a scheme), parse and replace
+    // entirely
     if (relative_url.find("://") != std::string_view::npos) {
         auto parsed = Url::parse(relative_url);
 
