@@ -358,8 +358,10 @@ void Evictor::_hand_off(const Held& held) {
         return future_status::ready == job.wait_for(Milliseconds::zero());
     });
     // Captured as copies of their own, so that moving the job moves them.
-    m_jobs.push_back(std::async(std::launch::async, [hand_off = m_peers.hand_off, to_offer = held] {
-        Channel::post(HandedOff::name, HandedOff{to_offer, taker_of(hand_off, to_offer.identifier)});
+    m_jobs.push_back(std::async(std::launch::async,
+                                [hand_off = m_peers.hand_off, to_offer = held] {
+        Channel::post(HandedOff::name,
+                      HandedOff{to_offer, taker_of(hand_off, to_offer.identifier)});
     }));
     m_handing_off.emplace(held.identifier.to_string(), held);
     lDebug << "Handing off" << held.identifier.to_string();
