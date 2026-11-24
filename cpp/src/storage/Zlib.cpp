@@ -1,5 +1,4 @@
 #include "Zlib.hpp"
-#include "types/Constants.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -11,6 +10,8 @@
 
 #include <zconf.h>
 #include <zlib.h>
+
+#include "types/Constants.hpp"
 
 using std::bad_alloc;
 using std::invalid_argument;
