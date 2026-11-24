@@ -26,7 +26,7 @@ class Sought {
 public:
     using Clock = std::chrono::system_clock;
     using Milliseconds = std::chrono::milliseconds;
-    using Now = std::function<Clock::time_point()>;
+    using ClockFunction = std::function<Clock::time_point()>;
 
     // What stats.seek_entry_ttl_seconds is when not set, as the Python
     // node's is: an hour.
@@ -44,8 +44,8 @@ public:
 
     // entry_ttl is stats.seek_entry_ttl_seconds. Throws
     // std::invalid_argument for an entry_ttl that is not more than zero, or
-    // now with no function.
-    Sought(db::Database& database, Milliseconds entry_ttl, Now now = &Clock::now);
+    // clock with no function.
+    Sought(db::Database& database, Milliseconds entry_ttl, ClockFunction clock = &Clock::now);
 
     // Each seeks what it is given from now, as a data or a search entry,
     // and says whether the seek list did not name it already. Each throws
@@ -72,7 +72,7 @@ private:
     // cppcheck-suppress uninitMemberVarNoCtor
     db::Database* m_database;
     Milliseconds m_entry_ttl;
-    Now m_now;
+    ClockFunction m_clock;
 };
 
 } // namespace stats

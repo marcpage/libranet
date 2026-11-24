@@ -26,7 +26,7 @@ namespace stats {
 class ContentUses {
 public:
     using Clock = std::chrono::system_clock;
-    using Now = std::function<Clock::time_point()>;
+    using ClockFunction = std::function<Clock::time_point()>;
 
     // What is known of one object.
     struct Uses {
@@ -51,8 +51,8 @@ public:
                                                "last_requested INTEGER, "
                                                "requests INTEGER NOT NULL DEFAULT 0)";
 
-    // Throws std::invalid_argument for now with no function.
-    explicit ContentUses(db::Database& database, Now now = &Clock::now);
+    // Throws std::invalid_argument for clock with no function.
+    explicit ContentUses(db::Database& database, ClockFunction clock = &Clock::now);
 
     // Records that identifier was stored now, size bytes as stored. Each
     // throws db::SqliteError when SQLite cannot record it, as when the
@@ -73,7 +73,7 @@ public:
 
 private:
     db::Database* m_database;
-    Now m_now;
+    ClockFunction m_clock;
 };
 
 } // namespace stats

@@ -128,7 +128,7 @@ Connections::PeersConnected::operator string() const {
 
 Connections::Connections(const NodeIdentity& identity, const vector<string>& own_endpoints,
                          const IDataSource::Ptr& store, MessageVerifier verifier, Settings settings,
-                         Now now)
+                         ClockFunction clock)
     : m_check_interval(checked_interval(settings.check_interval))
     , m_own_id(identity.id())
     , m_fulfiller(make_shared<SeekFulfiller>(store, settings.fulfiller))
@@ -137,8 +137,8 @@ Connections::Connections(const NodeIdentity& identity, const vector<string>& own
     , m_limits(settings.limits)
     , m_seeds(std::move(settings.seeds))
     , m_seed_rest(settings.rests.retry_delay)
-    , m_now(now)
-    , m_plan(m_own_id, settings.sizes, settings.rests, std::move(now))
+    , m_clock(clock)
+    , m_plan(m_own_id, settings.sizes, settings.rests, std::move(clock))
     , m_own_list(m_own_id, own_endpoints)
     , m_channel({CandidatesUpdated::name, NodesUpdated::name, SeekUpdated::name, check_due},
                 [this](const IMessage::Ptr& message) { _handle(message); }, log_error)
@@ -310,7 +310,7 @@ void Connections::_maintain() {
 // Dials each seed that is not being dialed, resting, or connected. Called
 // holding m_mutex.
 void Connections::_dial_seeds() {
-    const auto now = m_now();
+    const auto now = m_clock();
 
     for (const auto& seed : m_seeds) {
         const auto resting = m_seeds_resting.find(seed.endpoint);
@@ -385,7 +385,7 @@ void Connections::_dial_seed(const Seed& seed) {
         const scoped_lock lock(m_mutex);
 
         m_seeds_dialing.erase(seed.endpoint);
-        m_seeds_resting[seed.endpoint] = m_now() + m_seed_rest;
+        m_seeds_resting[seed.endpoint] = m_clock() + m_seed_rest;
     }
 
     _maintain();

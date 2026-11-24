@@ -19,7 +19,7 @@
 #include "Sought.hpp"
 #include "db/Database.hpp"
 #include "eviction/Evictor.hpp"
-#include "eviction/Score.hpp"
+#include "eviction/Scorer.hpp"
 #include "logger/Logger.hpp"
 #include "msg/Channel.hpp"
 #include "msg/IMessage.hpp"
@@ -36,7 +36,7 @@
 
 using db::Database;
 using eviction::Evictor;
-using eviction::Score;
+using eviction::Scorer;
 using msg::Channel;
 using msg::IMessage;
 using msg::Message;
@@ -247,9 +247,9 @@ optional<Clock::time_point> last_used(const Uses& uses) {
 
 // The extremes of held, at now, that each of it is scored against, with
 // node the node id's hash.
-Score::Extremes extremes_of(const vector<Held>& held, const HashPrefix& node,
-                            Clock::time_point now) {
-    Score::Extremes extremes;
+Scorer::Extremes extremes_of(const vector<Held>& held, const HashPrefix& node,
+                             Clock::time_point now) {
+    Scorer::Extremes extremes;
 
     for (const auto& object : held) {
         const auto used = last_used(object.uses);
@@ -292,7 +292,7 @@ vector<Held> but_for(const vector<Held>& held, const Identifier& identifier) {
 // What held holds, but for own_id's key, in the order to let it go, at now.
 vector<Scored> ranked(const vector<Held>& held, const Identifier& own_id, Clock::time_point now) {
     const auto others = but_for(held, own_id);
-    const Score scoring(own_id, now, extremes_of(others, HashPrefix::parse(own_id.hash()), now));
+    const Scorer scoring(own_id, now, extremes_of(others, HashPrefix::parse(own_id.hash()), now));
     vector<Scored> scored;
 
     transform(others.begin(), others.end(), back_inserter(scored), [&scoring](const Held& object) {
@@ -384,16 +384,16 @@ Recorder::SeekUpdated::operator string() const {
 }
 
 Recorder::Recorder(const path& database_path, Identifier own_id, vector<string> own_endpoints,
-                   Settings settings, Now now)
+                   Settings settings, ClockFunction clock)
     : m_own_id(std::move(own_id))
     , m_own_endpoints(checked_endpoints(m_own_id, std::move(own_endpoints)))
     , m_derive_interval(checked_interval(settings.derive_interval))
     , m_max_candidates(checked_max_candidates(settings.max_candidates))
-    , m_now(now)
+    , m_clock(clock)
     , m_database(database_path, schema())
-    , m_addresses(m_database, settings.limits, now)
-    , m_content_uses(m_database, now)
-    , m_sought(m_database, settings.seek_entry_ttl, std::move(now))
+    , m_addresses(m_database, settings.limits, clock)
+    , m_content_uses(m_database, clock)
+    , m_sought(m_database, settings.seek_entry_ttl, std::move(clock))
     , m_node_list(m_own_id, m_own_endpoints)
     , m_channel({
                     CandidatesRequested::name,
@@ -441,7 +441,7 @@ void Recorder::_handle(const IMessage::Ptr& message) {
     } else if (const auto* const deleted = value_of<DataDeleted>(message)) {
         m_content_uses.record_deleted(deleted->identifier);
     } else if (const auto* const asked = value_of<CandidatesRequested>(message)) {
-        Channel::post(Evictor::Candidates::name, candidates_for(m_content_uses, m_own_id, m_now(),
+        Channel::post(Evictor::Candidates::name, candidates_for(m_content_uses, m_own_id, m_clock(),
                                                                 *asked, m_max_candidates));
     } else if (nullptr != value_of<Timer::Tick>(message)) {
         _derive();

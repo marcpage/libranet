@@ -57,20 +57,20 @@ void sign_as(const NodeIdentity& identity, SignatureBase::Time created, Message&
 
 namespace identity {
 
-MessageSigner::MessageSigner(const NodeIdentity& identity, Now now)
+MessageSigner::MessageSigner(const NodeIdentity& identity, ClockFunction clock)
     : m_identity(&identity)
-    , m_now(std::move(now)) {
-    if (!m_now) {
+    , m_clock(std::move(clock)) {
+    if (!m_clock) {
         throw invalid_argument("MessageSigner needs a clock");
     }
 }
 
 void MessageSigner::sign(Request& request) const {
-    sign_as(*m_identity, m_now(), request);
+    sign_as(*m_identity, m_clock(), request);
 }
 
 void MessageSigner::sign(Response& response) const {
-    sign_as(*m_identity, m_now(), response);
+    sign_as(*m_identity, m_clock(), response);
 }
 
 } // namespace identity

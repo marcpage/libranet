@@ -508,7 +508,7 @@ TEST_F(StartedRecorderTest, ContentDeletedIsRecorded) {
 
 // Small content never asked for scores highest, then content of 1 MiB,
 // whose size counts for a tenth, then content asked for most, which counts
-// for a hundredth (eviction::Score).
+// for a hundredth (eviction::Scorer).
 TEST_F(StartedRecorderTest, WhatIsHeldIsListedInTheOrderToLetItGo) {
     store_to_rank();
 

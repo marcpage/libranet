@@ -34,7 +34,7 @@ public:
     // prefix, in any order. It is called from whichever threads search,
     // perhaps several at once.
     using Held = std::function<std::vector<Identifier>(const HashPrefix&)>;
-    using Now = std::function<Clock::time_point()>;
+    using ClockFunction = std::function<Clock::time_point()>;
 
     // The most identifiers an answer keeps, the best, so that what peers
     // name cannot grow one without end. An answer sent names fewer, as it is
@@ -44,8 +44,9 @@ public:
 
     // min_bits is storage.search_min_bits, and ttl
     // storage.search_cache_ttl_seconds. Throws std::invalid_argument for a
-    // ttl that is not more than zero, or held or now with no function.
-    SearchAnswers(Held held, std::size_t min_bits, Milliseconds ttl, Now now = &Clock::now);
+    // ttl that is not more than zero, or held or clock with no function.
+    SearchAnswers(Held held, std::size_t min_bits, Milliseconds ttl,
+                  ClockFunction clock = &Clock::now);
     ~SearchAnswers() = default;
     // Its mutex is neither copied nor moved.
     SearchAnswers(const SearchAnswers&) = delete;
@@ -75,7 +76,7 @@ private:
     // cppcheck-suppress uninitMemberVarNoCtor
     std::size_t m_min_bits;
     Milliseconds m_ttl;
-    Now m_now;
+    ClockFunction m_clock;
     std::mutex m_mutex;
     std::map<std::string, Answer> m_answers; // By prefix; guarded by m_mutex
     Clock::time_point m_swept;               // Guarded by m_mutex

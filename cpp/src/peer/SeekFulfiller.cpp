@@ -89,13 +89,13 @@ peer::SeekFulfiller::Settings checked(const peer::SeekFulfiller::Settings& setti
     return settings;
 }
 
-// now, once it is known to be a function. Throws invalid_argument for none.
-peer::SeekFulfiller::Now checked(peer::SeekFulfiller::Now now) {
-    if (!now) {
+// clock, once it is known to be a function. Throws invalid_argument for none.
+peer::SeekFulfiller::ClockFunction checked(peer::SeekFulfiller::ClockFunction clock) {
+    if (!clock) {
         throw invalid_argument("A seek fulfiller needs the time");
     }
 
-    return now;
+    return clock;
 }
 
 // What store holds whose hash begins with a prefix, for a search of it.
@@ -191,14 +191,14 @@ bool is_taken(const Response& answer) {
 
 namespace peer {
 
-SeekFulfiller::SeekFulfiller(IDataSource::Ptr store, const Settings& settings, Now now)
+SeekFulfiller::SeekFulfiller(IDataSource::Ptr store, const Settings& settings, ClockFunction clock)
     : m_store(checked(std::move(store)))
     , m_settings(checked(settings))
-    , m_now(checked(std::move(now)))
-    , m_found(held_in(m_store), m_settings.search_min_bits, m_settings.refresh, m_now) {}
+    , m_clock(checked(std::move(clock)))
+    , m_found(held_in(m_store), m_settings.search_min_bits, m_settings.refresh, m_clock) {}
 
 void SeekFulfiller::fulfill(PeerSession& session, const SeekList& seek) {
-    const auto now = m_now();
+    const auto now = m_clock();
 
     {
         const scoped_lock lock(m_mutex);
@@ -245,7 +245,7 @@ SeekFulfiller::Sessions SeekFulfiller::_due(const Sessions& sessions) {
         }
     }
 
-    const auto now = m_now();
+    const auto now = m_clock();
     const scoped_lock lock(m_mutex);
     Sessions due;
 

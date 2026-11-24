@@ -229,20 +229,20 @@ void check_limit(int64_t limit, string_view setting) {
 
 namespace stats {
 
-NodeAddresses::NodeAddresses(Database& database, Limits limits, Now now)
+NodeAddresses::NodeAddresses(Database& database, Limits limits, ClockFunction clock)
     : m_database(&database)
     , m_limits(limits)
-    , m_now(std::move(now)) {
+    , m_clock(std::move(clock)) {
     check_limit(m_limits.max_address_failures, "stats.max_address_failures");
     check_limit(m_limits.max_node_failures, "stats.max_node_failures");
 
-    if (!m_now) {
+    if (!m_clock) {
         throw invalid_argument("NodeAddresses needs a clock");
     }
 }
 
 void NodeAddresses::record_learned(const NodeList& list, Source source) {
-    const auto now = milliseconds_of(m_now());
+    const auto now = milliseconds_of(m_clock());
     Statement statement(*m_database, learn_sql());
 
     for (const auto& entry : list.entries()) {
@@ -259,7 +259,7 @@ void NodeAddresses::record_success(const Identifier& node_id, string_view endpoi
     Statement statement(*m_database, success_sql);
 
     statement.bind(node_id.to_string()).bind(endpoint).bind(name_of(Source::Dialed));
-    statement.bind(milliseconds_of(m_now()));
+    statement.bind(milliseconds_of(m_clock()));
     (void)statement.step();
 }
 

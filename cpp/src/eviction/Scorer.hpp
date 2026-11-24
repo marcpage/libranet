@@ -28,7 +28,7 @@ namespace eviction {
 // one for every object. The four are multiplied, each first raised to at
 // least a floor, so that no one factor keeps an object however the other
 // three rank it.
-class Score {
+class Scorer {
 public:
     using Clock = std::chrono::system_clock;
 
@@ -53,7 +53,7 @@ public:
 
     // Scores the objects node_id holds, at now. Throws std::invalid_argument
     // for a node_id with no hash.
-    Score(const storage::Identifier& node_id, Clock::time_point now, const Extremes& extremes);
+    Scorer(const storage::Identifier& node_id, Clock::time_point now, const Extremes& extremes);
 
     // The score of one object held, of size bytes as stored, asked for
     // requests times, and last used at last_used: when it was asked for or

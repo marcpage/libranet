@@ -229,11 +229,11 @@ bool kept(const IDataSource& store, const Identifier& identifier, const PeerSess
 class Search {
 public:
     Search(Identifier identifier, IDataSource::Ptr store, const Fetch::Settings& settings,
-           Fetch::Now now)
+           Fetch::ClockFunction clock)
         : m_identifier(std::move(identifier))
         , m_store(std::move(store))
         , m_settings(settings)
-        , m_now(std::move(now)) {}
+        , m_clock(std::move(clock)) {}
 
     // The peer this pass asks next, of peers, best first; nothing once it
     // has asked or passed over each. One not due yet is passed over.
@@ -252,7 +252,7 @@ private:
     Identifier m_identifier;
     IDataSource::Ptr m_store;
     Fetch::Settings m_settings;
-    Fetch::Now m_now;
+    Fetch::ClockFunction m_clock;
     size_t m_pass{1}; // Counting from 1
     size_t m_asks{0};
     set<string> m_passed; // This pass's, asked or passed over, by node id
@@ -286,7 +286,7 @@ bool Search::ask(PeerSession& session) {
 
     const auto retry_after = answer ? retry_after_of(*answer) : nullopt;
 
-    m_due[session.node_id().to_string()] = m_now() + retry_after.value_or(m_settings.retry_after);
+    m_due[session.node_id().to_string()] = m_clock() + retry_after.value_or(m_settings.retry_after);
     return false;
 }
 
@@ -319,20 +319,21 @@ bool Search::has_asked() const noexcept {
 
 namespace peer {
 
-Fetch::Fetch(IDataSource::Ptr store, Peers peers, const Settings& settings, Now now)
+Fetch::Fetch(IDataSource::Ptr store, GetPeers get_peers, const Settings& settings,
+             ClockFunction clock)
     : m_store(std::move(store))
-    , m_peers(std::move(peers))
+    , m_get_peers(std::move(get_peers))
     , m_settings(checked(settings))
-    , m_now(std::move(now)) {
+    , m_clock(std::move(clock)) {
     if (!m_store) {
         throw invalid_argument("A fetch needs a store to keep what it finds");
     }
 
-    if (!m_peers) {
+    if (!m_get_peers) {
         throw invalid_argument("A fetch needs the peers to ask");
     }
 
-    if (!m_now) {
+    if (!m_clock) {
         throw invalid_argument("A fetch needs the time");
     }
 }
@@ -352,7 +353,7 @@ bool Fetch::is_held_off(const Identifier& identifier) const {
     const std::scoped_lock lock(m_mutex);
     const auto held = m_held.find(identifier.to_string());
 
-    return held != m_held.end() && m_now() < held->second;
+    return held != m_held.end() && m_clock() < held->second;
 }
 
 void Fetch::stop() {
@@ -375,7 +376,7 @@ optional<Fetch::Outcome> Fetch::_start(const Identifier& identifier) {
         return Outcome::Stopped;
     }
 
-    let_go(m_held, m_now());
+    let_go(m_held, m_clock());
 
     if (0 != m_held.count(key)) {
         lDebug << "Not searching for" << key << "yet: the last search found nothing";
@@ -392,15 +393,15 @@ optional<Fetch::Outcome> Fetch::_start(const Identifier& identifier) {
 // Asks the peers for identifier's content, pass after pass, until one sends
 // it, the node comes to hold it, the last pass ends, or stop() is called.
 Fetch::Outcome Fetch::_search(const Identifier& identifier) {
-    Search search(identifier, m_store, m_settings, m_now);
+    Search search(identifier, m_store, m_settings, m_clock);
 
     while (!_is_stopped()) {
         if (m_store->has(identifier)) {
             return Outcome::Found;
         }
 
-        const auto peers = ranked(m_peers(), identifier);
-        const auto now = m_now();
+        const auto peers = ranked(m_get_peers(), identifier);
+        const auto now = m_clock();
 
         if (const auto session = search.next_peer(peers, now)) {
             if (search.ask(*session)) {
@@ -436,14 +437,14 @@ bool Fetch::_is_stopped() const {
 void Fetch::_wait_until(Clock::time_point until) {
     std::unique_lock lock(m_mutex);
 
-    m_stopping.wait_for(lock, until - m_now(), [this] { return m_stopped; });
+    m_stopping.wait_for(lock, until - m_clock(), [this] { return m_stopped; });
 }
 
 // Holds off a new search for identifier for the failed search hold.
 void Fetch::_hold_off(const Identifier& identifier) {
     const std::scoped_lock lock(m_mutex);
 
-    m_held[identifier.to_string()] = m_now() + m_settings.failed_search_hold;
+    m_held[identifier.to_string()] = m_clock() + m_settings.failed_search_hold;
 }
 
 // Lets a new search for identifier start, as this one has ended.

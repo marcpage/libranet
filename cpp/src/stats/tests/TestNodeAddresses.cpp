@@ -107,10 +107,11 @@ std::vector<Dialable> dialable_of(const std::vector<Candidate>& candidates) {
     return found;
 }
 
-// Whether NodeAddresses refuses limits or now as invalid.
-bool refused(Database& database, Limits limits, const NodeAddresses::Now& now = &Clock::now) {
+// Whether NodeAddresses refuses limits or clock as invalid.
+bool refused(Database& database, Limits limits,
+             const NodeAddresses::ClockFunction& clock = &Clock::now) {
     try {
-        (void)NodeAddresses(database, limits, now);
+        (void)NodeAddresses(database, limits, clock);
     } catch (const std::invalid_argument&) {
         return true;
     }
@@ -138,7 +139,7 @@ private:
     Clock::time_point m_now = start;
     std::unique_ptr<NodeAddresses> m_addresses;
 
-    [[nodiscard]] NodeAddresses::Now _clock() const;
+    [[nodiscard]] NodeAddresses::ClockFunction _clock() const;
 };
 
 NodeAddressesTest::NodeAddressesTest()
@@ -171,7 +172,7 @@ Address NodeAddressesTest::only_address(char digit) const {
     return found.front();
 }
 
-NodeAddresses::Now NodeAddressesTest::_clock() const {
+NodeAddresses::ClockFunction NodeAddressesTest::_clock() const {
     return [this] { return m_now; };
 }
 
@@ -416,7 +417,7 @@ TEST_F(NodeAddressesTest, LimitsLessThanOneAreRefused) {
 }
 
 TEST_F(NodeAddressesTest, AClockIsNeeded) {
-    EXPECT_TRUE(refused(database(), Limits(), NodeAddresses::Now()));
+    EXPECT_TRUE(refused(database(), Limits(), NodeAddresses::ClockFunction()));
 }
 
 TEST_F(NodeAddressesTest, ASuccessAtWhatIsNoEndpointIsRefused) {

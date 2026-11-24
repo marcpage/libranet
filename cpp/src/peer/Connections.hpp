@@ -63,7 +63,7 @@ public:
     using Candidate = DialPlan::Candidate;
     using Clock = DialPlan::Clock;
     using Milliseconds = DialPlan::Milliseconds;
-    using Now = DialPlan::Now;
+    using ClockFunction = DialPlan::ClockFunction;
 
     // NOLINTBEGIN(*-non-private-member-variables-in-classes)
 
@@ -107,10 +107,9 @@ public:
     Connections(const identity::NodeIdentity& identity,
                 const std::vector<std::string>& own_endpoints,
                 const storage::IDataSource::Ptr& store, identity::MessageVerifier verifier,
-                Settings settings, Now now = &Clock::now);
-    // Stops its threads, closes every connection, so that what is waiting on
-    // one ends, and waits for each dial under way, which ends within the
-    // connect and request timeouts.
+                Settings settings, ClockFunction clock = &Clock::now);
+    // Stops its threads, waits for each dial under way, which ends within
+    // the connect and request timeouts, and closes every connection.
     ~Connections();
     // Its threads hold this object, so it is neither copied nor moved.
     Connections(const Connections&) = delete;
@@ -144,7 +143,7 @@ private:
     PeerConnection::Limits m_limits;
     std::vector<Seed> m_seeds;
     Milliseconds m_seed_rest;
-    Now m_now;
+    ClockFunction m_clock;
 
     mutable std::mutex m_mutex;
     DialPlan m_plan;                                          // Guarded by m_mutex

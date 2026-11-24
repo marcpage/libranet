@@ -20,11 +20,11 @@ namespace identity {
 // the signer's key made it. A signer whose key is not held yet is told
 // apart from a signature that fails, so that the key can be fetched while
 // the bootstrap grace period lasts (HandshakeProtocol §3.2). Safe to use
-// from any thread, so long as now is.
+// from any thread, so long as clock is.
 class MessageVerifier {
 public:
     using Clock = std::chrono::system_clock;
-    using Now = std::function<Clock::time_point()>;
+    using ClockFunction = std::function<Clock::time_point()>;
     using Duration = std::chrono::milliseconds;
 
     // What identity.signature_max_age_seconds and
@@ -52,8 +52,9 @@ public:
     // window is identity.signature_max_age_seconds and
     // identity.signature_clock_skew_seconds. Throws std::invalid_argument
     // for no keys, a max_age that is not more than 0, a negative
-    // clock_skew, or now with no function.
-    MessageVerifier(std::shared_ptr<KnownKeys> keys, Window window, Now now = &Clock::now);
+    // clock_skew, or clock with no function.
+    MessageVerifier(std::shared_ptr<KnownKeys> keys, Window window,
+                    ClockFunction clock = &Clock::now);
 
     // The node that signed the message: nothing when it has neither
     // Signature-Input nor Signature, and so is not signed. Each throws
@@ -68,7 +69,7 @@ public:
 private:
     std::shared_ptr<KnownKeys> m_keys;
     Window m_window;
-    Now m_now;
+    ClockFunction m_clock;
 };
 
 } // namespace identity
