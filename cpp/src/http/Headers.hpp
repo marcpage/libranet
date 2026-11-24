@@ -20,13 +20,6 @@ public:
         bool operator()(std::string_view left, std::string_view right) const noexcept;
     };
 
-    Headers() = default;
-    Headers(const Headers&) = default;
-    Headers(Headers&&) noexcept = default;
-    Headers& operator=(const Headers&) = default;
-    Headers& operator=(Headers&&) noexcept = default;
-    ~Headers() = default;
-
     void set(std::string key, std::string value);
     [[nodiscard]] std::optional<std::string_view> get(std::string_view key) const noexcept;
     [[nodiscard]] std::string_view get(std::string_view key,
@@ -56,6 +49,13 @@ public:
     static std::vector<std::string_view> split_spaces(
         std::string_view text, std::size_t max_fields);
     static void read_body(std::istream& in_stream, std::size_t length, std::string& body);
+
+    Headers() = default;
+    Headers(const Headers&) = default;
+    Headers(Headers&&) noexcept = default;
+    Headers& operator=(const Headers&) = default;
+    Headers& operator=(Headers&&) noexcept = default;
+    ~Headers() = default;
 
 private:
     std::map<std::string, std::string, CaseInsensitiveLess> m_headers;

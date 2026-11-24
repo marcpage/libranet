@@ -29,10 +29,11 @@ public:
                                       const InitializationVector& vector) const override;
 
     ~AesMacos() override = default;
-    AesMacos(const AesMacos&) = delete;
-    AesMacos& operator=(const AesMacos&) = delete;
     AesMacos(AesMacos&&) noexcept = default;
     AesMacos& operator=(AesMacos&&) noexcept = default;
+
+    AesMacos(const AesMacos&) = delete;
+    AesMacos& operator=(const AesMacos&) = delete;
 
 private:
     // Releases a cryptor CommonCrypto made.

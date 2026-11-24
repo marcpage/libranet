@@ -86,10 +86,6 @@ class Inflater {
 public:
     Inflater();
     ~Inflater();
-    Inflater(const Inflater&) = delete;
-    Inflater& operator=(const Inflater&) = delete;
-    Inflater(Inflater&&) = delete;
-    Inflater& operator=(Inflater&&) = delete;
 
     // inflate()'s result, once it has read what it can of input after what
     // it read before, and written what it can to output after what it wrote
@@ -98,6 +94,11 @@ public:
 
     [[nodiscard]] size_t read() const noexcept;
     [[nodiscard]] size_t written() const noexcept;
+
+    Inflater(const Inflater&) = delete;
+    Inflater& operator=(const Inflater&) = delete;
+    Inflater(Inflater&&) = delete;
+    Inflater& operator=(Inflater&&) = delete;
 
 private:
     z_stream m_stream{};

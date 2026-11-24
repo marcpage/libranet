@@ -18,11 +18,13 @@ public:
     AsyncChannel(const std::string& name, const Callback& callback, const Logger& logger = nullptr);
     AsyncChannel(std::vector<std::string> names, const Callback& callback, const Logger& logger = nullptr);
     ~AsyncChannel();
+
+    void stop();
+
     AsyncChannel(const AsyncChannel&) = delete;
     AsyncChannel& operator=(const AsyncChannel&) = delete;
     AsyncChannel(AsyncChannel&&) = delete;
     AsyncChannel& operator=(AsyncChannel&&) = delete;
-    void stop();
 
 protected:
     // For errors when running asynchronously, in AsyncChannelOf's too.

@@ -573,13 +573,14 @@ class StopSignals {
 public:
     StopSignals();
     ~StopSignals();
+
+    // Waits for one of them, and says which.
+    [[nodiscard]] string_view wait() const;
+
     StopSignals(const StopSignals&) = delete;
     StopSignals& operator=(const StopSignals&) = delete;
     StopSignals(StopSignals&&) = delete;
     StopSignals& operator=(StopSignals&&) = delete;
-
-    // Waits for one of them, and says which.
-    [[nodiscard]] string_view wait() const;
 
 private:
     sigset_t m_signals{};

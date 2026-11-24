@@ -41,7 +41,6 @@ public:
     // the rest of its list, and is logged once for the list.
     [[nodiscard]] static SeekList read(const Data& body, std::size_t decompressed_limit);
 
-    SeekList() = default;
     SeekList(std::vector<storage::Identifier> data, std::vector<storage::HashPrefix> search);
 
     [[nodiscard]] const std::vector<storage::Identifier>& data() const noexcept;
@@ -54,6 +53,8 @@ public:
     // the other out. Throws std::invalid_argument for a limit too small for
     // an empty list.
     [[nodiscard]] Data write(std::size_t limit = max_bytes) const;
+
+    SeekList() = default;
 
 private:
     static constexpr std::string_view data_key = "data";

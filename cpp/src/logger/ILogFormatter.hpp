@@ -19,10 +19,11 @@ public:
     [[nodiscard]] virtual std::string format(const std::exception& error) const = 0;
 
     virtual ~ILogFormatter() = default;
-    ILogFormatter(const ILogFormatter&) = delete;
-    ILogFormatter& operator=(const ILogFormatter&) = delete;
     ILogFormatter(ILogFormatter&&) noexcept = default;
     ILogFormatter& operator=(ILogFormatter&&) noexcept = default;
+
+    ILogFormatter(const ILogFormatter&) = delete;
+    ILogFormatter& operator=(const ILogFormatter&) = delete;
 
 protected:
     ILogFormatter() = default;

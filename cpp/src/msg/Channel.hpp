@@ -23,10 +23,7 @@ public:
     explicit Channel(const std::string& name);
     explicit Channel(std::vector<std::string> names);
     ~Channel();
-    Channel(const Channel&) = delete;
-    Channel& operator=(const Channel&) = delete;
-    Channel(Channel&&) = delete;
-    Channel& operator=(Channel&&) = delete;
+
     [[nodiscard]] bool empty() const;
     [[nodiscard]] size_t size() const;
 
@@ -39,6 +36,11 @@ public:
 
     template<typename Type>
     static void post(const std::string& name, Type value);
+
+    Channel(const Channel&) = delete;
+    Channel& operator=(const Channel&) = delete;
+    Channel(Channel&&) = delete;
+    Channel& operator=(Channel&&) = delete;
 
 protected:
     // AsyncChannel's worker takes messages from it, and is woken through it.

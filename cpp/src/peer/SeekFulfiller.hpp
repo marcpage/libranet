@@ -63,12 +63,6 @@ public:
     // depth of none; or for no store, or clock with no function.
     SeekFulfiller(storage::IDataSource::Ptr store, const Settings& settings,
                   ClockFunction clock = &Clock::now);
-    ~SeekFulfiller() = default;
-    // Its mutex is neither copied nor moved.
-    SeekFulfiller(const SeekFulfiller&) = delete;
-    SeekFulfiller& operator=(const SeekFulfiller&) = delete;
-    SeekFulfiller(SeekFulfiller&&) = delete;
-    SeekFulfiller& operator=(SeekFulfiller&&) = delete;
 
     // Step 6 of first contact with the node of session, on a new connection:
     // fulfills seek, the list it has just sent. What was pushed and named to
@@ -88,6 +82,14 @@ public:
 
     // peers.pipeline_depth.
     [[nodiscard]] std::size_t pipeline_depth() const noexcept;
+
+    ~SeekFulfiller() = default;
+
+    // Its mutex is neither copied nor moved.
+    SeekFulfiller(const SeekFulfiller&) = delete;
+    SeekFulfiller& operator=(const SeekFulfiller&) = delete;
+    SeekFulfiller(SeekFulfiller&&) = delete;
+    SeekFulfiller& operator=(SeekFulfiller&&) = delete;
 
 private:
     // What has been pushed and named to one node, on the connection to it

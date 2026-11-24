@@ -16,12 +16,6 @@ public:
     static constexpr size_t unbounded = 0;
 
     explicit BlockingQueue(size_t capacity = unbounded);
-    ~BlockingQueue() = default;
-
-    BlockingQueue(const BlockingQueue&) = delete;
-    BlockingQueue& operator=(const BlockingQueue&) = delete;
-    BlockingQueue(BlockingQueue&&) = delete;
-    BlockingQueue& operator=(BlockingQueue&&) = delete;
 
     void push(const Type& item);
     void push(Type&& item);
@@ -34,6 +28,13 @@ public:
 
     [[nodiscard]] size_t size() const;
     [[nodiscard]] bool empty() const;
+
+    ~BlockingQueue() = default;
+
+    BlockingQueue(const BlockingQueue&) = delete;
+    BlockingQueue& operator=(const BlockingQueue&) = delete;
+    BlockingQueue(BlockingQueue&&) = delete;
+    BlockingQueue& operator=(BlockingQueue&&) = delete;
 
 private:
     std::queue<Type> m_queue;

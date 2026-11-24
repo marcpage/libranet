@@ -115,14 +115,15 @@ class StandInNode {
 public:
     StandInNode(ResponseCode::Status status, std::optional<MessageSigner> signer);
     ~StandInNode();
-    StandInNode(const StandInNode&) = delete;
-    StandInNode& operator=(const StandInNode&) = delete;
-    StandInNode(StandInNode&&) = delete;
-    StandInNode& operator=(StandInNode&&) = delete;
 
     [[nodiscard]] Address address() const;
     // The requests it has been sent, in order.
     [[nodiscard]] std::vector<Request> requests() const;
+
+    StandInNode(const StandInNode&) = delete;
+    StandInNode& operator=(const StandInNode&) = delete;
+    StandInNode(StandInNode&&) = delete;
+    StandInNode& operator=(StandInNode&&) = delete;
 
 private:
     ISocket::Ptr m_listener;

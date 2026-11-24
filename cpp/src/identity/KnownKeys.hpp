@@ -30,12 +30,6 @@ public:
 
     // Throws std::invalid_argument for no store.
     explicit KnownKeys(storage::IDataSource::Ptr store);
-    ~KnownKeys() = default;
-    // Its mutex is neither copied nor moved.
-    KnownKeys(const KnownKeys&) = delete;
-    KnownKeys& operator=(const KnownKeys&) = delete;
-    KnownKeys(KnownKeys&&) = delete;
-    KnownKeys& operator=(KnownKeys&&) = delete;
 
     // The public key of the node whose id is node_id: the one kept, or else
     // the one read from the store. Nothing when the store does not hold it
@@ -45,6 +39,14 @@ public:
     // node_id names, as it is or decompressed, or is not an Ed25519 public
     // key, or is one of small order.
     [[nodiscard]] std::optional<Key> key(const storage::Identifier& node_id);
+
+    ~KnownKeys() = default;
+
+    // Its mutex is neither copied nor moved.
+    KnownKeys(const KnownKeys&) = delete;
+    KnownKeys& operator=(const KnownKeys&) = delete;
+    KnownKeys(KnownKeys&&) = delete;
+    KnownKeys& operator=(KnownKeys&&) = delete;
 
 private:
     storage::IDataSource::Ptr m_store;

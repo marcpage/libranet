@@ -56,6 +56,13 @@ public:
                          std::size_t content_bytes = default_content_bytes,
                          Seconds retry_after = default_retry_after,
                          IsHeldOff is_held_off = nullptr);
+
+    // Called from the threads serving connections, several at once. Throws
+    // what the store throws, and std::bad_alloc if zlib runs out of memory,
+    // which the server answers with 500.
+    void operator()(const http::Request& request, http::Response& response,
+                    const web::ConnectionInfo& connection) const;
+
     ~DataHandler() = default;
     DataHandler(DataHandler&&) = default;
     DataHandler& operator=(DataHandler&&) = default;
@@ -63,12 +70,6 @@ public:
     DataHandler() = delete;
     DataHandler(const DataHandler&) = delete;
     DataHandler& operator=(const DataHandler&) = delete;
-
-    // Called from the threads serving connections, several at once. Throws
-    // what the store throws, and std::bad_alloc if zlib runs out of memory,
-    // which the server answers with 500.
-    void operator()(const http::Request& request, http::Response& response,
-                    const web::ConnectionInfo& connection) const;
 
 private:
     storage::IDataSource::Ptr m_store;

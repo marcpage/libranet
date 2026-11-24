@@ -17,13 +17,14 @@ class ScratchDirectory {
 public:
     ScratchDirectory();
     ~ScratchDirectory();
+
+    // Where the database is kept in this directory.
+    [[nodiscard]] std::filesystem::path database() const;
+
     ScratchDirectory(const ScratchDirectory&) = delete;
     ScratchDirectory& operator=(const ScratchDirectory&) = delete;
     ScratchDirectory(ScratchDirectory&&) = delete;
     ScratchDirectory& operator=(ScratchDirectory&&) = delete;
-
-    // Where the database is kept in this directory.
-    [[nodiscard]] std::filesystem::path database() const;
 
 private:
     std::filesystem::path m_path;

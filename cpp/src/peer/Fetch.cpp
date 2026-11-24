@@ -77,6 +77,7 @@ public:
             std::terminate();
         }
     }
+
     AtEnd(const AtEnd&) = delete;
     AtEnd& operator=(const AtEnd&) = delete;
     AtEnd(AtEnd&&) = delete;
