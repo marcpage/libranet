@@ -4,9 +4,12 @@
 #include <condition_variable>
 #include <cstddef>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <future>
 #include <initializer_list>
+#include <ios>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -68,6 +71,41 @@ constexpr auto patience = std::chrono::seconds(10);
 
 // The header that gives a body's length, as a line of a message's head.
 constexpr std::string_view length_line = "Content-Length: ";
+
+// The keys of the three peers, made with `openssl genpkey -algorithm
+// ed25519`. Their node ids, the SHA-256 of their public keys as `openssl
+// pkey -pubout` writes them, begin 2c33, 5a21, and b357: their first two
+// bits are 00, 01, and 10. So content whose hash begins with a peer's first
+// two bits shares at most one with either other peer's, and matches that
+// peer best, as one in four does. With keys made at random, two peers' ids
+// could share so many leading bits that no content tried matched either
+// best.
+constexpr std::string_view first_pem =
+    "-----BEGIN PRIVATE KEY-----\n"
+    "MC4CAQAwBQYDK2VwBCIEILrc9dtW7pZvMWyaROswUsaaOn/FxZjsCwikcmcD/pSo\n"
+    "-----END PRIVATE KEY-----\n";
+constexpr std::string_view second_pem =
+    "-----BEGIN PRIVATE KEY-----\n"
+    "MC4CAQAwBQYDK2VwBCIEIDQrEYl4SAVcLTo8qf7LxpPOO9it45DdY16R7EKlE+3p\n"
+    "-----END PRIVATE KEY-----\n";
+constexpr std::string_view third_pem =
+    "-----BEGIN PRIVATE KEY-----\n"
+    "MC4CAQAwBQYDK2VwBCIEIOX0LKZ3Nmt+z2VEnxLvSZWKXXuvkWUc9lFDNBGbHU30\n"
+    "-----END PRIVATE KEY-----\n";
+
+// The key file at file, holding pem, which only its owner may read, as a
+// node's key file is.
+std::filesystem::path key_file(const std::filesystem::path& file, std::string_view pem) {
+    {
+        std::ofstream stream(file, std::ios::binary | std::ios::trunc);
+
+        stream << pem;
+    }
+
+    std::filesystem::permissions(file, std::filesystem::perms::owner_read
+                                           | std::filesystem::perms::owner_write);
+    return file;
+}
 
 // What a node does once a run of requests has come, before it answers them.
 using Answering = std::function<void()>;
@@ -273,18 +311,18 @@ bool puts(const Request& request, const Identifier& identifier, const std::strin
            && request.body() == body;
 }
 
-// Each test has this node and three peers, each with a key of its own, a
-// store that holds their public keys, and a store of what this node holds,
-// which holds nothing to start with.
+// Each test has this node and three peers, each with a key of its own, the
+// peers' those above, a store that holds their public keys, and a store of
+// what this node holds, which holds nothing to start with.
 class PusherTest : public testing::Test {
 protected:
     PusherTest()
         : m_keys(std::make_shared<fixtures::MemorySource>())
         , m_store(std::make_shared<fixtures::MemorySource>())
         , m_this_node(m_directory.path() / "this-node.pem", *m_keys)
-        , m_first(m_directory.path() / "first.pem", *m_keys)
-        , m_second(m_directory.path() / "second.pem", *m_keys)
-        , m_third(m_directory.path() / "third.pem", *m_keys) {}
+        , m_first(key_file(m_directory.path() / "first.pem", first_pem), *m_keys)
+        , m_second(key_file(m_directory.path() / "second.pem", second_pem), *m_keys)
+        , m_third(key_file(m_directory.path() / "third.pem", third_pem), *m_keys) {}
 
     // A session with peer, at node's address.
     [[nodiscard]] Session session_with(const StandInNode& node, const NodeIdentity& peer) const {

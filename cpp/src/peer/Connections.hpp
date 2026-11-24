@@ -41,7 +41,13 @@ namespace peer {
 // reaches it, and first contact is made there (FirstContact), posting the
 // node list last derived (nodes.updated), or this node's own endpoints
 // alone before the first. The entries a node list newly names are posted to
-// each node connected (NodeListPublisher).
+// each node connected (NodeListPublisher). The seek list of each node
+// connected is read again, and fulfilled, every peers.seek_refresh_seconds
+// while its connection lasts (SeekFulfiller), on a thread of its own.
+//
+// The sessions with the nodes connected are given to whatever asks, for
+// fetching, searching, pushing, and handing off what the node holds through
+// them.
 //
 // What came of each dial is posted for stats::Recorder: connection.opened
 // for an endpoint that reached a node other than this one, which proved its
@@ -111,6 +117,13 @@ public:
     Connections(Connections&&) = delete;
     Connections& operator=(Connections&&) = delete;
 
+    // The sessions with the nodes connected now whose connections are open,
+    // for the peers to be asked through. Safe to call from any thread.
+    [[nodiscard]] std::vector<std::shared_ptr<PeerSession>> open_sessions() const;
+
+    // The node ids of the nodes connected now. Safe to call from any thread.
+    [[nodiscard]] std::vector<storage::Identifier> connected_ids() const;
+
 private:
     // The name the timer posts under, for the thread to check the
     // connections.
@@ -124,6 +137,7 @@ private:
 
     Milliseconds m_check_interval;
     storage::Identifier m_own_id;
+    std::shared_ptr<SeekFulfiller> m_fulfiller; // Also first contact's
     FirstContact m_first_contact;
     NodeListPublisher m_publisher;
     PeerConnection::Limits m_limits;
@@ -131,7 +145,7 @@ private:
     Milliseconds m_seed_rest;
     ClockFunction m_clock;
 
-    std::mutex m_mutex;
+    mutable std::mutex m_mutex;
     DialPlan m_plan;                                          // Guarded by m_mutex
     std::optional<std::vector<Candidate>> m_candidates;       // Guarded: none until the first
     protocol::NodeList m_own_list;                            // Guarded: posted at first contact
@@ -140,8 +154,9 @@ private:
     std::map<std::string, storage::Identifier> m_dialing;     // Guarded: by node id
     std::set<std::string> m_seeds_dialing;                    // Guarded: by endpoint
     std::map<std::string, Clock::time_point> m_seeds_resting; // Guarded: until, by endpoint
+    bool m_refreshing = false;                                // Guarded: seek lists
     bool m_stopping = false;                                  // Guarded by m_mutex
-    std::list<std::future<void>> m_jobs;                      // Guarded: dials and posts
+    std::list<std::future<void>> m_jobs;                      // Guarded: dials, posts, reads
 
     // Made last, and so stopped first: the timer, then the thread, which
     // uses all of the above.
@@ -151,6 +166,7 @@ private:
     void _handle(const msg::IMessage::Ptr& message);
     void _take_nodes(const protocol::NodeList& nodes, const protocol::NodeList& added);
     void _check_closed();
+    void _refresh_seek_lists();
     void _maintain();
     void _dial_seeds();
     void _start(std::function<void()> job);
@@ -161,6 +177,7 @@ private:
     [[nodiscard]] bool _admit(const std::shared_ptr<PeerSession>& session,
                               const std::string& endpoint);
     void _post_connected() const;
+    [[nodiscard]] std::vector<std::shared_ptr<PeerSession>> _open() const;
 };
 
 } // namespace peer

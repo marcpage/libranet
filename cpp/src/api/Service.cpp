@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "NodesHandler.hpp"
@@ -21,6 +22,7 @@
 #include "stats/Recorder.hpp"
 #include "storage/HashPrefix.hpp"
 #include "storage/IDataSource.hpp"
+#include "storage/SearchAnswered.hpp"
 #include "storage/SearchAnswers.hpp"
 #include "web/ConnectionInfo.hpp"
 #include "web/Server.hpp"
@@ -48,15 +50,17 @@ using std::to_string;
 using std::vector;
 using storage::HashPrefix;
 using storage::IDataSource;
+using storage::SearchAnswered;
 using storage::SearchAnswers;
 using web::ConnectionInfo;
 using web::Server;
 
-// The thread keeping the lists takes these events, which stats::Recorder
-// posts from another file, so nothing here would make their messages'
-// virtual to_string(), which value_of() casts to.
+// The thread keeping the lists takes these events, which stats::Recorder,
+// SearchHandler, and peer::PeerSearch post from other files, so nothing here
+// would make their messages' virtual to_string(), which value_of() casts to.
 template class msg::Message<stats::Recorder::NodesUpdated>;
 template class msg::Message<stats::Recorder::SeekUpdated>;
+template class msg::Message<storage::SearchAnswered>;
 
 namespace {
 
@@ -80,11 +84,12 @@ shared_ptr<SearchAnswers> answers_of(const IDataSource::Ptr& store,
 // The endpoints the node names itself by in its node list, with no external
 // address or port set: localhost, meaning the address its list comes from,
 // at the port it listens on (HttpApi §10.1).
-vector<string> own_endpoints(const Address& local_address) {
+vector<string> endpoints_at(const Address& local_address) {
     return {"http://localhost:" + to_string(local_address.port())};
 }
 
-// Reports what the thread keeping the lists could not handle.
+// Reports what the thread keeping the lists and what peers name could not
+// handle.
 void log_error(const string& text) {
     lErr << text;
 }
@@ -95,14 +100,17 @@ namespace api {
 
 Service::Service(const Address& address, const IDataSource::Ptr& store,
                  const NodeIdentity& identity, Settings settings)
-    : m_data_handler(store)
-    , m_search_handler(answers_of(store, settings))
-    , m_guard(MessageVerifier(make_shared<KnownKeys>(store), MessageVerifier::Window{}),
-              MessageSigner(identity))
+    : m_data_handler(store, DataHandler::default_content_bytes, settings.retry_after,
+                     std::move(settings.is_held_off))
+    , m_answers(answers_of(store, settings))
+    , m_search_handler(m_answers)
+    , m_guard(MessageVerifier(make_shared<KnownKeys>(store), settings.window),
+              MessageSigner(identity), settings.provisional_trust_attempts)
     , m_server(address)
     , m_local_address(m_server.local_address())
-    , m_nodes_handler(identity.id(), own_endpoints(m_local_address))
-    , m_lists(vector<string>{NodesUpdated::name, SeekUpdated::name},
+    , m_own_endpoints(endpoints_at(m_local_address))
+    , m_nodes_handler(identity.id(), m_own_endpoints)
+    , m_lists(vector<string>{NodesUpdated::name, SeekUpdated::name, SearchAnswered::name},
               [this](const IMessage::Ptr& message) { _keep(message); }, log_error) {
     _register(data_path, [this](const Request& request, Response& response,
                                 ConnectionInfo& connection) {
@@ -141,6 +149,10 @@ const Address& Service::local_address() const noexcept {
     return m_local_address;
 }
 
+const vector<string>& Service::own_endpoints() const noexcept {
+    return m_own_endpoints;
+}
+
 // Registers handler at path, with the guard in front of it.
 void Service::_register(string_view path, const Server::RequestHandler& handler) {
     m_server.register_handler(path, m_guard.in_front_of(handler));
@@ -151,6 +163,8 @@ void Service::_keep(const IMessage::Ptr& message) {
         m_nodes_handler.set_nodes(nodes->nodes);
     } else if (const auto* const seek = value_of<SeekUpdated>(message)) {
         m_seek_handler.set_list(seek->seek);
+    } else if (const auto* const answered = value_of<SearchAnswered>(message)) {
+        m_answers->add(answered->prefix, answered->results);
     } else {
         lWarn << "Not a list the web server serves:" << message->to_string();
     }

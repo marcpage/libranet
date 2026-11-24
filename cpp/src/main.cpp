@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <exception>
 #include <iostream>
 #include <iterator>
@@ -15,6 +16,7 @@ using std::cerr;
 using std::cout;
 using std::exception;
 using std::invalid_argument;
+using std::size_t;
 using std::string;
 using std::string_view;
 using std::vector;
@@ -26,24 +28,48 @@ namespace {
 constexpr int failed = 1;
 constexpr int unusable = 2;
 
-constexpr auto usage = "usage: libranet [--config PATH]\n"
+constexpr auto usage = "usage: libranet [--config PATH] [--seed URL[=ID]]...\n"
                        "\n"
                        "Runs a Libranet node until it is sent SIGINT or SIGTERM, with the\n"
-                       "settings in the YAML file at PATH, if one is given.\n";
+                       "settings in the YAML file at PATH, if one is given. Each --seed\n"
+                       "names a node to dial while the node knows no other: its http URL,\n"
+                       "and its node id, if it is known.\n";
 
-// The settings the command line names: those in the file --config or -c
-// names, or none. Throws std::invalid_argument for any other command line,
-// and what SettingsFile::load() throws.
-SettingsFile settings_from(const vector<string_view>& arguments) {
-    if (arguments.empty()) {
-        return {};
+// What the command line gives the node: the settings in the file --config
+// or -c names, or none, and the seeds each --seed names.
+struct CommandLine {
+    SettingsFile settings;
+    vector<string> seeds;
+};
+
+// Throws std::invalid_argument for a command line that is not as usage
+// says, and what SettingsFile::load() throws.
+CommandLine command_line(const vector<string_view>& arguments) {
+    CommandLine given;
+    bool has_config = false;
+
+    // Each option is followed by its value.
+    for (size_t option = 0; option < arguments.size(); option += 2) {
+        const auto name = arguments.at(option);
+        const auto is_config = "--config" == name || "-c" == name;
+        const auto is_seed = "--seed" == name;
+
+        if ((!is_config && !is_seed) || option + 1 == arguments.size()
+            || (is_config && has_config)) {
+            throw invalid_argument("unknown arguments\n" + string(usage));
+        }
+
+        const auto value = arguments.at(option + 1);
+
+        if (is_config) {
+            given.settings = SettingsFile::load(value);
+            has_config = true;
+        } else {
+            given.seeds.emplace_back(value);
+        }
     }
 
-    if (2 == arguments.size() && ("--config" == arguments.front() || "-c" == arguments.front())) {
-        return SettingsFile::load(arguments.back());
-    }
-
-    throw invalid_argument("unknown arguments\n" + string(usage));
+    return given;
 }
 
 // Does what the command line asks, and gives the exit status.
@@ -53,17 +79,17 @@ int run(const vector<string_view>& arguments) {
         return 0;
     }
 
-    SettingsFile settings;
+    CommandLine given;
 
     try {
-        settings = settings_from(arguments);
+        given = command_line(arguments);
     } catch (const exception& error) {
         cerr << "libranet: " << error.what() << '\n';
         return unusable;
     }
 
     try {
-        Node::run(settings);
+        Node::run(given.settings, given.seeds);
     } catch (const invalid_argument& error) {
         cerr << "libranet: " << error.what() << '\n';
         return unusable;
