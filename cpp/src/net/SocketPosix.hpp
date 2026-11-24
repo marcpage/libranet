@@ -12,12 +12,7 @@ public:
     [[nodiscard]] static ISocket::Ptr connect(const Address& address,
                                               Milliseconds timeout = Milliseconds::zero());
 
-    SocketPosix() = delete;
     ~SocketPosix() override;
-    SocketPosix(const SocketPosix&) = delete;
-    SocketPosix& operator=(const SocketPosix&) = delete;
-    SocketPosix(SocketPosix&&) = delete;
-    SocketPosix& operator=(SocketPosix&&) = delete;
 
     void listen(int backlog) override;
     ISocket::Ptr accept() override;
@@ -30,6 +25,12 @@ public:
     void set_send_timeout(ISocket::Milliseconds timeout) override;
     void shutdown() override;
     void close() override;
+
+    SocketPosix() = delete;
+    SocketPosix(const SocketPosix&) = delete;
+    SocketPosix& operator=(const SocketPosix&) = delete;
+    SocketPosix(SocketPosix&&) = delete;
+    SocketPosix& operator=(SocketPosix&&) = delete;
 
 private:
     int m_socket_fd;

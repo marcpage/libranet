@@ -161,8 +161,10 @@ public:
     Recorder(const std::filesystem::path& database_path, storage::Identifier own_id,
              std::vector<std::string> own_endpoints, Settings settings,
              ClockFunction clock = &Clock::now);
+
     // Stops the thread. What it has not yet recorded is let go.
     ~Recorder() = default;
+
     // Its thread holds this object, so it is neither copied nor moved.
     Recorder(const Recorder&) = delete;
     Recorder& operator=(const Recorder&) = delete;

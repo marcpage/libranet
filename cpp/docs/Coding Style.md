@@ -158,10 +158,12 @@ A `.cpp` file reads:
 
 Within a class, `public:` comes first, then `protected:`, then `private:`.
 The public section has, in order, its type aliases and nested types, its
-static factories, its constructors and special members (§6.3), its
-methods, and its operators. The private section has its type aliases and
-nested types, then its constants (§7), then its data members, then its
-methods.
+static factories, its constructors and the special members it defines
+(§6.3), its methods, and its operators; then, last, the members it
+declares `= default`, and after them those it declares `= delete`, which
+say less of what the class does than what comes before them. The private
+section has its type aliases and nested types, then its constants (§7),
+then its data members, then its methods.
 
 ### 3.3 Includes
 
@@ -400,8 +402,8 @@ members is declared a `friend` in the class.
 
 An interface is a class of pure virtual methods, named `I…`. It holds, in
 order: its `Ptr`; its static factories, which return a `Ptr`; its methods;
-a virtual destructor, defaulted; copying, deleted; moving, defaulted and
-`noexcept`; and a protected default constructor, so that only an
+a virtual destructor, defaulted; moving, defaulted and `noexcept`;
+copying, deleted; and a protected default constructor, so that only an
 implementation makes one.
 
 ```cpp
@@ -415,10 +417,11 @@ public:
     [[nodiscard]] virtual std::uint32_t value() const noexcept = 0;
 
     virtual ~IChecksum() = default;
-    IChecksum(const IChecksum&) = delete;
-    IChecksum& operator=(const IChecksum&) = delete;
     IChecksum(IChecksum&&) noexcept = default;
     IChecksum& operator=(IChecksum&&) noexcept = default;
+
+    IChecksum(const IChecksum&) = delete;
+    IChecksum& operator=(const IChecksum&) = delete;
 
 protected:
     IChecksum() = default;

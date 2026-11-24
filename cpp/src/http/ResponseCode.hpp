@@ -84,13 +84,6 @@ public:
     explicit ResponseCode(std::uint16_t code,
                           std::optional<std::string> custom_reason = std::nullopt);
 
-    ResponseCode() = default;
-    ~ResponseCode() = default;
-    ResponseCode(const ResponseCode&) = default;
-    ResponseCode& operator=(const ResponseCode&) = default;
-    ResponseCode(ResponseCode&&) noexcept = default;
-    ResponseCode& operator=(ResponseCode&&) noexcept = default;
-
     // Core Accessors
     [[nodiscard]] Status status() const noexcept;
     [[nodiscard]] std::uint16_t code() const noexcept;
@@ -114,6 +107,13 @@ public:
     friend bool operator!=(const ResponseCode& left, Status right) noexcept;
 
     friend std::ostream& operator<<(std::ostream& out_stream, const ResponseCode& response_code);
+
+    ResponseCode() = default;
+    ~ResponseCode() = default;
+    ResponseCode(const ResponseCode&) = default;
+    ResponseCode& operator=(const ResponseCode&) = default;
+    ResponseCode(ResponseCode&&) noexcept = default;
+    ResponseCode& operator=(ResponseCode&&) noexcept = default;
 
 private:
     // Each class of codes runs up to the start of the next.

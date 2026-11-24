@@ -88,12 +88,6 @@ public:
     // get_peers or clock with no function.
     Fetch(storage::IDataSource::Ptr store, GetPeers get_peers, const Settings& settings,
           ClockFunction clock = &Clock::now);
-    ~Fetch() = default;
-    // Its searches hold this object, so it is neither copied nor moved.
-    Fetch(const Fetch&) = delete;
-    Fetch& operator=(const Fetch&) = delete;
-    Fetch(Fetch&&) = delete;
-    Fetch& operator=(Fetch&&) = delete;
 
     // Searches the peers for identifier's content, unless the node holds it,
     // a search for it is under way, or a new one is held off, and says how
@@ -108,6 +102,14 @@ public:
     // Ends each search under way before it asks its next peer, or as it
     // waits for its next pass, and each asked for after.
     void stop();
+
+    ~Fetch() = default;
+
+    // Its searches hold this object, so it is neither copied nor moved.
+    Fetch(const Fetch&) = delete;
+    Fetch& operator=(const Fetch&) = delete;
+    Fetch(Fetch&&) = delete;
+    Fetch& operator=(Fetch&&) = delete;
 
 private:
     storage::IDataSource::Ptr m_store;

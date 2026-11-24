@@ -111,11 +111,6 @@ public:
     // Stops its threads, waits for each dial under way, which ends within
     // the connect and request timeouts, and closes every connection.
     ~Connections();
-    // Its threads hold this object, so it is neither copied nor moved.
-    Connections(const Connections&) = delete;
-    Connections& operator=(const Connections&) = delete;
-    Connections(Connections&&) = delete;
-    Connections& operator=(Connections&&) = delete;
 
     // The sessions with the nodes connected now whose connections are open,
     // for the peers to be asked through. Safe to call from any thread.
@@ -123,6 +118,12 @@ public:
 
     // The node ids of the nodes connected now. Safe to call from any thread.
     [[nodiscard]] std::vector<storage::Identifier> connected_ids() const;
+
+    // Its threads hold this object, so it is neither copied nor moved.
+    Connections(const Connections&) = delete;
+    Connections& operator=(const Connections&) = delete;
+    Connections(Connections&&) = delete;
+    Connections& operator=(Connections&&) = delete;
 
 private:
     // The name the timer posts under, for the thread to check the

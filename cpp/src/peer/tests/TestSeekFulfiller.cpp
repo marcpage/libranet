@@ -147,10 +147,6 @@ class StandInNode {
 public:
     explicit StandInNode(std::optional<MessageSigner> signer);
     ~StandInNode();
-    StandInNode(const StandInNode&) = delete;
-    StandInNode& operator=(const StandInNode&) = delete;
-    StandInNode(StandInNode&&) = delete;
-    StandInNode& operator=(StandInNode&&) = delete;
 
     [[nodiscard]] Address address() const;
     // It seeks what list names, from now.
@@ -163,6 +159,11 @@ public:
     [[nodiscard]] std::vector<Request> requests() const;
     // Those it has been sent of method.
     [[nodiscard]] std::vector<Request> requests_of(std::string_view method) const;
+
+    StandInNode(const StandInNode&) = delete;
+    StandInNode& operator=(const StandInNode&) = delete;
+    StandInNode(StandInNode&&) = delete;
+    StandInNode& operator=(StandInNode&&) = delete;
 
 private:
     ISocket::Ptr m_listener;

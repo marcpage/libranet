@@ -14,11 +14,6 @@ public:
     // they cannot be made.
     explicit SafeWriteFile(std::filesystem::path file);
     ~SafeWriteFile();
-    // Each would leave two to remove the one file written.
-    SafeWriteFile(const SafeWriteFile&) = delete;
-    SafeWriteFile& operator=(const SafeWriteFile&) = delete;
-    SafeWriteFile(SafeWriteFile&&) = delete;
-    SafeWriteFile& operator=(SafeWriteFile&&) = delete;
 
     // Whether file is one written to before it is committed, or one a crash
     // left behind.
@@ -37,6 +32,12 @@ public:
     // std::runtime_error when it cannot be renamed, as when nothing was
     // written or a directory is in its place.
     void commit();
+
+    // Each would leave two to remove the one file written.
+    SafeWriteFile(const SafeWriteFile&) = delete;
+    SafeWriteFile& operator=(const SafeWriteFile&) = delete;
+    SafeWriteFile(SafeWriteFile&&) = delete;
+    SafeWriteFile& operator=(SafeWriteFile&&) = delete;
 
 private:
     std::filesystem::path m_file;

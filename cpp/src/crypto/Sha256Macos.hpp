@@ -17,11 +17,6 @@ namespace crypto {
 class Sha256Macos : public IHasher {
 public:
     Sha256Macos();
-    ~Sha256Macos() override = default;
-    Sha256Macos(const Sha256Macos&) = delete;
-    Sha256Macos& operator=(const Sha256Macos&) = delete;
-    Sha256Macos(Sha256Macos&&) noexcept = default;
-    Sha256Macos& operator=(Sha256Macos&&) noexcept = default;
 
     void update(std::string_view data) override;
     void update(const Data& data) override;
@@ -30,6 +25,13 @@ public:
     [[nodiscard]] std::size_t block_size() const noexcept override;
     [[nodiscard]] Ptr clone() const override;
     void reset() override;
+
+    ~Sha256Macos() override = default;
+    Sha256Macos(Sha256Macos&&) noexcept = default;
+    Sha256Macos& operator=(Sha256Macos&&) noexcept = default;
+
+    Sha256Macos(const Sha256Macos&) = delete;
+    Sha256Macos& operator=(const Sha256Macos&) = delete;
 
 private:
     CC_SHA256_CTX m_context{};
