@@ -144,7 +144,7 @@ MemorySource::starting_with(const storage::HashPrefix& prefix) const {
     Identifiers found;
 
     for (const auto& [name, body] : m_data) {
-        auto identifier = storage::Identifier::from(name);
+        auto identifier = storage::Identifier::parse(name);
 
         if (prefix.matching_bits(identifier) >= prefix.bits()) {
             found.push_back(std::move(identifier));

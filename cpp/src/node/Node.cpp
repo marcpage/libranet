@@ -342,7 +342,7 @@ void check_endpoint(const string& endpoint, const string& source) {
 // The node id named, as "{algorithm}/{hash}". Throws invalid_argument,
 // naming source, for what names none.
 Identifier node_id_of(const string& named, const string& source) {
-    auto node_id = Identifier::from(Json(named));
+    auto node_id = Identifier::from_json(Json(named));
 
     if (!node_id) {
         throw invalid_argument(source + ": '" + named + "' is not a node id");

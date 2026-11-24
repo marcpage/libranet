@@ -562,7 +562,7 @@ TEST_F(FirstContactTest, HeldContentThePeerSeeksIsPut) {
 TEST_F(FirstContactTest, ContentThisNodeSeeksIsAskedForAndKept) {
     hold_peer_key();
 
-    const auto world = Identifier::from(fixtures::bytes_of("world"));
+    const auto world = Identifier::of(fixtures::bytes_of("world"));
     auto answers = peer_answers();
 
     answers["GET " + data_path(world)] = signed_by(peer_signer(), answer(Status::Ok, "world"));
@@ -587,7 +587,7 @@ TEST_F(FirstContactTest, ContentThisNodeSeeksIsAskedForAndKept) {
 TEST_F(FirstContactTest, ContentThisNodeHoldsIsNotAskedFor) {
     hold_peer_key();
 
-    const auto world = Identifier::from(fixtures::bytes_of("world"));
+    const auto world = Identifier::of(fixtures::bytes_of("world"));
 
     store()->put(world, fixtures::bytes_of("world"));
 
@@ -603,8 +603,8 @@ TEST_F(FirstContactTest, ContentThisNodeHoldsIsNotAskedFor) {
 TEST_F(FirstContactTest, ContentNotSentIsNotKept) {
     hold_peer_key();
 
-    const auto world = Identifier::from(fixtures::bytes_of("world"));
-    const auto there = Identifier::from(fixtures::bytes_of("there"));
+    const auto world = Identifier::of(fixtures::bytes_of("world"));
+    const auto there = Identifier::of(fixtures::bytes_of("there"));
     auto answers = peer_answers();
 
     answers["GET " + data_path(world)] = signed_by(peer_signer(), answer(Status::Ok, "jello"));
@@ -628,8 +628,8 @@ TEST_F(FirstContactTest, PeerTurningThisNodeAwayWhileFulfilledIsTold) {
     hold_peer_key();
 
     const Identifier hello("sha256", fixtures::hello_hash);
-    const auto world = Identifier::from(fixtures::bytes_of("world"));
-    const auto there = Identifier::from(fixtures::bytes_of("there"));
+    const auto world = Identifier::of(fixtures::bytes_of("world"));
+    const auto there = Identifier::of(fixtures::bytes_of("there"));
     const SeekList sought({hello, world}, {});
     auto answers = peer_answers();
     auto closing = answer(Status::Created);

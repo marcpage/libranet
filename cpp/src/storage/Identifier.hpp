@@ -22,11 +22,11 @@ class Identifier {
 public:
     using Data = std::vector<std::byte>;
 
-    static Identifier from(const std::string& identifier_str);
-    static Identifier from(const Data& data);
+    [[nodiscard]] static Identifier parse(std::string_view text);
+    [[nodiscard]] static Identifier of(const Data& data);
     // Nothing for a value that is not a string of "{algorithm}/{hash}" of a
     // supported algorithm, which is warned of as the constructor warns of it.
-    [[nodiscard]] static std::optional<Identifier> from(const types::Json& value);
+    [[nodiscard]] static std::optional<Identifier> from_json(const types::Json& value);
 
     // Throws std::invalid_argument for an algorithm that is not supported, or
     // a hash that is not its digest's hex digits. The hash is kept in lower
@@ -67,8 +67,8 @@ private:
     static void _warn_unsupported(const std::string& algorithm);
 };
 
-inline Identifier Identifier::from(const std::string& identifier_str) {
-    std::string_view identifier_view(identifier_str);
+inline Identifier Identifier::parse(std::string_view text) {
+    auto identifier_view = text;
     const auto start = identifier_view.find_first_not_of('/');
 
     if (start == std::string_view::npos) {
@@ -93,11 +93,11 @@ inline Identifier Identifier::from(const std::string& identifier_str) {
     return Identifier(algorithm, hash);
 }
 
-inline Identifier Identifier::from(const Data& data) {
+inline Identifier Identifier::of(const Data& data) {
     return Identifier(std::string(sha256), crypto::IHasher::Sha256()->hex_digest(data));
 }
 
-inline std::optional<Identifier> Identifier::from(const types::Json& value) {
+inline std::optional<Identifier> Identifier::from_json(const types::Json& value) {
     if (!value.is_string()) {
         return std::nullopt;
     }
@@ -176,7 +176,7 @@ inline bool Identifier::is_supported(std::string_view algorithm) noexcept {
 // Whether data hashes to this identifier. SHA-256 is the only algorithm
 // supported, so an identifier made with no algorithm names no data.
 inline bool Identifier::_is_hash_of(const Data& data) const {
-    const auto hashed = from(data);
+    const auto hashed = of(data);
 
     return hashed.algorithm() == m_algorithm && hashed.hash() == m_hash;
 }

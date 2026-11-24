@@ -39,10 +39,10 @@ bool finds_nothing(const Identifier& identifier, const Identifier::Data& body) {
     return !identifier.content_of(body, enough).has_value();
 }
 
-// Whether Identifier::from() turns down text as invalid.
+// Whether Identifier::parse() turns down text as invalid.
 bool refused(const std::string& text) {
     try {
-        (void)Identifier::from(text);
+        (void)Identifier::parse(text);
     } catch (const std::invalid_argument&) {
         return true;
     }
@@ -50,16 +50,16 @@ bool refused(const std::string& text) {
     return false;
 }
 
-// What Identifier::from() makes of value, as text, or "nothing".
+// What Identifier::from_json() makes of value, as text, or "nothing".
 std::string made_from(const Json& value) {
-    const auto identifier = Identifier::from(value);
+    const auto identifier = Identifier::from_json(value);
 
     return identifier ? identifier->to_string() : "nothing";
 }
 
-// Whether Identifier::from() makes nothing of value.
+// Whether Identifier::from_json() makes nothing of value.
 bool names_none(const Json& value) {
-    return !Identifier::from(value).has_value();
+    return !Identifier::from_json(value).has_value();
 }
 
 // text, with its letters in upper case.
@@ -100,7 +100,7 @@ template<typename Function>
 
 // Reads value as an identifier, as run_and_exit() runs it.
 [[noreturn]] void read_and_exit(const Json& value) {
-    run_and_exit([&value] { (void)Identifier::from(value); });
+    run_and_exit([&value] { (void)Identifier::from_json(value); });
 }
 
 } // namespace
@@ -122,7 +122,7 @@ TEST(IdentifierTest, AlgorithmAndHash) {
 }
 
 TEST(IdentifierTest, FromText) {
-    const auto identifier = Identifier::from(std::string("sha256/") + hello_hash);
+    const auto identifier = Identifier::parse(std::string("sha256/") + hello_hash);
 
     EXPECT_EQ(identifier.algorithm(), "sha256");
     EXPECT_EQ(identifier.hash(), hello_hash);
@@ -132,7 +132,7 @@ TEST(IdentifierTest, FromText) {
 // of the identifier.
 TEST(IdentifierTest, FromTextSkipsLeadingSlashesAndWhatFollows) {
     const auto identifier =
-        Identifier::from(std::string("//sha256/") + hello_hash + "/more/parts");
+        Identifier::parse(std::string("//sha256/") + hello_hash + "/more/parts");
 
     EXPECT_EQ(identifier.algorithm(), "sha256");
     EXPECT_EQ(identifier.hash(), hello_hash);
@@ -193,7 +193,7 @@ TEST(IdentifierTest, HashInUpperOrMixedCaseIsKeptInLowerCase) {
     const std::string hash(hello_hash);
     const auto mixed = hash.substr(0, 32) + upper_case(hash.substr(32));
 
-    const auto upper = Identifier::from("sha256/" + upper_case(hash));
+    const auto upper = Identifier::parse("sha256/" + upper_case(hash));
     const Identifier mixed_case("sha256", mixed);
 
     EXPECT_EQ(upper.hash(), hello_hash);
@@ -259,8 +259,8 @@ TEST(IdentifierTest, JsonTextThatNamesNoIdentifierIsNothing) {
 
 // The SHA-256 digests are those `shasum -a 256` gives for the same bytes.
 TEST(IdentifierTest, FromDataIsItsSha256) {
-    const auto identifier = Identifier::from(bytes_of("hello"));
-    const auto empty = Identifier::from(Identifier::Data{});
+    const auto identifier = Identifier::of(bytes_of("hello"));
+    const auto empty = Identifier::of(Identifier::Data{});
 
     EXPECT_EQ(identifier.to_string(),
               "sha256/2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
@@ -271,7 +271,7 @@ TEST(IdentifierTest, FromDataIsItsSha256) {
 // Content sent as it is, with no compression.
 TEST(IdentifierTest, ContentAsItIsIsGivenBack) {
     const Identifier identifier("sha256", hello_hash);
-    const auto empty = Identifier::from(Identifier::Data{});
+    const auto empty = Identifier::of(Identifier::Data{});
 
     EXPECT_EQ(identifier.content_of(bytes_of("hello"), enough), bytes_of("hello"));
     EXPECT_EQ(empty.content_of(Identifier::Data{}, enough), Identifier::Data{});
@@ -280,7 +280,7 @@ TEST(IdentifierTest, ContentAsItIsIsGivenBack) {
 // Content sent as a zlib stream, at any level (HttpApi §8).
 TEST(IdentifierTest, CompressedContentIsGivenBackDecompressed) {
     const Identifier identifier("sha256", hello_hash);
-    const auto empty = Identifier::from(Identifier::Data{});
+    const auto empty = Identifier::of(Identifier::Data{});
 
     for (auto level = Zlib::min_level; level <= Zlib::max_level; ++level) {
         const auto compressed = Zlib::compress(bytes_of("hello"), level);
@@ -295,7 +295,7 @@ TEST(IdentifierTest, CompressedContentIsGivenBackDecompressed) {
 // and is given back as it is, not decompressed.
 TEST(IdentifierTest, ContentThatIsAZlibStreamIsGivenBackAsItIs) {
     const auto compressed = zlib_of(bytes_of("hello"));
-    const auto identifier = Identifier::from(compressed);
+    const auto identifier = Identifier::of(compressed);
 
     EXPECT_EQ(identifier.content_of(compressed, enough), compressed);
 }
@@ -309,7 +309,7 @@ TEST(IdentifierTest, ContentAsItIsIsNotLimited) {
 
 TEST(IdentifierTest, CompressedContentPastTheLimitIsNothing) {
     const auto content = bytes_of(std::string(enough, 'x'));
-    const auto identifier = Identifier::from(content);
+    const auto identifier = Identifier::of(content);
     const auto compressed = zlib_of(content);
 
     EXPECT_EQ(identifier.content_of(compressed, enough), content);

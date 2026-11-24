@@ -192,7 +192,7 @@ std::string entry(std::string_view endpoint, const Identifier& node_id) {
 
 // The id of a node no test runs, named by text.
 Identifier node_named(std::string_view text) {
-    return Identifier::from(Converter::bytes_of(text));
+    return Identifier::of(Converter::bytes_of(text));
 }
 
 // Each test has this node, two peers it may have sessions with, and another

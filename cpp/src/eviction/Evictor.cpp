@@ -342,7 +342,7 @@ void Evictor::_ask(uintmax_t bytes, const Identifiers& kept) {
     }
 
     for (const auto& [name, stored_at] : m_stored) {
-        request.exclude.push_back(Identifier::from(name));
+        request.exclude.push_back(Identifier::parse(name));
     }
 
     m_may_ask = false;

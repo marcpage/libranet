@@ -131,7 +131,7 @@ private:
 // Stores text in store as content, under its identifier, which comes back.
 Identifier store_content(const IDataSource& store, std::string_view text) {
     const auto content = Converter::bytes_of(text);
-    const auto node_id = Identifier::from(content);
+    const auto node_id = Identifier::of(content);
 
     store.put(node_id, content);
     return node_id;

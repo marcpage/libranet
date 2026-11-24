@@ -106,7 +106,7 @@ std::vector<Identifier> identifiers(std::size_t count) {
     result.reserve(count);
 
     for (std::size_t index = 0; index < count; ++index) {
-        result.push_back(Identifier::from(bytes_of(std::to_string(index))));
+        result.push_back(Identifier::of(bytes_of(std::to_string(index))));
     }
 
     return result;

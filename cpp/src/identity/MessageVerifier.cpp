@@ -209,7 +209,7 @@ Identifier node_id_of(const InnerList& signature_params) {
         throw invalid_argument("A signature names its signer with a keyid string");
     }
 
-    auto node_id = Identifier::from(types::Json(*text));
+    auto node_id = Identifier::from_json(types::Json(*text));
 
     if (!node_id) {
         throw invalid_argument("A signature's keyid is not a node id: " + *text);

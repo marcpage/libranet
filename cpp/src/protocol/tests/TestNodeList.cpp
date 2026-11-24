@@ -71,7 +71,7 @@ NodeList::Data bytes_of_hex(std::string_view hex) {
 
 // A node's id of its own for each number.
 Identifier node(std::size_t number) {
-    return Identifier::from(bytes_of("node " + std::to_string(number)));
+    return Identifier::of(bytes_of("node " + std::to_string(number)));
 }
 
 // The endpoints list names, in order.
@@ -367,7 +367,7 @@ TEST(NodeListTest, UnknownAlgorithmIsLoggedOnceForTheList) {
 // A node names its own endpoints first (HttpApi §10.1), then the others in
 // the order added, best first.
 TEST(NodeListTest, OwnEndpointsComeFirst) {
-    const auto own = Identifier::from(std::string(hello_id));
+    const auto own = Identifier::parse(hello_id);
     NodeList list(own, {"http://localhost:4300", "http://localhost:8080"});
 
     list.add("http://198.51.100.7:8080", own);
@@ -379,7 +379,7 @@ TEST(NodeListTest, OwnEndpointsComeFirst) {
 }
 
 TEST(NodeListTest, WritesCompactJsonInOrder) {
-    const auto own = Identifier::from(std::string(hello_id));
+    const auto own = Identifier::parse(hello_id);
     const NodeList list(own, {"http://localhost:8080", "http://203.0.113.42:4300"});
 
     EXPECT_EQ(list.to_string(),

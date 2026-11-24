@@ -148,7 +148,7 @@ vector<Held> ContentUses::held() const {
     vector<Held> held;
 
     while (statement.step()) {
-        auto identifier = Identifier::from(statement.text(place_of(Column::Identifier)));
+        auto identifier = Identifier::parse(statement.text(place_of(Column::Identifier)));
 
         held.push_back({std::move(identifier), uses_in(statement)});
     }

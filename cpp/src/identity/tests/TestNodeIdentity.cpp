@@ -321,7 +321,7 @@ TEST_F(NodeIdentityTest, IdIsTheIdentifierOfThePublicKey) {
     const NodeIdentity identity(key_file(), store());
 
     EXPECT_EQ(identity.id().to_string(),
-              Identifier::from(Converter::bytes_of(identity.public_pem())).to_string());
+              Identifier::of(Converter::bytes_of(identity.public_pem())).to_string());
 }
 
 TEST_F(NodeIdentityTest, StoresThePublicKeyUnderItsId) {

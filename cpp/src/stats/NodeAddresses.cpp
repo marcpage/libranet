@@ -283,7 +283,7 @@ NodeList NodeAddresses::node_list(const Identifier& own_id,
     statement.bind(own_id.to_string());
 
     while (statement.step()) {
-        list.add(statement.text(0), Identifier::from(statement.text(1)));
+        list.add(statement.text(0), Identifier::parse(statement.text(1)));
     }
 
     return list;
@@ -300,7 +300,7 @@ vector<Candidate> NodeAddresses::candidates(const Identifier& own_id) const {
         auto node_id = statement.text(0);
 
         if (found.empty() || node_id != last_id) {
-            found.push_back(Candidate{Identifier::from(node_id), {}});
+            found.push_back(Candidate{Identifier::parse(node_id), {}});
             last_id = std::move(node_id);
         }
 

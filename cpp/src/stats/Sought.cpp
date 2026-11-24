@@ -144,7 +144,7 @@ void Sought::forget_expired() {
 SeekList Sought::seek_list() const {
     const auto cutoff = cutoff_of(m_clock(), m_entry_ttl);
     auto data = entries_of<Identifier>(*m_database, data_kind, cutoff,
-                                       [](const string& text) { return Identifier::from(text); });
+                                       [](const string& text) { return Identifier::parse(text); });
     auto search = entries_of<HashPrefix>(*m_database, search_kind, cutoff,
                                          [](const string& text) { return HashPrefix::parse(text); });
 

@@ -218,7 +218,7 @@ inline SearchResults::Identifiers SearchResults::_identifiers(const types::Json&
     Identifiers identifiers;
 
     for (const auto& entry : entries) {
-        auto identifier = storage::Identifier::from(entry);
+        auto identifier = storage::Identifier::from_json(entry);
 
         if (identifier) {
             identifiers.push_back(std::move(*identifier));

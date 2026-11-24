@@ -93,7 +93,7 @@ SearchResults::Identifiers numbered(std::size_t count) {
             data.push_back(static_cast<std::byte>(character));
         }
 
-        identifiers.push_back(Identifier::from(data));
+        identifiers.push_back(Identifier::of(data));
     }
 
     return identifiers;
@@ -147,8 +147,7 @@ TEST(SearchResultsTest, ReadsWhatPythonCompressed) {
 }
 
 TEST(SearchResultsTest, WritesAsPythonDoes) {
-    const SearchResults answer(
-        {Identifier::from(std::string(hello)), Identifier::from(std::string(abc))});
+    const SearchResults answer({Identifier::parse(hello), Identifier::parse(abc)});
 
     const auto body = answer.body();
 
@@ -267,8 +266,7 @@ TEST(SearchResultsTest, AsManyAsFitAreNamed) {
 
 TEST(SearchResultsTest, AnswersAResponse) {
     constexpr auto status = http::ResponseCode::Status::Accepted;
-    const SearchResults answer(
-        {Identifier::from(std::string(hello)), Identifier::from(std::string(abc))});
+    const SearchResults answer({Identifier::parse(hello), Identifier::parse(abc)});
     http::Response response;
 
     response.set_status_code(status);
