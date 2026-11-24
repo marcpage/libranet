@@ -268,8 +268,7 @@ PeerConnection::~PeerConnection() {
     try {
         close();
     } catch (const std::exception& error) {
-        lFatal << "Could not close the connection to" << m_address.to_string() + ":"
-               << error.what();
+        lFatal << "Could not close a connection to a peer:" << error.what();
     } catch (...) {
         std::terminate();
     }
