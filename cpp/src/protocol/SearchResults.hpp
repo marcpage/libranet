@@ -32,12 +32,15 @@ public:
         bool compressed = false;
     };
 
+    // As sent, compressed or not (HttpApi §6.1).
+    static constexpr std::size_t max_size = 1 * types::Megabyte;
+
     // JSON, or zlib-compressed JSON of no more than decompressed_limit bytes.
     // An entry of an unsupported algorithm is left out. Throws
     // std::invalid_argument for a body that is neither, or not an object
     // holding a "results" array.
-    [[nodiscard]] static SearchResults parse(std::string_view body,
-                                             std::size_t decompressed_limit);
+    [[nodiscard]] static SearchResults from_body(
+        std::string_view body, std::size_t decompressed_limit = types::max_decompressed_list_size);
 
     // Best match first.
     explicit SearchResults(Identifiers results);
@@ -55,8 +58,6 @@ private:
         std::string text;
     };
 
-    // As sent, compressed or not (HttpApi §6.1).
-    static constexpr std::size_t max_body_size = 1 * types::Megabyte;
     // As the reference node does (HttpApi §6.1).
     static constexpr int compression_level = storage::Zlib::balance_level;
     static constexpr std::string_view results_member = "results";
@@ -73,7 +74,8 @@ private:
     [[nodiscard]] static Identifiers _identifiers(const types::Json& value);
 };
 
-inline SearchResults SearchResults::parse(std::string_view body, std::size_t decompressed_limit) {
+inline SearchResults SearchResults::from_body(std::string_view body,
+                                              std::size_t decompressed_limit) {
     return SearchResults(_identifiers(_json(body, decompressed_limit)));
 }
 
@@ -87,7 +89,7 @@ inline const SearchResults::Identifiers& SearchResults::results() const noexcept
 inline SearchResults::Body SearchResults::body() const {
     auto text = _json_text(m_results.size());
 
-    if (text.size() < max_body_size) {
+    if (text.size() < max_size) {
         return {std::move(text), false};
     }
 
@@ -113,7 +115,7 @@ inline void SearchResults::answer(http::Response& response) const {
 inline SearchResults::Body SearchResults::_compressed_body() const {
     auto all = _compressed(m_results.size());
 
-    if (all.text.size() < max_body_size) {
+    if (all.text.size() < max_size) {
         return {std::move(all.text), true};
     }
 
@@ -123,7 +125,7 @@ inline SearchResults::Body SearchResults::_compressed_body() const {
     while (overflowing.count - fitting.count > 1) {
         auto attempt = _compressed(_next_count(fitting, overflowing));
 
-        if (attempt.text.size() < max_body_size) {
+        if (attempt.text.size() < max_size) {
             fitting = std::move(attempt);
         } else {
             overflowing = std::move(attempt);
@@ -141,7 +143,7 @@ inline SearchResults::Body SearchResults::_compressed_body() const {
 inline std::size_t SearchResults::_next_count(const Attempt& fitting, const Attempt& overflowing) {
     const auto counts = overflowing.count - fitting.count;
     const auto sizes = overflowing.text.size() - fitting.text.size();
-    const auto room = max_body_size - fitting.text.size();
+    const auto room = max_size - fitting.text.size();
     const auto count = fitting.count + (counts * room / sizes);
 
     return std::clamp(count, fitting.count + 1, overflowing.count - 1);

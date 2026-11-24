@@ -1,9 +1,9 @@
-// libFuzzer calls this with inputs it makes up. SearchResults::parse() turns
-// down a body that is not a search answer, as JSON or as zlib-compressed
-// JSON, with std::invalid_argument; anything else it does with an input,
-// such as crash, hang, or throw something else, is a fault. What it reads,
-// it must write as a body that it reads back as the same results, and writes
-// again the same. Only an answer too large to send names fewer of them.
+// libFuzzer calls this with inputs it makes up. SearchResults::from_body()
+// turns down a body that is not a search answer, as JSON or as zlib-compressed
+// JSON, with std::invalid_argument; anything else it does with an input, such
+// as crash, hang, or throw something else, is a fault. What it reads, it must
+// write as a body that it reads back as the same results, and writes again the
+// same. Only an answer too large to send names fewer of them.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -25,10 +25,10 @@ namespace {
 // enough that a body that expands far does not take its memory.
 constexpr std::size_t decompressed_limit = 1024UL * 1024UL;
 
-// The answer body is, or nothing when parse() turns it down.
+// The answer body is, or nothing when from_body() turns it down.
 std::optional<SearchResults> parsed(const std::string& body) {
     try {
-        return SearchResults::parse(body, decompressed_limit);
+        return SearchResults::from_body(body, decompressed_limit);
     } catch (const std::invalid_argument&) {
         return std::nullopt;
     }
@@ -63,7 +63,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     }
 
     const auto body = read->body();
-    const auto reread = SearchResults::parse(body.text, decompressed_limit);
+    const auto reread = SearchResults::from_body(body.text, decompressed_limit);
 
     if (!names_results_of(reread, *read, body.compressed) || reread.body().text != body.text) {
         std::cerr << "SearchResults did not read back what it wrote: " << body.text << '\n';

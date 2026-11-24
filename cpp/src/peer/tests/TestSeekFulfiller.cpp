@@ -130,7 +130,7 @@ Identifier id_of(std::string_view digits, int number) {
 
 // The identifiers named in the body of a post naming what matches a search.
 std::vector<std::string> named_in(const Request& post) {
-    const auto results = SearchResults::parse(post.body(), decompressed_limit).results();
+    const auto results = SearchResults::from_body(post.body(), decompressed_limit).results();
     std::vector<std::string> named;
 
     std::transform(results.begin(), results.end(), std::back_inserter(named),

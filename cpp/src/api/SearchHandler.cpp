@@ -118,7 +118,7 @@ size_t relays_of(const Request& request) {
 optional<SearchResults> named_in(const Request& request, size_t limit, Response& response,
                                  const ConnectionInfo& connection) {
     try {
-        return SearchResults::parse(request.body(), limit);
+        return SearchResults::from_body(request.body(), limit);
     } catch (const invalid_argument& error) {
         lDebug << "Refused the search answer from"
                << connection.remote_address().to_string() + ":" << error.what();
