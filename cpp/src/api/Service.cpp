@@ -165,7 +165,7 @@ void Service::_register(string_view path, const Server::RequestHandler& handler)
 
 void Service::_keep(const IMessage::Ptr& message) {
     if (const auto* const nodes = value_of<NodesUpdated>(message)) {
-        m_nodes_handler.set_nodes(nodes->nodes);
+        m_nodes_handler.set_list(nodes->nodes);
     } else if (const auto* const seek = value_of<SeekUpdated>(message)) {
         m_seek_handler.set_list(seek->seek);
     } else if (const auto* const answered = value_of<SearchAnswered>(message)) {

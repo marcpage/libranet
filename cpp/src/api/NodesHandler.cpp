@@ -117,8 +117,8 @@ namespace api {
 NodesHandler::NodesHandler(const Identifier& own_id, const vector<string>& own_endpoints)
     : m_body(body_of(NodeList(own_id, own_endpoints))) {}
 
-void NodesHandler::set_nodes(const NodeList& nodes) {
-    auto body = body_of(nodes);
+void NodesHandler::set_list(const NodeList& new_list) {
+    auto body = body_of(new_list);
     const scoped_lock lock(m_mutex);
 
     m_body = std::move(body);

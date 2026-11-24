@@ -175,7 +175,7 @@ TEST(NodesHandlerTest, ServesTheListItIsGiven) {
     auto handler = own_handler();
     const auto nodes = list_of({{own_endpoint, '0'}, {"http://192.0.2.5:4300", '2'}});
 
-    handler.set_nodes(nodes);
+    handler.set_list(nodes);
 
     const auto response = answer(handler, get());
 
@@ -194,7 +194,7 @@ TEST(NodesHandlerTest, ServesALargeListCompressed) {
         nodes.add("http://node-" + std::to_string(index) + ".example:4300", node('2'));
     }
 
-    handler.set_nodes(nodes);
+    handler.set_list(nodes);
 
     const auto response = answer(handler, get());
     const auto served = NodeList::from_body(Converter::bytes_of(response.body()));
