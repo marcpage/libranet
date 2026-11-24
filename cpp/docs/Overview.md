@@ -741,6 +741,7 @@ classDiagram
             +exchange(requests) Responses
             +node_id() Identifier
             +matching_bits(Identifier) size_t
+            +ranked(sessions, Identifier)$ sessions
             +close()
         }
         class PeerConnection {
