@@ -57,9 +57,9 @@ using Status = ResponseCode::Status;
 // The methods /data/nodes takes, as Allow names them.
 constexpr string_view allowed_methods = "GET, POST";
 
-// list, as it is sent.
-string body_of(const NodeList& list) {
-    return Converter::text_of(list.body());
+// list, as it is sent, in fewer than limit bytes.
+string body_of(const NodeList& list, size_t limit) {
+    return Converter::text_of(list.body(limit));
 }
 
 // The list the body of request, on connection, names, decompressed to no
@@ -118,12 +118,13 @@ map<string, Source> sources_of(const NodeList& sent, const NodeList& received,
 namespace api {
 
 NodesHandler::NodesHandler(const Identifier& own_id, const vector<string>& own_endpoints,
-                           size_t list_bytes)
+                           size_t list_bytes, size_t served_bytes)
     : m_list_bytes(list_bytes)
-    , m_body(body_of(NodeList(own_id, own_endpoints))) {}
+    , m_served_bytes(served_bytes)
+    , m_body(body_of(NodeList(own_id, own_endpoints), m_served_bytes)) {}
 
 void NodesHandler::set_nodes(const NodeList& nodes) {
-    auto body = body_of(nodes);
+    auto body = body_of(nodes, m_served_bytes);
     const scoped_lock lock(m_mutex);
 
     m_body = std::move(body);

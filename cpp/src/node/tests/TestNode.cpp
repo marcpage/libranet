@@ -510,6 +510,21 @@ TEST_F(NodeTest, RefusesBodiesLargerThanItsSetting) {
     EXPECT_TRUE(logged("storage.max_object_bytes = 4"));
 }
 
+// Its node list is served in fewer bytes than stats.max_list_bytes, leaving
+// out what does not fit.
+TEST_F(NodeTest, ServesItsNodeListWithinItsSetting) {
+    auto values = loopback(data_dir());
+
+    values["stats.max_list_bytes"] = "64";
+
+    const Node node(settings_of(values));
+    const auto answer = answer_to(node.local_address(),
+                                  "GET /data/nodes HTTP/1.1\r\nConnection: close\r\n\r\n");
+
+    EXPECT_EQ(answer.rfind("HTTP/1.1 200 OK\r\n", 0), 0U) << answer;
+    EXPECT_EQ(answer.substr(answer.find("\r\n\r\n")), "\r\n\r\n{\"nodes\":{}}");
+}
+
 // Its node list names it at localhost, the port it listens on, until it is
 // given another (HttpApi §10.1), and is signed as each answer is.
 TEST_F(NodeTest, ServesItsOwnEndpointAsItsNodeList) {
@@ -630,6 +645,8 @@ TEST_F(NodeTest, RefusesSettingsItCannotUse) {
         {"identity.signature_max_age_seconds", "0"},
         {"identity.signature_clock_skew_seconds", "-1"},
         {"stats.derive_interval_seconds", "1e10"},
+        {"stats.max_list_bytes", "63"},
+        {"stats.max_list_bytes", "1048577"},
         {"stats.seek_entry_ttl_seconds", "0"},
         {"stats.max_address_failures", "0"},
         {"stats.max_node_failures", "0"},

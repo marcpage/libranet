@@ -205,6 +205,24 @@ TEST(NodesHandlerTest, ServesALargeListCompressed) {
     EXPECT_EQ(served.entries().size(), count);
 }
 
+// The list served is sent in fewer bytes than the handler is told, leaving
+// out the entries at its end that do not fit.
+TEST(NodesHandlerTest, ServesTheListWithinTheBytesItIsGiven) {
+    constexpr std::size_t served_bytes = 64;
+    NodesHandler handler(own_id(), {std::string(own_endpoint)}, types::max_decompressed_list_size,
+                         served_bytes);
+    const auto nodes = list_of({{own_endpoint, '0'}, {"http://192.0.2.5:4300", '2'}});
+
+    handler.set_nodes(nodes);
+
+    const auto response = answer(handler, get());
+    const auto served = NodeList::from_body(Converter::bytes_of(response.body()));
+
+    EXPECT_EQ(response.status_code(), 200);
+    EXPECT_LT(response.body().size(), served_bytes);
+    EXPECT_LT(served.entries().size(), nodes.entries().size());
+}
+
 // A query does not change what the path names, and a path beneath it names
 // nothing.
 TEST(NodesHandlerTest, QueryIsIgnoredAndPathBeneathIsNotFound) {

@@ -40,6 +40,8 @@
 #include "peer/HandOff.hpp"
 #include "peer/Pusher.hpp"
 #include "peer/Seeker.hpp"
+#include "protocol/NodeList.hpp"
+#include "protocol/SeekList.hpp"
 #include "stats/Recorder.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Manager.hpp"
@@ -59,6 +61,8 @@ using node::Node;
 using node::SettingsFile;
 using peer::Connections;
 using peer::Fetch;
+using protocol::NodeList;
+using protocol::SeekList;
 using std::array;
 using std::domain_error;
 using std::exception;
@@ -124,6 +128,7 @@ constexpr auto trust_attempts_setting = "identity.provisional_trust_attempts";
 constexpr auto max_age_setting = "identity.signature_max_age_seconds";
 constexpr auto clock_skew_setting = "identity.signature_clock_skew_seconds";
 constexpr auto derive_interval_setting = "stats.derive_interval_seconds";
+constexpr auto max_list_setting = "stats.max_list_bytes";
 constexpr auto seek_ttl_setting = "stats.seek_entry_ttl_seconds";
 constexpr auto address_failures_setting = "stats.max_address_failures";
 constexpr auto node_failures_setting = "stats.max_node_failures";
@@ -163,6 +168,7 @@ constexpr array used_settings{
     max_age_setting,
     clock_skew_setting,
     derive_interval_setting,
+    max_list_setting,
     seek_ttl_setting,
     address_failures_setting,
     node_failures_setting,
@@ -193,6 +199,11 @@ constexpr size_t most_search_bits = 256;
 
 // The most bits a bucket's prefix may have, as the Python node allows.
 constexpr size_t most_prefix_bits = 16;
+
+// The fewest bytes the lists served may be held to, as the Python node
+// allows, and the most, as the protocol allows (HttpApi §10.6, §10.7.1).
+constexpr size_t least_list_bytes = 64;
+constexpr size_t most_list_bytes = std::min(NodeList::max_size, SeekList::max_bytes);
 
 // How long a peer's connection may be idle before the web server, the
 // Python node's, or this node's, closes it: a node's seek list must be read
@@ -705,6 +716,8 @@ Node::PartSettings Node::_settings_of(const SettingsFile& settings, const vector
     service.list_bytes = whole(settings, list_bytes_setting, service.list_bytes, 1);
     service.object_bytes = whole(settings, object_bytes_setting, service.object_bytes, 1,
                                  DataHandler::max_body_bytes);
+    service.served_list_bytes = whole(settings, max_list_setting, service.served_list_bytes,
+                                      least_list_bytes, most_list_bytes);
 
     // The searches of the peers, for content and for prefixes.
     fetch.retry_after = service.retry_after;
