@@ -9,6 +9,7 @@ target_link_libraries(libranet_web PUBLIC
     libranet::http
     libranet::logger
     libranet::storage
+    libranet::types
     Threads::Threads
 )
 

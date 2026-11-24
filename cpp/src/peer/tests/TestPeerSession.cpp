@@ -227,8 +227,21 @@ protected:
         return session_checking(address, m_store);
     }
 
+    // A session with the node node_id at address, held as the sessions a
+    // node ranks are.
+    [[nodiscard]] std::shared_ptr<PeerSession> shared_session(const Address& address,
+                                                              const Identifier& node_id) const {
+        return std::make_shared<PeerSession>(
+            std::make_unique<PeerConnection>(address, PeerConnection::Limits{}), node_id,
+            MessageSigner(m_this_node), verifier_of(m_store));
+    }
+
     [[nodiscard]] const Identifier& peer_id() const {
         return m_peer.id();
+    }
+
+    [[nodiscard]] const Identifier& other_id() const {
+        return m_other.id();
     }
 
     [[nodiscard]] MessageSigner peer_signer() const {
@@ -373,4 +386,27 @@ TEST_F(PeerSessionTest, NeedsAConnectionAndANodeId) {
     EXPECT_THROW(
         (void)PeerSession(std::move(connection), Identifier(), peer_signer(), verifier_of(keys)),
         std::invalid_argument);
+}
+
+// The peer's own id matches its node id in every bit, and the other node's
+// in fewer, so the sessions with the peer come first, in the order given.
+TEST_F(PeerSessionTest, RankedPutsTheBestMatchesFirstAndLeavesOutThoseNotOpen) {
+    const StandInNode first_peer(unsigned_echo);
+    const StandInNode second_peer(unsigned_echo);
+    const StandInNode other(unsigned_echo);
+    const StandInNode closed_peer(unsigned_echo);
+    const auto first = shared_session(first_peer.address(), peer_id());
+    const auto second = shared_session(second_peer.address(), peer_id());
+    const auto other_session = shared_session(other.address(), other_id());
+    const auto closed = shared_session(closed_peer.address(), peer_id());
+
+    closed->close();
+
+    const auto ranked =
+        PeerSession::ranked({other_session, nullptr, first, closed, second}, peer_id());
+
+    ASSERT_EQ(ranked.size(), 3U);
+    EXPECT_EQ(ranked.at(0), first);
+    EXPECT_EQ(ranked.at(1), second);
+    EXPECT_EQ(ranked.at(2), other_session);
 }

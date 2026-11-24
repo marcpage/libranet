@@ -1,6 +1,9 @@
 #pragma once
 
+#include <cstddef>
 #include <filesystem>
+#include <string_view>
+#include <vector>
 
 namespace io {
 
@@ -22,6 +25,7 @@ public:
 
     // And commit()s it.
     void write(std::string_view contents);
+    void write(const std::vector<std::byte>& contents);
 
     // Throws std::logic_error when it is already committed, and
     // std::runtime_error when it cannot be renamed.

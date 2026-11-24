@@ -1,7 +1,6 @@
 #include "HandOff.hpp"
 
 #include <algorithm>
-#include <cstddef>
 #include <exception>
 #include <optional>
 #include <stdexcept>
@@ -13,50 +12,25 @@
 #include "PeerSession.hpp"
 #include "http/Request.hpp"
 #include "logger/Logger.hpp"
-#include "storage/HashPrefix.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
 #include "types/Converter.hpp"
 
 using http::Request;
-using peer::HandOff;
 using peer::PeerSession;
 using std::invalid_argument;
 using std::nullopt;
 using std::optional;
-using std::size_t;
 using std::string;
 using std::string_view;
-using std::vector;
-using storage::HashPrefix;
 using storage::IDataSource;
 using storage::Identifier;
 using types::Converter;
 
 namespace {
 
-using Session = HandOff::Session;
-
 // The type of content put (HttpApi §7).
 constexpr string_view octet_stream = "application/octet-stream";
-
-// How many leading bits session's node id shares with identifier's hash.
-size_t matching_bits(const PeerSession& session, const Identifier& identifier) {
-    return HashPrefix::parse(session.node_id().hash()).matching_bits(identifier);
-}
-
-// The sessions of peers still open, those whose node ids best match
-// identifier first, and those that match alike in the order given.
-vector<Session> ranked(vector<Session> peers, const Identifier& identifier) {
-    const auto is_closed = [](const Session& session) { return !session || !session->is_open(); };
-
-    peers.erase(std::remove_if(peers.begin(), peers.end(), is_closed), peers.end());
-    std::stable_sort(peers.begin(), peers.end(),
-                     [&identifier](const Session& left, const Session& right) {
-        return matching_bits(*left, identifier) > matching_bits(*right, identifier);
-    });
-    return peers;
-}
 
 // A PUT of body, as identifier's content (HttpApi §7).
 Request offer_of(const Identifier& identifier, string body) {
@@ -125,11 +99,14 @@ optional<Identifier> HandOff::hand_off(const Identifier& identifier) const {
     }
 
     const auto body = Converter::text_of(*stored);
+    const auto ranked = PeerSession::ranked(m_get_peers(), identifier);
+    const auto taker = std::find_if(ranked.begin(), ranked.end(),
+                                    [&identifier, &body](const Session& session) {
+        return took(*session, identifier, body);
+    });
 
-    for (const auto& session : ranked(m_get_peers(), identifier)) {
-        if (took(*session, identifier, body)) {
-            return session->node_id();
-        }
+    if (taker != ranked.end()) {
+        return (*taker)->node_id();
     }
 
     lDebug << "No peer took" << identifier.to_string();

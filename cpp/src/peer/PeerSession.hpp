@@ -46,6 +46,12 @@ public:
     [[nodiscard]] bool was_turned_away() const;
     [[nodiscard]] std::size_t matching_bits(const storage::Identifier& identifier) const;
 
+    // The sessions of sessions still open, those whose node ids best match
+    // identifier first, and those that match alike in the order given.
+    [[nodiscard]] static std::vector<std::shared_ptr<PeerSession>>
+    ranked(std::vector<std::shared_ptr<PeerSession>> sessions,
+           const storage::Identifier& identifier);
+
     // Fails every request still waiting.
     void close();
 

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -193,6 +194,24 @@ TEST(StatementTest, BindsOptionalValues) {
     ASSERT_TRUE(statement.step());
     EXPECT_EQ(statement.integer(0), number);
     EXPECT_TRUE(statement.is_null(1));
+}
+
+// A time is held as the milliseconds since the Unix epoch, so it reads back
+// to the millisecond, as an integer.
+TEST(StatementTest, BindsTimesAsMillisecondsSinceTheEpoch) {
+    constexpr std::int64_t count = 1'700'000'000'123;
+    const Statement::Time time(std::chrono::milliseconds(count) + std::chrono::microseconds(456));
+    const ScratchDirectory directory;
+    Database database(directory.database(), nodes_schema);
+    Statement statement(database, "SELECT ?, ?, ?");
+
+    statement.bind(time).bind(std::optional<Statement::Time>()).bind("text");
+
+    ASSERT_TRUE(statement.step());
+    EXPECT_EQ(statement.integer(0), count);
+    EXPECT_EQ(statement.time(0), Statement::Time(std::chrono::milliseconds(count)));
+    EXPECT_TRUE(statement.is_null(1));
+    EXPECT_THROW((void)statement.time(2), std::domain_error);
 }
 
 TEST(StatementTest, ResetRunsAgainWithNewValues) {

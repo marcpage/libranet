@@ -10,6 +10,7 @@
 #include "crypto/ISignKey.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 
 namespace identity {
 
@@ -20,7 +21,7 @@ public:
     using Key = std::shared_ptr<const crypto::ISignKey>;
 
     // 64 KiB, as the Python node allows: far more than an Ed25519 key's PEM.
-    static constexpr std::size_t max_key_size = 65'536;
+    static constexpr std::size_t max_key_size = 64 * types::Kilobyte;
 
     // Throws std::invalid_argument for no store.
     explicit KnownKeys(storage::IDataSource::Ptr store);

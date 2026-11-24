@@ -18,6 +18,7 @@
 #include "io/MeteredReader.hpp"
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
+#include "types/Constants.hpp"
 
 namespace web {
 
@@ -34,8 +35,8 @@ public:
     // bytes as the Python node takes in a line; and the largest block, 1 MiB.
     static constexpr std::size_t default_connections = 128;
     static constexpr std::chrono::milliseconds default_idle{std::chrono::seconds(60)};
-    static constexpr std::size_t default_head_bytes = 65536;
-    static constexpr std::size_t default_body_bytes = 1048576;
+    static constexpr std::size_t default_head_bytes = 64 * types::Kilobyte;
+    static constexpr std::size_t default_body_bytes = 1 * types::Megabyte;
 
     struct Limits {
         // At least one. Those beyond it wait until one closes.
