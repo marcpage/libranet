@@ -7,6 +7,7 @@ target_link_libraries(libranet_web PUBLIC
     libranet::net
     libranet::io
     libranet::http
+    libranet::logger
     libranet::storage
     Threads::Threads
 )
