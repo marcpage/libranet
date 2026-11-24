@@ -195,10 +195,10 @@ PeerSearch::SearchAnswered::operator std::string() const {
            + prefix.to_string();
 }
 
-PeerSearch::PeerSearch(const Settings& settings, Now now)
+PeerSearch::PeerSearch(const Settings& settings, ClockFunction clock)
     : m_settings(checked(settings))
-    , m_now(std::move(now)) {
-    if (!m_now) {
+    , m_clock(std::move(clock)) {
+    if (!m_clock) {
         throw invalid_argument("A search of the peers needs the time");
     }
 }
@@ -221,7 +221,7 @@ bool PeerSearch::start(const HashPrefix& prefix, const optional<Asker>& asker) {
     }
 
     const scoped_lock lock(m_mutex);
-    const auto now = m_now();
+    const auto now = m_clock();
 
     let_go(m_held, now);
 
@@ -251,7 +251,7 @@ optional<PeerSearch::Clock::time_point> PeerSearch::make_passes(const Sessions& 
 // makes it too: nothing when none is due.
 optional<PeerSearch::Pass> PeerSearch::_take_due() {
     const scoped_lock lock(m_mutex);
-    const auto now = m_now();
+    const auto now = m_clock();
     auto soonest = Clock::time_point::max();
     Search* taken = nullptr;
 
@@ -282,12 +282,12 @@ void PeerSearch::_made(const Pass& pass) {
 
     if (search.pass < m_settings.passes) {
         ++search.pass;
-        search.due = m_now() + m_settings.pass_interval;
+        search.due = m_clock() + m_settings.pass_interval;
         return;
     }
 
     m_searches.erase(key);
-    m_held.insert_or_assign(key, m_now() + m_settings.hold);
+    m_held.insert_or_assign(key, m_clock() + m_settings.hold);
     lDebug << "Searched the peers for" << key;
 }
 

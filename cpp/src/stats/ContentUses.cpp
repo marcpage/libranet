@@ -108,10 +108,10 @@ Uses uses_in(const Statement& statement) {
 
 namespace stats {
 
-ContentUses::ContentUses(Database& database, Now now)
+ContentUses::ContentUses(Database& database, ClockFunction clock)
     : m_database(&database)
-    , m_now(std::move(now)) {
-    if (!m_now) {
+    , m_clock(std::move(clock)) {
+    if (!m_clock) {
         throw invalid_argument("ContentUses needs a clock");
     }
 }
@@ -120,14 +120,14 @@ void ContentUses::record_stored(const Identifier& identifier, size_t size) {
     Statement statement(*m_database, stored_sql);
 
     statement.bind(identifier.to_string()).bind(static_cast<int64_t>(size));
-    statement.bind(milliseconds_of(m_now()));
+    statement.bind(milliseconds_of(m_clock()));
     (void)statement.step();
 }
 
 void ContentUses::record_requested(const Identifier& identifier) {
     Statement statement(*m_database, requested_sql);
 
-    statement.bind(identifier.to_string()).bind(milliseconds_of(m_now()));
+    statement.bind(identifier.to_string()).bind(milliseconds_of(m_clock()));
     (void)statement.step();
 }
 

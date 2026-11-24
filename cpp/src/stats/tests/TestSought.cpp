@@ -58,11 +58,11 @@ Texts texts_of(const std::vector<Entry>& entries) {
     return texts;
 }
 
-// Whether Sought refuses ttl or now as invalid.
+// Whether Sought refuses ttl or clock as invalid.
 bool refused(Database& database, Sought::Milliseconds ttl,
-             const Sought::Now& now = &Clock::now) {
+             const Sought::ClockFunction& clock = &Clock::now) {
     try {
-        (void)Sought(database, ttl, now);
+        (void)Sought(database, ttl, clock);
     } catch (const std::invalid_argument&) {
         return true;
     }
@@ -268,7 +268,7 @@ TEST_F(SoughtTest, ATtlNotMoreThanZeroIsRefused) {
 }
 
 TEST_F(SoughtTest, AClockIsNeeded) {
-    EXPECT_TRUE(refused(database(), entry_ttl, Sought::Now()));
+    EXPECT_TRUE(refused(database(), entry_ttl, Sought::ClockFunction()));
 }
 
 TEST_F(SoughtTest, TheTableIsNeeded) {

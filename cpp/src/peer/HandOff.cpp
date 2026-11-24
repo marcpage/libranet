@@ -104,14 +104,14 @@ bool took(PeerSession& session, const Identifier& identifier, const string& body
 
 namespace peer {
 
-HandOff::HandOff(IDataSource::Ptr store, Peers peers)
+HandOff::HandOff(IDataSource::Ptr store, GetPeers get_peers)
     : m_store(std::move(store))
-    , m_peers(std::move(peers)) {
+    , m_get_peers(std::move(get_peers)) {
     if (!m_store) {
         throw invalid_argument("A hand-off needs the store that holds what it offers");
     }
 
-    if (!m_peers) {
+    if (!m_get_peers) {
         throw invalid_argument("A hand-off needs the peers to offer it to");
     }
 }
@@ -126,7 +126,7 @@ optional<Identifier> HandOff::hand_off(const Identifier& identifier) const {
 
     const auto body = Converter::text_of(*stored);
 
-    for (const auto& session : ranked(m_peers(), identifier)) {
+    for (const auto& session : ranked(m_get_peers(), identifier)) {
         if (took(*session, identifier, body)) {
             return session->node_id();
         }

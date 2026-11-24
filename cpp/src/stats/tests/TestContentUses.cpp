@@ -44,10 +44,10 @@ Identifier content(char digit) {
     return {"sha256", std::string(Identifier::longest_hash_digits(), digit)};
 }
 
-// Whether ContentUses refuses now as invalid.
-bool refused(Database& database, const ContentUses::Now& now) {
+// Whether ContentUses refuses clock as invalid.
+bool refused(Database& database, const ContentUses::ClockFunction& clock) {
     try {
-        (void)ContentUses(database, now);
+        (void)ContentUses(database, clock);
     } catch (const std::invalid_argument&) {
         return true;
     }
@@ -261,7 +261,7 @@ TEST_F(ContentUsesTest, AnIdentifierInUpperCaseIsTheSameContent) {
 }
 
 TEST_F(ContentUsesTest, AClockIsNeeded) {
-    EXPECT_TRUE(refused(database(), ContentUses::Now()));
+    EXPECT_TRUE(refused(database(), ContentUses::ClockFunction()));
     EXPECT_FALSE(refused(database(), &Clock::now));
 }
 

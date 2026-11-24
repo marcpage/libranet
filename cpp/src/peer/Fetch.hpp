@@ -44,11 +44,11 @@ class Fetch {
 public:
     using Clock = std::chrono::steady_clock;
     using Milliseconds = std::chrono::milliseconds;
-    using Now = std::function<Clock::time_point()>;
+    using ClockFunction = std::function<Clock::time_point()>;
     using Session = std::shared_ptr<PeerSession>;
     // The sessions with the peers this node has an outgoing connection to,
     // as they are now. Called from the threads searching, several at once.
-    using Peers = std::function<std::vector<Session>()>;
+    using GetPeers = std::function<std::vector<Session>()>;
 
     // How a search ended.
     enum class Outcome : std::uint8_t {
@@ -79,15 +79,15 @@ public:
         std::size_t content_bytes = default_content_bytes;
     };
 
-    // Asks the peers peers gives for what is sought, and keeps what they
+    // Asks the peers get_peers gives for what is sought, and keeps what they
     // send in store. Throws std::invalid_argument, naming the setting, for
     // fewer than 2 passes, a retry after less than zero, or a failed search
     // hold not longer than a search may last: a retry after for each pass
     // after the first, as the peers' searches last on a network whose nodes
-    // are set alike. Throws std::invalid_argument too for no store, or peers
-    // or now with no function.
-    Fetch(storage::IDataSource::Ptr store, Peers peers, const Settings& settings,
-          Now now = &Clock::now);
+    // are set alike. Throws std::invalid_argument too for no store, or
+    // get_peers or clock with no function.
+    Fetch(storage::IDataSource::Ptr store, GetPeers get_peers, const Settings& settings,
+          ClockFunction clock = &Clock::now);
     ~Fetch() = default;
     // Its searches hold this object, so it is neither copied nor moved.
     Fetch(const Fetch&) = delete;
@@ -111,9 +111,9 @@ public:
 
 private:
     storage::IDataSource::Ptr m_store;
-    Peers m_peers;
+    GetPeers m_get_peers;
     Settings m_settings;
-    Now m_now;
+    ClockFunction m_clock;
     mutable std::mutex m_mutex;
     std::condition_variable m_stopping;              // stop() was called
     bool m_stopped{false};                           // Guarded by m_mutex

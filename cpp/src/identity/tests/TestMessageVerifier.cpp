@@ -138,7 +138,7 @@ Identifier store_content(const IDataSource& store, std::string_view text) {
 }
 
 // A clock that stands at seconds after the UNIX epoch.
-MessageVerifier::Now clock_at(std::int64_t seconds) {
+MessageVerifier::ClockFunction clock_at(std::int64_t seconds) {
     return [seconds] {
         return MessageVerifier::Clock::time_point(std::chrono::seconds(seconds));
     };
@@ -695,7 +695,8 @@ TEST(MessageVerifierTest, WhatItCannotWorkWithIsRefused) {
     EXPECT_THROW((void)MessageVerifier(nullptr, {}), std::invalid_argument);
     EXPECT_THROW((void)MessageVerifier(keys, {zero, clock_skew}), std::invalid_argument);
     EXPECT_THROW((void)MessageVerifier(keys, {max_age, less_than_zero}), std::invalid_argument);
-    EXPECT_THROW((void)MessageVerifier(keys, {}, MessageVerifier::Now()), std::invalid_argument);
+    EXPECT_THROW((void)MessageVerifier(keys, {}, MessageVerifier::ClockFunction()),
+                 std::invalid_argument);
     EXPECT_NO_THROW((void)MessageVerifier(keys, {max_age, zero}));
 }
 

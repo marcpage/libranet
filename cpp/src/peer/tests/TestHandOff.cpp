@@ -198,7 +198,7 @@ std::string put_of(const Identifier& identifier) {
 }
 
 // The peers sessions names, as they are when the hand-off asks.
-HandOff::Peers connected(std::vector<Session> sessions) {
+HandOff::GetPeers connected(std::vector<Session> sessions) {
     return [sessions = std::move(sessions)] { return sessions; };
 }
 

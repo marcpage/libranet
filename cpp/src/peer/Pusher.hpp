@@ -36,17 +36,17 @@ public:
     // The sessions with the peers this node has an outgoing connection to,
     // as they are now. Called from its own thread, and from those calling
     // push().
-    using Peers = std::function<std::vector<Session>()>;
+    using GetPeers = std::function<std::vector<Session>()>;
     using Stored = std::vector<storage::DataStored>;
 
     // As the Python node's peers.pipeline_depth.
     static constexpr std::size_t default_run_length = 8;
 
-    // Puts what is stored in store to the peers peers gives, at most
+    // Puts what is stored in store to the peers get_peers gives, at most
     // run_length, peers.pipeline_depth, in a run. Throws
-    // std::invalid_argument for no store, peers with no function, or a run
+    // std::invalid_argument for no store, get_peers with no function, or a run
     // length of zero.
-    Pusher(storage::IDataSource::Ptr store, Peers peers,
+    Pusher(storage::IDataSource::Ptr store, GetPeers get_peers,
            std::size_t run_length = default_run_length);
     // Stops its thread, once what it is pushing has been answered, which is
     // within the request timeout.
@@ -65,7 +65,7 @@ public:
 
 private:
     storage::IDataSource::Ptr m_store;
-    Peers m_peers;
+    GetPeers m_get_peers;
     // Mistaken: the constructor sets m_run_length. cppcheck loses the
     // class's constructors in a file that names it with `using peer::Pusher;`.
     // cppcheck-suppress uninitMemberVarNoCtor

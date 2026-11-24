@@ -343,12 +343,12 @@ PeerSearch::Settings two_passes() {
     return settings;
 }
 
-// Why a search of the peers refuses settings and now: nothing when it
+// Why a search of the peers refuses settings and clock: nothing when it
 // takes them.
 std::optional<std::string> refusal(const PeerSearch::Settings& settings,
-                                   PeerSearch::Now now = &Clock::now) {
+                                   PeerSearch::ClockFunction clock = &Clock::now) {
     try {
-        (void)PeerSearch(settings, std::move(now));
+        (void)PeerSearch(settings, std::move(clock));
     } catch (const std::invalid_argument& error) {
         return error.what();
     }
@@ -395,7 +395,7 @@ protected:
     }
 
     // The test's clock.
-    [[nodiscard]] PeerSearch::Now clock() const {
+    [[nodiscard]] PeerSearch::ClockFunction clock() const {
         return [this] { return m_time; };
     }
 

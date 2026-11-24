@@ -138,12 +138,12 @@ void rest_node(Resting& resting, const Identifier& node_id, Clock::time_point no
 namespace peer {
 
 DialPlan::DialPlan(const Identifier& own_id, const Buckets::ExpectedSizes& sizes,
-                   const Rests& rests, Now now)
+                   const Rests& rests, ClockFunction clock)
     : m_buckets(own_id, sizes)
     , m_own_id(own_id.to_string())
     , m_rests(checked(rests))
-    , m_now(std::move(now)) {
-    if (!m_now) {
+    , m_clock(std::move(clock)) {
+    if (!m_clock) {
         throw invalid_argument("A dial plan needs the time");
     }
 }
@@ -157,7 +157,7 @@ vector<Candidate> DialPlan::to_dial(const vector<Candidate>& candidates,
     const Place secondary = [this](const Identifier& node_id) {
         return m_buckets.secondary_bucket(node_id);
     };
-    auto taken = passed_over(m_own_id, server_ids, m_resting, m_now());
+    auto taken = passed_over(m_own_id, server_ids, m_resting, m_clock());
     auto chosen = spread(candidates, gaps.primary, primary, taken);
     const auto secondary_chosen = spread(candidates, gaps.secondary, secondary, taken);
 
@@ -166,11 +166,11 @@ vector<Candidate> DialPlan::to_dial(const vector<Candidate>& candidates,
 }
 
 void DialPlan::rest_failed(const Identifier& node_id) {
-    rest_node(m_resting, node_id, m_now(), m_rests.retry_delay);
+    rest_node(m_resting, node_id, m_clock(), m_rests.retry_delay);
 }
 
 void DialPlan::rest_turned_away(const Identifier& node_id) {
-    rest_node(m_resting, node_id, m_now(), m_rests.turned_away_rest);
+    rest_node(m_resting, node_id, m_clock(), m_rests.turned_away_rest);
 }
 
 } // namespace peer

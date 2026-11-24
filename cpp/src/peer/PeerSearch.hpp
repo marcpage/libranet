@@ -38,7 +38,7 @@ class PeerSearch {
 public:
     using Clock = std::chrono::steady_clock;
     using Milliseconds = std::chrono::milliseconds;
-    using Now = std::function<Clock::time_point()>;
+    using ClockFunction = std::function<Clock::time_point()>;
     using Sessions = std::vector<std::shared_ptr<PeerSession>>;
 
     // NOLINTBEGIN(*-non-private-member-variables-in-classes)
@@ -92,8 +92,8 @@ public:
 
     // Throws std::invalid_argument, naming the setting, for fewer than two
     // passes, a pass interval less than zero, or a hold that is not more than
-    // zero, as the Python node refuses them; or for now with no function.
-    explicit PeerSearch(const Settings& settings, Now now = &Clock::now);
+    // zero, as the Python node refuses them; or for clock with no function.
+    explicit PeerSearch(const Settings& settings, ClockFunction clock = &Clock::now);
     ~PeerSearch() = default;
     // Its mutex is neither copied nor moved.
     PeerSearch(const PeerSearch&) = delete;
@@ -137,7 +137,7 @@ private:
     };
 
     Settings m_settings;
-    Now m_now;
+    ClockFunction m_clock;
     std::mutex m_mutex;
     std::map<std::string, Search> m_searches;        // By prefix; guarded by m_mutex
     std::map<std::string, Clock::time_point> m_held; // Until when, by prefix; guarded by m_mutex

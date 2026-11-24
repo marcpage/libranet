@@ -189,13 +189,13 @@ Evictor::FreeSpace Evictor::free_space_in(path directory) {
 }
 
 Evictor::Evictor(Identifier own_id, IDataSource::Ptr store, Peers peers, FreeSpace free_space,
-                 Settings settings, Now now)
+                 Settings settings, ClockFunction clock)
     : m_own_id(std::move(own_id))
     , m_store(present(std::move(store), "the store that holds what it lets go of"))
     , m_peers(checked_peers(std::move(peers)))
     , m_free_space(present(std::move(free_space), "a way to read the bytes free"))
     , m_settings(checked_settings(settings))
-    , m_now(present(std::move(now), "a clock"))
+    , m_clock(present(std::move(clock), "a clock"))
     , m_held(m_settings.max_storage_bytes ? m_store->size() : 0)
     , m_channel({DataStored::name, Candidates::name, HandedOff::name},
                 [this](const IMessage::Ptr& message) { _handle(message); }, log_error) {}
@@ -212,7 +212,7 @@ Evictor::~Evictor() {
 
 // Handles message, once what was stored before the grace is forgotten.
 void Evictor::_handle(const IMessage::Ptr& message) {
-    forget_before(m_stored, m_now() - m_settings.stored_grace);
+    forget_before(m_stored, m_clock() - m_settings.stored_grace);
 
     if (const auto* const stored = value_of<DataStored>(message)) {
         _stored(*stored);
@@ -228,7 +228,7 @@ void Evictor::_handle(const IMessage::Ptr& message) {
 // Keeps stored for its grace, counts it, and checks storage, with new
 // hand-offs, and a new list, allowed again.
 void Evictor::_stored(const DataStored& stored) {
-    m_stored[stored.identifier.to_string()] = m_now();
+    m_stored[stored.identifier.to_string()] = m_clock();
 
     if (m_settings.max_storage_bytes) {
         m_held += stored.size;
@@ -329,7 +329,7 @@ void Evictor::_evict() {
 // list may be asked for since the last, or the last asked for is not yet
 // overdue.
 void Evictor::_ask(uintmax_t bytes, const Identifiers& kept) {
-    const auto now = m_now();
+    const auto now = m_clock();
 
     if (!m_may_ask || (m_asked_at && now - *m_asked_at < m_settings.candidates_timeout)) {
         return;
