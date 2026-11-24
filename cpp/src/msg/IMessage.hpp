@@ -10,10 +10,11 @@ public:
 
     [[nodiscard]] virtual std::string to_string() const = 0;
 
-    IMessage() = default;
     virtual ~IMessage() = default;
 
 protected:
+    IMessage() = default;
+
     // A message is copied or moved only as its own type: through IMessage,
     // it would lose all but the IMessage part.
     IMessage(const IMessage&) = default;
