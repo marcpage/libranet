@@ -9,6 +9,8 @@
 #include <vector>
 
 #include "NodesHandler.hpp"
+#include "SeekHandler.hpp"
+#include "SignatureGuard.hpp"
 #include "http/Request.hpp"
 #include "http/Response.hpp"
 #include "identity/KnownKeys.hpp"
@@ -28,6 +30,8 @@
 #include "web/ConnectionInfo.hpp"
 #include "web/Server.hpp"
 
+using api::NodesHandler;
+using api::SeekHandler;
 using api::Service;
 using http::Request;
 using http::Response;
@@ -71,6 +75,9 @@ namespace {
 using NodesUpdated = stats::Recorder::NodesUpdated;
 using SeekUpdated = stats::Recorder::SeekUpdated;
 
+// How many connections may wait to be accepted.
+constexpr int backlog = 128;
+
 // Where the data handler is registered with the server: it takes what is
 // beneath it that the other handlers do not.
 constexpr string_view data_path = "/data";
@@ -105,6 +112,35 @@ void log_error(const string& text) {
     lErr << text;
 }
 
+// Registers handler at path with server, with guard in front of it.
+void register_guarded(Server& server, api::SignatureGuard& guard, string_view path,
+                      const Server::RequestHandler& handler) {
+    server.register_handler(path, guard.in_front_of(handler));
+}
+
+// Has the handler that serves the list message carries keep it.
+void keep(NodesHandler& nodes_handler, SeekHandler& seek_handler, SearchAnswers& answers,
+          const IMessage::Ptr& message) {
+    if (const auto* const nodes = value_of<NodesUpdated>(message)) {
+        nodes_handler.set_nodes(nodes->nodes);
+    } else if (const auto* const seek = value_of<SeekUpdated>(message)) {
+        seek_handler.set_list(seek->seek);
+    } else if (const auto* const answered = value_of<SearchAnswered>(message)) {
+        answers.add(answered->prefix, answered->results);
+    } else {
+        lWarn << "Not a list the web server serves:" << message->to_string();
+    }
+}
+
+// Has server serve until it is stopped, logging why when it stops before.
+void serve(Server& server) {
+    try {
+        server.start(backlog);
+    } catch (const exception& error) {
+        lErr << "The web server stopped:" << error;
+    }
+}
+
 } // namespace
 
 namespace api {
@@ -124,25 +160,32 @@ Service::Service(const Address& address, const IDataSource::Ptr& store,
     , m_nodes_handler(identity.id(), m_own_endpoints, settings.list_bytes,
                       settings.served_list_bytes)
     , m_lists(vector<string>{NodesUpdated::name, SeekUpdated::name, SearchAnswered::name},
-              [this](const IMessage::Ptr& message) { _keep(message); }, log_error) {
-    _register(data_path, [this](const Request& request, Response& response,
-                                ConnectionInfo& connection) {
+              [this](const IMessage::Ptr& message) {
+                  keep(m_nodes_handler, m_seek_handler, *m_answers, message);
+              },
+              log_error) {
+    register_guarded(m_server, m_guard, data_path,
+                     [this](const Request& request, Response& response,
+                            ConnectionInfo& connection) {
         m_data_handler(request, response, connection);
     });
-    _register(nodes_path, [this](const Request& request, Response& response,
-                                 ConnectionInfo& connection) {
+    register_guarded(m_server, m_guard, nodes_path,
+                     [this](const Request& request, Response& response,
+                            ConnectionInfo& connection) {
         m_nodes_handler(request, response, connection);
     });
-    _register(seek_path, [this](const Request& request, Response& response,
-                                ConnectionInfo& connection) {
+    register_guarded(m_server, m_guard, seek_path,
+                     [this](const Request& request, Response& response,
+                            ConnectionInfo& connection) {
         m_seek_handler(request, response, connection);
     });
-    _register(search_path_prefix, [this](const Request& request, Response& response,
-                                         ConnectionInfo& connection) {
+    register_guarded(m_server, m_guard, search_path_prefix,
+                     [this](const Request& request, Response& response,
+                            ConnectionInfo& connection) {
         m_search_handler(request, response, connection);
     });
     m_server_thread = thread([this] {
-        _serve();
+        serve(m_server);
     });
 }
 
@@ -166,31 +209,6 @@ const Address& Service::local_address() const noexcept {
 
 const vector<string>& Service::own_endpoints() const noexcept {
     return m_own_endpoints;
-}
-
-// Registers handler at path, with the guard in front of it.
-void Service::_register(string_view path, const Server::RequestHandler& handler) {
-    m_server.register_handler(path, m_guard.in_front_of(handler));
-}
-
-void Service::_keep(const IMessage::Ptr& message) {
-    if (const auto* const nodes = value_of<NodesUpdated>(message)) {
-        m_nodes_handler.set_nodes(nodes->nodes);
-    } else if (const auto* const seek = value_of<SeekUpdated>(message)) {
-        m_seek_handler.set_list(seek->seek);
-    } else if (const auto* const answered = value_of<SearchAnswered>(message)) {
-        m_answers->add(answered->prefix, answered->results);
-    } else {
-        lWarn << "Not a list the web server serves:" << message->to_string();
-    }
-}
-
-void Service::_serve() {
-    try {
-        m_server.start(backlog);
-    } catch (const exception& error) {
-        lErr << "The web server stopped:" << error;
-    }
 }
 
 } // namespace api

@@ -24,6 +24,7 @@ using http::Response;
 using http::ResponseCode;
 using protocol::SeekList;
 using std::invalid_argument;
+using std::mutex;
 using std::nullopt;
 using std::optional;
 using std::scoped_lock;
@@ -77,6 +78,31 @@ string sender_of(const ConnectionInfo& connection) {
     return connection.remote_address().to_string();
 }
 
+// The list the node seeks, as it is sent: body, which guard guards.
+void answer_get(mutex& guard, const string& body, Response& response) {
+    const scoped_lock lock(guard);
+
+    response.set_status_code(Status::Ok);
+    response.headers().set("Content-Type", string(json_content_type));
+    response.set_body(body);
+}
+
+// Takes what a peer seeks, which nothing here acts on yet, so that the peer
+// is answered as the specification asks (HttpApi §10.7). The list is
+// decompressed to no more than list_bytes.
+void answer_post(size_t list_bytes, const Request& request, Response& response,
+                 const ConnectionInfo& connection) {
+    const auto list = posted_list(request, list_bytes, response, connection);
+
+    if (!list) {
+        return;
+    }
+
+    lInfo << sender_of(connection) << "seeks" << list->data().size() << "identifiers and"
+          << list->search().size() << "prefixes";
+    response.set_status_code(Status::Accepted);
+}
+
 } // namespace
 
 namespace api {
@@ -103,35 +129,12 @@ void SeekHandler::operator()(const Request& request, Response& response,
     const auto method = request.method();
 
     if ("GET" == method) {
-        _get(response);
+        answer_get(m_mutex, m_body, response);
     } else if ("POST" == method) {
-        _post(request, response, connection);
+        answer_post(m_list_bytes, request, response, connection);
     } else {
         Problem::answer_method_not_allowed(request, allowed_methods, response);
     }
-}
-
-void SeekHandler::_get(Response& response) const {
-    const scoped_lock lock(m_mutex);
-
-    response.set_status_code(Status::Ok);
-    response.headers().set("Content-Type", string(json_content_type));
-    response.set_body(m_body);
-}
-
-// Takes what a peer seeks, which nothing here acts on yet, so that the peer
-// is answered as the specification asks (HttpApi §10.7).
-void SeekHandler::_post(const Request& request, Response& response,
-                        const ConnectionInfo& connection) const {
-    const auto list = posted_list(request, m_list_bytes, response, connection);
-
-    if (!list) {
-        return;
-    }
-
-    lInfo << sender_of(connection) << "seeks" << list->data().size() << "identifiers and"
-          << list->search().size() << "prefixes";
-    response.set_status_code(Status::Accepted);
 }
 
 } // namespace api

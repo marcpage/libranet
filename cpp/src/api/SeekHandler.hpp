@@ -41,10 +41,6 @@ private:
     std::size_t m_served_bytes;
     mutable std::mutex m_mutex;
     std::string m_body; // Guarded by m_mutex
-
-    void _get(http::Response& response) const;
-    void _post(const http::Request& request, http::Response& response,
-               const web::ConnectionInfo& connection) const;
 };
 
 } // namespace api

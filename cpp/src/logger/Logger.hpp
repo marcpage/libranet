@@ -73,7 +73,6 @@ private:
     std::string m_text;
 
     Logger& _append(std::string_view value);
-    void _write() const;
 };
 
 template<typename Number, typename>

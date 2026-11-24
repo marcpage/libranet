@@ -35,6 +35,7 @@ using stats::NodeAddresses;
 using stats::Recorder;
 using std::invalid_argument;
 using std::map;
+using std::mutex;
 using std::nullopt;
 using std::optional;
 using std::scoped_lock;
@@ -113,6 +114,40 @@ map<string, Source> sources_of(const NodeList& sent, const NodeList& received,
     return sources;
 }
 
+// The list the node serves, as it is sent: served, which guard guards.
+void answer_get(mutex& guard, const string& served, Response& response) {
+    string body;
+
+    {
+        const scoped_lock lock(guard);
+
+        body = served;
+    }
+
+    response.set_status_code(Status::Ok);
+    response.headers().set("Content-Type", string(json_content_type));
+    response.set_body(std::move(body));
+}
+
+// Tells the node's other parts of the list a peer sent, decompressed to no
+// more than list_bytes, resolved by the address its connection came from;
+// or says why it is not one.
+void answer_post(size_t list_bytes, const Request& request, Response& response,
+                 const ConnectionInfo& connection) {
+    const auto sent = list_in(request, response, connection, list_bytes);
+
+    if (!sent) {
+        return;
+    }
+
+    auto received = sent->resolved(connection.remote_address().host());
+    auto sources = sources_of(*sent, received, connection.node());
+
+    Channel::post(Recorder::NodesReceived::name,
+                  Recorder::NodesReceived{std::move(received), std::move(sources)});
+    response.set_status_code(Status::Accepted);
+}
+
 } // namespace
 
 namespace api {
@@ -142,45 +177,12 @@ void NodesHandler::operator()(const Request& request, Response& response,
     const auto method = request.method();
 
     if ("GET" == method) {
-        _get(response);
+        answer_get(m_mutex, m_body, response);
     } else if ("POST" == method) {
-        _post(request, response, connection);
+        answer_post(m_list_bytes, request, response, connection);
     } else {
         Problem::answer_method_not_allowed(request, allowed_methods, response);
     }
-}
-
-// The list the node serves, as it is sent.
-void NodesHandler::_get(Response& response) const {
-    string body;
-
-    {
-        const scoped_lock lock(m_mutex);
-
-        body = m_body;
-    }
-
-    response.set_status_code(Status::Ok);
-    response.headers().set("Content-Type", string(json_content_type));
-    response.set_body(std::move(body));
-}
-
-// Tells the node's other parts of the list a peer sent, resolved by the
-// address its connection came from; or says why it is not one.
-void NodesHandler::_post(const Request& request, Response& response,
-                         const ConnectionInfo& connection) const {
-    const auto sent = list_in(request, response, connection, m_list_bytes);
-
-    if (!sent) {
-        return;
-    }
-
-    auto received = sent->resolved(connection.remote_address().host());
-    auto sources = sources_of(*sent, received, connection.node());
-
-    Channel::post(Recorder::NodesReceived::name,
-                  Recorder::NodesReceived{std::move(received), std::move(sources)});
-    response.set_status_code(Status::Accepted);
 }
 
 } // namespace api

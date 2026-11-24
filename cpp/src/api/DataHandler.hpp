@@ -56,10 +56,6 @@ private:
     Seconds m_retry_after;
     IsHeldOff m_is_held_off;
     std::size_t m_body_bytes;
-
-    void _get(const storage::Identifier& identifier, http::Response& response) const;
-    void _put(const storage::Identifier& identifier, const http::Request& request,
-              http::Response& response, const web::ConnectionInfo& connection) const;
 };
 
 } // namespace api

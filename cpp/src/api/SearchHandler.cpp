@@ -135,6 +135,46 @@ shared_ptr<SearchAnswers> checked(shared_ptr<SearchAnswers> answers) {
     return answers;
 }
 
+// What is known now that matches prefix, best first, and tells the node's
+// other parts of the search, so that they search its peers too, as far as
+// the node that asked allows.
+void answer_get(SearchAnswers& answers, const HashPrefix& prefix, const Request& request,
+                Response& response, const ConnectionInfo& connection) {
+    const auto& node = connection.node();
+
+    response.set_status_code(Status::Ok);
+    SearchResults(answers.answer(prefix)).answer(response);
+    Channel::post(SearchRequested::name,
+                  SearchRequested{prefix, node, node ? relays_of(request) : 0});
+}
+
+// Tells the node's other parts what the node whose signature the
+// connection carries named for prefix, decompressed to no more than
+// decompressed_bytes; or says why not.
+void answer_post(size_t decompressed_bytes, const HashPrefix& prefix, const Request& request,
+                 Response& response, const ConnectionInfo& connection) {
+    const auto& node = connection.node();
+
+    if (!node) {
+        Problem(Problem::Type::SignatureRequired, Status::Unauthorized,
+                "This request must carry the sending node's verified signature.")
+            .answer(response);
+        return;
+    }
+
+    const auto named = named_in(request, decompressed_bytes, response, connection);
+
+    if (!named) {
+        return;
+    }
+
+    if (!named->results().empty()) {
+        Channel::post(SearchAnswered::name, SearchAnswered{prefix, *node, named->results()});
+    }
+
+    response.set_status_code(Status::Accepted);
+}
+
 } // namespace
 
 namespace api {
@@ -166,49 +206,10 @@ void SearchHandler::operator()(const Request& request, Response& response,
     }
 
     if ("GET" == method) {
-        _get(*prefix, request, response, connection);
+        answer_get(*m_answers, *prefix, request, response, connection);
     } else {
-        _post(*prefix, request, response, connection);
+        answer_post(m_decompressed_bytes, *prefix, request, response, connection);
     }
-}
-
-// What is known now that matches prefix, best first, and tells the node's
-// other parts of the search, so that they search its peers too, as far as
-// the node that asked allows.
-void SearchHandler::_get(const HashPrefix& prefix, const Request& request, Response& response,
-                         const ConnectionInfo& connection) const {
-    const auto& node = connection.node();
-
-    response.set_status_code(Status::Ok);
-    SearchResults(m_answers->answer(prefix)).answer(response);
-    Channel::post(SearchRequested::name,
-                  SearchRequested{prefix, node, node ? relays_of(request) : 0});
-}
-
-// Tells the node's other parts what the node whose signature the
-// connection carries named for prefix; or says why not.
-void SearchHandler::_post(const HashPrefix& prefix, const Request& request, Response& response,
-                          const ConnectionInfo& connection) const {
-    const auto& node = connection.node();
-
-    if (!node) {
-        Problem(Problem::Type::SignatureRequired, Status::Unauthorized,
-                "This request must carry the sending node's verified signature.")
-            .answer(response);
-        return;
-    }
-
-    const auto named = named_in(request, m_decompressed_bytes, response, connection);
-
-    if (!named) {
-        return;
-    }
-
-    if (!named->results().empty()) {
-        Channel::post(SearchAnswered::name, SearchAnswered{prefix, *node, named->results()});
-    }
-
-    response.set_status_code(Status::Accepted);
 }
 
 } // namespace api

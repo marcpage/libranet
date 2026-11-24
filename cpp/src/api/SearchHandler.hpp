@@ -5,7 +5,6 @@
 
 #include "http/Request.hpp"
 #include "http/Response.hpp"
-#include "storage/HashPrefix.hpp"
 #include "storage/SearchAnswers.hpp"
 #include "types/Constants.hpp"
 #include "web/ConnectionInfo.hpp"
@@ -37,11 +36,6 @@ public:
 private:
     std::shared_ptr<storage::SearchAnswers> m_answers;
     std::size_t m_decompressed_bytes;
-
-    void _get(const storage::HashPrefix& prefix, const http::Request& request,
-              http::Response& response, const web::ConnectionInfo& connection) const;
-    void _post(const storage::HashPrefix& prefix, const http::Request& request,
-               http::Response& response, const web::ConnectionInfo& connection) const;
 };
 
 } // namespace api

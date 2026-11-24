@@ -57,7 +57,6 @@ private:
     msg::AsyncChannel m_channel;
 
     void _handle(const msg::IMessage::Ptr& message);
-    [[nodiscard]] Stored _take_waiting(const msg::IMessage::Ptr& first);
 };
 
 } // namespace peer

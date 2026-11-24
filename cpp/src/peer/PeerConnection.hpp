@@ -99,7 +99,6 @@ private:
     void _progressed();
     [[nodiscard]] std::promise<http::Response> _take_oldest();
     void _close_for(const std::exception_ptr& failure, bool turned_away = false);
-    void _end_connection() noexcept;
     void _fail_waiting();
 };
 

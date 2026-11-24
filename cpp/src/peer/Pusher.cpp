@@ -252,6 +252,31 @@ size_t put_all(const Bound& bound, const IDataSource& store, size_t run_length) 
     return taken;
 }
 
+// The new content first announces, and what else is waiting to be pushed
+// behind it on channel, run_length in all at most. Nothing is waited for, so
+// content is taken together only when it was stored while the last was
+// pushed.
+Pusher::Stored take_waiting(Channel& channel, size_t run_length, const IMessage::Ptr& first) {
+    Pusher::Stored stored;
+    optional<IMessage::Ptr> next = first;
+
+    while (next) {
+        if (const auto* const new_content = value_of<DataStored>(*next)) {
+            stored.push_back(*new_content);
+        } else if (*next) {
+            lWarn << "Not new content to push:" << (*next)->to_string();
+        }
+
+        if (stored.size() >= run_length) {
+            break;
+        }
+
+        next = channel.next_message(Channel::Milliseconds::zero());
+    }
+
+    return stored;
+}
+
 } // namespace
 
 namespace peer {
@@ -283,36 +308,11 @@ size_t Pusher::push(const Stored& stored) const {
 }
 
 void Pusher::_handle(const IMessage::Ptr& message) {
-    const auto stored = _take_waiting(message);
+    const auto stored = take_waiting(m_channel, m_run_length, message);
 
     if (!stored.empty()) {
         (void)push(stored);
     }
-}
-
-// The new content first announces, and what else is waiting to be pushed
-// behind it, a run's length in all at most. Nothing is waited for, so
-// content is taken together only when it was stored while the last was
-// pushed.
-Pusher::Stored Pusher::_take_waiting(const IMessage::Ptr& first) {
-    Stored stored;
-    optional<IMessage::Ptr> next = first;
-
-    while (next) {
-        if (const auto* const new_content = value_of<DataStored>(*next)) {
-            stored.push_back(*new_content);
-        } else if (*next) {
-            lWarn << "Not new content to push:" << (*next)->to_string();
-        }
-
-        if (stored.size() >= m_run_length) {
-            break;
-        }
-
-        next = m_channel.next_message(Channel::Milliseconds::zero());
-    }
-
-    return stored;
 }
 
 } // namespace peer

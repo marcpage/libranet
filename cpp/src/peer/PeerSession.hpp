@@ -2,7 +2,6 @@
 
 #include <memory>
 #include <stdexcept>
-#include <string_view>
 #include <vector>
 
 #include "PeerConnection.hpp"
@@ -60,8 +59,6 @@ private:
     storage::Identifier m_node_id;
     identity::MessageSigner m_signer;
     identity::MessageVerifier m_verifier;
-
-    void _check(const http::Response& answer, std::string_view asked);
 };
 
 } // namespace peer

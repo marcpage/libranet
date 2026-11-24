@@ -238,6 +238,17 @@ private:
     Read m_read;
 };
 
+// Ends the connection on socket both ways, so that a thread sending or
+// reading it stops.
+void end_connection(ISocket& socket) noexcept {
+    try {
+        socket.shutdown();
+        // The node may have ended it already.
+        // NOLINTNEXTLINE(bugprone-empty-catch)
+    } catch (const std::exception&) {
+    }
+}
+
 } // namespace
 
 namespace peer {
@@ -320,7 +331,7 @@ void PeerConnection::close() {
 
     _close_for(make_exception_ptr(
         Closed("The connection to " + m_address.to_string() + " was closed")));
-    _end_connection();
+    end_connection(*m_socket);
 
     if (m_sender.joinable()) {
         m_sender.join();
@@ -386,7 +397,7 @@ void PeerConnection::_read_all() {
         _close_for(std::current_exception());
     }
 
-    _end_connection();
+    end_connection(*m_socket);
     _fail_waiting();
 }
 
@@ -500,17 +511,6 @@ void PeerConnection::_close_for(const exception_ptr& failure, bool turned_away) 
     }
 
     m_sending.notify_all();
-}
-
-// Ends the connection both ways, so that a thread sending or reading it
-// stops.
-void PeerConnection::_end_connection() noexcept {
-    try {
-        m_socket->shutdown();
-        // The node may have ended it already.
-        // NOLINTNEXTLINE(bugprone-empty-catch)
-    } catch (const std::exception&) {
-    }
 }
 
 // Fails every request still waiting, once the reader has stopped: the

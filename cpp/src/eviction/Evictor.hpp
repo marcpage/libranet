@@ -148,10 +148,6 @@ private:
     void _hand_off(const Held& held);
     void _delete(const Held& held, const storage::Identifier& holder);
     void _forget(const Held& held);
-    [[nodiscard]] bool _passes_over(const storage::Identifier& identifier,
-                                    const Identifiers& kept) const;
-    [[nodiscard]] Identifiers _kept() const;
-    [[nodiscard]] std::uintmax_t _excess(std::uintmax_t headroom) const;
 };
 
 } // namespace eviction
