@@ -168,16 +168,17 @@ class StandInNode {
 public:
     explicit StandInNode(Answers answers);
     ~StandInNode();
-    StandInNode(const StandInNode&) = delete;
-    StandInNode& operator=(const StandInNode&) = delete;
-    StandInNode(StandInNode&&) = delete;
-    StandInNode& operator=(StandInNode&&) = delete;
 
     [[nodiscard]] Address address() const;
     // The requests it was sent, in the order they came.
     [[nodiscard]] std::vector<Request> requests() const;
     // The method and target of each request it was sent, in order.
     [[nodiscard]] std::vector<std::string> asked() const;
+
+    StandInNode(const StandInNode&) = delete;
+    StandInNode& operator=(const StandInNode&) = delete;
+    StandInNode(StandInNode&&) = delete;
+    StandInNode& operator=(StandInNode&&) = delete;
 
 private:
     ISocket::Ptr m_listener;

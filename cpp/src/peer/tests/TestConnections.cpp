@@ -195,10 +195,6 @@ class StandInNode {
 public:
     explicit StandInNode(const NodeIdentity& identity);
     ~StandInNode();
-    StandInNode(const StandInNode&) = delete;
-    StandInNode& operator=(const StandInNode&) = delete;
-    StandInNode(StandInNode&&) = delete;
-    StandInNode& operator=(StandInNode&&) = delete;
 
     [[nodiscard]] std::string endpoint() const;
     // The requests it was sent, in the order they came.
@@ -209,6 +205,11 @@ public:
     [[nodiscard]] std::size_t accepted() const;
     // Ends the connection it is serving, if any.
     void hang_up();
+
+    StandInNode(const StandInNode&) = delete;
+    StandInNode& operator=(const StandInNode&) = delete;
+    StandInNode(StandInNode&&) = delete;
+    StandInNode& operator=(StandInNode&&) = delete;
 
 private:
     const NodeIdentity* m_identity;

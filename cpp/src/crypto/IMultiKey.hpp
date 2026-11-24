@@ -25,10 +25,11 @@ public:
     [[nodiscard]] virtual std::string id() const = 0;
 
     virtual ~IMultiKey() = default;
-    IMultiKey(const IMultiKey&) = delete;
-    IMultiKey& operator=(const IMultiKey&) = delete;
     IMultiKey(IMultiKey&&) noexcept = default;
     IMultiKey& operator=(IMultiKey&&) noexcept = default;
+
+    IMultiKey(const IMultiKey&) = delete;
+    IMultiKey& operator=(const IMultiKey&) = delete;
 
 protected:
     IMultiKey() = default;

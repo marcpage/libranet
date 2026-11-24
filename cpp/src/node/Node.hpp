@@ -80,15 +80,17 @@ public:
     // its key, or listen, and db::SqliteError when it cannot open its
     // database.
     explicit Node(const SettingsFile& settings, const std::vector<std::string>& seeds = {});
-    ~Node() = default;
-    Node(const Node&) = delete;
-    Node& operator=(const Node&) = delete;
-    Node(Node&&) = delete;
-    Node& operator=(Node&&) = delete;
 
     // The address the node listens on, with the port the system picked when
     // the settings left that to it.
     [[nodiscard]] const net::Address& local_address() const noexcept;
+
+    ~Node() = default;
+
+    Node(const Node&) = delete;
+    Node& operator=(const Node&) = delete;
+    Node(Node&&) = delete;
+    Node& operator=(Node&&) = delete;
 
 private:
     // What the settings and the seeds give each part.

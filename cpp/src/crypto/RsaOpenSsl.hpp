@@ -40,10 +40,11 @@ public:
     [[nodiscard]] std::string id() const override;
 
     ~RsaOpenSsl() override = default;
-    RsaOpenSsl(const RsaOpenSsl&) = delete;
-    RsaOpenSsl& operator=(const RsaOpenSsl&) = delete;
     RsaOpenSsl(RsaOpenSsl&& other) noexcept = default;
     RsaOpenSsl& operator=(RsaOpenSsl&& other) noexcept = default;
+
+    RsaOpenSsl(const RsaOpenSsl&) = delete;
+    RsaOpenSsl& operator=(const RsaOpenSsl&) = delete;
 
 private:
     OpenSslKey m_key;

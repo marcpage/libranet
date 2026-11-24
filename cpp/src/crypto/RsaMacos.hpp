@@ -36,10 +36,11 @@ public:
     [[nodiscard]] std::string id() const override;
 
     ~RsaMacos() override = default;
-    RsaMacos(const RsaMacos&) = delete;
-    RsaMacos& operator=(const RsaMacos&) = delete;
     RsaMacos(RsaMacos&& other) noexcept = default;
     RsaMacos& operator=(RsaMacos&& other) noexcept = default;
+
+    RsaMacos(const RsaMacos&) = delete;
+    RsaMacos& operator=(const RsaMacos&) = delete;
 
 private:
     CFObject<SecKeyRef> m_private_key;

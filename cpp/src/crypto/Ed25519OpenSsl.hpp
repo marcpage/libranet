@@ -41,11 +41,13 @@ public:
 
     Ed25519OpenSsl();
     Ed25519OpenSsl(Key key, bool has_private);
-    Ed25519OpenSsl(const Ed25519OpenSsl&) = delete;
-    Ed25519OpenSsl& operator=(const Ed25519OpenSsl&) = delete;
+
     Ed25519OpenSsl(Ed25519OpenSsl&&) noexcept = default;
     Ed25519OpenSsl& operator=(Ed25519OpenSsl&&) noexcept = default;
     ~Ed25519OpenSsl() override = default;
+
+    Ed25519OpenSsl(const Ed25519OpenSsl&) = delete;
+    Ed25519OpenSsl& operator=(const Ed25519OpenSsl&) = delete;
 
 private:
     using MessageContext = OpenSslObject<EVP_MD_CTX, EVP_MD_CTX_free>;

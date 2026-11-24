@@ -47,12 +47,6 @@ public:
     // ttl that is not more than zero, or held or clock with no function.
     SearchAnswers(Held held, std::size_t min_bits, Milliseconds ttl,
                   ClockFunction clock = &Clock::now);
-    ~SearchAnswers() = default;
-    // Its mutex is neither copied nor moved.
-    SearchAnswers(const SearchAnswers&) = delete;
-    SearchAnswers& operator=(const SearchAnswers&) = delete;
-    SearchAnswers(SearchAnswers&&) = delete;
-    SearchAnswers& operator=(SearchAnswers&&) = delete;
 
     // The answer to a search for prefix: the one kept, or else a new one,
     // of what the node holds.
@@ -62,6 +56,14 @@ public:
     // match it, as a peer may hold its answers to fewer bits. When no answer
     // is kept, one is made first, of what the node holds.
     void add(const HashPrefix& prefix, const std::vector<Identifier>& named);
+
+    ~SearchAnswers() = default;
+
+    // Its mutex is neither copied nor moved.
+    SearchAnswers(const SearchAnswers&) = delete;
+    SearchAnswers& operator=(const SearchAnswers&) = delete;
+    SearchAnswers(SearchAnswers&&) = delete;
+    SearchAnswers& operator=(SearchAnswers&&) = delete;
 
 private:
     struct Answer {

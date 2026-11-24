@@ -80,11 +80,6 @@ public:
     // Stops serving: ends every connection, and waits for the threads
     // serving them and the lists.
     ~Service();
-    // Its threads hold this object, so it is neither copied nor moved.
-    Service(const Service&) = delete;
-    Service& operator=(const Service&) = delete;
-    Service(Service&&) = delete;
-    Service& operator=(Service&&) = delete;
 
     // The address it listens on, with the port the system picked when the
     // address it was given left that to it.
@@ -93,6 +88,12 @@ public:
     // The endpoints its node list names the node at until it is given
     // another, which the node's other parts name it at too.
     [[nodiscard]] const std::vector<std::string>& own_endpoints() const noexcept;
+
+    // Its threads hold this object, so it is neither copied nor moved.
+    Service(const Service&) = delete;
+    Service& operator=(const Service&) = delete;
+    Service(Service&&) = delete;
+    Service& operator=(Service&&) = delete;
 
 private:
     // The connections the system queues until the server takes them.
