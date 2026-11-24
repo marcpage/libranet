@@ -22,44 +22,31 @@
 
 namespace web {
 
-// An HTTP/1.1 server. It serves each connection on a thread of its own, up
-// to a limit, and keeps it open after each answer for the next request, so
-// that requests sent without waiting for their answers are answered in the
-// order they came. It closes a connection that sends nothing for a while;
-// after an answer, when the request or the answer says ConnectionInfo: close, the
-// request is HTTP/1.0, or the handler had the ConnectionInfo closed; and after
-// answering a request it cannot read, which leaves where the next one starts
-// in doubt. Each answer gives the length of its body, and names the request
-// it answers, its path and query, in X-Request-Path.
+// An HTTP/1.1 server, serving each connection on a thread of its own and
+// keeping it open for the next request. Each answer names the request it
+// answers, its path and query, in X-Request-Path.
 class Server {
 public:
     using RequestHandler = std::function<void(const http::Request& req, http::Response& res,
                                               ConnectionInfo& connection)>;
 
-    // Each limit's default: four times the 32 connections a Python node keeps
-    // to its peers; a minute, longer than a peer waits between reads of the
-    // seek list (30 seconds); as many bytes as the Python node takes in a
-    // line; and the largest a block can be, 1 MiB.
+    // Four times the 32 connections a Python node keeps to its peers; longer
+    // than a peer waits between reads of the seek list (30 seconds); as many
+    // bytes as the Python node takes in a line; and the largest block, 1 MiB.
     static constexpr std::size_t default_connections = 128;
     static constexpr std::chrono::milliseconds default_idle{std::chrono::seconds(60)};
     static constexpr std::size_t default_head_bytes = 64 * types::Kilobyte;
     static constexpr std::size_t default_body_bytes = 1 * types::Megabyte;
 
-    // How much a server takes on.
     struct Limits {
-        // The connections served at once, at least one. Those beyond it wait
-        // to be taken until one closes.
+        // At least one. Those beyond it wait until one closes.
         std::size_t connections{default_connections};
-        // How long a connection may go without sending or taking a byte
-        // before it is closed; zero for no limit.
+        // Without sending or taking a byte; zero for no limit.
         std::chrono::milliseconds idle{default_idle};
-        // The most bytes a request's line and headers may take, line ends
-        // included. A request line that does not fit is answered 414 URI Too
-        // Long, and headers that do not are answered 431 Request Header
-        // Fields Too Large.
+        // A request's line and headers, line ends included: beyond it, 414 or
+        // 431.
         std::size_t head_bytes{default_head_bytes};
-        // The largest body a request may have. A larger one is answered 413
-        // Payload Too Large, and not read.
+        // A larger body is answered 413, and not read.
         std::size_t body_bytes{default_body_bytes};
     };
 
@@ -67,19 +54,16 @@ public:
     // Throws std::invalid_argument if limits allows no connection.
     Server(net::Address address, const Limits& limits);
 
-    // Handlers are registered before start(), and are called from the threads
-    // serving connections, several at once. Each is given the ConnectionInfo the
-    // request came on, which only the thread serving it uses.
+    // Before start(). Handlers are called from the threads serving
+    // connections, several at once.
     void register_handler(std::string_view path, RequestHandler handler);
     [[nodiscard]] net::Address local_address() const;
-    // Listens, and serves the clients that connect, until stop() is called;
-    // then stops listening, ends every connection, waits for the threads
-    // serving them, and returns. Returns at once if stop() was called before
+    // Serves until stop() is called, then ends every connection and waits for
+    // the threads serving them. Returns at once if stop() was called before
     // it.
     void start(int backlog);
-    // Makes start() return, and may be called from any thread while it runs,
-    // a handler's among them. Every connection is ended, so that a client
-    // sending nothing does not keep it waiting.
+    // May be called from any thread while start() runs, a handler's among
+    // them.
     void stop();
 
     ~Server() = default;
@@ -91,8 +75,6 @@ public:
     Server& operator=(Server&&) = delete;
 
 private:
-    // A client being served: the socket of its connection, and the thread
-    // serving it.
     struct Client {
         net::ISocket::Ptr socket; // Null once the thread has closed it
         std::thread thread;

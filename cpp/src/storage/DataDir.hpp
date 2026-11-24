@@ -23,10 +23,9 @@
 
 namespace storage {
 
-// Each body is kept as it was put, in a file named by its identifier's hash,
-// in a directory named by the hash's first three digits, in a directory
-// named by the algorithm. A body is written to a file of its own beside
-// where it goes, then renamed into place, so that no reader sees one half
+// Each body is kept as it was put, in a file named by its hash, in directories
+// named by the algorithm and the hash's first digits. A body is written beside
+// where it goes and renamed into place, so that no reader sees one half
 // written.
 class DataDir : public IDataSource {
 public:
@@ -53,7 +52,6 @@ public:
     DataDir& operator=(DataDir&&) = delete;
 
 private:
-    // A body held, and how many bytes it takes.
     struct Held {
         Identifier identifier;
         std::uintmax_t size = 0;

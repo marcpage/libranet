@@ -11,32 +11,26 @@
 
 #include "Database.hpp"
 
-// SQLite's prepared statement, which only Statement.cpp, where SQLite is
-// included, uses as more than a pointer.
+// Used as more than a pointer only in Statement.cpp, where SQLite is included.
 struct sqlite3_stmt;
 
 namespace db {
 
-// A statement of SQL, prepared on a Database that must outlive it. Values
-// are bound to its parameters in order, from the first; it steps through
-// the rows it gives; and the columns of the row it is on are read by their
-// index, from 0. It is finalized when it goes. Built on SQLite.
+// A statement of SQL, prepared on a Database that must outlive it. Parameters
+// are bound in order, and columns read by their index, from 0.
 class Statement {
 public:
     using Data = std::vector<std::byte>;
     using Time = std::chrono::system_clock::time_point;
 
-    // Prepares the one statement that sql holds on database. Throws
-    // SqliteError for SQL that SQLite cannot prepare, as when it names a
-    // table that is not there; and std::invalid_argument for SQL that holds
-    // no statement, or anything but whitespace after its first.
+    // Throws SqliteError for SQL that SQLite cannot prepare, and
+    // std::invalid_argument for SQL that holds other than one statement.
     Statement(Database& database, std::string_view sql);
 
-    // Each binds value to the next parameter, and returns this statement, so
-    // that binds chain. Each throws std::out_of_range when every parameter
-    // is bound already, std::logic_error once the statement has stepped
-    // and is not yet reset, and SqliteError when SQLite cannot bind the
-    // value, as when it is longer than SQLite allows.
+    // Each binds the next parameter, so that binds chain. Each throws
+    // std::out_of_range when every parameter is bound already,
+    // std::logic_error once the statement has stepped and is not yet reset,
+    // and SqliteError when SQLite cannot bind the value.
     Statement& bind(std::int64_t value);
     // Also throws std::invalid_argument for NaN, which SQLite would hold as
     // NULL.
@@ -51,18 +45,15 @@ public:
     template<typename Type>
     Statement& bind(const std::optional<Type>& value);
 
-    // Runs the statement on to its next row: whether there is one, or false
-    // once it has run to its end. Throws std::logic_error while a parameter
-    // is unbound, and SqliteError when SQLite fails to run it, as when a
-    // constraint fails.
+    // Whether there is a next row. Throws std::logic_error while a parameter
+    // is unbound, and SqliteError when SQLite fails to run it.
     bool step();
-    // Readies the statement to run again, with its parameters unbound.
+    // With its parameters unbound.
     void reset() noexcept;
 
-    // The value of column in the row the statement is on. Each throws
-    // std::out_of_range when the statement is on no row, or its row has no
-    // such column; and each but is_null() throws std::domain_error when the
-    // column holds another kind of value, NULL among them.
+    // Each throws std::out_of_range when the statement is on no row, or its
+    // row has no such column; and each but is_null() throws std::domain_error
+    // when the column holds another kind of value, NULL among them.
     [[nodiscard]] bool is_null(int column) const;
     [[nodiscard]] std::int64_t integer(int column) const;
     [[nodiscard]] double real(int column) const;
@@ -71,11 +62,9 @@ public:
     // The time an integer column holds, as bind() holds one.
     [[nodiscard]] Time time(int column) const;
 
-    // The label of column in the rows the statement gives, whether it is on
-    // one or not: the name its AS clause gives it, or without one, a name
-    // SQLite picks, which may change from one release of SQLite to the
-    // next. Throws std::out_of_range when the statement gives no such
-    // column, and std::bad_alloc when SQLite runs out of memory.
+    // Its AS clause's name, or without one, a name SQLite picks, which may
+    // change from one release to the next. Throws std::out_of_range for no
+    // such column.
     [[nodiscard]] std::string label(int column) const;
 
     ~Statement() = default;
@@ -86,13 +75,12 @@ public:
     Statement& operator=(const Statement&) = delete;
 
 private:
-    // Finalizes a statement SQLite prepared.
     struct Finalizer {
         void operator()(sqlite3_stmt* statement) const noexcept;
     };
 
     std::unique_ptr<sqlite3_stmt, Finalizer> m_statement;
-    // The parameter the next value is bound to: SQLite numbers them from 1.
+    // SQLite numbers them from 1.
     int m_next_parameter = 1;
 };
 

@@ -9,26 +9,18 @@
 
 namespace identity {
 
-// Signs what the node sends as the node (HTTP API §11): adds the
-// Content-Digest of a message's body, when it has one, then a signature
-// labelled libranet, in Signature-Input and Signature, covering what
-// SignatureBase::of() covers. The signature says it was made at the time clock
-// gives, and names the node's id as its keyid. Each replaces a field of its
-// name the message has, as the Python node's MessageSigner does. Nothing
-// changes once it is made, so any thread may use it, if clock may be called
-// from any.
+// Signs what the node sends as the node (HTTP API §11), as the Python node's
+// MessageSigner does. Any thread may use it, if clock may be called from any.
 class MessageSigner {
 public:
     using Clock = std::chrono::system_clock;
     using ClockFunction = std::function<Clock::time_point()>;
 
-    // Signs with identity, which must outlive it. Throws
-    // std::invalid_argument for clock with no function.
+    // identity must outlive it. Throws std::invalid_argument for no clock.
     explicit MessageSigner(const NodeIdentity& identity, ClockFunction clock = &Clock::now);
 
-    // Each throws std::invalid_argument, as SignatureBase::of() does, for a
-    // message it cannot sign: a request whose target has no path, or an
-    // answer whose status is not three digits.
+    // Each throws std::invalid_argument for a message SignatureBase::of()
+    // cannot sign.
     void sign(http::Request& request) const;
     void sign(http::Response& response) const;
 

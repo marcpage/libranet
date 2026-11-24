@@ -7,10 +7,8 @@
 
 namespace io {
 
-// A file written whole or not at all. What is written to writable_path(), a
-// file of its own beside the file, is renamed into place by commit(), so
-// that no reader sees it half written, and is removed when this goes
-// without commit(), as when writing it threw.
+// A file written whole or not at all: what is written to writable_path() is
+// renamed into place by commit(), and removed when this goes without it.
 class SafeWriteFile {
 public:
     // Makes the directories file is to be in. Throws std::runtime_error when
@@ -18,23 +16,19 @@ public:
     explicit SafeWriteFile(std::filesystem::path file);
     ~SafeWriteFile();
 
-    // Whether file is one written to before it is committed, or one a crash
-    // left behind.
+    // Or one a crash left behind.
     [[nodiscard]] static bool is_partial(const std::filesystem::path& file);
 
-    // Where to write the file before commit(): beside it, so that the rename
-    // does not cross filesystems, and named with a random number, so that
-    // two writes of the same file at once do not write the same one.
+    // Beside the file, so that the rename does not cross filesystems, and
+    // named at random, so that two writes of the same file do not collide.
     [[nodiscard]] const std::filesystem::path& writable_path() const noexcept;
 
-    // Writes contents to writable_path() and commit() unless exception thrown
+    // And commit()s it.
     void write(std::string_view contents);
     void write(const std::vector<std::byte>& contents);
 
-    // Renames what was written to writable_path() to the file, in place of
-    // any there. Throws std::logic_error when it is already committed, and
-    // std::runtime_error when it cannot be renamed, as when nothing was
-    // written or a directory is in its place.
+    // Throws std::logic_error when it is already committed, and
+    // std::runtime_error when it cannot be renamed.
     void commit();
 
     // Each would leave two to remove the one file written.

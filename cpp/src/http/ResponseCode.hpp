@@ -80,16 +80,13 @@ public:
     // NOLINTNEXTLINE(*-explicit-constructor)
     ResponseCode(Status status, std::optional<std::string> custom_reason = std::nullopt);
 
-    // Construct directly from raw integer (e.g., 200)
     explicit ResponseCode(std::uint16_t code,
                           std::optional<std::string> custom_reason = std::nullopt);
 
-    // Core Accessors
     [[nodiscard]] Status status() const noexcept;
     [[nodiscard]] std::uint16_t code() const noexcept;
     [[nodiscard]] std::string_view reason_phrase() const noexcept;
 
-    // Helpers
     [[nodiscard]] bool is_informational() const noexcept; // 1xx
     [[nodiscard]] bool is_success() const noexcept;       // 2xx
     [[nodiscard]] bool is_redirection() const noexcept;   // 3xx
@@ -100,7 +97,6 @@ public:
     static std::string_view default_reason_phrase(Status status) noexcept;
     static std::string_view default_reason_phrase(std::uint16_t code) noexcept;
 
-    // Comparisons
     friend bool operator==(const ResponseCode& left, const ResponseCode& right) noexcept;
     friend bool operator!=(const ResponseCode& left, const ResponseCode& right) noexcept;
     friend bool operator==(const ResponseCode& left, Status right) noexcept;
