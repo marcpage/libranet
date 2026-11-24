@@ -331,4 +331,114 @@ TEST(UrlTest, WrittenAsRead) {
     EXPECT_EQ(Url::parse("http://[::1]:8080/").value().host(), "::1");
 }
 
+namespace {
+
+// Whether first is not second, and comes before it.
+bool comes_before(const Url& first, const Url& second) {
+    return first != second && first < second && !(second < first);
+}
+
+} // namespace
+
+// Urls are the same when each part is, schemes and hosts without regard to
+// case.
+TEST(UrlTest, SchemeAndHostComparedWithoutCase) {
+    const Url url = Url::parse("http://user:pass@example.com:8080/path?a=1#top").value();
+    const Url other_case = Url::parse("HTTP://user:pass@EXAMPLE.com:8080/path?a=1#top").value();
+
+    EXPECT_EQ(url, other_case);
+    EXPECT_FALSE(url < other_case);
+    EXPECT_FALSE(other_case < url);
+}
+
+// Urls are ordered by the first part that is not the same: the scheme,
+// username, password, host, port, path, query, then fragment.
+TEST(UrlTest, OrderedByTheFirstPartThatDiffers) {
+    const Url url = Url::parse("http://user:pass@example.com:8080/path?a=1#top").value();
+
+    // Each comes after url, in one part.
+    for (const char* text : {
+             "https://user:pass@example.com:8080/path?a=1#top",
+             "http://vser:pass@example.com:8080/path?a=1#top",
+             "http://user:qass@example.com:8080/path?a=1#top",
+             "http://user:pass@fxample.com:8080/path?a=1#top",
+             "http://user:pass@example.com:8081/path?a=1#top",
+             "http://user:pass@example.com:8080/qath?a=1#top",
+             "http://user:pass@example.com:8080/path?a=2#top",
+             "http://user:pass@example.com:8080/path?a=1#uop",
+         }) {
+        EXPECT_TRUE(comes_before(url, Url::parse(text).value())) << text;
+    }
+}
+
+TEST(UrlTest, UsernameWithoutPassword) {
+    EXPECT_EQ(Url::parse("http://user@example.com/").value().to_string(),
+              "http://user@example.com/");
+}
+
+// The brackets around a host are taken off, and an IPv6 address is written
+// with them, once.
+TEST(UrlTest, HostSetWithBrackets) {
+    Url url;
+
+    url.set_scheme("http");
+    url.set_host("[::1]");
+    EXPECT_EQ(url.host(), "::1");
+    EXPECT_EQ(url.to_string(), "http://[::1]/");
+
+    url.set_host("[[::1]]");
+    EXPECT_EQ(url.host(), "[::1]");
+    EXPECT_EQ(url.to_string(), "http://[::1]/");
+
+    url.set_host("[::1");
+    EXPECT_EQ(url.host(), "[::1");
+    EXPECT_EQ(url.to_string(), "http://[[::1]/");
+}
+
+TEST(UrlTest, HostSetWithBracketsNotAroundItAll) {
+    Url url;
+
+    for (const char* host : {"[", "[example.com", "example.com]"}) {
+        url.set_host(host);
+        EXPECT_EQ(url.host(), host);
+    }
+}
+
+TEST(UrlTest, UnreadableUrlStreamedIn) {
+    std::istringstream in_stream("http://[bad/");
+    Url url;
+
+    in_stream >> url;
+
+    EXPECT_TRUE(in_stream.fail());
+    EXPECT_TRUE(url.host().empty());
+}
+
+// Nothing, or an absolute Url that cannot be read, leaves the Url as it was.
+TEST(UrlTest, AppendNothing) {
+    Url url = Url::parse("http://example.com/a/b").value();
+
+    url.append("");
+    EXPECT_EQ(url.to_string(), "http://example.com/a/b");
+
+    url.append("http://[bad/");
+    EXPECT_EQ(url.to_string(), "http://example.com/a/b");
+}
+
+TEST(UrlTest, AppendToAPathWithoutSlash) {
+    Url url;
+
+    url.set_path("page");
+    url.append("other");
+
+    EXPECT_EQ(url.path(), "/other");
+}
+
+TEST(UrlTest, PortTooLargeToRead) {
+    const Url url = Url::parse("http://localhost:99999999999999999999999/").value();
+
+    EXPECT_FALSE(url.port().has_value());
+    EXPECT_EQ(url.host(), "localhost");
+}
+
 // NOLINTEND(bugprone-unchecked-optional-access)

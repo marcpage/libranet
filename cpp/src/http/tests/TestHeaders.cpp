@@ -189,7 +189,12 @@ TEST(HeadersTest, UnequalKeysOrValues) {
     other_value.set("Host", "example.com");
 
     EXPECT_NE(headers, other_key);
+    EXPECT_NE(other_key, headers);
     EXPECT_NE(headers, other_value);
+}
+
+TEST(HeadersTest, EmptyLineContinuesNothing) {
+    EXPECT_FALSE(Headers::is_continuation_line(""));
 }
 
 TEST(HeadersTest, WrittenToAStream) {
@@ -227,6 +232,7 @@ TEST(HeadersTest, SplitSpaces) {
     EXPECT_EQ(Headers::split_spaces("GET / HTTP/1.1 extra", three_fields),
               (Fields{"GET", "/", "HTTP/1.1 extra"}));
     EXPECT_EQ(Headers::split_spaces("GET   ", three_fields), (Fields{"GET"}));
+    EXPECT_EQ(Headers::split_spaces("GET /   ", three_fields), (Fields{"GET", "/"}));
     EXPECT_EQ(Headers::split_spaces("", three_fields), Fields{});
     EXPECT_EQ(Headers::split_spaces("GET / HTTP/1.1", 0), Fields{});
 }

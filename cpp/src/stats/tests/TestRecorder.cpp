@@ -483,6 +483,14 @@ TEST_F(StartedRecorderTest, WhatIsSoughtAgainIsNotPostedAgain) {
     EXPECT_TRUE(quiet());
 }
 
+TEST_F(StartedRecorderTest, ASearchSoughtAgainIsNotPostedAgain) {
+    Channel::post(SearchRequested::name, SearchRequested{HashPrefix::parse("0123")});
+    (void)next_seek();
+    Channel::post(SearchRequested::name, SearchRequested{HashPrefix::parse("0123")});
+
+    EXPECT_TRUE(quiet());
+}
+
 TEST_F(StartedRecorderTest, ContentStoredIsNoLongerSought) {
     Channel::post(DataNotFound::name, DataNotFound{content('a')});
     Channel::post(DataNotFound::name, DataNotFound{content('b')});

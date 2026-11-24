@@ -280,6 +280,29 @@ TEST(SafeWriteFileTest, CommittingTwiceIsRefused) {
     EXPECT_EQ(read_file(path), "hello");
 }
 
+TEST(SafeWriteFileTest, WriteCommitsWhatItWrites) {
+    const ScratchDirectory directory;
+    const auto path = directory.path() / "file";
+    SafeWriteFile file(path);
+
+    file.write("hello");
+
+    EXPECT_EQ(names_in(directory.path()), std::vector<std::string>{"file"});
+    EXPECT_EQ(read_file(path), "hello");
+}
+
+// The directory the file is in was removed after the file was made.
+TEST(SafeWriteFileTest, WriteWhereTheDirectoryIsGoneIsRefused) {
+    const ScratchDirectory directory;
+    const auto gone = directory.path() / "gone";
+    SafeWriteFile file(gone / "file");
+
+    std::filesystem::remove_all(gone);
+
+    EXPECT_THROW(file.write("hello"), std::runtime_error);
+    EXPECT_FALSE(std::filesystem::exists(gone));
+}
+
 // Only a name that starts with "." and ends with ".partial" is one, wherever
 // it is.
 TEST(SafeWriteFileTest, IsPartialTellsAPartialFileByItsName) {
@@ -289,5 +312,6 @@ TEST(SafeWriteFileTest, IsPartialTellsAPartialFileByItsName) {
     EXPECT_FALSE(SafeWriteFile::is_partial(".file"));
     EXPECT_FALSE(SafeWriteFile::is_partial("file.partial"));
     EXPECT_FALSE(SafeWriteFile::is_partial(".partial"));
+    EXPECT_FALSE(SafeWriteFile::is_partial(".file.1.partial.old"));
     EXPECT_FALSE(SafeWriteFile::is_partial(std::filesystem::path(".file.1.partial") / "file"));
 }

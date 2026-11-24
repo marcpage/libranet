@@ -358,3 +358,44 @@ TEST(IntegerTest, BitwiseOfNegatives) {
     EXPECT_EQ((Integer(left) & Integer(right)).to_string(), "-12");
     EXPECT_EQ((Integer(left) | Integer(right)).to_string(), "-10");
 }
+
+TEST(IntegerTest, AddingAShorterNumber) {
+    const Integer two_words("18446744073709551616");
+
+    EXPECT_EQ((two_words + Integer(1)).to_string(), "18446744073709551617");
+    EXPECT_EQ((Integer(1) + two_words).to_string(), "18446744073709551617");
+}
+
+// &, |, and ^ of two positive numbers, one a word longer than the other.
+TEST(IntegerTest, BitwiseOfDifferentLengths) {
+    constexpr auto short_number = 3;
+    const Integer long_number("18446744073709551617");
+
+    EXPECT_EQ(bitwise_results(long_number, Integer(short_number)),
+              "1 18446744073709551619 18446744073709551618");
+    EXPECT_EQ(bitwise_results(Integer(short_number), long_number),
+              "1 18446744073709551619 18446744073709551618");
+}
+
+TEST(IntegerTest, ComparingSigns) {
+    constexpr auto small = 1;
+    constexpr auto large = 2;
+
+    EXPECT_NE(Integer(small), Integer(-small));
+    EXPECT_NE(Integer(small), Integer(large));
+    EXPECT_LT(Integer(-small), Integer(small));
+    EXPECT_FALSE(Integer(small) < Integer(-small));
+    EXPECT_LT(Integer(-large), Integer(-small));
+    EXPECT_FALSE(Integer(-small) < Integer(-large));
+}
+
+TEST(IntegerTest, NothingToStreamIn) {
+    constexpr auto number = 5;
+    std::istringstream in_stream("");
+    Integer value(number);
+
+    in_stream >> value;
+
+    EXPECT_TRUE(in_stream.fail());
+    EXPECT_EQ(value, Integer(number));
+}
