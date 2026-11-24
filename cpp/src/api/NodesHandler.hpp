@@ -2,7 +2,6 @@
 
 #include <mutex>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "http/Request.hpp"
@@ -28,9 +27,6 @@ namespace api {
 // /data/nodes is 404: it names nothing.
 class NodesHandler {
 public:
-    // Where the handler is registered with the server.
-    static constexpr std::string_view path = "/data/nodes";
-
     // Serves a list of the node's own endpoints, own_id at each of
     // own_endpoints, in the order given. Throws std::invalid_argument for an
     // endpoint that is not one, as protocol::NodeList does.

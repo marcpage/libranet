@@ -20,6 +20,7 @@
 #include "stats/Recorder.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 #include "types/Json.hpp"
 #include "web/ConnectionInfo.hpp"
@@ -117,12 +118,12 @@ Request request_of(std::string method, std::string uri, std::string body = "") {
     return request;
 }
 
-Request get(std::string uri = std::string(NodesHandler::path)) {
+Request get(std::string uri = std::string(types::nodes_path)) {
     return request_of("GET", std::move(uri));
 }
 
 Request post(std::string body) {
-    return request_of("POST", std::string(NodesHandler::path), std::move(body));
+    return request_of("POST", std::string(types::nodes_path), std::move(body));
 }
 
 // A connection from host, carrying the signature of the peer.

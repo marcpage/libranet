@@ -14,6 +14,7 @@
 #include "http/ResponseCode.hpp"
 #include "logger/Logger.hpp"
 #include "protocol/SeekList.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 #include "web/ConnectionInfo.hpp"
 
@@ -30,19 +31,16 @@ using std::size_t;
 using std::string;
 using std::string_view;
 using types::Converter;
+using types::json_content_type;
+using types::seek_path;
 using web::ConnectionInfo;
 
 namespace {
 
 using Status = ResponseCode::Status;
 
-constexpr string_view seek_path = "/data/seek";
-
 // The methods /data/seek takes, as Allow names them.
 constexpr string_view allowed_methods = "GET, POST";
-
-// What a list is served as, compressed or not, as the Python node serves it.
-constexpr string_view json_content_type = "application/json";
 
 // Whether uri's path, less any query, is /data/seek.
 bool is_seek_path(string_view uri) {

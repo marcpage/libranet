@@ -24,10 +24,10 @@
 #include "storage/IDataSource.hpp"
 #include "storage/SearchAnswered.hpp"
 #include "storage/SearchAnswers.hpp"
+#include "types/Constants.hpp"
 #include "web/ConnectionInfo.hpp"
 #include "web/Server.hpp"
 
-using api::NodesHandler;
 using api::Service;
 using http::Request;
 using http::Response;
@@ -52,6 +52,9 @@ using storage::HashPrefix;
 using storage::IDataSource;
 using storage::SearchAnswered;
 using storage::SearchAnswers;
+using types::nodes_path;
+using types::search_path_prefix;
+using types::seek_path;
 using web::ConnectionInfo;
 using web::Server;
 
@@ -67,10 +70,9 @@ namespace {
 using NodesUpdated = stats::Recorder::NodesUpdated;
 using SeekUpdated = stats::Recorder::SeekUpdated;
 
-// Where the handlers other than NodesHandler are registered with the server.
+// Where the data handler is registered with the server: it takes what is
+// beneath it that the other handlers do not.
 constexpr string_view data_path = "/data";
-constexpr string_view seek_path = "/data/seek";
-constexpr string_view search_path = "/data/search";
 
 // The answers to searches of what store holds, kept as settings says.
 // Throws invalid_argument for a ttl that is not more than zero.
@@ -116,16 +118,16 @@ Service::Service(const Address& address, const IDataSource::Ptr& store,
                                 ConnectionInfo& connection) {
         m_data_handler(request, response, connection);
     });
-    _register(NodesHandler::path, [this](const Request& request, Response& response,
-                                         ConnectionInfo& connection) {
+    _register(nodes_path, [this](const Request& request, Response& response,
+                                 ConnectionInfo& connection) {
         m_nodes_handler(request, response, connection);
     });
     _register(seek_path, [this](const Request& request, Response& response,
                                 ConnectionInfo& connection) {
         m_seek_handler(request, response, connection);
     });
-    _register(search_path, [this](const Request& request, Response& response,
-                                  ConnectionInfo& connection) {
+    _register(search_path_prefix, [this](const Request& request, Response& response,
+                                         ConnectionInfo& connection) {
         m_search_handler(request, response, connection);
     });
     m_server_thread = thread([this] {

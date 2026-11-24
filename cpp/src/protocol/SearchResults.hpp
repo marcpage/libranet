@@ -38,8 +38,6 @@ public:
         bool compressed = false;
     };
 
-    static constexpr std::string_view content_type = "application/json";
-
     // Reads an answer as it was sent: JSON, or zlib-compressed JSON of no
     // more than decompressed_limit bytes. An entry that is not
     // "{algorithm}/{hash}" of a supported algorithm is left out, as a node
@@ -111,7 +109,7 @@ inline SearchResults::Body SearchResults::body() const {
 inline void SearchResults::answer(http::Response& response) const {
     auto written = body();
 
-    response.headers().set("Content-Type", std::string(content_type));
+    response.headers().set("Content-Type", std::string(types::json_content_type));
 
     if (written.compressed) {
         response.headers().set("Content-Encoding", "deflate");

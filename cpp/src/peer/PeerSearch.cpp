@@ -9,7 +9,6 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -23,6 +22,7 @@
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/SearchAnswered.hpp"
+#include "types/Constants.hpp"
 
 using http::Request;
 using http::Response;
@@ -44,12 +44,13 @@ using std::shared_ptr;
 using std::size_t;
 using std::sort;
 using std::string;
-using std::string_view;
 using std::to_string;
 using std::vector;
 using storage::HashPrefix;
 using storage::Identifier;
 using storage::SearchAnswered;
+using types::search_path_prefix;
+using types::search_relays_header;
 
 namespace {
 
@@ -62,10 +63,6 @@ using Held = map<string, Clock::time_point>;
 // The fewest passes a search makes, as the Python node allows: each after
 // the first asks every peer again, which may have found more meanwhile.
 constexpr size_t least_passes = 2;
-// Where a search is asked for, followed by its prefix (HTTP API §6).
-constexpr string_view search_path = "/data/search/";
-// How many times more the peer asked may pass a search on (HTTP API §6).
-constexpr string_view relays_header = "X-Search-Relays";
 
 // settings, once checked. Throws invalid_argument, naming the setting, for
 // one the Python node refuses.
@@ -130,8 +127,8 @@ Request search_request(const HashPrefix& prefix, size_t relays) {
     Request request;
 
     request.set_method("GET");
-    request.set_uri(string(search_path) + prefix.to_string());
-    request.headers().set(string(relays_header), to_string(relays));
+    request.set_uri(string(search_path_prefix) + prefix.to_string());
+    request.headers().set(string(search_relays_header), to_string(relays));
     return request;
 }
 

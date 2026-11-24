@@ -21,6 +21,7 @@
 #include "storage/SearchAnswered.hpp"
 #include "storage/SearchAnswers.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 #include "types/Json.hpp"
 #include "web/ConnectionInfo.hpp"
@@ -115,7 +116,7 @@ Request get(std::string uri) {
 Request get(std::string uri, std::string relays) {
     auto request = get(std::move(uri));
 
-    request.headers().set(SearchHandler::search_relays_header, std::move(relays));
+    request.headers().set(std::string(types::search_relays_header), std::move(relays));
     return request;
 }
 
