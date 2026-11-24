@@ -1,9 +1,9 @@
-# Addresses and sockets, on POSIX systems.
 add_library(libranet_net STATIC
     AddressPosix.cpp
     IpAddressPosix.cpp
     ISocket.cpp
-    SocketPosix.cpp)
+    SocketPosix.cpp
+)
 add_library(libranet::net ALIAS libranet_net)
 target_include_directories(libranet_net PUBLIC ${PROJECT_SOURCE_DIR}/src)
 
@@ -12,7 +12,8 @@ if(BUILD_TESTING)
         tests/TestAddress.cpp
         tests/TestIpAddress.cpp
         tests/TestISocket.cpp
-        tests/TestSocketPosix.cpp)
+        tests/TestSocketPosix.cpp
+    )
     target_link_libraries(net_tests PRIVATE libranet::net GTest::gtest_main)
     gtest_discover_tests(net_tests)
 endif()
