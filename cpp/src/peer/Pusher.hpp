@@ -48,20 +48,22 @@ public:
     // length of zero.
     Pusher(storage::IDataSource::Ptr store, GetPeers get_peers,
            std::size_t run_length = default_run_length);
-    // Stops its thread, once what it is pushing has been answered, which is
-    // within the request timeout.
-    ~Pusher() = default;
-    // Its thread holds this object, so it is neither copied nor moved.
-    Pusher(const Pusher&) = delete;
-    Pusher& operator=(const Pusher&) = delete;
-    Pusher(Pusher&&) = delete;
-    Pusher& operator=(Pusher&&) = delete;
 
     // Puts each of stored that is still held to the peer it is bound for,
     // if any, as above, and waits for every answer. Gives how many a peer
     // accepted. A run that fails, as when the session ends, is logged, and
     // ends the pushes to that peer; content a peer refuses is logged too.
     std::size_t push(const Stored& stored) const;
+
+    // Stops its thread, once what it is pushing has been answered, which is
+    // within the request timeout.
+    ~Pusher() = default;
+
+    // Its thread holds this object, so it is neither copied nor moved.
+    Pusher(const Pusher&) = delete;
+    Pusher& operator=(const Pusher&) = delete;
+    Pusher(Pusher&&) = delete;
+    Pusher& operator=(Pusher&&) = delete;
 
 private:
     storage::IDataSource::Ptr m_store;

@@ -18,17 +18,18 @@ namespace crypto {
 class RsaEncryptKeyMacos : public IEncryptKey {
 public:
     RsaEncryptKeyMacos(SecKeyRef private_key, SecKeyRef public_key);
-    ~RsaEncryptKeyMacos() override = default;
-
-    RsaEncryptKeyMacos(const RsaEncryptKeyMacos&) = delete;
-    RsaEncryptKeyMacos& operator=(const RsaEncryptKeyMacos&) = delete;
-    RsaEncryptKeyMacos(RsaEncryptKeyMacos&&) noexcept = default;
-    RsaEncryptKeyMacos& operator=(RsaEncryptKeyMacos&&) noexcept = default;
 
     [[nodiscard]] Data encrypt(std::string_view plaintext,
                                const InitializationVector& vector) const override;
     [[nodiscard]] std::string decrypt(const Data& ciphertext,
                                       const InitializationVector& vector) const override;
+
+    ~RsaEncryptKeyMacos() override = default;
+    RsaEncryptKeyMacos(RsaEncryptKeyMacos&&) noexcept = default;
+    RsaEncryptKeyMacos& operator=(RsaEncryptKeyMacos&&) noexcept = default;
+
+    RsaEncryptKeyMacos(const RsaEncryptKeyMacos&) = delete;
+    RsaEncryptKeyMacos& operator=(const RsaEncryptKeyMacos&) = delete;
 
 private:
     CFObject<SecKeyRef> m_private_key;

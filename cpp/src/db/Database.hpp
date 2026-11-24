@@ -31,15 +31,16 @@ public:
         // Throws SqliteError when one is open on database already.
         explicit Transaction(Database& database);
         ~Transaction();
-        Transaction(const Transaction&) = delete;
-        Transaction& operator=(const Transaction&) = delete;
-        Transaction(Transaction&&) = delete;
-        Transaction& operator=(Transaction&&) = delete;
 
         // Keeps the changes. Throws SqliteError when SQLite cannot, and the
         // changes are undone as this goes; and std::logic_error when they
         // were committed already.
         void commit();
+
+        Transaction(const Transaction&) = delete;
+        Transaction& operator=(const Transaction&) = delete;
+        Transaction(Transaction&&) = delete;
+        Transaction& operator=(Transaction&&) = delete;
 
     private:
         Database* m_database;
@@ -51,16 +52,18 @@ public:
     // an index only if it is missing, as CREATE TABLE IF NOT EXISTS does.
     // Throws SqliteError when the file cannot be opened, or schema run.
     Database(const std::filesystem::path& path, std::string_view schema);
-    ~Database() = default;
-    Database(const Database&) = delete;
-    Database& operator=(const Database&) = delete;
-    Database(Database&&) = delete;
-    Database& operator=(Database&&) = delete;
 
     // Runs sql: one statement or more, which take no values, and whose rows,
     // if any, are not read. Throws SqliteError when one cannot be run, and
     // runs none of those after it.
     void execute(std::string_view sql);
+
+    ~Database() = default;
+
+    Database(const Database&) = delete;
+    Database& operator=(const Database&) = delete;
+    Database(Database&&) = delete;
+    Database& operator=(Database&&) = delete;
 
 private:
     // A Statement is prepared on SQLite's connection.

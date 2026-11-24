@@ -110,10 +110,6 @@ public:
     // answering, if given, has run.
     explicit StandInNode(std::string answer, Answering answering = nullptr);
     ~StandInNode();
-    StandInNode(const StandInNode&) = delete;
-    StandInNode& operator=(const StandInNode&) = delete;
-    StandInNode(StandInNode&&) = delete;
-    StandInNode& operator=(StandInNode&&) = delete;
 
     [[nodiscard]] Address address() const;
     // The line of each request it has been sent, the first first.
@@ -122,6 +118,11 @@ public:
     // Whether it has been sent count requests, waiting for them at most
     // patience.
     [[nodiscard]] bool is_asked(std::size_t count) const;
+
+    StandInNode(const StandInNode&) = delete;
+    StandInNode& operator=(const StandInNode&) = delete;
+    StandInNode(StandInNode&&) = delete;
+    StandInNode& operator=(StandInNode&&) = delete;
 
 private:
     ISocket::Ptr m_listener;

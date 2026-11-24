@@ -37,6 +37,13 @@ public:
     // Throws std::invalid_argument for no answers.
     explicit SearchHandler(std::shared_ptr<storage::SearchAnswers> answers,
                            std::size_t decompressed_bytes = types::max_decompressed_list_size);
+
+    // Called from the threads serving connections, several at once. Throws
+    // what the store throws as answers looks through it, and std::bad_alloc
+    // if zlib runs out of memory, which the server answers with 500.
+    void operator()(const http::Request& request, http::Response& response,
+                    const web::ConnectionInfo& connection) const;
+
     ~SearchHandler() = default;
     SearchHandler(SearchHandler&&) = default;
     SearchHandler& operator=(SearchHandler&&) = default;
@@ -44,12 +51,6 @@ public:
     SearchHandler() = delete;
     SearchHandler(const SearchHandler&) = delete;
     SearchHandler& operator=(const SearchHandler&) = delete;
-
-    // Called from the threads serving connections, several at once. Throws
-    // what the store throws as answers looks through it, and std::bad_alloc
-    // if zlib runs out of memory, which the server answers with 500.
-    void operator()(const http::Request& request, http::Response& response,
-                    const web::ConnectionInfo& connection) const;
 
 private:
     std::shared_ptr<storage::SearchAnswers> m_answers;

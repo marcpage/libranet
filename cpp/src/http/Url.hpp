@@ -34,13 +34,6 @@ public:
                                             EncodeContext context = EncodeContext::FormUrl);
     [[nodiscard]] static std::string decode(std::string_view value, bool decode_plus_as_space);
 
-    Url() = default;
-    ~Url() = default;
-    Url(const Url&) = default;
-    Url& operator=(const Url&) = default;
-    Url(Url&&) noexcept = default;
-    Url& operator=(Url&&) noexcept = default;
-
     [[nodiscard]] std::string_view scheme() const noexcept;
     [[nodiscard]] std::string username() const;
     [[nodiscard]] std::string password() const;
@@ -78,6 +71,13 @@ public:
 
     friend std::istream& operator>>(std::istream& in_stream, Url& url);
     friend std::ostream& operator<<(std::ostream& out_stream, const Url& url);
+
+    Url() = default;
+    ~Url() = default;
+    Url(const Url&) = default;
+    Url& operator=(const Url&) = default;
+    Url(Url&&) noexcept = default;
+    Url& operator=(Url&&) noexcept = default;
 
 private:
     // The characters a username or password keeps unencoded (RFC 3986

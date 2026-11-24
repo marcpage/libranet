@@ -20,17 +20,18 @@ namespace crypto {
 class RsaEncryptKeyOpenSsl : public IEncryptKey {
 public:
     RsaEncryptKeyOpenSsl(OpenSslKey key, bool has_private);
-    ~RsaEncryptKeyOpenSsl() override = default;
-
-    RsaEncryptKeyOpenSsl(const RsaEncryptKeyOpenSsl&) = delete;
-    RsaEncryptKeyOpenSsl& operator=(const RsaEncryptKeyOpenSsl&) = delete;
-    RsaEncryptKeyOpenSsl(RsaEncryptKeyOpenSsl&&) noexcept = default;
-    RsaEncryptKeyOpenSsl& operator=(RsaEncryptKeyOpenSsl&&) noexcept = default;
 
     [[nodiscard]] Data encrypt(std::string_view plaintext,
                                const InitializationVector& vector) const override;
     [[nodiscard]] std::string decrypt(const Data& ciphertext,
                                       const InitializationVector& vector) const override;
+
+    ~RsaEncryptKeyOpenSsl() override = default;
+    RsaEncryptKeyOpenSsl(RsaEncryptKeyOpenSsl&&) noexcept = default;
+    RsaEncryptKeyOpenSsl& operator=(RsaEncryptKeyOpenSsl&&) noexcept = default;
+
+    RsaEncryptKeyOpenSsl(const RsaEncryptKeyOpenSsl&) = delete;
+    RsaEncryptKeyOpenSsl& operator=(const RsaEncryptKeyOpenSsl&) = delete;
 
 private:
     using KeyContext = OpenSslObject<EVP_PKEY_CTX, EVP_PKEY_CTX_free>;

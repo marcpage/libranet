@@ -29,10 +29,11 @@ public:
     virtual void reset() = 0;
 
     virtual ~IHasher() = default;
-    IHasher(const IHasher&) = delete;
-    IHasher& operator=(const IHasher&) = delete;
     IHasher(IHasher&&) noexcept = default;
     IHasher& operator=(IHasher&&) noexcept = default;
+
+    IHasher(const IHasher&) = delete;
+    IHasher& operator=(const IHasher&) = delete;
 
 protected:
     IHasher() = default;

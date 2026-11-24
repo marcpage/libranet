@@ -46,8 +46,6 @@ public:
     [[nodiscard]] static NodeList from_body(
         const Data& body, std::size_t decompressed_limit = types::max_decompressed_list_size);
 
-    // A list naming no node, as a list received starts.
-    NodeList() = default;
     // A list of this node's own, naming its endpoints first, in the order
     // given. Throws std::invalid_argument for an endpoint that is not one.
     NodeList(const storage::Identifier& own_id, const std::vector<std::string>& own_endpoints);
@@ -76,6 +74,9 @@ public:
     // that do not fit even then. Throws std::invalid_argument for a limit
     // too small to hold a list that names no node.
     [[nodiscard]] Data body(std::size_t limit = max_size) const;
+
+    // A list naming no node, as a list received starts.
+    NodeList() = default;
 
 private:
     Entries m_entries;

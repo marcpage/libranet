@@ -39,9 +39,6 @@ public:
     // naming the file, for what parse() refuses.
     [[nodiscard]] static SettingsFile load(const std::filesystem::path& path);
 
-    // No settings, as an empty file gives.
-    SettingsFile() = default;
-
     // The name of each setting, in order.
     [[nodiscard]] std::vector<std::string> names() const;
     [[nodiscard]] bool has(const std::string& name) const;
@@ -59,6 +56,9 @@ public:
 
     friend bool operator==(const SettingsFile& left, const SettingsFile& right);
     friend bool operator!=(const SettingsFile& left, const SettingsFile& right);
+
+    // No settings, as an empty file gives.
+    SettingsFile() = default;
 
 private:
     std::map<std::string, Value> m_settings;

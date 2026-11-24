@@ -32,10 +32,11 @@ public:
     [[nodiscard]] bool has_private_key() const noexcept override;
 
     ~RsaSignKeyMacos() override = default;
-    RsaSignKeyMacos(const RsaSignKeyMacos&) = delete;
-    RsaSignKeyMacos& operator=(const RsaSignKeyMacos&) = delete;
     RsaSignKeyMacos(RsaSignKeyMacos&&) noexcept = default;
     RsaSignKeyMacos& operator=(RsaSignKeyMacos&&) noexcept = default;
+
+    RsaSignKeyMacos(const RsaSignKeyMacos&) = delete;
+    RsaSignKeyMacos& operator=(const RsaSignKeyMacos&) = delete;
 
 private:
     CFObject<SecKeyRef> m_private_key;

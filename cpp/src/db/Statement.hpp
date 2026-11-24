@@ -29,11 +29,6 @@ public:
     // table that is not there; and std::invalid_argument for SQL that holds
     // no statement, or anything but whitespace after its first.
     Statement(Database& database, std::string_view sql);
-    ~Statement() = default;
-    Statement(const Statement&) = delete;
-    Statement& operator=(const Statement&) = delete;
-    Statement(Statement&&) noexcept = default;
-    Statement& operator=(Statement&&) noexcept = default;
 
     // Each binds value to the next parameter, and returns this statement, so
     // that binds chain. Each throws std::out_of_range when every parameter
@@ -75,6 +70,13 @@ public:
     // next. Throws std::out_of_range when the statement gives no such
     // column, and std::bad_alloc when SQLite runs out of memory.
     [[nodiscard]] std::string label(int column) const;
+
+    ~Statement() = default;
+    Statement(Statement&&) noexcept = default;
+    Statement& operator=(Statement&&) noexcept = default;
+
+    Statement(const Statement&) = delete;
+    Statement& operator=(const Statement&) = delete;
 
 private:
     // Finalizes a statement SQLite prepared.

@@ -31,13 +31,6 @@ public:
     // own_endpoints, in the order given. Throws std::invalid_argument for an
     // endpoint that is not one, as protocol::NodeList does.
     NodesHandler(const storage::Identifier& own_id, const std::vector<std::string>& own_endpoints);
-    ~NodesHandler() = default;
-
-    NodesHandler() = delete;
-    NodesHandler(const NodesHandler&) = delete;
-    NodesHandler& operator=(const NodesHandler&) = delete;
-    NodesHandler(NodesHandler&&) = delete;
-    NodesHandler& operator=(NodesHandler&&) = delete;
 
     // Serves nodes from now on, as stats::Recorder last derived it. Called
     // from any thread, while requests are answered.
@@ -48,6 +41,14 @@ public:
     // with 500.
     void operator()(const http::Request& request, http::Response& response,
                     const web::ConnectionInfo& connection) const;
+
+    ~NodesHandler() = default;
+
+    NodesHandler() = delete;
+    NodesHandler(const NodesHandler&) = delete;
+    NodesHandler& operator=(const NodesHandler&) = delete;
+    NodesHandler(NodesHandler&&) = delete;
+    NodesHandler& operator=(NodesHandler&&) = delete;
 
 private:
     mutable std::mutex m_mutex;

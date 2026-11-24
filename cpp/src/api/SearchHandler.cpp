@@ -15,6 +15,7 @@
 #include "http/Request.hpp"
 #include "http/Response.hpp"
 #include "http/ResponseCode.hpp"
+#include "logger/Logger.hpp"
 #include "msg/Channel.hpp"
 #include "protocol/SearchResults.hpp"
 #include "stats/Recorder.hpp"
@@ -111,13 +112,16 @@ size_t relays_of(const Request& request) {
     return errc() == error ? relays : 0;
 }
 
-// What the body of request names, read as a search's answer that
-// decompresses to no more than limit bytes, or nothing when it is none,
+// What the body of request, on connection, names, read as a search's answer
+// that decompresses to no more than limit bytes, or nothing when it is none,
 // having answered 400 saying why (HttpApi §10.7.2).
-optional<SearchResults> named_in(const Request& request, size_t limit, Response& response) {
+optional<SearchResults> named_in(const Request& request, size_t limit, Response& response,
+                                 const ConnectionInfo& connection) {
     try {
         return SearchResults::parse(request.body(), limit);
     } catch (const invalid_argument& error) {
+        lDebug << "Refused the search answer from"
+               << connection.remote_address().to_string() + ":" << error.what();
         Problem(Problem::Type::InvalidList, Status::BadRequest, error.what()).answer(response);
         return nullopt;
     }
@@ -194,7 +198,7 @@ void SearchHandler::_post(const HashPrefix& prefix, const Request& request, Resp
         return;
     }
 
-    const auto named = named_in(request, m_decompressed_bytes, response);
+    const auto named = named_in(request, m_decompressed_bytes, response, connection);
 
     if (!named) {
         return;

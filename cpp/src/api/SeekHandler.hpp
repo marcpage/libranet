@@ -23,12 +23,6 @@ public:
     // A POST whose list decompresses to more than list_bytes is refused, as
     // one that is not a seek list is.
     explicit SeekHandler(std::size_t list_bytes = types::max_decompressed_list_size);
-    ~SeekHandler() = default;
-
-    SeekHandler(const SeekHandler&) = delete;
-    SeekHandler& operator=(const SeekHandler&) = delete;
-    SeekHandler(SeekHandler&&) = delete;
-    SeekHandler& operator=(SeekHandler&&) = delete;
 
     // Serves new_list from now on, as the node last derived it. Throws what
     // protocol::SeekList::write() throws.
@@ -38,6 +32,13 @@ public:
     // set_list() may be called from another.
     void operator()(const http::Request& request, http::Response& response,
                     const web::ConnectionInfo& connection) const;
+
+    ~SeekHandler() = default;
+
+    SeekHandler(const SeekHandler&) = delete;
+    SeekHandler& operator=(const SeekHandler&) = delete;
+    SeekHandler(SeekHandler&&) = delete;
+    SeekHandler& operator=(SeekHandler&&) = delete;
 
 private:
     std::size_t m_list_bytes;

@@ -151,13 +151,14 @@ public:
     StandInPeer(const std::filesystem::path& key_file, const IDataSource& store,
                 Answering answering, Requests& asked);
     ~StandInPeer();
+
+    [[nodiscard]] const Identifier& id() const;
+    [[nodiscard]] Address address() const;
+
     StandInPeer(const StandInPeer&) = delete;
     StandInPeer& operator=(const StandInPeer&) = delete;
     StandInPeer(StandInPeer&&) = delete;
     StandInPeer& operator=(StandInPeer&&) = delete;
-
-    [[nodiscard]] const Identifier& id() const;
-    [[nodiscard]] Address address() const;
 
 private:
     NodeIdentity m_identity;

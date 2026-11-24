@@ -13,13 +13,6 @@ class Query {
 public:
     [[nodiscard]] static Query parse(std::string_view query_string);
 
-    Query() = default;
-    ~Query() = default;
-    Query(const Query&) = default;
-    Query& operator=(const Query&) = default;
-    Query(Query&&) noexcept = default;
-    Query& operator=(Query&&) noexcept = default;
-
     [[nodiscard]] std::optional<std::string_view> get_first(std::string_view key) const;
     void set(std::string_view key, std::string_view value);
 
@@ -37,6 +30,13 @@ public:
 
     friend std::istream& operator>>(std::istream& in_stream, Query& query);
     friend std::ostream& operator<<(std::ostream& out_stream, const Query& query);
+
+    Query() = default;
+    ~Query() = default;
+    Query(const Query&) = default;
+    Query& operator=(const Query&) = default;
+    Query(Query&&) noexcept = default;
+    Query& operator=(Query&&) noexcept = default;
 
 private:
     std::vector<std::pair<std::string, std::string>> m_parameters;

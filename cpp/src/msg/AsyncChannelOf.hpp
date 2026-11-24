@@ -17,6 +17,7 @@ public:
     AsyncChannelOf(const std::string& name, TypeCallback callback,
                    const AsyncChannel::Logger& logger);
     ~AsyncChannelOf();
+
     // Its callback holds this object, so it is neither copied nor moved.
     AsyncChannelOf(const AsyncChannelOf&) = delete;
     AsyncChannelOf& operator=(const AsyncChannelOf&) = delete;
