@@ -4,11 +4,11 @@ add_library(libranet_protocol STATIC
 add_library(libranet::protocol ALIAS libranet_protocol)
 target_include_directories(libranet_protocol PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(libranet_protocol PUBLIC
-    libranet::types
     libranet::http
+    libranet::logger
     libranet::net
     libranet::storage
-    libranet::logger
+    libranet::types
 )
 
 if(BUILD_TESTING)
@@ -23,6 +23,6 @@ endif()
 
 if(LIBRANET_FUZZERS)
     libranet_add_fuzzer(node_list_fuzzer fuzz/FuzzNodeList.cpp libranet::protocol)
-    libranet_add_fuzzer(seek_list_fuzzer fuzz/FuzzSeekList.cpp libranet::protocol)
     libranet_add_fuzzer(search_results_fuzzer fuzz/FuzzSearchResults.cpp libranet::protocol)
+    libranet_add_fuzzer(seek_list_fuzzer fuzz/FuzzSeekList.cpp libranet::protocol)
 endif()
