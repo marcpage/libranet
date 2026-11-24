@@ -14,6 +14,7 @@
 #include "http/Request.hpp"
 #include "http/Response.hpp"
 #include "http/ResponseCode.hpp"
+#include "logger/Logger.hpp"
 #include "msg/Channel.hpp"
 #include "protocol/NodeList.hpp"
 #include "stats/NodeAddresses.hpp"
@@ -60,12 +61,15 @@ string body_of(const NodeList& list) {
     return Converter::text_of(list.body());
 }
 
-// The list the body of request names, or nothing when it names none,
-// having answered 400 saying why (HttpApi §10.5).
-optional<NodeList> list_in(const Request& request, Response& response) {
+// The list the body of request, on connection, names, or nothing when it
+// names none, having answered 400 saying why (HttpApi §10.5).
+optional<NodeList> list_in(const Request& request, Response& response,
+                           const ConnectionInfo& connection) {
     try {
         return NodeList::from_body(Converter::bytes_of(request.body()));
     } catch (const invalid_argument& error) {
+        lDebug << "Refused the node list from" << connection.remote_address().to_string() + ":"
+               << error.what();
         Problem(Problem::Type::InvalidList, Status::BadRequest, error.what()).answer(response);
         return nullopt;
     }
@@ -160,7 +164,7 @@ void NodesHandler::_get(Response& response) const {
 // address its connection came from; or says why it is not one.
 void NodesHandler::_post(const Request& request, Response& response,
                          const ConnectionInfo& connection) {
-    const auto sent = list_in(request, response);
+    const auto sent = list_in(request, response, connection);
 
     if (!sent) {
         return;

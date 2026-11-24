@@ -26,6 +26,7 @@
 #include "io/IReader.hpp"
 #include "io/MeteredReader.hpp"
 #include "io/SocketReader.hpp"
+#include "logger/Logger.hpp"
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
 
@@ -266,6 +267,9 @@ PeerConnection::~PeerConnection() {
     // nothing is safe but to end the program, as their destructors would.
     try {
         close();
+    } catch (const std::exception& error) {
+        lFatal << "Could not close the connection to" << m_address.to_string() + ":"
+               << error.what();
     } catch (...) {
         std::terminate();
     }
@@ -337,7 +341,8 @@ void PeerConnection::_send_all() {
             m_socket->send_all(*text);
             _progressed();
         }
-    } catch (const std::exception&) {
+    } catch (const std::exception& error) {
+        lDebug << "Could not send to" << m_address.to_string() + ":" << error.what();
         _close_for(std::current_exception());
     }
 }
@@ -377,7 +382,8 @@ void PeerConnection::_read_all() {
         }
 
         _close_for(make_exception_ptr(Closed(m_address.to_string() + " closed the connection")));
-    } catch (const std::exception&) {
+    } catch (const std::exception& error) {
+        lDebug << "Could not read from" << m_address.to_string() + ":" << error.what();
         _close_for(std::current_exception());
     }
 
