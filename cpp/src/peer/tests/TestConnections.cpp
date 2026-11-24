@@ -384,8 +384,13 @@ protected:
 
     // Connections of this node, naming itself at own_endpoint.
     [[nodiscard]] std::unique_ptr<Connections> connections(std::vector<Seed> seeds = {}) const {
+        return connections_with(settings(std::move(seeds)));
+    }
+
+    [[nodiscard]] std::unique_ptr<Connections>
+    connections_with(Connections::Settings with) const {
         return std::make_unique<Connections>(m_this_node, std::vector<std::string>{own_endpoint},
-                                             m_store, verifier(), settings(std::move(seeds)));
+                                             m_store, verifier(), std::move(with));
     }
 
     [[nodiscard]] MessageVerifier verifier() const {
@@ -686,6 +691,74 @@ TEST_F(ConnectionsTest, SeedNotReachedFailsOnlyAKnownNode) {
     EXPECT_EQ(missed->node_id.to_string(), peer().id().to_string());
     EXPECT_EQ(missed->endpoint, known);
     EXPECT_FALSE(failed.next<ConnectionFailed>(quiet).has_value());
+}
+
+TEST_F(ConnectionsTest, SessionsAreThoseOfTheNodesConnected) {
+    StandInNode node(peer());
+    Channel connected(PeersConnected::name);
+    const auto made = connections();
+
+    EXPECT_TRUE(made->open_sessions().empty());
+    EXPECT_TRUE(made->connected_ids().empty());
+
+    post_candidates({{peer().id(), {node.endpoint()}}});
+    ASSERT_TRUE(connected.next<PeersConnected>(patience).has_value());
+    ASSERT_TRUE(connected.next<PeersConnected>(patience).has_value());
+
+    const auto sessions = made->open_sessions();
+
+    ASSERT_EQ(sessions.size(), 1U);
+    EXPECT_EQ(sessions.front()->node_id().to_string(), peer().id().to_string());
+    EXPECT_TRUE(sessions.front()->is_open());
+    EXPECT_EQ(texts_of(made->connected_ids()), std::vector<std::string>{peer().id().to_string()});
+
+    node.hang_up();
+
+    const auto left = connected.next<PeersConnected>(patience);
+
+    ASSERT_TRUE(left.has_value());
+    EXPECT_TRUE(left->node_ids.empty());
+    EXPECT_TRUE(made->open_sessions().empty());
+    EXPECT_TRUE(made->connected_ids().empty());
+}
+
+// Each node's seek list is read at first contact, and again every
+// peers.seek_refresh_seconds while its connection lasts (Handshake Protocol
+// §3.3).
+TEST_F(ConnectionsTest, SeekListsAreReadAgainWhileConnected) {
+    const StandInNode node(peer());
+    Channel opened(ConnectionOpened::name);
+    auto often = settings();
+
+    often.fulfiller.refresh = 20ms;
+
+    const auto made = connections_with(often);
+    const auto seek_reads = [&node] {
+        const auto asked = node.asked();
+
+        return std::count(asked.begin(), asked.end(), "GET /data/seek");
+    };
+
+    post_candidates({{peer().id(), {node.endpoint()}}});
+    ASSERT_TRUE(opened.next<ConnectionOpened>(patience).has_value());
+    EXPECT_TRUE(eventually([&seek_reads] { return seek_reads() >= 3; })) << seek_reads();
+}
+
+// Stopping closes the connections, so that nothing waits on them.
+TEST_F(ConnectionsTest, StoppingClosesTheConnections) {
+    const StandInNode node(peer());
+    Channel connected(PeersConnected::name);
+    auto made = connections();
+
+    post_candidates({{peer().id(), {node.endpoint()}}});
+    ASSERT_TRUE(connected.next<PeersConnected>(patience).has_value());
+    ASSERT_TRUE(connected.next<PeersConnected>(patience).has_value());
+
+    const auto sessions = made->open_sessions();
+
+    ASSERT_EQ(sessions.size(), 1U);
+    made.reset();
+    EXPECT_FALSE(sessions.front()->is_open());
 }
 
 // NOLINTEND(bugprone-unchecked-optional-access)
