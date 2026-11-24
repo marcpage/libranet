@@ -33,7 +33,6 @@
 using api::NodesHandler;
 using api::SeekHandler;
 using api::Service;
-using api::SignatureGuard;
 using http::Request;
 using http::Response;
 using identity::KnownKeys;
@@ -106,7 +105,7 @@ void log_error(const string& text) {
 }
 
 // Registers handler at path with server, with guard in front of it.
-void register_guarded(Server& server, SignatureGuard& guard, string_view path,
+void register_guarded(Server& server, api::SignatureGuard& guard, string_view path,
                       const Server::RequestHandler& handler) {
     server.register_handler(path, guard.in_front_of(handler));
 }
