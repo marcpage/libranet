@@ -32,7 +32,8 @@ namespace {
 template<typename Message>
 void sign_as(const NodeIdentity& identity, SignatureBase::Time created, Message& message) {
     if (!message.body().empty()) {
-        message.headers().set(string(ContentDigest::field_name), ContentDigest::of(message.body()).to_string());
+        message.headers().set(string(ContentDigest::field_name),
+                              ContentDigest::of(message.body()).to_string());
     }
 
     const auto base = SignatureBase::of(message, {created, identity.id().to_string(), nullopt});
@@ -40,8 +41,10 @@ void sign_as(const NodeIdentity& identity, SignatureBase::Time created, Message&
     StructuredField signature;
 
     signature_input.set(string(SignatureBase::label), base.signature_params());
-    signature.set(string(SignatureBase::label), StructuredField::Item{identity.sign(base.to_string()), {}});
-    message.headers().set(string(SignatureBase::signature_input_field), signature_input.to_string());
+    signature.set(string(SignatureBase::label),
+                  StructuredField::Item{identity.sign(base.to_string()), {}});
+    message.headers().set(string(SignatureBase::signature_input_field),
+                          signature_input.to_string());
     message.headers().set(string(SignatureBase::signature_field), signature.to_string());
 }
 

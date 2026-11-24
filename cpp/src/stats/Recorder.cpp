@@ -142,7 +142,8 @@ void record_received(NodeAddresses& addresses, Database& database,
 // same order.
 bool same_entries(const NodeList& left, const NodeList& right) {
     return equal(left.entries().begin(), left.entries().end(), right.entries().begin(),
-                 right.entries().end(), [](const NodeList::Entry& one, const NodeList::Entry& other) {
+                 right.entries().end(),
+                 [](const NodeList::Entry& one, const NodeList::Entry& other) {
         return one.endpoint == other.endpoint
                && one.node_id.to_string() == other.node_id.to_string();
     });

@@ -364,7 +364,8 @@ TEST_F(HandOffTest, ClosedSessionIsNotOffered) {
     const StandInNode first_peer(taking(MessageSigner(first())));
     const StandInNode second_peer(taking(MessageSigner(second())));
     const auto first_session = session_with(first_peer, first());
-    const auto hand_off = hand_off_to({first_session, nullptr, session_with(second_peer, second())});
+    const auto hand_off =
+        hand_off_to({first_session, nullptr, session_with(second_peer, second())});
 
     first_session->close();
 

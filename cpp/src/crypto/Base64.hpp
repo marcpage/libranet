@@ -53,7 +53,8 @@ inline std::string Base64::encode(const std::vector<std::byte>& data) {
                            * characters_per_group);
 
     for (const auto byte_item : data) {
-        accumulator = (accumulator << types::bits_per_byte) | std::to_integer<unsigned int>(byte_item);
+        accumulator = (accumulator << types::bits_per_byte)
+                      | std::to_integer<unsigned int>(byte_item);
         pending_bits += types::bits_per_byte;
 
         while (pending_bits >= bits_per_character) {
@@ -129,7 +130,8 @@ inline std::vector<std::byte> Base64::decode(std::string_view encoded_string) {
             static_cast<std::byte>((triple >> (2 * types::bits_per_byte)) & byte_mask));
 
         if (group.at(2) != padding) {
-            decoded_bytes.push_back(static_cast<std::byte>((triple >> types::bits_per_byte) & byte_mask));
+            decoded_bytes.push_back(
+                static_cast<std::byte>((triple >> types::bits_per_byte) & byte_mask));
         }
 
         if (group.at(3) != padding) {

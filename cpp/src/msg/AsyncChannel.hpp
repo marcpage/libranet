@@ -17,7 +17,8 @@ public:
     using Logger = std::function<void(std::string)>;
 
     AsyncChannel(const std::string& name, const Callback& callback, const Logger& logger = nullptr);
-    AsyncChannel(std::vector<std::string> names, const Callback& callback, const Logger& logger = nullptr);
+    AsyncChannel(std::vector<std::string> names, const Callback& callback,
+                 const Logger& logger = nullptr);
     ~AsyncChannel();
 
     void stop();

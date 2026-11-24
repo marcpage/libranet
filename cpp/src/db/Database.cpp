@@ -23,7 +23,8 @@ enum class Action : uint8_t {
 
 // Throws what was being done when a call on connection failed, and what
 // SQLite said of it.
-void assert_sqlite3(bool condition, sqlite3* connection, string_view what, Action action = Action::KeepDatabaseOpen) {
+void assert_sqlite3(bool condition, sqlite3* connection, string_view what,
+                    Action action = Action::KeepDatabaseOpen) {
     if (!condition) {
         const auto error = string(what) + ": " + sqlite3_errmsg(connection);
 

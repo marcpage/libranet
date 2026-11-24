@@ -204,7 +204,8 @@ bool Statement::step() {
         return false;
     }
 
-    throw SqliteError("Cannot run the statement: " + error_of(sqlite3_db_handle(m_statement.get())));
+    throw SqliteError("Cannot run the statement: "
+                      + error_of(sqlite3_db_handle(m_statement.get())));
 }
 
 void Statement::reset() noexcept {

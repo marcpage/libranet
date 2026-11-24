@@ -61,7 +61,8 @@ InnerList libranet_params(const vector<string_view>& components,
         signature_params.items.push_back(StructuredField::Item{string(component), {}});
     }
 
-    signature_params.parameters.emplace_back(SignatureBase::created_parameter, timestamp(parameters.created));
+    signature_params.parameters.emplace_back(SignatureBase::created_parameter,
+                                             timestamp(parameters.created));
     signature_params.parameters.emplace_back(SignatureBase::keyid_parameter, parameters.keyid);
 
     if (parameters.expires) {

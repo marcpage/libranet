@@ -145,8 +145,9 @@ SeekList Sought::seek_list() const {
     const auto cutoff = cutoff_of(m_clock(), m_entry_ttl);
     auto data = entries_of<Identifier>(*m_database, data_kind, cutoff,
                                        [](const string& text) { return Identifier::parse(text); });
-    auto search = entries_of<HashPrefix>(*m_database, search_kind, cutoff,
-                                         [](const string& text) { return HashPrefix::parse(text); });
+    auto search =
+        entries_of<HashPrefix>(*m_database, search_kind, cutoff,
+                               [](const string& text) { return HashPrefix::parse(text); });
 
     return SeekList(std::move(data), std::move(search));
 }

@@ -329,7 +329,8 @@ protected:
 
     // Whether request was signed by this node, with its key.
     [[nodiscard]] bool signed_by_this_node(const Request& request) const {
-        const auto signer = MessageVerifier(std::make_shared<KnownKeys>(m_store), {}).verify(request);
+        const auto signer =
+            MessageVerifier(std::make_shared<KnownKeys>(m_store), {}).verify(request);
 
         return signer && signer->verified
                && signer->node_id.to_string() == m_this_node.id().to_string();

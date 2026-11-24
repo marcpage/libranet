@@ -391,7 +391,8 @@ TEST_F(NodeTest, TakesItsSeedsFromTheCommandLineAndTheSeedFile) {
     auto values = loopback(data_dir());
 
     write_file(seed_file, R"({"nodes": {"http://127.0.0.1:9": null, "http://127.0.0.1:7": )"
-                          R"("sha256/2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"}})");
+                          R"("sha256/2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362)"
+                          R"(938b9824"}})");
     values["peers.seed_file"] = "'" + seed_file.string() + "'";
 
     const vector<string> seeds{
@@ -687,7 +688,8 @@ TEST_F(NodeTest, DefaultDataDirectory) {
     EXPECT_TRUE(std::filesystem::is_directory(data_dir() / "Library" / "Application Support"
                                               / "libranet" / "cas"));
 #else
-    EXPECT_TRUE(std::filesystem::is_directory(data_dir() / ".local" / "share" / "libranet" / "cas"));
+    EXPECT_TRUE(std::filesystem::is_directory(data_dir() / ".local" / "share" / "libranet"
+                                              / "cas"));
 #endif
 }
 

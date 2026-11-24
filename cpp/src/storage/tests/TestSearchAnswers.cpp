@@ -173,7 +173,12 @@ TEST(SearchAnswersTest, MinBitsNeedNotFillADigit) {
 // A prefix of fewer bits than a match must share is matched by all of it,
 // and what matches as well is in order of its hash.
 TEST(SearchAnswersTest, ShorterPrefixMatchesAllOfIt) {
-    Store store({identifier_of("ab12"), identifier_of("ac"), identifier_of("ab"), identifier_of("a")});
+    Store store({
+        identifier_of("ab12"),
+        identifier_of("ac"),
+        identifier_of("ab"),
+        identifier_of("a"),
+    });
     const StoppedClock clock;
     auto answers = answers_of(store, clock);
 
@@ -263,7 +268,8 @@ TEST(SearchAnswersTest, WhatPeersNameIsAdded) {
     const auto prefix = HashPrefix::parse("abcdef8");
 
     (void)answers.answer(prefix);
-    answers.add(prefix, {identifier_of("abcde0"), identifier_of("abcdef8"), identifier_of("abcdef")});
+    answers.add(prefix,
+                {identifier_of("abcde0"), identifier_of("abcdef8"), identifier_of("abcdef")});
     const auto found = answers.answer(prefix);
 
     EXPECT_EQ(hashes(found), (std::vector<std::string>{hash_of("abcdef8"), hash_of("abcdef")}));

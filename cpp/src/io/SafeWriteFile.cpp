@@ -102,7 +102,8 @@ void SafeWriteFile::write(std::string_view contents) {
     out.close();
 
     if (!out.good()) {
-        throw std::runtime_error("Error occurred while writing to file: " + writable_path().string());
+        throw std::runtime_error("Error occurred while writing to file: "
+                                 + writable_path().string());
     }
 
     commit();
@@ -123,8 +124,8 @@ void SafeWriteFile::commit() {
     std::filesystem::rename(writable_path(), m_file, error);
 
     if (error) {
-        throw runtime_error("Failed to rename " + writable_path().string() + " to " + m_file.string()
-                            + ": " + error.message());
+        throw runtime_error("Failed to rename " + writable_path().string() + " to "
+                            + m_file.string() + ": " + error.message());
     }
 
     m_committed = true;
