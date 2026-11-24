@@ -18,22 +18,22 @@ public:
 
     constexpr CFObject() noexcept;
     explicit CFObject(CFType object, Policy policy) noexcept;
+    ~CFObject();
+    CFObject(const CFObject& other) noexcept;
+    CFObject& operator=(const CFObject& other) noexcept;
+    CFObject(CFObject&& other) noexcept;
+    CFObject& operator=(CFObject&& other) noexcept;
+
+    [[nodiscard]] CFType get() const noexcept;
+    [[nodiscard]] CFType* put() noexcept;
+    [[nodiscard]] CFType release() noexcept;
+    void reset(CFType new_object, Policy policy) noexcept;
 
     // A CFObject passes as the object it holds to Core Foundation's calls,
     // which take the object itself.
     // NOLINTNEXTLINE(*-explicit-constructor)
     operator CFType() const noexcept;
-    [[nodiscard]] CFType get() const noexcept;
-    [[nodiscard]] CFType* put() noexcept;
-    [[nodiscard]] CFType release() noexcept;
-    void reset(CFType new_object, Policy policy) noexcept;
     [[nodiscard]] explicit operator bool() const noexcept;
-
-    CFObject(const CFObject& other) noexcept;
-    CFObject& operator=(const CFObject& other) noexcept;
-    CFObject(CFObject&& other) noexcept;
-    CFObject& operator=(CFObject&& other) noexcept;
-    ~CFObject();
 
 private:
     CFType m_object;
@@ -88,11 +88,6 @@ inline CFObject<CFType>& CFObject<CFType>::operator=(CFObject&& other) noexcept 
 }
 
 template<typename CFType>
-inline CFObject<CFType>::operator CFType() const noexcept {
-    return m_object;
-}
-
-template<typename CFType>
 inline CFType CFObject<CFType>::get() const noexcept {
     return m_object;
 }
@@ -122,6 +117,11 @@ inline void CFObject<CFType>::reset(CFType new_object, Policy policy) noexcept {
     }
 
     m_object = new_object;
+}
+
+template<typename CFType>
+inline CFObject<CFType>::operator CFType() const noexcept {
+    return m_object;
 }
 
 template<typename CFType>

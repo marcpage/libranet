@@ -60,9 +60,10 @@ private:
     // Read from or written as a PHC string.
     class PhcString {
     public:
+        [[nodiscard]] static std::optional<PhcString> parse(std::string_view text);
+
         PhcString(Parameters parameters, Data hash);
 
-        [[nodiscard]] static std::optional<PhcString> parse(std::string_view text);
         [[nodiscard]] std::string to_string() const;
         [[nodiscard]] bool matches(std::string_view password) const;
 

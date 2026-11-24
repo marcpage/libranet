@@ -18,12 +18,12 @@ namespace http {
 
 class Url {
 public:
-    [[nodiscard]] static std::optional<Url> parse(std::string_view url_string);
-
     enum class EncodeContext : std::uint8_t {
         UriComponent, // RFC 3986: unreserved chars, spaces -> %20
         FormUrl,      // Query/Form: unreserved chars, spaces -> +
     };
+
+    [[nodiscard]] static std::optional<Url> parse(std::string_view url_string);
 
     [[nodiscard]] static std::string encode(std::string_view value,
                                             EncodeContext context = EncodeContext::FormUrl);

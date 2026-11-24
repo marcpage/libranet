@@ -40,6 +40,8 @@ public:
     using Array = std::vector<Json>;
     using Object = std::map<std::string, Json>;
 
+    [[nodiscard]] static Json parse(std::string_view input);
+
     Json() noexcept;
     // Implicit, so that initializer lists such as {{"age", 30}, {"tags", {"a",
     // "b"}}} work. long and long long are taken by name, as std::int64_t is
@@ -96,8 +98,6 @@ public:
     Json& at(const std::string& key);
 
     [[nodiscard]] std::string dump(int indent = -1) const;
-
-    [[nodiscard]] static Json parse(std::string_view input);
 
     friend bool operator==(const Json& left, const Json& right);
     friend bool operator!=(const Json& left, const Json& right);
