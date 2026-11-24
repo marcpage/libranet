@@ -36,7 +36,7 @@ public:
 
     IDataSource(const IDataSource&) = delete;
     IDataSource& operator=(const IDataSource&) = delete;
-    IDataSource(const IDataSource&&) = delete;
+    IDataSource(IDataSource&&) = delete;
     IDataSource& operator=(IDataSource&&) = delete;
 };
 
