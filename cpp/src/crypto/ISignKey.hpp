@@ -26,10 +26,11 @@ public:
     [[nodiscard]] virtual bool has_private_key() const noexcept = 0;
 
     virtual ~ISignKey() = default;
-    ISignKey(const ISignKey&) = delete;
-    ISignKey& operator=(const ISignKey&) = delete;
     ISignKey(ISignKey&&) noexcept = default;
     ISignKey& operator=(ISignKey&&) noexcept = default;
+
+    ISignKey(const ISignKey&) = delete;
+    ISignKey& operator=(const ISignKey&) = delete;
 
 protected:
     ISignKey() = default;

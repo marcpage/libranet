@@ -49,10 +49,6 @@ public:
     // is refused; and std::runtime_error when the host cannot be resolved.
     PeerConnection(net::Address address, const Limits& limits);
     ~PeerConnection();
-    PeerConnection(const PeerConnection&) = delete;
-    PeerConnection& operator=(const PeerConnection&) = delete;
-    PeerConnection(PeerConnection&&) = delete;
-    PeerConnection& operator=(PeerConnection&&) = delete;
 
     // The answer fails with what closed the connection, for the oldest request
     // waiting, and with Closed for the others. Throws Closed once the
@@ -67,6 +63,11 @@ public:
 
     // Fails every request still waiting, and waits for its threads.
     void close();
+
+    PeerConnection(const PeerConnection&) = delete;
+    PeerConnection& operator=(const PeerConnection&) = delete;
+    PeerConnection(PeerConnection&&) = delete;
+    PeerConnection& operator=(PeerConnection&&) = delete;
 
 private:
     using Clock = std::chrono::steady_clock;

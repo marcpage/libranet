@@ -35,10 +35,11 @@ public:
     [[nodiscard]] bool has_private_key() const noexcept override;
 
     ~RsaSignKeyOpenSsl() override = default;
-    RsaSignKeyOpenSsl(const RsaSignKeyOpenSsl&) = delete;
-    RsaSignKeyOpenSsl& operator=(const RsaSignKeyOpenSsl&) = delete;
     RsaSignKeyOpenSsl(RsaSignKeyOpenSsl&&) noexcept = default;
     RsaSignKeyOpenSsl& operator=(RsaSignKeyOpenSsl&&) noexcept = default;
+
+    RsaSignKeyOpenSsl(const RsaSignKeyOpenSsl&) = delete;
+    RsaSignKeyOpenSsl& operator=(const RsaSignKeyOpenSsl&) = delete;
 
 private:
     using MessageContext = OpenSslObject<EVP_MD_CTX, EVP_MD_CTX_free>;

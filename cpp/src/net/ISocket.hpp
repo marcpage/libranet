@@ -22,12 +22,6 @@ public:
     [[nodiscard]] static Ptr connect(const Address& address,
                                      Milliseconds timeout = Milliseconds::zero());
 
-    virtual ~ISocket() = default;
-    ISocket(const ISocket&) = delete;
-    ISocket& operator=(const ISocket&) = delete;
-    ISocket(ISocket&&) = delete;
-    ISocket& operator=(ISocket&&) = delete;
-
     virtual void listen(int backlog) = 0;
     [[nodiscard]] virtual Ptr accept() = 0;
 
@@ -51,6 +45,13 @@ public:
     // once. May be called from another thread; the socket stays open until
     // close().
     virtual void shutdown() = 0;
+
+    virtual ~ISocket() = default;
+
+    ISocket(const ISocket&) = delete;
+    ISocket& operator=(const ISocket&) = delete;
+    ISocket(ISocket&&) = delete;
+    ISocket& operator=(ISocket&&) = delete;
 
 protected:
     ISocket() = default;

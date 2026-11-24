@@ -34,11 +34,6 @@ public:
     // missing.
     SearchAnswers(Held held, std::size_t min_bits, Milliseconds ttl,
                   ClockFunction clock = &Clock::now);
-    ~SearchAnswers() = default;
-    SearchAnswers(const SearchAnswers&) = delete;
-    SearchAnswers& operator=(const SearchAnswers&) = delete;
-    SearchAnswers(SearchAnswers&&) = delete;
-    SearchAnswers& operator=(SearchAnswers&&) = delete;
 
     // The one kept, or else a new one, of what the node holds.
     [[nodiscard]] std::vector<Identifier> answer(const HashPrefix& prefix);
@@ -46,6 +41,13 @@ public:
     // Less what does not match prefix, as a peer may hold its answers to fewer
     // bits.
     void add(const HashPrefix& prefix, const std::vector<Identifier>& named);
+
+    ~SearchAnswers() = default;
+
+    SearchAnswers(const SearchAnswers&) = delete;
+    SearchAnswers& operator=(const SearchAnswers&) = delete;
+    SearchAnswers(SearchAnswers&&) = delete;
+    SearchAnswers& operator=(SearchAnswers&&) = delete;
 
 private:
     struct Answer {

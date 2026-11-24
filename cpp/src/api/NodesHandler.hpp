@@ -22,13 +22,6 @@ public:
 
     // Throws std::invalid_argument for an own endpoint that is not one.
     NodesHandler(const storage::Identifier& own_id, const std::vector<std::string>& own_endpoints);
-    ~NodesHandler() = default;
-
-    NodesHandler() = delete;
-    NodesHandler(const NodesHandler&) = delete;
-    NodesHandler& operator=(const NodesHandler&) = delete;
-    NodesHandler(NodesHandler&&) = delete;
-    NodesHandler& operator=(NodesHandler&&) = delete;
 
     // Called from any thread, while requests are answered.
     void set_nodes(const protocol::NodeList& nodes);
@@ -37,6 +30,14 @@ public:
     // std::bad_alloc if zlib runs out of memory.
     void operator()(const http::Request& request, http::Response& response,
                     const web::ConnectionInfo& connection) const;
+
+    ~NodesHandler() = default;
+
+    NodesHandler() = delete;
+    NodesHandler(const NodesHandler&) = delete;
+    NodesHandler& operator=(const NodesHandler&) = delete;
+    NodesHandler(NodesHandler&&) = delete;
+    NodesHandler& operator=(NodesHandler&&) = delete;
 
 private:
     mutable std::mutex m_mutex;

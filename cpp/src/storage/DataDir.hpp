@@ -33,7 +33,6 @@ public:
 
     static IDataSource::Ptr create(std::filesystem::path path);
     explicit DataDir(std::filesystem::path path);
-    ~DataDir() override = default;
 
     [[nodiscard]] bool has(const Identifier& identifier) const override;
     [[nodiscard]] std::optional<Data> get(const Identifier& identifier) const override;
@@ -43,6 +42,8 @@ public:
     [[nodiscard]] bool remove(const Identifier& identifier) const override;
     [[nodiscard]] std::uintmax_t size() const override;
     [[nodiscard]] Identifiers starting_with(const HashPrefix& prefix) const override;
+
+    ~DataDir() override = default;
 
     DataDir() = delete;
     DataDir(const DataDir&) = delete;

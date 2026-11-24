@@ -14,6 +14,7 @@
 #include "http/ResponseCode.hpp"
 #include "identity/MessageSigner.hpp"
 #include "identity/MessageVerifier.hpp"
+#include "logger/Logger.hpp"
 #include "storage/Identifier.hpp"
 #include "web/ConnectionInfo.hpp"
 
@@ -112,6 +113,8 @@ bool SignatureGuard::_admits(const Request& request, Response& response,
     try {
         signer = m_verifier.verify(request);
     } catch (const invalid_argument& error) {
+        lDebug << "Refused" << request.method() << request.uri() << "from"
+               << connection.remote_address().to_string() + ":" << error.what();
         refuse(error.what(), response, connection);
         return false;
     }

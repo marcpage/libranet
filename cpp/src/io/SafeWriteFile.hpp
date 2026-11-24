@@ -12,11 +12,6 @@ public:
     // they cannot be made.
     explicit SafeWriteFile(std::filesystem::path file);
     ~SafeWriteFile();
-    // Each would leave two to remove the one file written.
-    SafeWriteFile(const SafeWriteFile&) = delete;
-    SafeWriteFile& operator=(const SafeWriteFile&) = delete;
-    SafeWriteFile(SafeWriteFile&&) = delete;
-    SafeWriteFile& operator=(SafeWriteFile&&) = delete;
 
     // Or one a crash left behind.
     [[nodiscard]] static bool is_partial(const std::filesystem::path& file);
@@ -31,6 +26,12 @@ public:
     // Throws std::logic_error when it is already committed, and
     // std::runtime_error when it cannot be renamed.
     void commit();
+
+    // Each would leave two to remove the one file written.
+    SafeWriteFile(const SafeWriteFile&) = delete;
+    SafeWriteFile& operator=(const SafeWriteFile&) = delete;
+    SafeWriteFile(SafeWriteFile&&) = delete;
+    SafeWriteFile& operator=(SafeWriteFile&&) = delete;
 
 private:
     std::filesystem::path m_file;

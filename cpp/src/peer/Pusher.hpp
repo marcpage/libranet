@@ -32,17 +32,19 @@ public:
     // store, get_peers with no function, or a run length of zero.
     Pusher(storage::IDataSource::Ptr store, GetPeers get_peers,
            std::size_t run_length = default_run_length);
+
+    // Waits for every answer, and gives how many a peer accepted. A failure is
+    // logged, and a run that fails ends the pushes to that peer.
+    std::size_t push(const Stored& stored) const;
+
     // Once what it is pushing has been answered, within the request timeout.
     ~Pusher() = default;
+
     // Its thread holds this object, so it is neither copied nor moved.
     Pusher(const Pusher&) = delete;
     Pusher& operator=(const Pusher&) = delete;
     Pusher(Pusher&&) = delete;
     Pusher& operator=(Pusher&&) = delete;
-
-    // Waits for every answer, and gives how many a peer accepted. A failure is
-    // logged, and a run that fails ends the pushes to that peer.
-    std::size_t push(const Stored& stored) const;
 
 private:
     storage::IDataSource::Ptr m_store;

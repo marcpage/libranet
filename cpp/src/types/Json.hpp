@@ -59,12 +59,6 @@ public:
     // NOLINTEND(*-explicit-constructor,google-runtime-int)
     Json(std::initializer_list<Json> arguments);
 
-    Json(const Json&) = default;
-    Json(Json&&) noexcept = default;
-    Json& operator=(const Json&) = default;
-    Json& operator=(Json&&) noexcept = default;
-    ~Json() = default;
-
     [[nodiscard]] Type type() const;
     [[nodiscard]] bool is_null() const noexcept;
     [[nodiscard]] bool is_boolean() const noexcept;
@@ -107,6 +101,12 @@ public:
     friend bool operator!=(const Json& left, const Json& right);
     friend std::ostream& operator<<(std::ostream& out_stream, const Json& value);
     friend std::istream& operator>>(std::istream& in_stream, Json& value);
+
+    Json(const Json&) = default;
+    Json(Json&&) noexcept = default;
+    Json& operator=(const Json&) = default;
+    Json& operator=(Json&&) noexcept = default;
+    ~Json() = default;
 
     // MARK: Internals
 private:

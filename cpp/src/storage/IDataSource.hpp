@@ -17,9 +17,6 @@ public:
     using Data = std::vector<std::byte>;
     using Identifiers = std::vector<Identifier>;
 
-    IDataSource() = default;
-    virtual ~IDataSource() = default;
-
     [[nodiscard]] virtual bool has(const Identifier& identifier) const = 0;
     // As it was put.
     [[nodiscard]] virtual std::optional<Data> get(const Identifier& identifier) const = 0;
@@ -33,6 +30,9 @@ public:
     [[nodiscard]] virtual std::uintmax_t size() const = 0;
     // In no particular order.
     [[nodiscard]] virtual Identifiers starting_with(const HashPrefix& prefix) const = 0;
+
+    IDataSource() = default;
+    virtual ~IDataSource() = default;
 
     IDataSource(const IDataSource&) = delete;
     IDataSource& operator=(const IDataSource&) = delete;

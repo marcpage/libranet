@@ -21,12 +21,6 @@ public:
     static constexpr std::size_t default_list_bytes = 4 * types::Megabyte;
 
     explicit SeekHandler(std::size_t list_bytes = default_list_bytes);
-    ~SeekHandler() = default;
-
-    SeekHandler(const SeekHandler&) = delete;
-    SeekHandler& operator=(const SeekHandler&) = delete;
-    SeekHandler(SeekHandler&&) = delete;
-    SeekHandler& operator=(SeekHandler&&) = delete;
 
     // Throws what protocol::SeekList::write() throws.
     void set_list(const protocol::SeekList& new_list);
@@ -35,6 +29,13 @@ public:
     // set_list() may be called from another.
     void operator()(const http::Request& request, http::Response& response,
                     const web::ConnectionInfo& connection) const;
+
+    ~SeekHandler() = default;
+
+    SeekHandler(const SeekHandler&) = delete;
+    SeekHandler& operator=(const SeekHandler&) = delete;
+    SeekHandler(SeekHandler&&) = delete;
+    SeekHandler& operator=(SeekHandler&&) = delete;
 
 private:
     std::size_t m_list_bytes;

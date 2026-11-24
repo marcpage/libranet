@@ -18,7 +18,6 @@ class Manager : public IDataSource {
 public:
     using Ptr = std::shared_ptr<Manager>;
     static Ptr create();
-    ~Manager() override = default;
 
     void add(std::filesystem::path directory);
     void add(IDataSource::Ptr source);
@@ -32,7 +31,9 @@ public:
     // Each identifier once, though more than one source holds it.
     [[nodiscard]] Identifiers starting_with(const HashPrefix& prefix) const override;
 
+    ~Manager() override = default;
     Manager() = default;
+
     Manager(const Manager&) = delete;
     Manager& operator=(const Manager&) = delete;
     Manager(const Manager&&) = delete;

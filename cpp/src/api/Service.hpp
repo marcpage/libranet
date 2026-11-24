@@ -56,17 +56,18 @@ public:
             const identity::NodeIdentity& identity, Settings settings);
     // Ends every connection, and waits for its threads.
     ~Service();
-    // Its threads hold this object, so it is neither copied nor moved.
-    Service(const Service&) = delete;
-    Service& operator=(const Service&) = delete;
-    Service(Service&&) = delete;
-    Service& operator=(Service&&) = delete;
 
     // With the port the system picked when address left that to it.
     [[nodiscard]] const net::Address& local_address() const noexcept;
 
     // Those its node list names the node at until it is given another.
     [[nodiscard]] const std::vector<std::string>& own_endpoints() const noexcept;
+
+    // Its threads hold this object, so it is neither copied nor moved.
+    Service(const Service&) = delete;
+    Service& operator=(const Service&) = delete;
+    Service(Service&&) = delete;
+    Service& operator=(Service&&) = delete;
 
 private:
     static constexpr int backlog = 128;

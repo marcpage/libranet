@@ -93,12 +93,13 @@ class ScratchDirectory {
 public:
     ScratchDirectory();
     ~ScratchDirectory();
+
+    [[nodiscard]] const path& directory() const noexcept;
+
     ScratchDirectory(const ScratchDirectory&) = delete;
     ScratchDirectory& operator=(const ScratchDirectory&) = delete;
     ScratchDirectory(ScratchDirectory&&) = delete;
     ScratchDirectory& operator=(ScratchDirectory&&) = delete;
-
-    [[nodiscard]] const path& directory() const noexcept;
 
 private:
     path m_path;
@@ -131,6 +132,7 @@ class ScopedVariable {
 public:
     ScopedVariable(string name, const optional<string>& value);
     ~ScopedVariable();
+
     ScopedVariable(const ScopedVariable&) = delete;
     ScopedVariable& operator=(const ScopedVariable&) = delete;
     ScopedVariable(ScopedVariable&&) = delete;

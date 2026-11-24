@@ -44,6 +44,7 @@ public:
     [[nodiscard]] Handler in_front_of(Handler handler);
 
     ~SignatureGuard() = default;
+
     SignatureGuard(const SignatureGuard&) = delete;
     SignatureGuard& operator=(const SignatureGuard&) = delete;
     SignatureGuard(SignatureGuard&&) = delete;

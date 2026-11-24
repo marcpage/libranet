@@ -35,16 +35,16 @@ public:
         std::size_t salt_length,
         std::size_t hash_length);
 
-    ~Argon2idOpenSsl() override = default;
-
-    Argon2idOpenSsl(const Argon2idOpenSsl&) = delete;
-    Argon2idOpenSsl& operator=(const Argon2idOpenSsl&) = delete;
-    Argon2idOpenSsl(Argon2idOpenSsl&&) noexcept = default;
-    Argon2idOpenSsl& operator=(Argon2idOpenSsl&&) noexcept = default;
-
     [[nodiscard]] std::string hash_password(std::string_view password) const override;
     [[nodiscard]] bool verify_password(std::string_view password,
                                        std::string_view hash) const override;
+
+    ~Argon2idOpenSsl() override = default;
+    Argon2idOpenSsl(Argon2idOpenSsl&&) noexcept = default;
+    Argon2idOpenSsl& operator=(Argon2idOpenSsl&&) noexcept = default;
+
+    Argon2idOpenSsl(const Argon2idOpenSsl&) = delete;
+    Argon2idOpenSsl& operator=(const Argon2idOpenSsl&) = delete;
 
 private:
     using Data = std::vector<std::byte>;

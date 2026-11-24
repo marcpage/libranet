@@ -31,10 +31,11 @@ public:
                                               const InitializationVector& vector) const = 0;
 
     virtual ~IEncryptKey() = default;
-    IEncryptKey(const IEncryptKey&) = delete;
-    IEncryptKey& operator=(const IEncryptKey&) = delete;
     IEncryptKey(IEncryptKey&&) noexcept = default;
     IEncryptKey& operator=(IEncryptKey&&) noexcept = default;
+
+    IEncryptKey(const IEncryptKey&) = delete;
+    IEncryptKey& operator=(const IEncryptKey&) = delete;
 
 protected:
     IEncryptKey() = default;

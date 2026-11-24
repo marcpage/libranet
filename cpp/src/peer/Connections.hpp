@@ -83,17 +83,18 @@ public:
     // Waits for each dial under way, which ends within the connect and request
     // timeouts, and closes every connection.
     ~Connections();
-    // Its threads hold this object, so it is neither copied nor moved.
-    Connections(const Connections&) = delete;
-    Connections& operator=(const Connections&) = delete;
-    Connections(Connections&&) = delete;
-    Connections& operator=(Connections&&) = delete;
 
     // Those open now. Safe to call from any thread.
     [[nodiscard]] std::vector<std::shared_ptr<PeerSession>> open_sessions() const;
 
     // Safe to call from any thread.
     [[nodiscard]] std::vector<storage::Identifier> connected_ids() const;
+
+    // Its threads hold this object, so it is neither copied nor moved.
+    Connections(const Connections&) = delete;
+    Connections& operator=(const Connections&) = delete;
+    Connections(Connections&&) = delete;
+    Connections& operator=(Connections&&) = delete;
 
 private:
     static constexpr auto check_due = "peers.check_due";

@@ -32,8 +32,6 @@ public:
     // std::invalid_argument, naming the file, for what parse() refuses.
     [[nodiscard]] static SettingsFile load(const std::filesystem::path& path);
 
-    SettingsFile() = default;
-
     // In order.
     [[nodiscard]] std::vector<std::string> names() const;
     [[nodiscard]] bool has(const std::string& name) const;
@@ -51,6 +49,8 @@ public:
 
     friend bool operator==(const SettingsFile& left, const SettingsFile& right);
     friend bool operator!=(const SettingsFile& left, const SettingsFile& right);
+
+    SettingsFile() = default;
 
 private:
     std::map<std::string, Value> m_settings;

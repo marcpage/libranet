@@ -31,10 +31,11 @@ public:
     [[nodiscard]] Data sign(std::string_view data) const;
 
     ~NodeIdentity() = default;
-    NodeIdentity(const NodeIdentity&) = delete;
-    NodeIdentity& operator=(const NodeIdentity&) = delete;
     NodeIdentity(NodeIdentity&&) noexcept = default;
     NodeIdentity& operator=(NodeIdentity&&) noexcept = default;
+
+    NodeIdentity(const NodeIdentity&) = delete;
+    NodeIdentity& operator=(const NodeIdentity&) = delete;
 
 private:
     crypto::ISignKey::Ptr m_key;

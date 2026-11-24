@@ -34,7 +34,6 @@ public:
     // std::invalid_argument for a body that is neither, or not a seek list.
     [[nodiscard]] static SeekList read(const Data& body, std::size_t decompressed_limit);
 
-    SeekList() = default;
     SeekList(std::vector<storage::Identifier> data, std::vector<storage::HashPrefix> search);
 
     [[nodiscard]] const std::vector<storage::Identifier>& data() const noexcept;
@@ -44,6 +43,8 @@ public:
     // leaving out from the end alike of each kind what does not fit even then.
     // Throws std::invalid_argument for a limit too small for an empty list.
     [[nodiscard]] Data write(std::size_t limit = max_bytes) const;
+
+    SeekList() = default;
 
 private:
     static constexpr std::string_view data_key = "data";

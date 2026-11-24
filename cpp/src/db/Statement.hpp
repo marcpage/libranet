@@ -24,11 +24,6 @@ public:
     // Throws SqliteError for SQL that SQLite cannot prepare, and
     // std::invalid_argument for SQL that holds other than one statement.
     Statement(Database& database, std::string_view sql);
-    ~Statement() = default;
-    Statement(const Statement&) = delete;
-    Statement& operator=(const Statement&) = delete;
-    Statement(Statement&&) noexcept = default;
-    Statement& operator=(Statement&&) noexcept = default;
 
     // Each binds the next parameter, so that binds chain. Each throws
     // std::out_of_range when every parameter is bound already,
@@ -64,6 +59,13 @@ public:
     // change from one release to the next. Throws std::out_of_range for no
     // such column.
     [[nodiscard]] std::string label(int column) const;
+
+    ~Statement() = default;
+    Statement(Statement&&) noexcept = default;
+    Statement& operator=(Statement&&) noexcept = default;
+
+    Statement(const Statement&) = delete;
+    Statement& operator=(const Statement&) = delete;
 
 private:
     struct Finalizer {

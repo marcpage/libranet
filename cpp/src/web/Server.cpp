@@ -27,6 +27,7 @@
 #include "io/BufferedReader.hpp"
 #include "io/MeteredReader.hpp"
 #include "io/SocketReader.hpp"
+#include "logger/Logger.hpp"
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
 
@@ -354,13 +355,15 @@ Address wake_address(const ISocket::Ptr& listener) {
     return bound;
 }
 
-// A handler that throws is answered with an Internal Server Error, and the
-// server goes on to the next request.
+// A handler that throws is answered with an Internal Server Error, and
+// logged, and the server goes on to the next request.
 void respond(const Server::RequestHandler& handler, const Request& request, Response& response,
              ConnectionInfo& connection) {
     try {
         handler(request, response, connection);
-    } catch (const exception&) {
+    } catch (const exception& error) {
+        lErr << "Could not answer" << request.method() << request.uri() << "from"
+             << connection.remote_address().to_string() + ":" << error.what();
         response = Response();
         Problem(ResponseCode::Status::InternalServerError, "The request could not be answered.")
             .answer(response);
@@ -558,8 +561,9 @@ void Server::_serve(ISocket::Ptr client) {
         connection.thread = thread([this, &connection] {
             _converse(connection);
         });
-    } catch (const system_error&) {
+    } catch (const system_error& error) {
         // No thread is left to serve it, which ends only this connection.
+        lWarn << "Could not start a thread to serve a connection:" << error.what();
         m_connections.pop_back();
     }
 }
@@ -580,8 +584,8 @@ void Server::_converse(Client& client) {
         }
         // The client may go, send nothing for too long, or its connection
         // fail. Only that connection ends; the server goes on.
-        // NOLINTNEXTLINE(bugprone-empty-catch)
-    } catch (const exception&) {
+    } catch (const exception& error) {
+        lDebug << "Stopped serving a connection:" << error.what();
     }
 
     const scoped_lock lock(m_lock);

@@ -106,6 +106,7 @@ public:
     // Waits for each hand-off under way, which ends within the peers' request
     // timeouts.
     ~Evictor();
+
     // Its thread holds this object, so it is neither copied nor moved.
     Evictor(const Evictor&) = delete;
     Evictor& operator=(const Evictor&) = delete;

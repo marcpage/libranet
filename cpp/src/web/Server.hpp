@@ -52,7 +52,6 @@ public:
     explicit Server(net::Address address);
     // Throws std::invalid_argument if limits allows no connection.
     Server(net::Address address, const Limits& limits);
-    ~Server() = default;
 
     // Before start(). Handlers are called from the threads serving
     // connections, several at once.
@@ -65,6 +64,8 @@ public:
     // May be called from any thread while start() runs, a handler's among
     // them.
     void stop();
+
+    ~Server() = default;
 
     Server() = delete;
     Server(Server&) = delete;

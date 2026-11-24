@@ -55,11 +55,6 @@ public:
     // Throws std::invalid_argument, naming the setting, for one the Python
     // node refuses, or for no clock.
     explicit PeerSearch(const Settings& settings, ClockFunction clock = &Clock::now);
-    ~PeerSearch() = default;
-    PeerSearch(const PeerSearch&) = delete;
-    PeerSearch& operator=(const PeerSearch&) = delete;
-    PeerSearch(PeerSearch&&) = delete;
-    PeerSearch& operator=(PeerSearch&&) = delete;
 
     // Whether it started: none does while one for prefix is under way or held
     // off, nor for an asker whose search may be passed on no more.
@@ -69,6 +64,13 @@ public:
     // Makes each pass due now over sessions, the peers connected now, and
     // gives when the next is due, or nothing when no search waits for one.
     std::optional<Clock::time_point> make_passes(const Sessions& sessions);
+
+    ~PeerSearch() = default;
+
+    PeerSearch(const PeerSearch&) = delete;
+    PeerSearch& operator=(const PeerSearch&) = delete;
+    PeerSearch(PeerSearch&&) = delete;
+    PeerSearch& operator=(PeerSearch&&) = delete;
 
 private:
     // Its next pass is counted from one.

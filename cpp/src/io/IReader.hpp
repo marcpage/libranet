@@ -32,10 +32,11 @@ public:
                                                                std::size_t size) = 0;
 
     virtual ~IReader() = default;
-    IReader(const IReader&) = delete;
-    IReader& operator=(const IReader&) = delete;
     IReader(IReader&&) noexcept = default;
     IReader& operator=(IReader&&) noexcept = default;
+
+    IReader(const IReader&) = delete;
+    IReader& operator=(const IReader&) = delete;
 
 protected:
     IReader() = default;

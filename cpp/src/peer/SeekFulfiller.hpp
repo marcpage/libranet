@@ -51,11 +51,6 @@ public:
     // or for no store or no clock.
     SeekFulfiller(storage::IDataSource::Ptr store, const Settings& settings,
                   ClockFunction clock = &Clock::now);
-    ~SeekFulfiller() = default;
-    SeekFulfiller(const SeekFulfiller&) = delete;
-    SeekFulfiller& operator=(const SeekFulfiller&) = delete;
-    SeekFulfiller(SeekFulfiller&&) = delete;
-    SeekFulfiller& operator=(SeekFulfiller&&) = delete;
 
     // Step 6 of first contact (Handshake Protocol §3), on a new connection:
     // fulfills seek, the list the node has just sent. Throws what
@@ -68,6 +63,13 @@ public:
     [[nodiscard]] std::size_t refresh(const Sessions& sessions);
 
     [[nodiscard]] std::size_t pipeline_depth() const noexcept;
+
+    ~SeekFulfiller() = default;
+
+    SeekFulfiller(const SeekFulfiller&) = delete;
+    SeekFulfiller& operator=(const SeekFulfiller&) = delete;
+    SeekFulfiller(SeekFulfiller&&) = delete;
+    SeekFulfiller& operator=(SeekFulfiller&&) = delete;
 
 private:
     // What has been pushed and named to one node, on the connection to it now.

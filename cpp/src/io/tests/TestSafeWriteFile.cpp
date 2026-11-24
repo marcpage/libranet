@@ -40,14 +40,14 @@ public:
         std::filesystem::remove_all(m_path, error);
     }
 
+    [[nodiscard]] const std::filesystem::path& path() const noexcept {
+        return m_path;
+    }
+
     ScratchDirectory(const ScratchDirectory&) = delete;
     ScratchDirectory& operator=(const ScratchDirectory&) = delete;
     ScratchDirectory(ScratchDirectory&&) = delete;
     ScratchDirectory& operator=(ScratchDirectory&&) = delete;
-
-    [[nodiscard]] const std::filesystem::path& path() const noexcept {
-        return m_path;
-    }
 
 private:
     std::filesystem::path m_path;

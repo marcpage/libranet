@@ -27,16 +27,10 @@ public:
     // supported algorithm, which is warned of as the constructor warns of it.
     [[nodiscard]] static std::optional<Identifier> from(const types::Json& value);
 
-    Identifier() = default;
     // Throws std::invalid_argument for an algorithm that is not supported, or
     // a hash that is not its digest's hex digits. The hash is kept in lower
     // case (HttpApi §5.4).
     Identifier(std::string algorithm, std::string hash);
-    ~Identifier() = default;
-    Identifier(const Identifier&) = default;
-    Identifier& operator=(const Identifier&) = default;
-    Identifier(Identifier&&) = default;
-    Identifier& operator=(Identifier&&) = default;
 
     [[nodiscard]] const std::string& algorithm() const;
     [[nodiscard]] const std::string& hash() const;
@@ -50,6 +44,13 @@ public:
     // So that an identifier under an unknown algorithm can be told from one
     // that is not valid.
     [[nodiscard]] static bool is_supported(std::string_view algorithm) noexcept;
+
+    Identifier() = default;
+    ~Identifier() = default;
+    Identifier(const Identifier&) = default;
+    Identifier& operator=(const Identifier&) = default;
+    Identifier(Identifier&&) = default;
+    Identifier& operator=(Identifier&&) = default;
 
 private:
     // HttpApi §5.4 refuses any other. The algorithm names a directory in a

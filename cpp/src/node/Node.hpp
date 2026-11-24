@@ -34,14 +34,16 @@ public:
     // when it cannot lay out its data directory, keep its key, or listen; and
     // db::SqliteError when it cannot open its database.
     explicit Node(const SettingsFile& settings, const std::vector<std::string>& seeds = {});
+
+    // With the port the system picked when the settings left that to it.
+    [[nodiscard]] const net::Address& local_address() const noexcept;
+
     ~Node() = default;
+
     Node(const Node&) = delete;
     Node& operator=(const Node&) = delete;
     Node(Node&&) = delete;
     Node& operator=(Node&&) = delete;
-
-    // With the port the system picked when the settings left that to it.
-    [[nodiscard]] const net::Address& local_address() const noexcept;
 
 private:
     struct PartSettings {

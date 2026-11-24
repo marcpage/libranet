@@ -53,6 +53,7 @@ public:
     // Stops fetch, then waits for the fetches and passes under way, which end
     // within the request timeout.
     ~Seeker();
+
     // Its threads hold this object, so it is neither copied nor moved.
     Seeker(const Seeker&) = delete;
     Seeker& operator=(const Seeker&) = delete;

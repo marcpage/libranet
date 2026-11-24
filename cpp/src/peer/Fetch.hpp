@@ -62,12 +62,6 @@ public:
     // or for no store or a function missing.
     Fetch(storage::IDataSource::Ptr store, GetPeers get_peers, const Settings& settings,
           ClockFunction clock = &Clock::now);
-    ~Fetch() = default;
-    // Its searches hold this object.
-    Fetch(const Fetch&) = delete;
-    Fetch& operator=(const Fetch&) = delete;
-    Fetch(Fetch&&) = delete;
-    Fetch& operator=(Fetch&&) = delete;
 
     // Unless the node holds it, a search for it is under way, or a new one is
     // held off. Throws what the store throws, and std::bad_alloc if zlib runs
@@ -79,6 +73,14 @@ public:
 
     // Ends each search under way, and each asked for after.
     void stop();
+
+    ~Fetch() = default;
+
+    // Its searches hold this object.
+    Fetch(const Fetch&) = delete;
+    Fetch& operator=(const Fetch&) = delete;
+    Fetch(Fetch&&) = delete;
+    Fetch& operator=(Fetch&&) = delete;
 
 private:
     storage::IDataSource::Ptr m_store;

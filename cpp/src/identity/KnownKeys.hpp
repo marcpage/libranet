@@ -24,17 +24,19 @@ public:
 
     // Throws std::invalid_argument for no store.
     explicit KnownKeys(storage::IDataSource::Ptr store);
-    ~KnownKeys() = default;
-    KnownKeys(const KnownKeys&) = delete;
-    KnownKeys& operator=(const KnownKeys&) = delete;
-    KnownKeys(KnownKeys&&) = delete;
-    KnownKeys& operator=(KnownKeys&&) = delete;
 
     // Nothing when the store does not hold it yet, so that such a signer can
     // be told from one whose signature fails (HandshakeProtocol §2). Throws
     // std::invalid_argument when what the store holds is not node_id's
     // content, or not an Ed25519 public key that is not of small order.
     [[nodiscard]] std::optional<Key> key(const storage::Identifier& node_id);
+
+    ~KnownKeys() = default;
+
+    KnownKeys(const KnownKeys&) = delete;
+    KnownKeys& operator=(const KnownKeys&) = delete;
+    KnownKeys(KnownKeys&&) = delete;
+    KnownKeys& operator=(KnownKeys&&) = delete;
 
 private:
     storage::IDataSource::Ptr m_store;

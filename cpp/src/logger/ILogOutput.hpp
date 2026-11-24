@@ -12,10 +12,11 @@ public:
     virtual void log(std::string_view line) = 0;
 
     virtual ~ILogOutput() = default;
-    ILogOutput(const ILogOutput&) = delete;
-    ILogOutput& operator=(const ILogOutput&) = delete;
     ILogOutput(ILogOutput&&) noexcept = default;
     ILogOutput& operator=(ILogOutput&&) noexcept = default;
+
+    ILogOutput(const ILogOutput&) = delete;
+    ILogOutput& operator=(const ILogOutput&) = delete;
 
 protected:
     ILogOutput() = default;

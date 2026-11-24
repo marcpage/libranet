@@ -54,13 +54,16 @@ string body_of(const SeekList& list) {
     return Converter::text_of(list.write());
 }
 
-// The list request's body holds, decompressed to no more than list_bytes;
-// or nothing when it holds none, having answered 400 saying why
-// (HttpApi §10.5).
-optional<SeekList> posted_list(const Request& request, size_t list_bytes, Response& response) {
+// The list the body of request, on connection, holds, decompressed to no
+// more than list_bytes; or nothing when it holds none, having answered 400
+// saying why (HttpApi §10.5).
+optional<SeekList> posted_list(const Request& request, size_t list_bytes, Response& response,
+                               const ConnectionInfo& connection) {
     try {
         return SeekList::read(Converter::bytes_of(request.body()), list_bytes);
     } catch (const invalid_argument& error) {
+        lDebug << "Refused the seek list from" << connection.remote_address().to_string() + ":"
+               << error.what();
         Problem(Problem::Type::InvalidList, Status::BadRequest, error.what()).answer(response);
         return nullopt;
     }
@@ -121,7 +124,7 @@ void SeekHandler::_get(Response& response) const {
 // is answered as the specification asks (HttpApi §10.7).
 void SeekHandler::_post(const Request& request, Response& response,
                         const ConnectionInfo& connection) const {
-    const auto list = posted_list(request, m_list_bytes, response);
+    const auto list = posted_list(request, m_list_bytes, response, connection);
 
     if (!list) {
         return;

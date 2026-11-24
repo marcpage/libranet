@@ -140,6 +140,8 @@ Service::~Service() {
     try {
         m_server.stop();
         m_server_thread.join();
+    } catch (const exception& error) {
+        lFatal << "Could not stop the web server:" << error.what();
     } catch (...) {
         terminate();
     }

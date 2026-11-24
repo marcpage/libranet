@@ -30,8 +30,6 @@ public:
         std::size_t body_bytes{default_body_bytes};
     };
 
-    Response() = default;
-
     [[nodiscard]] static std::optional<Response> read(io::MeteredReader& reader,
                                                       const Limits& limits);
 
@@ -55,6 +53,8 @@ public:
     [[nodiscard]] std::string to_string() const;
 
     friend std::istream& operator>>(std::istream& in_stream, Response& response);
+
+    Response() = default;
 
 private:
     std::string m_version = "HTTP/1.1";
