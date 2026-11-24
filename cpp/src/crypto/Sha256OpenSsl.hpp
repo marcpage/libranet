@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include <openssl/evp.h>
+#include <openssl/types.h>
 
 #include "IHasher.hpp"
 #include "OpenSsl.hpp"

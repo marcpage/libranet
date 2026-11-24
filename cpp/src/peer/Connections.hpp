@@ -97,12 +97,12 @@ public:
     Connections& operator=(Connections&&) = delete;
 
 private:
-    static constexpr auto check_due = "peers.check_due";
-
     struct Peer {
         std::shared_ptr<PeerSession> session;
         std::string endpoint;
     };
+
+    static constexpr auto check_due = "peers.check_due";
 
     Milliseconds m_check_interval;
     storage::Identifier m_own_id;

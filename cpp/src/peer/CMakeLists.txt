@@ -16,7 +16,6 @@ add_library(libranet_peer STATIC
 add_library(libranet::peer ALIAS libranet_peer)
 target_include_directories(libranet_peer PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(libranet_peer PUBLIC
-    libranet::storage
     libranet::http
     libranet::identity
     libranet::io
@@ -26,6 +25,7 @@ target_link_libraries(libranet_peer PUBLIC
     libranet::protocol
     libranet::stats
     libranet::storage
+    libranet::types
     Threads::Threads
 )
 

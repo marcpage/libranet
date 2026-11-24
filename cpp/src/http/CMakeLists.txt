@@ -1,7 +1,7 @@
 add_library(libranet_http INTERFACE)
 add_library(libranet::http ALIAS libranet_http)
 target_include_directories(libranet_http INTERFACE ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(libranet_http INTERFACE libranet::types libranet::crypto libranet::io)
+target_link_libraries(libranet_http INTERFACE libranet::crypto libranet::io libranet::types)
 
 if(BUILD_TESTING)
     add_executable(http_tests
@@ -19,10 +19,10 @@ if(BUILD_TESTING)
 endif()
 
 if(LIBRANET_FUZZERS)
-    libranet_add_fuzzer(url_fuzzer fuzz/FuzzUrl.cpp libranet::http)
-    libranet_add_fuzzer(query_fuzzer fuzz/FuzzQuery.cpp libranet::http)
     libranet_add_fuzzer(headers_fuzzer fuzz/FuzzHeaders.cpp libranet::http)
+    libranet_add_fuzzer(query_fuzzer fuzz/FuzzQuery.cpp libranet::http)
     libranet_add_fuzzer(request_fuzzer fuzz/FuzzRequest.cpp libranet::http)
     libranet_add_fuzzer(response_fuzzer fuzz/FuzzResponse.cpp libranet::http)
     libranet_add_fuzzer(structured_field_fuzzer fuzz/FuzzStructuredField.cpp libranet::http)
+    libranet_add_fuzzer(url_fuzzer fuzz/FuzzUrl.cpp libranet::http)
 endif()

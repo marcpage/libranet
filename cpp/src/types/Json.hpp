@@ -5,6 +5,7 @@
 #include <cctype>
 #include <charconv>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <iostream>
@@ -39,6 +40,8 @@ public:
 
     using Array = std::vector<Json>;
     using Object = std::map<std::string, Json>;
+
+    [[nodiscard]] static Json parse(std::string_view input);
 
     Json() noexcept;
     // Implicit, so that initializer lists such as {{"age", 30}, {"tags", {"a",
@@ -96,8 +99,6 @@ public:
     Json& at(const std::string& key);
 
     [[nodiscard]] std::string dump(int indent = -1) const;
-
-    [[nodiscard]] static Json parse(std::string_view input);
 
     friend bool operator==(const Json& left, const Json& right);
     friend bool operator!=(const Json& left, const Json& right);
@@ -245,7 +246,7 @@ inline Json::Type Json::type() const {
             return Type::Boolean;
         }
 
-        if constexpr (std::is_same_v<T, int64_t>) {
+        if constexpr (std::is_same_v<T, std::int64_t>) {
             return Type::Integer;
         }
 

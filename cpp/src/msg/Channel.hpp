@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -25,7 +26,7 @@ public:
     ~Channel();
 
     [[nodiscard]] bool empty() const;
-    [[nodiscard]] size_t size() const;
+    [[nodiscard]] std::size_t size() const;
 
     [[nodiscard]] std::optional<IMessage::Ptr> next_message(Milliseconds timeout = wait_forever);
 

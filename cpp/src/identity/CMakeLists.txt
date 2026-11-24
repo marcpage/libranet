@@ -1,34 +1,31 @@
 add_library(libranet_identity STATIC
-    NodeIdentity.cpp
     KnownKeys.cpp
-    SignatureBase.cpp
     MessageSigner.cpp
     MessageVerifier.cpp
+    NodeIdentity.cpp
+    SignatureBase.cpp
 )
 add_library(libranet::identity ALIAS libranet_identity)
 target_include_directories(libranet_identity PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(libranet_identity PUBLIC
-    libranet::types
-    libranet::http
     libranet::crypto
-    libranet::storage
+    libranet::http
+    libranet::io
     libranet::logger
+    libranet::storage
+    libranet::types
 )
 
 if(BUILD_TESTING)
     add_executable(identity_tests
-        tests/TestNodeIdentity.cpp
-        tests/TestKnownKeys.cpp
         tests/TestContentDigest.cpp
-        tests/TestSignatureBase.cpp
+        tests/TestKnownKeys.cpp
         tests/TestMessageSigner.cpp
         tests/TestMessageVerifier.cpp
+        tests/TestNodeIdentity.cpp
+        tests/TestSignatureBase.cpp
     )
-    target_link_libraries(identity_tests PRIVATE
-        libranet::identity
-        libranet::crypto
-        GTest::gtest_main
-    )
+    target_link_libraries(identity_tests PRIVATE libranet::identity GTest::gtest_main)
     gtest_discover_tests(identity_tests)
 endif()
 

@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
+#include <cstdint>
 #include <numeric>
 #include <stdexcept>
 #include <string>
@@ -18,8 +20,8 @@ public:
     static std::string lower_case(std::string_view text);
     static Bytes bytes_of(std::string_view text);
     static std::string text_of(const Converter::Bytes& bytes);
-    static uint64_t hex_digit_value(char hex_digit);
-    static uint64_t parse_hex(std::string_view hex_text);
+    static std::uint64_t hex_digit_value(char hex_digit);
+    static std::uint64_t parse_hex(std::string_view hex_text);
 };
 
 inline std::string Converter::lower_case(std::string_view text) {
@@ -47,11 +49,11 @@ inline std::string Converter::text_of(const Converter::Bytes& bytes) {
     return text;
 }
 
-inline uint64_t Converter::hex_digit_value(char hex_digit) {
-    return static_cast<uint64_t>(hex_digits.find(hex_digit));
+inline std::uint64_t Converter::hex_digit_value(char hex_digit) {
+    return static_cast<std::uint64_t>(hex_digits.find(hex_digit));
 }
 
-inline uint64_t Converter::parse_hex(std::string_view hex_text) {
+inline std::uint64_t Converter::parse_hex(std::string_view hex_text) {
     constexpr auto max_hex_digits = 16;
 
     if (hex_text.size() > max_hex_digits) {
@@ -60,9 +62,11 @@ inline uint64_t Converter::parse_hex(std::string_view hex_text) {
                                                 + " ( > " + std::to_string(max_hex_digits) + ")"));
     }
 
-    return std::accumulate(hex_text.begin(), hex_text.end(), uint64_t{0}, [](uint64_t read, char digit) {
+    const auto append_digit = [](std::uint64_t read, char digit) {
         return (read << bits_per_hex_digit) | Converter::hex_digit_value(digit);
-    });
+    };
+
+    return std::accumulate(hex_text.begin(), hex_text.end(), std::uint64_t{0}, append_digit);
 }
 
 } // namespace types

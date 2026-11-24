@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <iostream>
 #include <map>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>

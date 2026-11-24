@@ -53,6 +53,8 @@ double unused(Clock::time_point now, Clock::duration longest_unused,
 
 } // namespace
 
+namespace eviction {
+
 Scorer::Scorer(const Identifier& node_id, Clock::time_point now, const Extremes& extremes)
     : m_node(HashPrefix::parse(node_id.hash()))
     , m_now(now)
@@ -78,3 +80,5 @@ double Scorer::of(const Identifier& identifier,
            * (raised(idle, factor_floor) * raised(rarely_asked_for, factor_floor)
               * raised(far, factor_floor));
 }
+
+} // namespace eviction

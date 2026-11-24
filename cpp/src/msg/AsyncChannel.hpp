@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Channel.hpp"
+#include "IMessage.hpp"
 
 namespace msg {
 

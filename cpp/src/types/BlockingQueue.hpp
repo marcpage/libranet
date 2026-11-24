@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
 #include <mutex>
 #include <optional>
 #include <queue>
@@ -13,9 +14,9 @@ template<typename Type>
 class BlockingQueue {
 public:
     using Milliseconds = std::chrono::milliseconds;
-    static constexpr size_t unbounded = 0;
+    static constexpr std::size_t unbounded = 0;
 
-    explicit BlockingQueue(size_t capacity = unbounded);
+    explicit BlockingQueue(std::size_t capacity = unbounded);
 
     void push(const Type& item);
     void push(Type&& item);
@@ -26,7 +27,7 @@ public:
     Type pop();
     [[nodiscard]] std::optional<Type> pop_ms_timeout(Milliseconds timeout);
 
-    [[nodiscard]] size_t size() const;
+    [[nodiscard]] std::size_t size() const;
     [[nodiscard]] bool empty() const;
 
     ~BlockingQueue() = default;
@@ -44,7 +45,7 @@ private:
     // Set once, as the queue is made; its mutex and condition variables
     // already keep it from being copied or assigned.
     // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
-    const size_t m_capacity;
+    const std::size_t m_capacity;
 
     template<typename Item>
     void _core_push(Item&& item);
@@ -54,7 +55,7 @@ private:
 };
 
 template<typename Type>
-BlockingQueue<Type>::BlockingQueue(size_t capacity)
+BlockingQueue<Type>::BlockingQueue(std::size_t capacity)
     : m_capacity(capacity) {}
 
 template<typename Type>
@@ -137,7 +138,7 @@ std::optional<Type> BlockingQueue<Type>::pop_ms_timeout(Milliseconds timeout) {
 }
 
 template<typename Type>
-size_t BlockingQueue<Type>::size() const {
+std::size_t BlockingQueue<Type>::size() const {
     const std::scoped_lock lock(m_mutex);
     return m_queue.size();
 }

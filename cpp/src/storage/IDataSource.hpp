@@ -31,13 +31,15 @@ public:
     // In no particular order.
     [[nodiscard]] virtual Identifiers starting_with(const HashPrefix& prefix) const = 0;
 
-    IDataSource() = default;
     virtual ~IDataSource() = default;
 
     IDataSource(const IDataSource&) = delete;
     IDataSource& operator=(const IDataSource&) = delete;
     IDataSource(IDataSource&&) = delete;
     IDataSource& operator=(IDataSource&&) = delete;
+
+protected:
+    IDataSource() = default;
 };
 
 } // namespace storage

@@ -3,11 +3,11 @@ add_library(libranet_web STATIC
 )
 add_library(libranet::web ALIAS libranet_web)
 target_include_directories(libranet_web PUBLIC ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(libranet_web PUBLIC 
-    libranet::net
-    libranet::io
+target_link_libraries(libranet_web PUBLIC
     libranet::http
+    libranet::io
     libranet::logger
+    libranet::net
     libranet::storage
     libranet::types
     Threads::Threads
@@ -15,7 +15,7 @@ target_link_libraries(libranet_web PUBLIC
 
 if(BUILD_TESTING)
     add_executable(web_tests
-        tests/TestConnection.cpp
+        tests/TestConnectionInfo.cpp
         tests/TestServer.cpp
     )
     target_link_libraries(web_tests PRIVATE libranet::web GTest::gtest_main)

@@ -15,6 +15,6 @@ if(BUILD_TESTING)
 endif()
 
 if(LIBRANET_FUZZERS)
-    libranet_add_fuzzer(json_fuzzer fuzz/FuzzJson.cpp libranet::types)
     libranet_add_fuzzer(integer_fuzzer fuzz/FuzzInteger.cpp libranet::types)
+    libranet_add_fuzzer(json_fuzzer fuzz/FuzzJson.cpp libranet::types)
 endif()

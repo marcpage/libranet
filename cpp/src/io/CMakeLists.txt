@@ -4,7 +4,7 @@ add_library(libranet_io STATIC
 )
 add_library(libranet::io ALIAS libranet_io)
 target_include_directories(libranet_io PUBLIC ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(libranet_io PUBLIC libranet::net)
+target_link_libraries(libranet_io PUBLIC libranet::net libranet::types)
 
 if(BUILD_TESTING)
     add_executable(io_tests

@@ -9,6 +9,7 @@
 
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
+#include <openssl/types.h>
 
 #include "IEncryptKey.hpp"
 #include "OpenSsl.hpp"
@@ -21,13 +22,12 @@ namespace crypto {
 class AesOpenSsl : public IEncryptKey {
 public:
     AesOpenSsl(Data key, AesMode mode, AesPadding padding);
+    ~AesOpenSsl() override;
 
     [[nodiscard]] Data encrypt(std::string_view plaintext,
                                const InitializationVector& vector) const override;
     [[nodiscard]] std::string decrypt(const Data& ciphertext,
                                       const InitializationVector& vector) const override;
-
-    ~AesOpenSsl() override;
 
     AesOpenSsl(AesOpenSsl&&) noexcept = default;
     AesOpenSsl& operator=(AesOpenSsl&&) noexcept = default;
