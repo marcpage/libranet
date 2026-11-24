@@ -14,10 +14,9 @@
 
 namespace http {
 
-// Problem details (RFC 9457), the body of every answer that is an error
-// (HTTP API §17), written as application/problem+json. A problem with no type
-// is about:blank: its status code describes it fully, and it is titled with
-// the code's reason phrase (RFC 9457 §4.2.1).
+// Problem details (RFC 9457), the body of every answer that is an error (HTTP
+// API §17). One with no type is about:blank, titled with the status code's
+// reason phrase (RFC 9457 §4.2.1).
 // cppcheck-suppress noConstructor
 class Problem {
 public:
@@ -41,8 +40,8 @@ public:
 
     static constexpr std::string_view content_type = "application/problem+json";
 
-    // Each throws std::invalid_argument for a status that is not an error,
-    // or a type cast from a number that names none.
+    // Each throws std::invalid_argument for a status that is not an error, or
+    // a type that names none.
     Problem(ResponseCode::Status status, std::string detail);
     Problem(Type type, ResponseCode::Status status, std::string detail);
 
@@ -53,12 +52,10 @@ public:
     [[nodiscard]] const std::string& detail() const noexcept;
 
     [[nodiscard]] types::Json to_json() const;
-    // Sets the response's status, Content-Type, and body to this problem's,
-    // and leaves its other headers as they are.
+    // Leaves its other headers as they are.
     void answer(Response& response) const;
 
-    // Answers a request whose method its path does not take with 405,
-    // naming in Allow the methods the path does take, as "GET, PUT"
+    // With 405, naming in Allow the methods the path does take, as "GET, PUT"
     // (HTTP API §4, RFC 9110 §15.5.6).
     static void answer_method_not_allowed(const Request& request, std::string_view allowed,
                                           Response& response);
@@ -74,8 +71,7 @@ private:
     static constexpr std::string_view type_base = "https://libranet.org/problems/";
 
     std::optional<Type> m_type;
-    // Mistaken: the constructors set m_status. cppcheck loses the class's
-    // constructors in a file that names it with `using http::Problem;`.
+    // Mistaken: cppcheck loses the constructors in files `using` the class.
     // cppcheck-suppress uninitMemberVarNoCtor
     ResponseCode::Status m_status;
     std::string m_detail;

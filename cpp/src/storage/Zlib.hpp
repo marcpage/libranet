@@ -6,28 +6,23 @@
 
 namespace storage {
 
-// Content as a zlib stream (RFC 1950), as it may be stored and sent
-// (HttpApi §8), and back. Built on zlib.
+// Content as a zlib stream (RFC 1950), as it may be stored and sent (HttpApi
+// §8), and back.
 class Zlib {
 public:
     using Data = std::vector<std::byte>;
 
-    // zlib's levels: 0 stores without compressing, 1 is fastest, and 9 makes
-    // the smallest stream.
+    // 0 stores without compressing, 1 is fastest, and 9 makes the smallest.
     static constexpr int min_level = 0;
     static constexpr int balance_level = 6;
     static constexpr int max_level = 9;
 
-    // data as one zlib stream, compressed at level. Throws
-    // std::invalid_argument for a level from outside min_level to max_level.
+    // Throws std::invalid_argument for a level outside min_level to max_level.
     [[nodiscard]] static Data compress(const Data& data, int level);
 
-    // What the zlib stream data holds, or nothing when data is not exactly
-    // one complete zlib stream, or when what it holds is more than limit
-    // bytes. Decompressing stops just past limit, making room as it goes,
-    // so a small stream that would expand without bound takes no more
-    // memory than limit allows. Throws std::bad_alloc if zlib runs out of
-    // memory.
+    // Nothing when data is not exactly one zlib stream, or holds more than
+    // limit bytes, which bounds the memory it takes. Throws std::bad_alloc if
+    // zlib runs out of memory.
     [[nodiscard]] static std::optional<Data> decompress(const Data& data, std::size_t limit);
 
     Zlib() = delete;

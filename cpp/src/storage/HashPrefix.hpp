@@ -14,30 +14,23 @@
 
 namespace storage {
 
-// A prefix of a hash, in hex, as a search names one (HttpApi §6): from one
-// digit to as many as the longest hash has, in any case, and kept in lower
-// case. It is compared with a hash by its leading bits, not its digits,
-// since two digits that differ can still share their top bits, as 8 and 9
-// share three.
+// A prefix of a hash, in hex, as a search names one (HttpApi §6), kept in
+// lower case. It is compared with a hash by its leading bits, not its digits.
 class HashPrefix {
 public:
-    // Reads a prefix in any case. Throws std::invalid_argument for text that
-    // is empty, is not hex digits, or has more digits than the longest hash
-    // of a supported algorithm has.
+    // In any case. Throws std::invalid_argument for text that is empty, is not
+    // hex digits, or has more digits than the longest hash has.
     [[nodiscard]] static HashPrefix parse(std::string_view text);
 
-    // Four for each digit.
     [[nodiscard]] std::size_t bits() const noexcept;
-    // How many leading bits this shares with the hash of identifier, of
-    // whichever algorithm: no more than the shorter of the two has.
+    // With identifier's hash, of whichever algorithm: no more than the shorter
+    // of the two has.
     [[nodiscard]] std::size_t matching_bits(const Identifier& identifier) const;
-    // How many leading bits this shares with other: no more than the
-    // shorter of the two has.
+    // No more than the shorter of the two has.
     [[nodiscard]] std::size_t matching_bits(const HashPrefix& other) const;
     [[nodiscard]] const std::string& to_string() const noexcept;
 
 private:
-    // A hex digit's top bit, the first of its four.
     static constexpr unsigned top_bit = 0x8U;
 
     std::string m_hex;

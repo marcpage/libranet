@@ -142,7 +142,7 @@ A header reads top to bottom in this order:
 1. `#pragma once`.
 2. Includes (§3.3).
 3. The library's namespace, opened.
-4. A comment saying what the class is (§8), then the class.
+4. The class, with a comment above it only where §8 asks for one.
 5. The definitions of the class's members.
 6. The namespace, closed, with a comment naming it:
    `} // namespace example`. `clang-tidy` checks the comment.
@@ -698,16 +698,31 @@ spelled, a function with its parentheses, `parse()`.
 std::sort(names.begin(), names.end());
 ```
 
+A header is read for its interface, so its comments are few and short. A
+class's layout should show at a glance what it holds and what it offers, and
+comments between its declarations hide it. Each comment says only what the
+declaration it is above does not, in as few words as say it: a line is
+usual, and a few are the most.
+
 - **A class has no comment above it unless the comment adds something.** A
   class should be clear from its name and its public interface. A comment is
   added where something more needs saying, or where something about how the
   class is built must be known to understand it: what an implementation is
-  built on, a format it reads or writes, a limit it holds to.
+  built on, a format it reads or writes, a limit it holds to. It is a
+  sentence or two. How the class works, the messages it posts and takes, and
+  the design it follows are in the project's documents, or with the code
+  that does them, not above the class.
+- **A member has no comment unless its name and type leave something out**:
+  a unit, a range, what none or zero means, or the specification that sets
+  it. A comment does not say again what the name, the type, or the class's
+  comment says.
 - **A function whose name and types do not tell a caller all they need**
   has a comment, above its declaration or its definition, saying what it
   gives, as a noun phrase ("Whether password makes this hash, compared in
   constant time."), or what it does, with a verb ("Reads the digits at the
-  start of text, and moves past them."), and what it throws.
+  start of text, and moves past them."), and what it throws. It says what a
+  caller needs, not how the function does it: that is said, where it needs
+  saying, at the definition.
 - **A comment names the specification it follows**, and the section:
   "RFC 3986 §2.3".
 - **A comment at the end of a line is short**: a label, a unit, a range

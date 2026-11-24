@@ -21,16 +21,15 @@ public:
         MayHaveEol,
     };
 
-    // Reads a line up to its \n or the end of the input, and leaves out the \n and a \r before it.
-    // With MustHaveEol, returns nothing if the input ends before the \n.
+    // Leaves out the \n and a \r before it. With MustHaveEol, returns nothing
+    // if the input ends before the \n.
     [[nodiscard]] virtual std::optional<std::string> read_line(EolAction eolAction);
-    // Reads size bytes, or fewer where the input ends first.
+    // Or fewer where the input ends first.
     [[nodiscard]] virtual std::vector<std::byte> read_exact(std::size_t size);
-    // Reads up to and including the delimiter, or to the end of the input.
+    // Including the delimiter, or to the end of the input.
     [[nodiscard]] virtual std::string read_until(char delimiter);
 
-    // Reads up to size bytes into data. Returns how many were read, or
-    // nothing at the end of the input, before any are read.
+    // How many were read, or nothing at the end of the input.
     [[nodiscard]] virtual std::optional<std::size_t> read_some(std::byte* data,
                                                                std::size_t size) = 0;
 

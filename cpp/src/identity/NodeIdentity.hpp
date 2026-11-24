@@ -12,31 +12,22 @@
 
 namespace identity {
 
-// The node's own Ed25519 key, and the id other nodes know it by: the
-// identifier of its public key, as PEM-encoded SubjectPublicKeyInfo, which
-// is stored as content so that they can fetch it (HTTP API §11.2).
-// ISignKey::id() is the same for every Ed25519 key, so the node's id comes
-// from here. Nothing changes once it is made, so any thread may use it.
+// The node's own Ed25519 key, and the id other nodes know it by (HTTP API
+// §11.2). Any thread may use it.
 class NodeIdentity {
 public:
     using Data = std::vector<std::byte>;
 
-    // The key kept in key_file, or, when there is no file there, a new one,
-    // written to a file only its owner may read. A key file others may read
-    // is warned of, and made readable only by its owner. The public key is
-    // put in store, unless store holds it already. Throws
-    // std::invalid_argument when key_file holds no Ed25519 private key, and
-    // std::runtime_error when key_file cannot be read or written, as when
-    // its directory is not there, or store cannot keep the public key.
+    // The key kept in key_file, or a new one written there, readable only by
+    // its owner; its public key is put in store. Throws std::invalid_argument
+    // when key_file holds no Ed25519 private key, and std::runtime_error when
+    // it cannot be read or written, or store cannot keep the public key.
     NodeIdentity(const std::filesystem::path& key_file, const storage::IDataSource& store);
 
-    // The identifier of the public key, which a signature names as its
-    // keyid (HTTP API §11.2).
+    // The identifier of public_pem(), a signature's keyid (HTTP API §11.2).
     [[nodiscard]] const storage::Identifier& id() const noexcept;
-    // The public key, as PEM-encoded SubjectPublicKeyInfo: the content id()
-    // names.
+    // As PEM-encoded SubjectPublicKeyInfo.
     [[nodiscard]] const std::string& public_pem() const noexcept;
-    // The signature of data, with the node's key.
     [[nodiscard]] Data sign(std::string_view data) const;
 
     ~NodeIdentity() = default;

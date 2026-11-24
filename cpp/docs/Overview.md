@@ -29,7 +29,8 @@ elsewhere:
   [plans](plans/), from [Phase 1](plans/Phase%201.md) on.
 
 The authority remains the code: each class's header says what it is for, in
-the comment above it. Paths below are relative to `cpp/src/`, and are as of
+its name and interface, and in the comment above it where those leave
+something out. Paths below are relative to `cpp/src/`, and are as of
 2026-11-24.
 
 ## 2. The Node at a Glance

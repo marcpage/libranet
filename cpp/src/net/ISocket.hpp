@@ -15,10 +15,10 @@ public:
     using Milliseconds = std::chrono::milliseconds;
 
     [[nodiscard]] static Ptr bind(const Address& address);
-    // Connects to address, trying each of the addresses its host resolves
-    // to in turn, and waiting at most timeout for each; zero waits as long
-    // as the system does. Throws std::system_error when none connects, with
-    // the last one's error, std::errc::timed_out where it took too long.
+    // Tries each address the host resolves to in turn, waiting at most timeout
+    // for each; zero waits as long as the system does. Throws
+    // std::system_error when none connects, std::errc::timed_out where it took
+    // too long.
     [[nodiscard]] static Ptr connect(const Address& address,
                                      Milliseconds timeout = Milliseconds::zero());
 
@@ -41,10 +41,9 @@ public:
     virtual void set_send_timeout(Milliseconds timeout) = 0;
     virtual void close() = 0;
 
-    // Ends a connection both ways, so that a thread blocked reading or
-    // writing it returns at once. It may be called from another thread while
-    // one is, and does nothing once the peer has gone. The socket stays open
-    // until close().
+    // Ends a connection both ways, so that a thread blocked on it returns at
+    // once. May be called from another thread; the socket stays open until
+    // close().
     virtual void shutdown() = 0;
 
     virtual ~ISocket() = default;

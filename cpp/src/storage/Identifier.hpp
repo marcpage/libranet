@@ -24,33 +24,26 @@ public:
 
     static Identifier from(const std::string& identifier_str);
     static Identifier from(const Data& data);
-    // The identifier value names, as a list or a search answer names one:
-    // a string of "{algorithm}/{hash}" and nothing more. Nothing for a
-    // value that names none, such as one of an algorithm not supported,
-    // which is warned of as the constructor warns of it.
+    // Nothing for a value that is not a string of "{algorithm}/{hash}" of a
+    // supported algorithm, which is warned of as the constructor warns of it.
     [[nodiscard]] static std::optional<Identifier> from(const types::Json& value);
 
-    // Throws std::invalid_argument for an algorithm that is not supported,
-    // or a hash that is not as many hex digits as the algorithm's digest
-    // has. The hash may be in any case, and is kept in lower case
-    // (HttpApi §5.4).
+    // Throws std::invalid_argument for an algorithm that is not supported, or
+    // a hash that is not its digest's hex digits. The hash is kept in lower
+    // case (HttpApi §5.4).
     Identifier(std::string algorithm, std::string hash);
 
     [[nodiscard]] const std::string& algorithm() const;
     [[nodiscard]] const std::string& hash() const;
     [[nodiscard]] std::string to_string() const;
-    // The content this identifier names, read from body: body itself, when
-    // it hashes to this identifier, or else what body decompresses to, when
-    // it is one zlib stream of that content (HighLevelDesign §4.1.1, HttpApi
-    // §8). Nothing when body is neither, or when it decompresses to more
-    // than limit bytes; limit bounds only decompressing. Throws
+    // body itself, when it hashes to this identifier, or what it decompresses
+    // to, when that does (HighLevelDesign §4.1.1, HttpApi §8). Nothing when it
+    // is neither, or decompresses to more than limit bytes. Throws
     // std::bad_alloc if zlib runs out of memory.
     [[nodiscard]] std::optional<Data> content_of(const Data& body, std::size_t limit) const;
-    // How many hex digits the longest hash of a supported algorithm has.
     [[nodiscard]] static std::size_t longest_hash_digits();
-    // Whether an identifier may name algorithm, so that one under an
-    // algorithm the node does not know can be told from one that is not
-    // valid without being refused.
+    // So that an identifier under an unknown algorithm can be told from one
+    // that is not valid.
     [[nodiscard]] static bool is_supported(std::string_view algorithm) noexcept;
 
     Identifier() = default;
@@ -61,9 +54,9 @@ public:
     Identifier& operator=(Identifier&&) = default;
 
 private:
-    // The only hash algorithm supported (HttpApi §5.4: an unknown one is
-    // refused). The algorithm names a directory in a store, so a name not
-    // on this list, such as "..", must never reach a path.
+    // HttpApi §5.4 refuses any other. The algorithm names a directory in a
+    // store, so a name not on this list, such as "..", must never reach a
+    // path.
     static constexpr std::string_view sha256 = "sha256";
 
     std::string m_algorithm;

@@ -20,56 +20,44 @@
 
 namespace protocol {
 
-// A search's answer (HttpApi §6.1), {"results": ["sha256/…", …]}: what was
-// found, best match first. A POST /data/search/{prefix} naming what a peer
-// holds has the same body (HttpApi §10.7.2). It is sent less than 1 MiB in
-// size, naming as many of the results, from the first, as fit: as compact
-// JSON, or, only when that would not fit, zlib-compressed at level 6, as the
-// reference node does, and then with Content-Encoding: deflate.
+// A search's answer (HttpApi §6.1, §10.7.2): what was found, best match first,
+// sent in less than 1 MiB, naming as many as fit.
 class SearchResults {
 public:
     using Identifiers = std::vector<storage::Identifier>;
 
-    // An answer as it is sent.
     struct Body {
         std::string text;
-        // Whether text is zlib-compressed, and so is sent with
-        // Content-Encoding: deflate.
+        // And so sent with Content-Encoding: deflate.
         bool compressed = false;
     };
 
-    // Reads an answer as it was sent: JSON, or zlib-compressed JSON of no
-    // more than decompressed_limit bytes. An entry that is not
-    // "{algorithm}/{hash}" of a supported algorithm is left out, as a node
-    // may name content this one cannot read. Throws std::invalid_argument
-    // for a body that is neither, or that is not an object holding a
-    // "results" array.
+    // JSON, or zlib-compressed JSON of no more than decompressed_limit bytes.
+    // An entry of an unsupported algorithm is left out. Throws
+    // std::invalid_argument for a body that is neither, or not an object
+    // holding a "results" array.
     [[nodiscard]] static SearchResults parse(std::string_view body,
                                              std::size_t decompressed_limit);
 
-    // results, best match first.
+    // Best match first.
     explicit SearchResults(Identifiers results);
 
     [[nodiscard]] const Identifiers& results() const noexcept;
-    // The answer naming as many of the results, from the first, as fit.
+    // Naming as many of the results, from the first, as fit.
     [[nodiscard]] Body body() const;
-    // Sets the response's Content-Type, its Content-Encoding when the body
-    // is compressed, and its body to this answer's, and leaves its status
-    // and other headers as they are.
+    // Sets the response's Content-Type, Content-Encoding, and body, and leaves
+    // the rest as it is.
     void answer(http::Response& response) const;
 
 private:
-    // The answer naming the first count of the results, compressed.
     struct Attempt {
         std::size_t count = 0;
         std::string text;
     };
 
-    // HttpApi §6.1: an answer is less than 1 MiB as sent, which for one sent
-    // compressed is its compressed size.
+    // As sent, compressed or not (HttpApi §6.1).
     static constexpr std::size_t max_body_size = 1 * types::Megabyte;
-    // The level an answer too large as it is is compressed at, as the
-    // reference node does (HttpApi §6.1).
+    // As the reference node does (HttpApi §6.1).
     static constexpr int compression_level = storage::Zlib::balance_level;
     static constexpr std::string_view results_member = "results";
 
