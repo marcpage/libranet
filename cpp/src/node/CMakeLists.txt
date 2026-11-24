@@ -10,8 +10,13 @@ target_link_libraries(libranet_node
     PUBLIC
         libranet::identity
         libranet::api
+        libranet::eviction
+        libranet::http
         libranet::logger
+        libranet::peer
+        libranet::stats
         libranet::storage
+        libranet::types
         libranet::web
     PRIVATE
         yaml-cpp::yaml-cpp
