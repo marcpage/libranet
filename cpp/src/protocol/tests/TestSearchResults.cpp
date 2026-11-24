@@ -93,7 +93,7 @@ SearchResults::Identifiers numbered(std::size_t count) {
             data.push_back(static_cast<std::byte>(character));
         }
 
-        identifiers.push_back(Identifier::from(data));
+        identifiers.push_back(Identifier::of(data));
     }
 
     return identifiers;
@@ -120,13 +120,13 @@ std::vector<std::string> texts(const SearchResults::Identifiers& identifiers) {
 // What the answer body names, as text, when it decompresses to no more than
 // limit bytes.
 std::vector<std::string> named(std::string_view body, std::size_t limit = 4 * max_body_size) {
-    return texts(SearchResults::parse(body, limit).results());
+    return texts(SearchResults::from_body(body, limit).results());
 }
 
-// Whether SearchResults::parse() turns down body as no answer.
+// Whether SearchResults::from_body() turns down body as no answer.
 bool refused(std::string_view body, std::size_t limit = enough) {
     try {
-        (void)SearchResults::parse(body, limit);
+        (void)SearchResults::from_body(body, limit);
     } catch (const std::invalid_argument&) {
         return true;
     }
@@ -147,8 +147,7 @@ TEST(SearchResultsTest, ReadsWhatPythonCompressed) {
 }
 
 TEST(SearchResultsTest, WritesAsPythonDoes) {
-    const SearchResults answer(
-        {Identifier::from(std::string(hello)), Identifier::from(std::string(abc))});
+    const SearchResults answer({Identifier::parse(hello), Identifier::parse(abc)});
 
     const auto body = answer.body();
 
@@ -167,7 +166,7 @@ TEST(SearchResultsTest, NothingFound) {
 }
 
 TEST(SearchResultsTest, ReadAndWrittenAgainAlike) {
-    const auto read = SearchResults::parse(text_of_hex(python_compressed_answer), enough);
+    const auto read = SearchResults::from_body(text_of_hex(python_compressed_answer), enough);
 
     EXPECT_EQ(read.body().text, python_answer);
 }
@@ -267,8 +266,7 @@ TEST(SearchResultsTest, AsManyAsFitAreNamed) {
 
 TEST(SearchResultsTest, AnswersAResponse) {
     constexpr auto status = http::ResponseCode::Status::Accepted;
-    const SearchResults answer(
-        {Identifier::from(std::string(hello)), Identifier::from(std::string(abc))});
+    const SearchResults answer({Identifier::parse(hello), Identifier::parse(abc)});
     http::Response response;
 
     response.set_status_code(status);

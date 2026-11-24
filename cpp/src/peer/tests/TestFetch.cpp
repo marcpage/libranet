@@ -387,7 +387,7 @@ private:
 
 // The identifier of content_text.
 Identifier content_id() {
-    return Identifier::from(Converter::bytes_of(content_text));
+    return Identifier::of(Converter::bytes_of(content_text));
 }
 
 // Whether making a fetch with settings is refused.

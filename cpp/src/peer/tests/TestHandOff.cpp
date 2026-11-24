@@ -245,7 +245,7 @@ protected:
 
     // The identifier of content_text.
     [[nodiscard]] static Identifier content_id() {
-        return Identifier::from(Converter::bytes_of(content_text));
+        return Identifier::of(Converter::bytes_of(content_text));
     }
 
     [[nodiscard]] const std::shared_ptr<fixtures::MemorySource>& store() const {
@@ -400,7 +400,7 @@ TEST_F(HandOffTest, ContentNotHeldIsNotOffered) {
     const StandInNode peer(taking(MessageSigner(first())));
     const auto hand_off = hand_off_to({session_with(peer, first())});
 
-    EXPECT_FALSE(hand_off.hand_off(Identifier::from(Converter::bytes_of("Not held"))));
+    EXPECT_FALSE(hand_off.hand_off(Identifier::of(Converter::bytes_of("Not held"))));
     EXPECT_EQ(peer.asked(), 0U);
 }
 

@@ -179,7 +179,7 @@ SeekList seek_list_in(const Response& answer, const Address& address, size_t lis
     }
 
     try {
-        return SeekList::read(*body, list_bytes);
+        return SeekList::from_body(*body, list_bytes);
     } catch (const invalid_argument& error) {
         lDebug << "Ignoring the seek list from" << address.to_string() + ":" << error.what();
         return {};

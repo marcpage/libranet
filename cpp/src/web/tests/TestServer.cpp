@@ -247,7 +247,7 @@ void answer_with_requests(const Request& /*request*/, Response& response,
 // A handler that has the connection carry node_id's signature, as one
 // checking signatures will once it has verified one.
 void sign_as_node(const Request& /*request*/, Response& /*response*/, ConnectionInfo& connection) {
-    connection.set_node(Identifier::from(std::string(node_id)));
+    connection.set_node(Identifier::parse(node_id));
 }
 
 // A handler that answers with the node whose signature the connection

@@ -69,10 +69,10 @@ TEST(ConnectionTest, KnowsNoNodeUntilOneIsSet) {
 TEST(ConnectionTest, KnowsTheNodeSetLast) {
     auto connection = from_remote();
 
-    connection.set_node(Identifier::from(std::string(first_node)));
+    connection.set_node(Identifier::parse(first_node));
     EXPECT_EQ(node_of(connection), first_node);
 
-    connection.set_node(Identifier::from(std::string(second_node)));
+    connection.set_node(Identifier::parse(second_node));
     EXPECT_EQ(node_of(connection), second_node);
 }
 

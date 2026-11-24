@@ -296,7 +296,7 @@ TEST(DataHandlerTest, ContentHeldOffIsNotFound) {
 // Only the search for the content asked for is held off. The function
 // captures nothing, so that moving it cannot throw.
 TEST(DataHandlerTest, OnlyContentHeldOffIsNotFound) {
-    const auto world_id = Identifier::from(Converter::bytes_of("world"));
+    const auto world_id = Identifier::of(Converter::bytes_of("world"));
     const DataHandler handler(std::make_shared<MemoryStore>(), types::max_decompressed_content_size,
                               DataHandler::default_retry_after,
                               [](const Identifier& identifier) {
@@ -537,11 +537,11 @@ TEST(DataHandlerTest, PutOverOneMebibyteIsTooLarge) {
     const DataHandler handler(store);
     Channel stored(DataStored::name);
     const std::string largest(DataHandler::max_body_bytes, 'a');
-    const auto largest_id = Identifier::from(Converter::bytes_of(largest));
+    const auto largest_id = Identifier::of(Converter::bytes_of(largest));
     const auto too_large = largest + "a";
 
     const auto refused =
-        answer(handler, put("/data/" + Identifier::from(Converter::bytes_of(too_large)).to_string(),
+        answer(handler, put("/data/" + Identifier::of(Converter::bytes_of(too_large)).to_string(),
                             too_large));
     const auto taken = answer(handler, put("/data/" + largest_id.to_string(), largest));
 

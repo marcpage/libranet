@@ -122,7 +122,7 @@ void register_guarded(Server& server, api::SignatureGuard& guard, string_view pa
 void keep(NodesHandler& nodes_handler, SeekHandler& seek_handler, SearchAnswers& answers,
           const IMessage::Ptr& message) {
     if (const auto* const nodes = value_of<NodesUpdated>(message)) {
-        nodes_handler.set_nodes(nodes->nodes);
+        nodes_handler.set_list(nodes->nodes);
     } else if (const auto* const seek = value_of<SeekUpdated>(message)) {
         seek_handler.set_list(seek->seek);
     } else if (const auto* const answered = value_of<SearchAnswered>(message)) {

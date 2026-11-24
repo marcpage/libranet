@@ -19,9 +19,9 @@ public:
     // list_bytes is the most a list posted may decompress to, and the list
     // served is sent in fewer than served_bytes.
     explicit SeekHandler(std::size_t list_bytes = types::max_decompressed_list_size,
-                         std::size_t served_bytes = protocol::SeekList::max_bytes);
+                         std::size_t served_bytes = protocol::SeekList::max_size);
 
-    // Throws what protocol::SeekList::write() throws.
+    // Throws what protocol::SeekList::body() throws.
     void set_list(const protocol::SeekList& new_list);
 
     // Called from the threads serving connections, several at once, while

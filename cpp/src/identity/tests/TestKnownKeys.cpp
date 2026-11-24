@@ -107,7 +107,7 @@ IDataSource::Data bytes_of_hex(std::string_view hex) {
 // Stores text in store as content, under its identifier, which comes back.
 Identifier store_content(const IDataSource& store, std::string_view text) {
     const auto content = Converter::bytes_of(text);
-    const auto node_id = Identifier::from(content);
+    const auto node_id = Identifier::of(content);
 
     store.put(node_id, content);
     return node_id;
@@ -170,7 +170,7 @@ TEST(KnownKeysTest, KeyOfANewNodeChecksItsSignatures) {
 TEST(KnownKeysTest, CompressedKeyIsRead) {
     const auto store = std::make_shared<MemorySource>();
     const auto content = Converter::bytes_of(rfc_8032_public_pem);
-    const auto node_id = Identifier::from(content);
+    const auto node_id = Identifier::of(content);
     KnownKeys keys(store);
 
     store->put(node_id, storage::Zlib::compress(content, storage::Zlib::max_level));
@@ -184,7 +184,7 @@ TEST(KnownKeysTest, CompressedKeyIsRead) {
 TEST(KnownKeysTest, KeyNotHeldIsNothing) {
     const auto store = std::make_shared<MemorySource>();
     KnownKeys keys(store);
-    const auto node_id = Identifier::from(Converter::bytes_of(rfc_8032_public_pem));
+    const auto node_id = Identifier::of(Converter::bytes_of(rfc_8032_public_pem));
 
     EXPECT_FALSE(keys.key(node_id).has_value());
 
@@ -212,7 +212,7 @@ TEST(KnownKeysTest, KeyIsKeptOnceRead) {
 
 TEST(KnownKeysTest, BodyThatDoesNotHashToTheIdIsRefused) {
     const auto store = std::make_shared<MemorySource>();
-    const auto node_id = Identifier::from(Converter::bytes_of(rfc_8032_public_pem));
+    const auto node_id = Identifier::of(Converter::bytes_of(rfc_8032_public_pem));
     KnownKeys keys(store);
 
     store->put(node_id, Converter::bytes_of(ISignKey::Ed25519()->public_pem()));
@@ -227,7 +227,7 @@ TEST(KnownKeysTest, BodyThatDoesNotHashToTheIdIsRefused) {
 TEST(KnownKeysTest, RefusalIsNotKept) {
     const auto store = std::make_shared<MemorySource>();
     const auto content = Converter::bytes_of(rfc_8032_public_pem);
-    const auto node_id = Identifier::from(content);
+    const auto node_id = Identifier::of(content);
     KnownKeys keys(store);
 
     store->put(node_id, Converter::bytes_of("not the key"));

@@ -161,7 +161,7 @@ optional<vector<Identifier>> results_in(const Response& answer, const Identifier
     }
 
     try {
-        return SearchResults::parse(answer.body(), list_bytes).results();
+        return SearchResults::from_body(answer.body(), list_bytes).results();
     } catch (const invalid_argument& error) {
         lDebug << "Leaving out the answer of" << node_id.to_string() << "to a search:" << error;
         return nullopt;

@@ -163,7 +163,7 @@ TEST(DataDirTest, ContentOverAMebibyteIsKeptCompressed) {
     const ScratchDirectory directory;
     const DataDir store(directory.path());
     const DataDir::Data content(2 * mebibyte, std::byte{0});
-    const auto identifier = Identifier::from(content);
+    const auto identifier = Identifier::of(content);
     const auto body = Zlib::compress(content, Zlib::max_level);
     const auto path = directory.path() / "sha256" / identifier.hash().substr(0, 3)
                       / identifier.hash();

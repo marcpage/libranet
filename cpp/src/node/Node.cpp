@@ -203,7 +203,7 @@ constexpr size_t most_prefix_bits = 16;
 // The fewest bytes the lists served may be held to, as the Python node
 // allows, and the most, as the protocol allows (HttpApi §10.6, §10.7.1).
 constexpr size_t least_list_bytes = 64;
-constexpr size_t most_list_bytes = std::min(NodeList::max_size, SeekList::max_bytes);
+constexpr size_t most_list_bytes = std::min(NodeList::max_size, SeekList::max_size);
 
 // How long a peer's connection may be idle before the web server, the
 // Python node's, or this node's, closes it: a node's seek list must be read
@@ -359,7 +359,7 @@ void check_endpoint(const string& endpoint, const string& source) {
 // The node id named, as "{algorithm}/{hash}". Throws invalid_argument,
 // naming source, for what names none.
 Identifier node_id_of(const string& named, const string& source) {
-    auto node_id = Identifier::from(Json(named));
+    auto node_id = Identifier::from_json(Json(named));
 
     if (!node_id) {
         throw invalid_argument(source + ": '" + named + "' is not a node id");

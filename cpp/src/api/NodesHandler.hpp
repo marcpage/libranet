@@ -15,7 +15,7 @@
 namespace api {
 
 // Answers GET and POST of /data/nodes, the node lists nodes exchange (HttpApi
-// §10.5). Until set_nodes(), the list served names the node's own endpoints
+// §10.5). Until set_list(), the list served names the node's own endpoints
 // alone.
 class NodesHandler {
 public:
@@ -27,7 +27,7 @@ public:
                  std::size_t served_bytes = protocol::NodeList::max_size);
 
     // Called from any thread, while requests are answered.
-    void set_nodes(const protocol::NodeList& nodes);
+    void set_list(const protocol::NodeList& new_list);
 
     // Called from the threads serving connections, several at once. Throws
     // std::bad_alloc if zlib runs out of memory.

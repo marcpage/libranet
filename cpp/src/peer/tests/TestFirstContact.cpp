@@ -309,7 +309,7 @@ protected:
     }
 
     [[nodiscard]] static std::string peer_seek_text() {
-        return Converter::text_of(peer_seek().write());
+        return Converter::text_of(peer_seek().body());
     }
 
     // The request putting this node's key, and the one getting the peer's.
@@ -565,7 +565,7 @@ TEST_F(FirstContactTest, HeldContentThePeerSeeksIsPut) {
 TEST_F(FirstContactTest, ContentThisNodeSeeksIsAskedForAndKept) {
     hold_peer_key();
 
-    const auto world = Identifier::from(fixtures::bytes_of("world"));
+    const auto world = Identifier::of(fixtures::bytes_of("world"));
     auto answers = peer_answers();
 
     answers["GET " + data_path(world)] = signed_by(peer_signer(), answer(Status::Ok, "world"));
@@ -590,7 +590,7 @@ TEST_F(FirstContactTest, ContentThisNodeSeeksIsAskedForAndKept) {
 TEST_F(FirstContactTest, ContentThisNodeHoldsIsNotAskedFor) {
     hold_peer_key();
 
-    const auto world = Identifier::from(fixtures::bytes_of("world"));
+    const auto world = Identifier::of(fixtures::bytes_of("world"));
 
     store()->put(world, fixtures::bytes_of("world"));
 
@@ -606,8 +606,8 @@ TEST_F(FirstContactTest, ContentThisNodeHoldsIsNotAskedFor) {
 TEST_F(FirstContactTest, ContentNotSentIsNotKept) {
     hold_peer_key();
 
-    const auto world = Identifier::from(fixtures::bytes_of("world"));
-    const auto there = Identifier::from(fixtures::bytes_of("there"));
+    const auto world = Identifier::of(fixtures::bytes_of("world"));
+    const auto there = Identifier::of(fixtures::bytes_of("there"));
     auto answers = peer_answers();
 
     answers["GET " + data_path(world)] = signed_by(peer_signer(), answer(Status::Ok, "jello"));
@@ -631,8 +631,8 @@ TEST_F(FirstContactTest, PeerTurningThisNodeAwayWhileFulfilledIsTold) {
     hold_peer_key();
 
     const Identifier hello("sha256", fixtures::hello_hash);
-    const auto world = Identifier::from(fixtures::bytes_of("world"));
-    const auto there = Identifier::from(fixtures::bytes_of("there"));
+    const auto world = Identifier::of(fixtures::bytes_of("world"));
+    const auto there = Identifier::of(fixtures::bytes_of("there"));
     const SeekList sought({hello, world}, {});
     auto answers = peer_answers();
     auto closing = answer(Status::Created);
@@ -641,7 +641,7 @@ TEST_F(FirstContactTest, PeerTurningThisNodeAwayWhileFulfilledIsTold) {
     store()->put(world, fixtures::bytes_of("world"));
     closing.headers().set("Connection", "close");
     answers["GET /data/seek"] =
-        signed_by(peer_signer(), answer(Status::Ok, Converter::text_of(sought.write())));
+        signed_by(peer_signer(), answer(Status::Ok, Converter::text_of(sought.body())));
     answers["PUT " + data_path(hello)] = signed_by(peer_signer(), closing);
     answers["PUT " + data_path(world)] = signed_by(peer_signer(), answer(Status::Created));
     answers["GET " + data_path(there)] = signed_by(peer_signer(), answer(Status::Ok, "there"));

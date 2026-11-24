@@ -61,11 +61,11 @@ TEST(UrlTest, UrlParsing) {
     EXPECT_EQ(url.path(), "/path/to/page");
     EXPECT_EQ(url.fragment(), "anchor");
 
-    const auto foo_value = url.get_query("foo");
+    const auto foo_value = url.query("foo");
     EXPECT_TRUE(foo_value.has_value());
     EXPECT_EQ(foo_value, "bar");
 
-    const auto baz_value = url.get_query("baz");
+    const auto baz_value = url.query("baz");
     EXPECT_TRUE(baz_value.has_value());
     EXPECT_EQ(baz_value, "123");
 
@@ -213,11 +213,11 @@ TEST(UrlTest, TransparentComponentEncoding) {
     EXPECT_EQ(url.fragment(), "section 3?query=true");
 
     // 2. Verify optional accesses for query parameters
-    auto search_value = url.get_query("search");
+    auto search_value = url.query("search");
     ASSERT_TRUE(search_value.has_value());
     EXPECT_EQ(search_value.value(), "modern c++");
 
-    const auto missing_value = url.get_query("nonexistent");
+    const auto missing_value = url.query("nonexistent");
     EXPECT_FALSE(missing_value.has_value());
     EXPECT_EQ(missing_value.value_or("default"), "default");
 
@@ -247,7 +247,7 @@ TEST(UrlTest, HasAndRemoveQuery) {
     // Removing a key that is not there changes nothing.
     url.remove_query("nonexistent");
     EXPECT_TRUE(url.has_query("search"));
-    EXPECT_EQ(url.get_query("search").value_or(""), "modern c++");
+    EXPECT_EQ(url.query("search").value_or(""), "modern c++");
 }
 
 TEST(UrlTest, UrlAppend) {
@@ -299,7 +299,7 @@ TEST(UrlTest, StreamOperatorsAndParsing) {
     EXPECT_EQ(stream_url.host(), "test.org");
     EXPECT_EQ(stream_url.path(), "/index.html");
 
-    const auto ref_value = stream_url.get_query("ref");
+    const auto ref_value = stream_url.query("ref");
     EXPECT_TRUE(ref_value.has_value());
     EXPECT_EQ(ref_value, "home");
 

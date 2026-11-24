@@ -123,8 +123,8 @@ TEST(AddressTest, Resolve) {
     EXPECT_THROW((void)addr3.resolve(), std::runtime_error);
 }
 
-TEST(AddressTest, GetLocalAddresses) {
-    const std::vector<std::string> local_addrs = Address::get_local_addresses();
+TEST(AddressTest, LocalAddresses) {
+    const std::vector<std::string> local_addrs = Address::local_addresses();
 
     // A machine should at least have loopback addresses (like 127.0.0.1 or ::1) active
     EXPECT_FALSE(local_addrs.empty());

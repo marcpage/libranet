@@ -172,7 +172,7 @@ optional<SeekList> seek_list_in(const Response& answer, const string& from, size
     }
 
     try {
-        return SeekList::read(Converter::bytes_of(answer.body()), list_bytes);
+        return SeekList::from_body(Converter::bytes_of(answer.body()), list_bytes);
     } catch (const invalid_argument& error) {
         lDebug << "Ignoring the seek list from" << from + ":" << error.what();
         return nullopt;

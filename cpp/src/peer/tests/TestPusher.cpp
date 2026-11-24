@@ -346,7 +346,7 @@ protected:
 
         for (std::size_t tries = 0; tries < most_tries; ++tries) {
             const auto body = Converter::bytes_of("Content " + std::to_string(m_made++));
-            const auto identifier = Identifier::from(body);
+            const auto identifier = Identifier::of(body);
 
             if (_is_best_for(peer, identifier)) {
                 m_store->put(identifier, body);

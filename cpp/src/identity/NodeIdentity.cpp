@@ -142,7 +142,7 @@ namespace identity {
 NodeIdentity::NodeIdentity(const path& key_file, const IDataSource& store)
     : m_key(load_or_make(key_file))
     , m_public_pem(m_key->public_pem())
-    , m_id(Identifier::from(Converter::bytes_of(m_public_pem))) {
+    , m_id(Identifier::of(Converter::bytes_of(m_public_pem))) {
     // Stored as content, so that other nodes can fetch the key by the
     // node's id (HTTP API §11.1).
     if (!store.has(m_id)) {

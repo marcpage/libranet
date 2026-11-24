@@ -158,8 +158,8 @@ NodesHandler::NodesHandler(const Identifier& own_id, const vector<string>& own_e
     , m_served_bytes(served_bytes)
     , m_body(body_of(NodeList(own_id, own_endpoints), m_served_bytes)) {}
 
-void NodesHandler::set_nodes(const NodeList& nodes) {
-    auto body = body_of(nodes, m_served_bytes);
+void NodesHandler::set_list(const NodeList& new_list) {
+    auto body = body_of(new_list, m_served_bytes);
     const scoped_lock lock(m_mutex);
 
     m_body = std::move(body);
