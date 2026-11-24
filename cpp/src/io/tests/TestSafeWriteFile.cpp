@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <ios>
@@ -289,6 +290,23 @@ TEST(SafeWriteFileTest, WriteCommitsWhatItWrites) {
 
     EXPECT_EQ(names_in(directory.path()), std::vector<std::string>{"file"});
     EXPECT_EQ(read_file(path), "hello");
+}
+
+// Bytes are written as they are, and no bytes at all make an empty file.
+TEST(SafeWriteFileTest, WriteCommitsTheBytesItWrites) {
+    const ScratchDirectory directory;
+    const auto path = directory.path() / "file";
+    const auto empty_path = directory.path() / "empty";
+    const std::vector<std::byte> bytes{std::byte{0x00}, std::byte{0x0A}, std::byte{0xFF}};
+    SafeWriteFile file(path);
+    SafeWriteFile empty(empty_path);
+
+    file.write(bytes);
+    empty.write(std::vector<std::byte>());
+
+    EXPECT_EQ(names_in(directory.path()), (std::vector<std::string>{"empty", "file"}));
+    EXPECT_EQ(read_file(path), std::string("\x00\x0A\xFF", bytes.size()));
+    EXPECT_EQ(read_file(empty_path), "");
 }
 
 // The directory the file is in was removed after the file was made.

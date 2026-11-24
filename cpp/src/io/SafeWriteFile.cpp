@@ -1,5 +1,6 @@
 #include "SafeWriteFile.hpp"
 
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <ios>
@@ -9,8 +10,10 @@
 #include <string_view>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 using io::SafeWriteFile;
+using std::byte;
 using std::error_code;
 using std::logic_error;
 using std::random_device;
@@ -18,6 +21,7 @@ using std::runtime_error;
 using std::string;
 using std::string_view;
 using std::to_string;
+using std::vector;
 using std::filesystem::create_directories;
 using std::filesystem::path;
 
@@ -88,13 +92,25 @@ void SafeWriteFile::write(std::string_view contents) {
         throw std::runtime_error("Failed to open file for writing: " + writable_path().string());
     }
 
-    out.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+    // Empty contents may be at no address, which is not to be copied from.
+    if (!contents.empty()) {
+        out.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+    }
+
+    // Closed, so that all of it is in the file before it is renamed into
+    // place, and a failure to write the last of it is known.
+    out.close();
 
     if (!out.good()) {
         throw std::runtime_error("Error occurred while writing to file: " + writable_path().string());
     }
 
     commit();
+}
+
+void SafeWriteFile::write(const vector<byte>& contents) {
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+    write(string_view(reinterpret_cast<const char*>(contents.data()), contents.size()));
 }
 
 void SafeWriteFile::commit() {

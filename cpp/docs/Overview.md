@@ -1042,6 +1042,7 @@ classDiagram
         class LimitExceeded
         class SafeWriteFile {
             +writable_path() path
+            +write(contents)
             +commit()
         }
         class Directories {

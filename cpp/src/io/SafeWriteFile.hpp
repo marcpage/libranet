@@ -1,6 +1,9 @@
 #pragma once
 
+#include <cstddef>
 #include <filesystem>
+#include <string_view>
+#include <vector>
 
 namespace io {
 
@@ -31,6 +34,7 @@ public:
 
     // Writes contents to writable_path() and commit() unless exception thrown
     void write(std::string_view contents);
+    void write(const std::vector<std::byte>& contents);
 
     // Renames what was written to writable_path() to the file, in place of
     // any there. Throws std::logic_error when it is already committed, and
