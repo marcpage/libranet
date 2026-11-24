@@ -40,6 +40,7 @@
 #include "storage/HashPrefix.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
+#include "storage/Zlib.hpp"
 #include "storage/tests/Fixtures.hpp"
 #include "types/Converter.hpp"
 
@@ -63,6 +64,7 @@ using storage::DataStored;
 using storage::HashPrefix;
 using storage::IDataSource;
 using storage::Identifier;
+using storage::Zlib;
 using types::Converter;
 using namespace std::chrono_literals;
 using NodesReceived = Recorder::NodesReceived;
@@ -441,6 +443,46 @@ TEST_F(FirstContactTest, ThisNodesKeyIsPutSigned) {
     ASSERT_TRUE(signer.has_value());
     EXPECT_TRUE(signer->verified);
     EXPECT_EQ(signer->node_id.to_string(), this_node().id().to_string());
+}
+
+// This node's key is put as the store keeps it, which its id names, rather
+// than in whatever form the key gives itself in now.
+TEST_F(FirstContactTest, ThisNodesKeyIsPutAsStored) {
+    const auto compressed = Converter::text_of(
+        Zlib::compress(Converter::bytes_of(this_node().public_pem()), Zlib::balance_level));
+
+    store()->put(this_node().id(), Converter::bytes_of(compressed));
+
+    const StandInNode node(peer_answers());
+    const auto contact = contact_at(node.address());
+    const auto put = request_named(node, put_line());
+
+    ASSERT_TRUE(put.has_value());
+    EXPECT_EQ(put->body(), compressed);
+    EXPECT_TRUE(contact.session.is_open());
+}
+
+TEST_F(FirstContactTest, ThisNodesKeyNotStoredIsPutAsGiven) {
+    ASSERT_TRUE(store()->remove(this_node().id()));
+
+    const StandInNode node(peer_answers());
+    const auto contact = contact_at(node.address());
+    const auto put = request_named(node, put_line());
+
+    ASSERT_TRUE(put.has_value());
+    EXPECT_EQ(put->body(), this_node().public_pem());
+}
+
+// What the store keeps under this node's id that is not its key is not put.
+TEST_F(FirstContactTest, ThisNodesKeyStoredWrongIsPutAsGiven) {
+    store()->put(this_node().id(), Converter::bytes_of("not the key"));
+
+    const StandInNode node(peer_answers());
+    const auto contact = contact_at(node.address());
+    const auto put = request_named(node, put_line());
+
+    ASSERT_TRUE(put.has_value());
+    EXPECT_EQ(put->body(), this_node().public_pem());
 }
 
 TEST_F(FirstContactTest, ThisNodesListIsPosted) {
