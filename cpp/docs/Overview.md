@@ -153,7 +153,7 @@ From those every other library uses, to the node itself:
 
 | Library | Holds | Main classes |
 | --- | --- | --- |
-| [`types/`](../src/types/) | Values every library uses | `Json`, `Integer` (of any size), `BlockingQueue<Type>`, `Converter` (text, bytes, and hex), and `Constants.hpp` (`Kilobyte`, `Megabyte`) |
+| [`types/`](../src/types/) | Values every library uses | `Json`, `Integer` (of any size), `BlockingQueue<Type>`, `Converter` (text, bytes, and hex), and `Constants.hpp` (`Kilobyte`, `Megabyte`, `Gigabyte`) |
 | [`net/`](../src/net/) | Addresses and sockets, on POSIX systems | `Address`, `IpAddress`, `ISocket`, `SocketPosix` |
 | [`crypto/`](../src/crypto/) | Hashing, signing, encrypting, and password hashing, with OpenSSL, and on macOS with Apple's frameworks where they serve | `IHasher`, `ISignKey`, `IEncryptKey`, `IMultiKey`, `IPasswordHasher`, and their implementations; `Base64`, `Pem`, `RsaDer` |
 | [`logger/`](../src/logger/) | The log: lines at levels, from any thread, to stderr, stdout, a file, or the system log | `Logger` and its macros, `lInfo`, `lWarn`, and so on; `ILogOutput`, `ILogFormatter` |
@@ -272,7 +272,7 @@ only through another, as `node` does `net`'s.
 | `io` | `net` | — |
 | `http` | `crypto`, `io`, `types` | — |
 | `storage` | `crypto`, `io`, `logger`, `types` | zlib |
-| `web` | `http`, `io`, `net`, `storage` | Threads |
+| `web` | `http`, `io`, `net`, `storage`, `types` | Threads |
 | `identity` | `crypto`, `http`, `io`, `logger`, `storage`, `types` | — |
 | `protocol` | `http`, `logger`, `net`, `storage`, `types` | — |
 | `eviction` | `logger`, `msg`, `storage`, `types` | Threads |

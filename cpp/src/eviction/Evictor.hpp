@@ -117,7 +117,7 @@ public:
 
     struct Settings {
         // As the Python node's are.
-        static constexpr std::uintmax_t default_min_free_bytes = 1024 * types::Megabyte;
+        static constexpr std::uintmax_t default_min_free_bytes = 1 * types::Gigabyte;
         static constexpr std::size_t default_max_hand_offs = 8;
         static constexpr Milliseconds default_stored_grace{30'000};
         static constexpr Milliseconds default_candidates_timeout{60'000};

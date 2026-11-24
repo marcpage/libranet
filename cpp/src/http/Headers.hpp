@@ -10,6 +10,8 @@
 #include <utility>
 #include <vector>
 
+#include "types/Constants.hpp"
+
 namespace http {
 
 class Headers {
@@ -325,7 +327,7 @@ inline std::vector<std::string_view> Headers::split_spaces(std::string_view text
 // larger than what the stream holds takes no more memory than the stream
 // holds. Fails the stream if it ends first, leaving what it had in body.
 inline void Headers::read_body(std::istream& in_stream, std::size_t length, std::string& body) {
-    constexpr std::size_t piece_bytes = 65536;
+    constexpr std::size_t piece_bytes = 64 * types::Kilobyte;
     std::string piece(std::min(piece_bytes, length), '\0');
 
     body.clear();
