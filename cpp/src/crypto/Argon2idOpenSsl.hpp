@@ -16,6 +16,7 @@
 #include <openssl/kdf.h>
 #include <openssl/params.h>
 #include <openssl/rand.h>
+#include <openssl/types.h>
 
 #include "Base64.hpp"
 #include "IPasswordHasher.hpp"

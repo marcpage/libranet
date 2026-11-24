@@ -1,11 +1,12 @@
 #pragma once
 
 #include <functional>
-#include <memory>
 #include <string>
 #include <utility>
 
 #include "AsyncChannel.hpp"
+#include "IMessage.hpp"
+#include "Message.hpp"
 
 namespace msg {
 

@@ -5,6 +5,7 @@
 #include <cctype>
 #include <charconv>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <iostream>
@@ -245,7 +246,7 @@ inline Json::Type Json::type() const {
             return Type::Boolean;
         }
 
-        if constexpr (std::is_same_v<T, int64_t>) {
+        if constexpr (std::is_same_v<T, std::int64_t>) {
             return Type::Integer;
         }
 

@@ -1,5 +1,10 @@
 #pragma once
 
+#include <cstddef>
+#include <string_view>
+#include <vector>
+
+#include "Address.hpp"
 #include "ISocket.hpp"
 
 namespace net {

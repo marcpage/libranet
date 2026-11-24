@@ -1,7 +1,9 @@
 #pragma once
 
+#include <cstddef>
 #include <iostream>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>

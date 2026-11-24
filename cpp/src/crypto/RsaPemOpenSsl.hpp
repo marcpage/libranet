@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <openssl/evp.h>
+#include <openssl/types.h>
 #include <openssl/x509.h>
 
 #include "OpenSsl.hpp"

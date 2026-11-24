@@ -9,6 +9,7 @@
 
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
+#include <openssl/types.h>
 
 #include "IEncryptKey.hpp"
 #include "OpenSsl.hpp"

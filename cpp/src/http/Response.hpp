@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <iostream>
 #include <iterator>
 #include <optional>
@@ -44,7 +45,7 @@ public:
     [[nodiscard]] std::string_view body() const noexcept;
 
     void set_version(std::string new_version);
-    void set_status_code(uint16_t new_status_code);
+    void set_status_code(std::uint16_t new_status_code);
     void set_status_code(ResponseCode::Status new_status_code);
     void set_reason_phrase(std::string new_reason_phrase);
     void set_body(std::string new_body);
@@ -97,12 +98,12 @@ inline void Response::set_version(std::string new_version) {
     m_version = std::move(new_version);
 }
 
-inline void Response::set_status_code(uint16_t new_status_code) {
+inline void Response::set_status_code(std::uint16_t new_status_code) {
     m_status = ResponseCode(new_status_code);
 }
 
 inline void Response::set_status_code(ResponseCode::Status new_status_code) {
-    set_status_code(static_cast<uint16_t>(new_status_code));
+    set_status_code(static_cast<std::uint16_t>(new_status_code));
 }
 
 inline void Response::set_reason_phrase(std::string new_reason_phrase) {
@@ -143,7 +144,7 @@ inline bool Response::parse_status_line(std::string_view line) {
         return false;
     }
 
-    const auto code_value = static_cast<uint16_t>(parsed_code);
+    const auto code_value = static_cast<std::uint16_t>(parsed_code);
 
     m_version = std::string(fields.at(0));
     m_status = ResponseCode(code_value, (3 == fields.size())
