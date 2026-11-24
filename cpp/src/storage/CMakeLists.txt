@@ -9,10 +9,10 @@ add_library(libranet::storage ALIAS libranet_storage)
 target_include_directories(libranet_storage PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(libranet_storage
     PUBLIC
-        libranet::http
         libranet::crypto
         libranet::io
         libranet::logger
+        libranet::types
     PRIVATE
         ZLIB::ZLIB
 )

@@ -8,11 +8,12 @@ add_library(libranet_identity STATIC
 add_library(libranet::identity ALIAS libranet_identity)
 target_include_directories(libranet_identity PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(libranet_identity PUBLIC
-    libranet::types
-    libranet::http
     libranet::crypto
-    libranet::storage
+    libranet::http
+    libranet::io
     libranet::logger
+    libranet::storage
+    libranet::types
 )
 
 if(BUILD_TESTING)

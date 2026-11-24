@@ -13,6 +13,7 @@ target_link_libraries(libranet_api PUBLIC
     libranet::identity
     libranet::logger
     libranet::msg
+    libranet::net
     libranet::protocol
     libranet::stats
     libranet::storage
