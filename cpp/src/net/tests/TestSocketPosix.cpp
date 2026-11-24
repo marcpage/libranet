@@ -213,7 +213,7 @@ TEST(SocketPosixTest, ReadExactBeyondWhatArrives) {
 }
 
 TEST(SocketPosixTest, ReadExactLongerThanOnePiece) {
-    constexpr std::size_t payload_bytes = 200000;
+    constexpr std::size_t payload_bytes = 200'000;
     const std::string payload(payload_bytes, 'x');
     auto bound = bind_ephemeral();
     ISocket::Ptr server = std::move(bound.first);

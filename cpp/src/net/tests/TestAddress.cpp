@@ -14,7 +14,7 @@ constexpr auto ssh_port = 22;
 constexpr auto http_port = 80;
 constexpr auto development_port = 3000;
 constexpr auto alternate_http_port = 8080;
-constexpr auto highest_port = 65535;
+constexpr auto highest_port = 65'535;
 
 } // namespace
 
@@ -95,7 +95,7 @@ TEST(AddressTest, PortOutOfRange) {
     EXPECT_THROW((void)Address::parse("127.0.0.1:65536"), std::invalid_argument);
     EXPECT_THROW((void)Address::parse("127.0.0.1:99999999999"), std::invalid_argument);
     EXPECT_THROW((void)Address::parse("127.0.0.1:-1"), std::invalid_argument);
-    EXPECT_EQ(Address::parse("127.0.0.1:65535").port(), 65535);
+    EXPECT_EQ(Address::parse("127.0.0.1:65535").port(), 65'535);
 }
 
 TEST(AddressTest, BracketsOnlyAroundIpv6) {

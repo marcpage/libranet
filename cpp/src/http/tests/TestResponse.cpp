@@ -170,7 +170,7 @@ TEST(ResponseTest, ContentLengthBeyondStream) {
 }
 
 TEST(ResponseTest, BodyLongerThanOnePiece) {
-    constexpr std::size_t body_bytes = 100000;
+    constexpr std::size_t body_bytes = 100'000;
     const std::string body(body_bytes, 'x');
     std::istringstream in_stream(
         std::string("HTTP/1.1 200 OK\r\n")

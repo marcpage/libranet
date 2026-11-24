@@ -63,7 +63,7 @@ constexpr std::string_view node_hash =
 // Where a connection came from: an address set aside for documentation
 // (RFC 5737), and a port the system might pick for a client.
 constexpr std::string_view remote_host = "192.0.2.1";
-constexpr Address::Port remote_port = 50000;
+constexpr Address::Port remote_port = 50'000;
 
 // The leading bits a match must share with what is searched for, as
 // storage.search_min_bits is by default, and how long an answer is kept.

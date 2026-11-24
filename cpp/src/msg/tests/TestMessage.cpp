@@ -56,7 +56,7 @@ TEST(MessageTest, ToStringDispatch) {
     EXPECT_EQ(string_message.to_string(), "constructible");
 
     // is_arithmetic_v path
-    constexpr auto int_value = 12345;
+    constexpr auto int_value = 12'345;
     const Message<int> int_message(int_value);
     EXPECT_EQ(int_message.to_string(), "12345");
 

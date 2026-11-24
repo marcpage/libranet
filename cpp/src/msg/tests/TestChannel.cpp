@@ -77,7 +77,7 @@ TEST(ChannelTest, TimeoutBehaviour) {
 TEST(ChannelTest, TypeMismatch) {
     Channel channel("test.types");
 
-    constexpr auto posted_value = 12345;
+    constexpr auto posted_value = 12'345;
     constexpr auto timeout = 10ms;
     Channel::post("test.types", posted_value);
 

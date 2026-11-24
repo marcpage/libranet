@@ -22,7 +22,7 @@ constexpr std::size_t spki_unused_bits_offset = 21;
 // SEQUENCE's 4-byte header and the INTEGER's 2.
 constexpr std::size_t pkcs8_version_offset = 6;
 // Long enough that its DER length takes 3 bytes.
-constexpr std::size_t long_key_size = 70000;
+constexpr std::size_t long_key_size = 70'000;
 // A length of 0x80 alone: BER's indefinite length, which DER has not.
 constexpr auto indefinite_length = std::byte{0x80};
 

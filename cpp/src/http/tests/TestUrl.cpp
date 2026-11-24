@@ -86,8 +86,8 @@ TEST(UrlTest, PortValidationAndEffectivePorts) {
     auto max_port_url = Url::parse("http://localhost:65535");
     ASSERT_TRUE(max_port_url.has_value());
     EXPECT_TRUE(max_port_url->port().has_value());
-    EXPECT_EQ(max_port_url->port(), 65535);
-    EXPECT_EQ(max_port_url->effective_port(), 65535);
+    EXPECT_EQ(max_port_url->port(), 65'535);
+    EXPECT_EQ(max_port_url->effective_port(), 65'535);
 
     // 2. Out of range port (> 65535)
     auto overflow_port_url = Url::parse("http://localhost:65536");

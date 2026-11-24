@@ -56,7 +56,7 @@ using Named = std::pair<std::string, std::string>;
 // Where a connection came from: an address set aside for documentation
 // (RFC 5737), and a port the system might pick for a client.
 constexpr std::string_view remote_host = "203.0.113.42";
-constexpr Address::Port remote_port = 50000;
+constexpr Address::Port remote_port = 50'000;
 
 // This node's own endpoint, as it names itself when it does not know the
 // address it is reached at (HttpApi §10.1).
