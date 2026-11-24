@@ -25,6 +25,7 @@
 #include "stats/Recorder.hpp"
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
+#include "storage/SearchAnswered.hpp"
 #include "storage/tests/Fixtures.hpp"
 
 using api::Service;
@@ -38,6 +39,7 @@ using protocol::NodeList;
 using protocol::SeekList;
 using storage::HashPrefix;
 using storage::Identifier;
+using storage::SearchAnswered;
 
 namespace {
 
@@ -68,6 +70,23 @@ Address loopback() {
 
 Identifier hello_id() {
     return {"sha256", fixtures::hello_hash};
+}
+
+// How many hex digits a SHA-256 hash has.
+constexpr std::size_t hash_digits = 64;
+
+// The prefix of hello's hash that the tests search for.
+constexpr std::string_view hello_prefix = "2cf24d";
+
+// Content the store does not hold, whose hash begins as hello's does, so
+// that a search for hello's prefix finds it once a peer names it.
+Identifier near_hello_id() {
+    return {"sha256", std::string(hello_prefix) + std::string(hash_digits - hello_prefix.size(), 'a')};
+}
+
+// Content the store does not hold, far from hello.
+Identifier unheld_id() {
+    return {"sha256", std::string(hash_digits, 'f')};
 }
 
 // A request for target, by method, unsigned, with body, on a connection
@@ -270,6 +289,11 @@ TEST_F(ServiceTest, ServesItsOwnEndpointAsItsNodeList) {
                                    + own_id().to_string() + "\"}}");
 }
 
+TEST_F(ServiceTest, NamesItsOwnEndpoints) {
+    EXPECT_EQ(service().own_endpoints(),
+              std::vector<std::string>{"http://localhost:" + std::to_string(address().port())});
+}
+
 TEST_F(ServiceTest, ServesEachNodeListPosted) {
     auto nodes = own_list();
 
@@ -314,6 +338,64 @@ TEST_F(ServiceTest, AnswersSearchesFromTheStore) {
     EXPECT_TRUE(has_status(answer, "200 OK")) << answer;
     EXPECT_TRUE(is_signed_by_node(answer)) << answer;
     EXPECT_EQ(body_of(answer), R"({"results":[")" + hello_id().to_string() + R"("]})");
+}
+
+// What a peer names for a search, as it answers one or names what it holds
+// that the seek list's search matches, is listed by a later search, best
+// first (HttpApi §6, §10.7.2).
+TEST_F(ServiceTest, AddsWhatPeersNameToItsSearches) {
+    const auto expected = R"({"results":[")" + near_hello_id().to_string() + R"(",")"
+                          + hello_id().to_string() + R"("]})";
+
+    // Asked first, so that the answer kept is of what the store holds.
+    EXPECT_EQ(body_of(answer_to(address(), get("/data/search/2cf24d"))),
+              R"({"results":[")" + hello_id().to_string() + R"("]})");
+
+    Channel::post(SearchAnswered::name,
+                  SearchAnswered{
+                      HashPrefix::parse("2cf24d"),
+                      Identifier("sha256", std::string(peer_hash)),
+                      {near_hello_id()},
+                  });
+
+    EXPECT_EQ(served_eventually(address(), "/data/search/2cf24d", expected), expected);
+}
+
+// A client asking for content the node will look for is told to retry after
+// network.retry_after_seconds (HttpApi §5.2).
+TEST_F(ServiceTest, TellsClientsToRetryAfterItsSetting) {
+    const fixtures::ScratchDirectory directory;
+    const auto store = std::make_shared<fixtures::MemorySource>();
+    const NodeIdentity identity(directory.path() / "node-key.pem", *store);
+    constexpr auto retry_after = std::chrono::seconds(7);
+    Settings settings;
+
+    settings.retry_after = retry_after;
+
+    const Service looking(loopback(), store, identity, settings);
+    const auto answer = answer_to(looking.local_address(),
+                                  get("/data/" + unheld_id().to_string()));
+
+    EXPECT_TRUE(has_status(answer, "503 Service Unavailable")) << answer;
+    EXPECT_NE(std::string::npos, answer.find("Retry-After: 7\r\n")) << answer;
+}
+
+// Content whose search is held off is not looked for (HttpApi §5.3).
+TEST_F(ServiceTest, AnswersNotFoundWhileTheSearchIsHeldOff) {
+    const fixtures::ScratchDirectory directory;
+    const auto store = std::make_shared<fixtures::MemorySource>();
+    const NodeIdentity identity(directory.path() / "node-key.pem", *store);
+    Settings settings;
+
+    settings.is_held_off = [](const Identifier& identifier) {
+        return identifier.to_string() == unheld_id().to_string();
+    };
+
+    const Service held_off(loopback(), store, identity, settings);
+    const auto answer = answer_to(held_off.local_address(),
+                                  get("/data/" + unheld_id().to_string()));
+
+    EXPECT_TRUE(has_status(answer, "404 Not Found")) << answer;
 }
 
 // The guard stands in front of every handler, so an unsigned upload to any
@@ -370,6 +452,18 @@ TEST_F(ServiceTest, RefusesASearchCacheTtlOfZero) {
     Settings settings;
 
     settings.search_cache_ttl = Service::Milliseconds::zero();
+
+    EXPECT_THROW(const Service refused(loopback(), store, identity, settings),
+                 std::invalid_argument);
+}
+
+TEST_F(ServiceTest, RefusesTooFewProvisionalTrustAttempts) {
+    const fixtures::ScratchDirectory directory;
+    const auto store = std::make_shared<fixtures::MemorySource>();
+    const NodeIdentity identity(directory.path() / "node-key.pem", *store);
+    Settings settings;
+
+    settings.provisional_trust_attempts = 1;
 
     EXPECT_THROW(const Service refused(loopback(), store, identity, settings),
                  std::invalid_argument);
