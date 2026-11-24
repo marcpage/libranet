@@ -89,11 +89,11 @@ public:
         return m_asked;
     }
 
-    // Whether, within patience, they have been asked for count times in
-    // all.
-    [[nodiscard]] bool asked_eventually(std::size_t count) {
+    // Whether, within wait, they have been asked for count times in all.
+    [[nodiscard]] bool asked_eventually(std::size_t count,
+                                        std::chrono::milliseconds wait = patience) {
         std::unique_lock lock(m_mutex);
-        return m_changed.wait_for(lock, patience, [this, count] { return m_asked >= count; });
+        return m_changed.wait_for(lock, wait, [this, count] { return m_asked >= count; });
     }
 
     // Whether, within patience, count askings wait at once.
@@ -129,6 +129,55 @@ private:
     }
 };
 
+// A clock that stands still until a test moves it on, so that a search's
+// passes come due only when the test says.
+class StillClock {
+public:
+    StillClock() = default;
+    ~StillClock() = default;
+    StillClock(const StillClock&) = delete;
+    StillClock& operator=(const StillClock&) = delete;
+    StillClock(StillClock&&) = delete;
+    StillClock& operator=(StillClock&&) = delete;
+
+    [[nodiscard]] Seeker::ClockFunction function() {
+        return [this] {
+            const std::scoped_lock lock(m_mutex);
+            return m_time;
+        };
+    }
+
+    void move_on(Seeker::Milliseconds interval) {
+        const std::scoped_lock lock(m_mutex);
+        m_time += interval;
+    }
+
+private:
+    std::mutex m_mutex;
+    Seeker::Clock::time_point m_time = Seeker::Clock::now(); // Guarded by m_mutex
+};
+
+// Moves clock on, a pass interval at a time, until peers have been asked for
+// count times, and says whether they were within patience. A search asks for
+// the peers before it makes the passes due, so a move made before then makes
+// those passes due again from the time moved to, and the next move is passed
+// over. Each making of passes makes at most one of each search, so moving on
+// again never makes more than are due.
+bool asked_as_clock_moves(StillClock& clock, CountedPeers& peers, std::size_t count) {
+    constexpr auto each_wait = 50ms;
+    const auto deadline = std::chrono::steady_clock::now() + patience;
+
+    while (std::chrono::steady_clock::now() < deadline) {
+        clock.move_on(pass_interval);
+
+        if (peers.asked_eventually(count, each_wait)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // Each test has a fetch, whose peers it counts, and makes a seeker that
 // fetches with it, searching peers it counts too.
 class SeekerTest : public testing::Test {
@@ -146,6 +195,12 @@ protected:
 
     [[nodiscard]] std::unique_ptr<Seeker> seeker(std::size_t workers = 2) {
         return std::make_unique<Seeker>(m_fetch, m_searched.function(), settings(workers));
+    }
+
+    // A seeker whose searches keep the time clock gives.
+    [[nodiscard]] std::unique_ptr<Seeker> seeker_by(StillClock& clock) {
+        return std::make_unique<Seeker>(m_fetch, m_searched.function(), settings(),
+                                        clock.function());
     }
 
     [[nodiscard]] CountedPeers& fetched() noexcept {
@@ -232,9 +287,13 @@ TEST_F(SeekerTest, SearchesThePeersForEachSearchRequested) {
 }
 
 // A search that begins while passes are being made has its first made once
-// they are.
+// they are, as they may have passed it over, though no pass has come due
+// since. The clock stands still but when the test moves it on, so each
+// pass after comes due as the test says, and both searches' passes are made
+// together, as they began at one time.
 TEST_F(SeekerTest, ASearchRequestedWhilePassesAreMadeIsMadeAfter) {
-    const auto made = seeker();
+    StillClock clock;
+    const auto made = seeker_by(clock);
 
     searched().hold();
     Channel::post(SearchRequested::name, SearchRequested{HashPrefix::parse("ab")});
@@ -244,8 +303,20 @@ TEST_F(SeekerTest, ASearchRequestedWhilePassesAreMadeIsMadeAfter) {
     EXPECT_EQ(searched().asked(), 1U);
     searched().let_go();
 
-    // Each search makes each of its passes; some may be made together.
-    ASSERT_TRUE(searched().asked_eventually(search_passes + 1)) << searched().asked();
+    // The passes due are made once more at once, and then none until the
+    // clock moves on.
+    ASSERT_TRUE(searched().asked_eventually(2)) << searched().asked();
+    std::this_thread::sleep_for(quiet);
+    EXPECT_EQ(searched().asked(), 2U);
+
+    // Then, as the clock moves on, each pass after the first, until the
+    // last: one making of passes for each, as each makes at most one pass of
+    // each search.
+    ASSERT_TRUE(asked_as_clock_moves(clock, searched(), search_passes + 1)) << searched().asked();
+
+    clock.move_on(pass_interval);
+    std::this_thread::sleep_for(quiet);
+    EXPECT_EQ(searched().asked(), search_passes + 1);
 }
 
 // A search the node that asked says may be passed on no more starts none.
