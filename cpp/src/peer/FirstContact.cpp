@@ -106,6 +106,23 @@ string data_path(const Identifier& identifier) {
     return "/data/" + identifier.to_string();
 }
 
+// This node's key, as peers know it: as store holds it under identity's id,
+// once it is shown to be the content the id names, whatever form
+// public_pem() gives the key in now; it is sent as it is kept, as a peer
+// checks either (HttpApi §7.1). Otherwise public_pem(), where store holds no
+// such content.
+string own_key(const NodeIdentity& identity, const IDataSource& store) {
+    const auto& identifier = identity.id();
+
+    if (const auto stored = store.get(identifier)) {
+        if (identifier.content_of(*stored, KnownKeys::max_key_size)) {
+            return Converter::text_of(*stored);
+        }
+    }
+
+    return identity.public_pem();
+}
+
 // The request's method and target, as a message names the request.
 string request_line(const Request& request) {
     return string(request.method()) + " " + string(request.uri());
@@ -381,7 +398,7 @@ FirstContact::Contact FirstContact::make(unique_ptr<PeerConnection> connection,
 // the key of the node it names, which is fetched when it is not held. Throws
 // Unauthenticated where it has not.
 Identifier FirstContact::_identify(PeerConnection& connection) const {
-    auto put = request_of("PUT", data_path(m_identity->id()), m_identity->public_pem(),
+    auto put = request_of("PUT", data_path(m_identity->id()), own_key(*m_identity, *m_store),
                           octet_stream);
     const auto asked = request_line(put);
     const auto answer = answer_to(connection, m_signer, std::move(put));
