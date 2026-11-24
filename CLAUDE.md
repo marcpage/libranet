@@ -37,7 +37,10 @@ a single class with minimal adjustments to other files to adapt to that change
 or a general simple refactor across many files. Modifications in tests are not
 counted towards these limits as a change in once class could affect multiple tests.
 
-Do not put comments in CMakeLists.txt. Do not update existing comments.
+Do not put comments in CMakeLists.txt.
+
+Do not update documentation in cpp/docs as part of code changes. That will be
+a separate, explicit request to update the docs to minimize merge conflicts.
 
 ## Interacting with GitHub and Git
 
