@@ -53,13 +53,13 @@ public:
         std::initializer_list<std::pair<std::string_view, std::string_view>> parameters);
 
     void set_scheme(std::string new_scheme);
-    void set_username(const std::string& new_username);
-    void set_password(const std::string& new_password);
+    void set_username(std::string_view new_username);
+    void set_password(std::string_view new_password);
     void set_host(std::string new_host);
     void set_port(uint16_t new_port);
-    void set_path(const std::string& new_path);
+    void set_path(std::string_view new_path);
     void set_query(Query new_query);
-    void set_fragment(const std::string& new_fragment);
+    void set_fragment(std::string_view new_fragment);
 
     void append(std::string_view relative_url);
 
@@ -284,11 +284,11 @@ inline void Url::set_scheme(std::string new_scheme) {
     m_scheme = std::move(new_scheme);
 }
 
-inline void Url::set_username(const std::string& new_username) {
+inline void Url::set_username(std::string_view new_username) {
     m_username = encode(new_username, userinfo_allowed, not_space_to_plus);
 }
 
-inline void Url::set_password(const std::string& new_password) {
+inline void Url::set_password(std::string_view new_password) {
     m_password = encode(new_password, userinfo_allowed, not_space_to_plus);
 }
 
@@ -305,7 +305,7 @@ inline void Url::set_port(uint16_t new_port) {
     m_port = new_port;
 }
 
-inline void Url::set_path(const std::string& new_path) {
+inline void Url::set_path(std::string_view new_path) {
     constexpr std::string_view unreserved_and_slash = "-_.~/";
 
     m_path = encode(new_path, unreserved_and_slash, not_space_to_plus);
@@ -315,7 +315,7 @@ inline void Url::set_query(Query new_query) {
     m_query = std::move(new_query);
 }
 
-inline void Url::set_fragment(const std::string& new_fragment) {
+inline void Url::set_fragment(std::string_view new_fragment) {
     constexpr std::string_view fragment_allowed = "-_.~!$&'()*+,;=/?";
 
     m_fragment = encode(new_fragment, fragment_allowed, not_space_to_plus);
