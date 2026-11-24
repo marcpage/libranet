@@ -38,7 +38,7 @@ namespace stats {
 //
 // Asked for the objects to let go of first
 // (eviction::Evictor::CandidatesRequested), it ranks what is held,
-// measured against all of it, its own key aside, as eviction::Score
+// measured against all of it, its own key aside, as eviction::Scorer
 // scores it, ties in order of hash, then algorithm, as the Python node
 // orders them. It answers with eviction.candidates, listing those first
 // until their sizes add up to the bytes asked for, or the list holds
@@ -54,7 +54,7 @@ class Recorder {
 public:
     using Clock = NodeAddresses::Clock;
     using Milliseconds = std::chrono::milliseconds;
-    using Now = NodeAddresses::Now;
+    using ClockFunction = NodeAddresses::ClockFunction;
     using Source = NodeAddresses::Source;
 
     // NOLINTBEGIN(*-non-private-member-variables-in-classes)
@@ -156,11 +156,11 @@ public:
     // node's, which the node list names first. Throws std::invalid_argument
     // for an own endpoint that is not one, a derive interval or seek entry
     // ttl that is not more than zero, a limit or max candidates less than 1,
-    // or now with no function; and db::SqliteError when the database cannot
+    // or clock with no function; and db::SqliteError when the database cannot
     // be opened.
     Recorder(const std::filesystem::path& database_path, storage::Identifier own_id,
              std::vector<std::string> own_endpoints, Settings settings,
-             Now now = &Clock::now);
+             ClockFunction clock = &Clock::now);
     // Stops the thread. What it has not yet recorded is let go.
     ~Recorder() = default;
     // Its thread holds this object, so it is neither copied nor moved.
@@ -181,7 +181,7 @@ private:
     // `using stats::Recorder;`.
     // cppcheck-suppress uninitMemberVarPrivate
     std::size_t m_max_candidates;
-    Now m_now;
+    ClockFunction m_clock;
     db::Database m_database;
     // Mistaken: the constructor sets m_addresses. cppcheck loses
     // NodeAddresses's constructors, as NodeAddresses.hpp says.

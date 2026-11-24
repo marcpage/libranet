@@ -415,10 +415,10 @@ bool refused(const Settings& settings, IDataSource::Ptr store = std::make_shared
                  [] { return std::vector<Identifier>(); },
              },
              Evictor::FreeSpace free_space = [] { return std::uintmax_t{0}; },
-             Evictor::Now now = &Evictor::Clock::now) {
+             Evictor::ClockFunction clock = &Evictor::Clock::now) {
     try {
         (void)Evictor(own_id(), std::move(store), std::move(peers), std::move(free_space),
-                      settings, std::move(now));
+                      settings, std::move(clock));
     } catch (const std::invalid_argument&) {
         return true;
     }

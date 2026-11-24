@@ -30,7 +30,7 @@ namespace stats {
 class NodeAddresses {
 public:
     using Clock = std::chrono::system_clock;
-    using Now = std::function<Clock::time_point()>;
+    using ClockFunction = std::function<Clock::time_point()>;
 
     // How an address was learned, weakest first. An address learned again
     // keeps the strongest way it has been.
@@ -82,9 +82,9 @@ public:
                                                "PRIMARY KEY (node_id, endpoint))";
 
     // limits are stats.max_address_failures and stats.max_node_failures.
-    // Throws std::invalid_argument for a limit less than 1, or now with no
+    // Throws std::invalid_argument for a limit less than 1, or clock with no
     // function.
-    NodeAddresses(db::Database& database, Limits limits, Now now = &Clock::now);
+    NodeAddresses(db::Database& database, Limits limits, ClockFunction clock = &Clock::now);
 
     // Records each entry of list as an address of its node, learned from
     // source now. One already known keeps the stronger of its source and
@@ -124,7 +124,7 @@ private:
     // cppcheck-suppress uninitMemberVarNoCtor
     db::Database* m_database;
     Limits m_limits;
-    Now m_now;
+    ClockFunction m_clock;
 };
 
 } // namespace stats

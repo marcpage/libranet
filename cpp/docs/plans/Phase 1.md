@@ -753,7 +753,7 @@ each `GET` it serves.
 **Issue:** not yet created. **Depends on:** 6.4. **Python:** Phase 1
 Step 8; Phase 2 Step 28.
 
-### 10.2 `eviction::Score`
+### 10.2 `eviction::Scorer`
 
 How soon an object goes: the four factors of
 [High-Level Design §4.5](../../../docs/specs/HighLevelDesign.md#45-storage-priority-and-eviction),

@@ -348,10 +348,11 @@ optional<Signer> signer_of(const Message& message, vector<string_view> component
 
 namespace identity {
 
-MessageVerifier::MessageVerifier(std::shared_ptr<KnownKeys> keys, Window window, Now now)
+MessageVerifier::MessageVerifier(std::shared_ptr<KnownKeys> keys, Window window,
+                                 ClockFunction clock)
     : m_keys(std::move(keys))
     , m_window(window)
-    , m_now(std::move(now)) {
+    , m_clock(std::move(clock)) {
     if (!m_keys) {
         throw invalid_argument("Signatures are checked with the keys of other nodes, "
                                "and none were given");
@@ -365,19 +366,19 @@ MessageVerifier::MessageVerifier(std::shared_ptr<KnownKeys> keys, Window window,
         throw invalid_argument("identity.signature_clock_skew_seconds cannot be negative");
     }
 
-    if (!m_now) {
+    if (!m_clock) {
         throw invalid_argument("MessageVerifier needs a clock");
     }
 }
 
 optional<MessageVerifier::Signer> MessageVerifier::verify(const Request& request) const {
     return signer_of(request, {method_component, path_component}, *m_keys, m_window,
-                     std::chrono::time_point_cast<Duration>(m_now()));
+                     std::chrono::time_point_cast<Duration>(m_clock()));
 }
 
 optional<MessageVerifier::Signer> MessageVerifier::verify(const Response& response) const {
     return signer_of(response, {status_component}, *m_keys, m_window,
-                     std::chrono::time_point_cast<Duration>(m_now()));
+                     std::chrono::time_point_cast<Duration>(m_clock()));
 }
 
 } // namespace identity

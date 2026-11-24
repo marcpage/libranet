@@ -149,12 +149,12 @@ vector<Identifier> held_matching(const SearchAnswers::Held& held,
 
 namespace storage {
 
-SearchAnswers::SearchAnswers(Held held, size_t min_bits, Milliseconds ttl, Now now)
+SearchAnswers::SearchAnswers(Held held, size_t min_bits, Milliseconds ttl, ClockFunction clock)
     : m_held(std::move(held))
     , m_min_bits(min_bits)
     , m_ttl(ttl)
-    , m_now(std::move(now)) {
-    if (!m_held || !m_now) {
+    , m_clock(std::move(clock)) {
+    if (!m_held || !m_clock) {
         throw invalid_argument("Searches need what the node holds, and the time");
     }
 
@@ -181,7 +181,7 @@ void SearchAnswers::add(const HashPrefix& prefix, const vector<Identifier>& name
 
 // The answer kept for prefix, if it is still fresh.
 optional<vector<Identifier>> SearchAnswers::_kept(const HashPrefix& prefix) {
-    const auto now = m_now();
+    const auto now = m_clock();
     const scoped_lock lock(m_mutex);
     const auto kept = m_answers.find(prefix.to_string());
 
@@ -197,7 +197,7 @@ optional<vector<Identifier>> SearchAnswers::_kept(const HashPrefix& prefix) {
 // changes, and is kept from now, only when it names more or better.
 vector<Identifier> SearchAnswers::_merge(const HashPrefix& prefix,
                                          vector<Identifier> found) {
-    const auto now = m_now();
+    const auto now = m_clock();
     const scoped_lock lock(m_mutex);
 
     _sweep(now);

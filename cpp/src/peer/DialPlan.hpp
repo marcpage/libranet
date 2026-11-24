@@ -23,7 +23,7 @@ public:
     using Candidate = stats::NodeAddresses::Candidate;
     using Clock = std::chrono::steady_clock;
     using Milliseconds = std::chrono::milliseconds;
-    using Now = std::function<Clock::time_point()>;
+    using ClockFunction = std::function<Clock::time_point()>;
 
     struct Rests {
         // As the Python node's are.
@@ -38,9 +38,9 @@ public:
 
     // Throws std::invalid_argument, naming the setting, for sizes Buckets
     // refuses or a rest that is not more than zero; or for an own_id with no
-    // hash, or now with no function.
+    // hash, or clock with no function.
     DialPlan(const storage::Identifier& own_id, const Buckets::ExpectedSizes& sizes,
-             const Rests& rests, Now now = &Clock::now);
+             const Rests& rests, ClockFunction clock = &Clock::now);
 
     // The candidates to dial now: the first of candidates in each primary
     // bucket that server_ids, the nodes connected or being dialed, leave
@@ -66,7 +66,7 @@ private:
     Buckets m_buckets;
     std::string m_own_id;
     Rests m_rests;
-    Now m_now;
+    ClockFunction m_clock;
     std::map<std::string, Clock::time_point> m_resting; // Until when, by node id
 };
 

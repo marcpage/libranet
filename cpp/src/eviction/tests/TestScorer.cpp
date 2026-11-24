@@ -8,19 +8,19 @@
 #include <string_view>
 #include <vector>
 
-#include "eviction/Score.hpp"
+#include "eviction/Scorer.hpp"
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
 #include "types/Constants.hpp"
 
-using eviction::Score;
+using eviction::Scorer;
 using storage::HashPrefix;
 using storage::Identifier;
 using namespace std::chrono_literals;
 
 namespace {
 
-using Clock = Score::Clock;
+using Clock = Scorer::Clock;
 
 // The hash of the tests' node id, which is all content is matched against.
 constexpr std::string_view node_hash =
@@ -80,12 +80,12 @@ Identifier sharing(std::size_t bits) {
 }
 
 // What factor, a fraction of one, counts for in a score.
-double floored(double factor, double floor = Score::factor_floor) {
+double floored(double factor, double floor = Scorer::factor_floor) {
     return floor + ((1.0 - floor) * factor);
 }
 
-Score scorer() {
-    return {node_id(), now, Score::Extremes{longest_unused, most_requests, most_bits}};
+Scorer scoring() {
+    return {node_id(), now, Scorer::Extremes{longest_unused, most_requests, most_bits}};
 }
 
 // The score of an object of size bytes, asked for requests times, last used
@@ -94,12 +94,12 @@ double score_of(std::size_t size,
                 std::int64_t requests,
                 std::optional<Clock::time_point> last_used,
                 std::size_t bits) {
-    return scorer().of(sharing(bits), size, requests, last_used);
+    return scoring().of(sharing(bits), size, requests, last_used);
 }
 
 } // namespace
 
-TEST(ScoreTest, SharingMakesIdsOfTheBitsAskedFor) {
+TEST(ScorerTest, SharingMakesIdsOfTheBitsAskedFor) {
     const auto node = HashPrefix::parse(node_hash);
 
     EXPECT_EQ(node.matching_bits(sharing(0)), 0U);
@@ -108,15 +108,15 @@ TEST(ScoreTest, SharingMakesIdsOfTheBitsAskedFor) {
     EXPECT_EQ(node.matching_bits(sharing(all_but_one_bit)), all_but_one_bit);
 }
 
-TEST(ScoreTest, OneByteUnusedLongestNeverAskedForMatchingNothingScoresAboutOne) {
+TEST(ScorerTest, OneByteUnusedLongestNeverAskedForMatchingNothingScoresAboutOne) {
     const auto score = score_of(1, 0, now - longest_unused, 0);
 
     EXPECT_NEAR(score, 1.0, tolerance);
     EXPECT_LT(score, 1.0);
 }
 
-TEST(ScoreTest, OneFactorAtItsWorstCountsForItsFloorNotZero) {
-    const auto floor = Score::factor_floor;
+TEST(ScorerTest, OneFactorAtItsWorstCountsForItsFloorNotZero) {
+    const auto floor = Scorer::factor_floor;
 
     // Used just now
     EXPECT_NEAR(score_of(1, 0, now, 0), floor, floor * tolerance);
@@ -124,23 +124,23 @@ TEST(ScoreTest, OneFactorAtItsWorstCountsForItsFloorNotZero) {
     EXPECT_NEAR(score_of(1, most_requests, now - longest_unused, 0), floor, floor * tolerance);
     // As large as an object may be
     EXPECT_NEAR(score_of(largest, 0, now - longest_unused, 0),
-                Score::size_factor_floor,
-                Score::size_factor_floor * tolerance);
+                Scorer::size_factor_floor,
+                Scorer::size_factor_floor * tolerance);
     // The best match held
     EXPECT_NEAR(score_of(1, 0, now - longest_unused, most_bits), floor, floor * tolerance);
 }
 
-TEST(ScoreTest, EveryFactorAtItsWorstIsTheProductOfTheFloors) {
-    const auto floors = Score::factor_floor * Score::factor_floor * Score::factor_floor
-                        * Score::size_factor_floor;
+TEST(ScorerTest, EveryFactorAtItsWorstIsTheProductOfTheFloors) {
+    const auto floors = Scorer::factor_floor * Scorer::factor_floor * Scorer::factor_floor
+                        * Scorer::size_factor_floor;
 
     EXPECT_NEAR(score_of(largest, most_requests, now, most_bits), floors, floors * tolerance);
 }
 
-TEST(ScoreTest, EachFactorIsAFractionOfTheExtremeHeld) {
+TEST(ScorerTest, EachFactorIsAFractionOfTheExtremeHeld) {
     const auto unused = floored(0.25);
     const auto asked_for = floored(0.5);
-    const auto size = floored(0.75, Score::size_factor_floor);
+    const auto size = floored(0.75, Scorer::size_factor_floor);
     const auto bits = floored(0.75);
 
     EXPECT_NEAR(score_of(1, 0, now - (longest_unused / 4), 0), unused, unused * tolerance);
@@ -151,20 +151,20 @@ TEST(ScoreTest, EachFactorIsAFractionOfTheExtremeHeld) {
     EXPECT_NEAR(score_of(1, 0, now - longest_unused, most_bits / 4), bits, bits * tolerance);
 }
 
-TEST(ScoreTest, AnExtremeOfZeroLeavesItsFactorAtOne) {
+TEST(ScorerTest, AnExtremeOfZeroLeavesItsFactorAtOne) {
     // Nothing held was ever asked for, or unused for any time, or matches a
     // bit.
-    const Score score(node_id(), now, Score::Extremes{});
+    const Scorer scoring(node_id(), now, Scorer::Extremes{});
 
-    EXPECT_NEAR(score.of(sharing(0), 1, 0, now), 1.0, tolerance);
+    EXPECT_NEAR(scoring.of(sharing(0), 1, 0, now), 1.0, tolerance);
 }
 
-TEST(ScoreTest, WhenLastUsedIsUnknownItCountsAsUnusedLongest) {
+TEST(ScorerTest, WhenLastUsedIsUnknownItCountsAsUnusedLongest) {
     EXPECT_NEAR(score_of(1, 0, std::nullopt, 0), 1.0, tolerance);
 }
 
-TEST(ScoreTest, AFactorBeyondItsExtremeIsKeptWithinItsRange) {
-    const auto floor = Score::factor_floor;
+TEST(ScorerTest, AFactorBeyondItsExtremeIsKeptWithinItsRange) {
+    const auto floor = Scorer::factor_floor;
 
     // Used after now, as the clock sees it
     EXPECT_NEAR(score_of(1, 0, now + after_now, 0), floor, floor * tolerance);
@@ -172,13 +172,13 @@ TEST(ScoreTest, AFactorBeyondItsExtremeIsKeptWithinItsRange) {
                 floor,
                 floor * tolerance);
     EXPECT_NEAR(score_of(twice_largest, 0, now - longest_unused, 0),
-                Score::size_factor_floor,
-                Score::size_factor_floor * tolerance);
+                Scorer::size_factor_floor,
+                Scorer::size_factor_floor * tolerance);
     // This node's own key matches every bit
     EXPECT_NEAR(score_of(1, 0, now - longest_unused, all_but_one_bit), floor, floor * tolerance);
 }
 
-TEST(ScoreTest, AnUnusedObjectOfOneMibGoesBeforeABusyOne) {
+TEST(ScorerTest, AnUnusedObjectOfOneMibGoesBeforeABusyOne) {
     const auto unused = score_of(largest, 0, now - longest_unused, 2);
     const auto busy = score_of(largest, many_requests, now - 1s, 0);
 
@@ -186,21 +186,21 @@ TEST(ScoreTest, AnUnusedObjectOfOneMibGoesBeforeABusyOne) {
     EXPECT_GT(busy, 0.0);
 }
 
-TEST(ScoreTest, ASmallObjectInUseGoesAfterALargeOneUnused) {
+TEST(ScorerTest, ASmallObjectInUseGoesAfterALargeOneUnused) {
     const auto in_use = score_of(small, some_requests, now - 1s, 0);
     const auto large_unused = score_of(largest, 0, now - longest_unused, 0);
 
     EXPECT_LT(in_use, large_unused);
 }
 
-TEST(ScoreTest, ASmallObjectNoLongerInUseGoesBeforeALargeOne) {
+TEST(ScorerTest, ASmallObjectNoLongerInUseGoesBeforeALargeOne) {
     const auto small_unused = score_of(small, some_requests, now - longest_unused, 0);
     const auto large_unused = score_of(largest, some_requests, now - longest_unused, 0);
 
     EXPECT_GT(small_unused, large_unused);
 }
 
-TEST(ScoreTest, MatchingMoreBitsKeepsContentLonger) {
+TEST(ScorerTest, MatchingMoreBitsKeepsContentLonger) {
     std::vector<double> scores;
 
     for (std::size_t bits = 0; bits < most_bits; bits += bits_per_digit) {
@@ -212,6 +212,6 @@ TEST(ScoreTest, MatchingMoreBitsKeepsContentLonger) {
     }
 }
 
-TEST(ScoreTest, ANodeIdWithNoHashIsRefused) {
-    EXPECT_THROW((void)Score(Identifier(), now, Score::Extremes{}), std::invalid_argument);
+TEST(ScorerTest, ANodeIdWithNoHashIsRefused) {
+    EXPECT_THROW((void)Scorer(Identifier(), now, Scorer::Extremes{}), std::invalid_argument);
 }

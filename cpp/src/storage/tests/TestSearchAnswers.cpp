@@ -102,14 +102,14 @@ std::vector<Identifier> Store::_begins_with(const HashPrefix& prefix) {
 // A clock that stands still until it is moved on.
 class StoppedClock {
 public:
-    [[nodiscard]] SearchAnswers::Now now() const;
+    [[nodiscard]] SearchAnswers::ClockFunction function() const;
     void advance(SearchAnswers::Clock::duration duration);
 
 private:
     SearchAnswers::Clock::time_point m_now;
 };
 
-SearchAnswers::Now StoppedClock::now() const {
+SearchAnswers::ClockFunction StoppedClock::function() const {
     return [this] { return m_now; };
 }
 
@@ -119,14 +119,14 @@ void StoppedClock::advance(SearchAnswers::Clock::duration duration) {
 
 // The answers to searches of store, at the time clock says.
 SearchAnswers answers_of(Store& store, const StoppedClock& clock, std::size_t bits = min_bits) {
-    return {store.lister(), bits, ttl, clock.now()};
+    return {store.lister(), bits, ttl, clock.function()};
 }
 
-// Whether SearchAnswers refuses held, ttl, and now as invalid.
+// Whether SearchAnswers refuses held, ttl, and clock as invalid.
 bool refused(const SearchAnswers::Held& held, SearchAnswers::Milliseconds keep_for,
-             const SearchAnswers::Now& now) {
+             const SearchAnswers::ClockFunction& clock) {
     try {
-        (void)SearchAnswers(held, min_bits, keep_for, now);
+        (void)SearchAnswers(held, min_bits, keep_for, clock);
     } catch (const std::invalid_argument&) {
         return true;
     }
@@ -373,11 +373,11 @@ TEST(SearchAnswersTest, SearchesFromManyThreads) {
 
 TEST(SearchAnswersTest, MissingFunctionsOrNoTtlAreRefused) {
     const SearchAnswers::Held held = [](const HashPrefix&) { return std::vector<Identifier>(); };
-    const SearchAnswers::Now now = SearchAnswers::Clock::now;
+    const SearchAnswers::ClockFunction clock = SearchAnswers::Clock::now;
 
-    EXPECT_TRUE(refused(SearchAnswers::Held(), ttl, now));
-    EXPECT_TRUE(refused(held, ttl, SearchAnswers::Now()));
-    EXPECT_TRUE(refused(held, 0ms, now));
-    EXPECT_TRUE(refused(held, -1ms, now));
-    EXPECT_FALSE(refused(held, 1ms, now));
+    EXPECT_TRUE(refused(SearchAnswers::Held(), ttl, clock));
+    EXPECT_TRUE(refused(held, ttl, SearchAnswers::ClockFunction()));
+    EXPECT_TRUE(refused(held, 0ms, clock));
+    EXPECT_TRUE(refused(held, -1ms, clock));
+    EXPECT_FALSE(refused(held, 1ms, clock));
 }

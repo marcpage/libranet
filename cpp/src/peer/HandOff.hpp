@@ -30,11 +30,11 @@ public:
     using Session = std::shared_ptr<PeerSession>;
     // The sessions with the peers this node has an outgoing connection to,
     // as they are now. Called from the threads handing off, several at once.
-    using Peers = std::function<std::vector<Session>()>;
+    using GetPeers = std::function<std::vector<Session>()>;
 
-    // Offers what store holds to the peers peers gives. Throws
-    // std::invalid_argument for no store, or peers with no function.
-    HandOff(storage::IDataSource::Ptr store, Peers peers);
+    // Offers what store holds to the peers get_peers gives. Throws
+    // std::invalid_argument for no store, or get_peers with no function.
+    HandOff(storage::IDataSource::Ptr store, GetPeers get_peers);
 
     // Offers identifier's content to the peers, best match first, until one
     // takes it, and gives the node id of the one that did; nothing when none
@@ -44,7 +44,7 @@ public:
 
 private:
     storage::IDataSource::Ptr m_store;
-    Peers m_peers;
+    GetPeers m_get_peers;
 };
 
 } // namespace peer

@@ -57,7 +57,7 @@ class Evictor {
 public:
     using Clock = std::chrono::steady_clock;
     using Milliseconds = std::chrono::milliseconds;
-    using Now = std::function<Clock::time_point()>;
+    using ClockFunction = std::function<Clock::time_point()>;
     // The bytes free where content is kept, as far as this node may use
     // them.
     using FreeSpace = std::function<std::uintmax_t()>;
@@ -147,9 +147,9 @@ public:
     // now. Throws std::invalid_argument, naming the setting, for no
     // hand-offs at once, a stored grace less than zero, or a candidates
     // timeout not more than zero; or for no store, or peers, free_space,
-    // or now with no function.
+    // or clock with no function.
     Evictor(storage::Identifier own_id, storage::IDataSource::Ptr store, Peers peers,
-            FreeSpace free_space, Settings settings, Now now = &Clock::now);
+            FreeSpace free_space, Settings settings, ClockFunction clock = &Clock::now);
     // Stops its thread, and waits for each hand-off under way, which ends
     // within the request timeouts of the peers it is offered to.
     ~Evictor();
@@ -167,7 +167,7 @@ private:
     Peers m_peers;
     FreeSpace m_free_space;
     Settings m_settings;
-    Now m_now;
+    ClockFunction m_clock;
 
     // Used only by the thread, but for m_jobs, which the destructor takes
     // once the thread has stopped.

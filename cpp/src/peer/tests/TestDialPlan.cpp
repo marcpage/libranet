@@ -82,14 +82,14 @@ std::vector<std::string> ids_named(const std::vector<std::string>& digits) {
 // A clock that stands still until it is moved on.
 class StoppedClock {
 public:
-    [[nodiscard]] DialPlan::Now now() const;
+    [[nodiscard]] DialPlan::ClockFunction function() const;
     void advance(DialPlan::Clock::duration duration);
 
 private:
     DialPlan::Clock::time_point m_now;
 };
 
-DialPlan::Now StoppedClock::now() const {
+DialPlan::ClockFunction StoppedClock::function() const {
     return [this] { return m_now; };
 }
 
@@ -101,14 +101,14 @@ void StoppedClock::advance(DialPlan::Clock::duration duration) {
 // clock says.
 DialPlan plan_of(const StoppedClock& clock,
                  const Buckets::ExpectedSizes& sizes = Buckets::ExpectedSizes{}) {
-    return DialPlan(node_of("a0"), sizes, DialPlan::Rests(), clock.now());
+    return DialPlan(node_of("a0"), sizes, DialPlan::Rests(), clock.function());
 }
 
-// Whether DialPlan refuses sizes, rests, and now as invalid.
+// Whether DialPlan refuses sizes, rests, and clock as invalid.
 bool refused(const Buckets::ExpectedSizes& sizes, const DialPlan::Rests& rests,
-             const DialPlan::Now& now) {
+             const DialPlan::ClockFunction& clock) {
     try {
-        (void)DialPlan(node_of("a0"), sizes, rests, now);
+        (void)DialPlan(node_of("a0"), sizes, rests, clock);
     } catch (const std::invalid_argument&) {
         return true;
     }
@@ -279,11 +279,11 @@ TEST(DialPlanTest, RestsOutOfRangeAndNoClockAreRefused) {
     negative_turned_away_rest.turned_away_rest = -1ms;
     no_primary.min_primary_connections = 0;
 
-    EXPECT_TRUE(refused(Buckets::ExpectedSizes{}, no_retry_delay, clock.now()));
-    EXPECT_TRUE(refused(Buckets::ExpectedSizes{}, negative_turned_away_rest, clock.now()));
-    EXPECT_TRUE(refused(no_primary, DialPlan::Rests{}, clock.now()));
-    EXPECT_TRUE(refused(Buckets::ExpectedSizes{}, DialPlan::Rests{}, DialPlan::Now{}));
-    EXPECT_FALSE(refused(Buckets::ExpectedSizes{}, DialPlan::Rests{}, clock.now()));
+    EXPECT_TRUE(refused(Buckets::ExpectedSizes{}, no_retry_delay, clock.function()));
+    EXPECT_TRUE(refused(Buckets::ExpectedSizes{}, negative_turned_away_rest, clock.function()));
+    EXPECT_TRUE(refused(no_primary, DialPlan::Rests{}, clock.function()));
+    EXPECT_TRUE(refused(Buckets::ExpectedSizes{}, DialPlan::Rests{}, DialPlan::ClockFunction{}));
+    EXPECT_FALSE(refused(Buckets::ExpectedSizes{}, DialPlan::Rests{}, clock.function()));
 }
 
 TEST(DialPlanTest, ANodeIdWithNoHashIsRefused) {
@@ -291,7 +291,7 @@ TEST(DialPlanTest, ANodeIdWithNoHashIsRefused) {
     const auto plan = plan_of(clock);
 
     EXPECT_THROW((void)DialPlan(Identifier(), Buckets::ExpectedSizes{}, DialPlan::Rests{},
-                                clock.now()),
+                                clock.function()),
                  std::invalid_argument);
     EXPECT_THROW((void)plan.to_dial({{Identifier(), {std::string(endpoint)}}}, {}),
                  std::invalid_argument);

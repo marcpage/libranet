@@ -109,31 +109,32 @@ vector<Entry> entries_of(Database& database, string_view kind, int64_t cutoff, P
 
 namespace stats {
 
-Sought::Sought(Database& database, Milliseconds entry_ttl, Now now)
+Sought::Sought(Database& database, Milliseconds entry_ttl, ClockFunction clock)
     : m_database(&database)
     , m_entry_ttl(entry_ttl)
-    , m_now(std::move(now)) {
+    , m_clock(std::move(clock)) {
     if (m_entry_ttl <= Milliseconds::zero()) {
         throw invalid_argument("stats.seek_entry_ttl_seconds must be more than zero: "
                                + to_string(m_entry_ttl.count()) + " ms");
     }
 
-    if (!m_now) {
+    if (!m_clock) {
         throw invalid_argument("Sought needs a clock");
     }
 }
 
 bool Sought::seek(const Identifier& identifier) {
-    return seek_entry(*m_database, data_kind, identifier.to_string(), m_now(), m_entry_ttl);
+    return seek_entry(*m_database, data_kind, identifier.to_string(), m_clock(), m_entry_ttl);
 }
 
 bool Sought::seek(const HashPrefix& prefix) {
-    return seek_entry(*m_database, search_kind, prefix.to_string(), m_now(), m_entry_ttl);
+    return seek_entry(*m_database, search_kind, prefix.to_string(), m_clock(), m_entry_ttl);
 }
 
 bool Sought::found(const Identifier& identifier) {
     const auto value = identifier.to_string();
-    const auto was_listed = listed(*m_database, data_kind, value, cutoff_of(m_now(), m_entry_ttl));
+    const auto was_listed = listed(*m_database, data_kind, value,
+                                   cutoff_of(m_clock(), m_entry_ttl));
     Statement statement(*m_database, found_sql);
 
     statement.bind(data_kind).bind(value);
@@ -144,12 +145,12 @@ bool Sought::found(const Identifier& identifier) {
 void Sought::forget_expired() {
     Statement statement(*m_database, expire_sql);
 
-    statement.bind(cutoff_of(m_now(), m_entry_ttl));
+    statement.bind(cutoff_of(m_clock(), m_entry_ttl));
     (void)statement.step();
 }
 
 SeekList Sought::seek_list() const {
-    const auto cutoff = cutoff_of(m_now(), m_entry_ttl);
+    const auto cutoff = cutoff_of(m_clock(), m_entry_ttl);
     auto data = entries_of<Identifier>(*m_database, data_kind, cutoff,
                                        [](const string& text) { return Identifier::from(text); });
     auto search = entries_of<HashPrefix>(*m_database, search_kind, cutoff,

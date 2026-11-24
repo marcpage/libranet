@@ -208,7 +208,7 @@ void StandInNode::_keep(const std::string& request) {
 // it on. Any thread may read it or move it.
 class StillClock {
 public:
-    [[nodiscard]] Fetch::Now now() const;
+    [[nodiscard]] Fetch::ClockFunction function() const;
     void advance(Milliseconds elapsed);
 
 private:
@@ -216,7 +216,7 @@ private:
     std::atomic<Milliseconds::rep> m_elapsed{0};
 };
 
-Fetch::Now StillClock::now() const {
+Fetch::ClockFunction StillClock::function() const {
     return [this] { return m_start + Milliseconds(m_elapsed.load()); };
 }
 
@@ -229,7 +229,7 @@ class Connected {
 public:
     explicit Connected(std::vector<Session> sessions = {});
 
-    [[nodiscard]] Fetch::Peers peers();
+    [[nodiscard]] Fetch::GetPeers get_peers();
 
 private:
     std::mutex m_mutex;
@@ -239,7 +239,7 @@ private:
 Connected::Connected(std::vector<Session> sessions)
     : m_sessions(std::move(sessions)) {}
 
-Fetch::Peers Connected::peers() {
+Fetch::GetPeers Connected::get_peers() {
     return [this] {
         const std::scoped_lock lock(m_mutex);
 
@@ -336,8 +336,8 @@ protected:
     // A fetch of the peers connected gives, keeping what it finds in
     // store().
     [[nodiscard]] Fetch fetch_from(Connected& connected, const Fetch::Settings& settings = quick(),
-                                   Fetch::Now now = &Clock::now) const {
-        return {m_store, connected.peers(), settings, std::move(now)};
+                                   Fetch::ClockFunction clock = &Clock::now) const {
+        return {m_store, connected.get_peers(), settings, std::move(clock)};
     }
 
     // peer's public key, as the content its id names.
@@ -393,7 +393,8 @@ Identifier content_id() {
 bool refused(const Fetch::Settings& settings) {
     try {
         Connected connected;
-        const Fetch fetch(std::make_shared<fixtures::MemorySource>(), connected.peers(), settings);
+        const Fetch fetch(std::make_shared<fixtures::MemorySource>(), connected.get_peers(),
+                          settings);
     } catch (const std::invalid_argument&) {
         return true;
     }
@@ -504,7 +505,7 @@ TEST_F(FetchTest, PeerIsLeftUntilItsRetryAfterHasPassed) {
         session_with(second_peer, second()),
         session_with(third_peer, third()),
     });
-    auto fetch = fetch_from(connected, quick(), clock.now());
+    auto fetch = fetch_from(connected, quick(), clock.function());
 
     EXPECT_EQ(fetch.fetch(content_id()), Outcome::NotFound);
     EXPECT_EQ(first_peer.asked(), 1U);
@@ -516,7 +517,7 @@ TEST_F(FetchTest, SearchThatFoundNothingIsHeldOff) {
     StillClock clock;
     const StandInNode peer(lacking(MessageSigner(first())));
     Connected connected({session_with(peer, first())});
-    auto fetch = fetch_from(connected, quick(), clock.now());
+    auto fetch = fetch_from(connected, quick(), clock.function());
 
     EXPECT_EQ(fetch.fetch(content_id()), Outcome::NotFound);
     EXPECT_TRUE(fetch.is_held_off(content_id()));
@@ -559,11 +560,11 @@ TEST_F(FetchTest, PeerThatConnectsDuringTheSearchIsAsked) {
     const StandInNode second_peer(sending(MessageSigner(second()), content_text));
     const auto first_session = session_with(first_peer, first());
     const auto second_session = session_with(second_peer, second());
-    const Fetch::Peers peers = [&] {
+    const Fetch::GetPeers get_peers = [&] {
         return answered ? std::vector<Session>{first_session, second_session}
                         : std::vector<Session>{first_session};
     };
-    Fetch fetch(store(), peers, quick());
+    Fetch fetch(store(), get_peers, quick());
 
     EXPECT_EQ(fetch.fetch(content_id()), Outcome::Found);
     EXPECT_EQ(first_peer.asked(), 1U);
@@ -650,7 +651,8 @@ TEST_F(FetchTest, SettingsThatCannotBeUsedAreRefused) {
 TEST_F(FetchTest, NeedsAStorePeersAndTheTime) {
     Connected connected;
 
-    EXPECT_THROW((void)Fetch(nullptr, connected.peers(), quick()), std::invalid_argument);
+    EXPECT_THROW((void)Fetch(nullptr, connected.get_peers(), quick()), std::invalid_argument);
     EXPECT_THROW((void)Fetch(store(), nullptr, quick()), std::invalid_argument);
-    EXPECT_THROW((void)Fetch(store(), connected.peers(), quick(), nullptr), std::invalid_argument);
+    EXPECT_THROW((void)Fetch(store(), connected.get_peers(), quick(), nullptr),
+                 std::invalid_argument);
 }

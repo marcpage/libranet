@@ -39,7 +39,7 @@ class SeekFulfiller {
 public:
     using Clock = storage::SearchAnswers::Clock;
     using Milliseconds = std::chrono::milliseconds;
-    using Now = std::function<Clock::time_point()>;
+    using ClockFunction = std::function<Clock::time_point()>;
     using Sessions = std::vector<std::shared_ptr<PeerSession>>;
 
     struct Settings {
@@ -60,9 +60,9 @@ public:
 
     // Puts and names what store holds. Throws std::invalid_argument, naming
     // the setting, for a refresh that is not more than zero or a pipeline
-    // depth of none; or for no store, or now with no function.
+    // depth of none; or for no store, or clock with no function.
     SeekFulfiller(storage::IDataSource::Ptr store, const Settings& settings,
-                  Now now = &Clock::now);
+                  ClockFunction clock = &Clock::now);
     ~SeekFulfiller() = default;
     // Its mutex is neither copied nor moved.
     SeekFulfiller(const SeekFulfiller&) = delete;
@@ -103,7 +103,7 @@ private:
 
     storage::IDataSource::Ptr m_store;
     Settings m_settings;
-    Now m_now;
+    ClockFunction m_clock;
     storage::SearchAnswers m_found;
     std::mutex m_mutex;
     std::map<std::string, Served> m_served; // By node id; guarded by m_mutex
