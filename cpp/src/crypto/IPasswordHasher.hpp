@@ -24,10 +24,11 @@ public:
                                                std::string_view hash) const = 0;
 
     virtual ~IPasswordHasher() = default;
-    IPasswordHasher(const IPasswordHasher&) = delete;
-    IPasswordHasher& operator=(const IPasswordHasher&) = delete;
     IPasswordHasher(IPasswordHasher&&) noexcept = default;
     IPasswordHasher& operator=(IPasswordHasher&&) noexcept = default;
+
+    IPasswordHasher(const IPasswordHasher&) = delete;
+    IPasswordHasher& operator=(const IPasswordHasher&) = delete;
 
 protected:
     IPasswordHasher() = default;

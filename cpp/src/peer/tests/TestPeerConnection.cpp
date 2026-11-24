@@ -95,12 +95,13 @@ public:
 
     explicit StandInNode(Part part);
     ~StandInNode();
+
+    [[nodiscard]] Address address() const;
+
     StandInNode(const StandInNode&) = delete;
     StandInNode& operator=(const StandInNode&) = delete;
     StandInNode(StandInNode&&) = delete;
     StandInNode& operator=(StandInNode&&) = delete;
-
-    [[nodiscard]] Address address() const;
 
 private:
     ISocket::Ptr m_listener;

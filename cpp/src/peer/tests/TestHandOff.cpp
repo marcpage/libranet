@@ -96,15 +96,16 @@ public:
     // Answers each request with answer, the text of a response.
     explicit StandInNode(std::string answer);
     ~StandInNode();
-    StandInNode(const StandInNode&) = delete;
-    StandInNode& operator=(const StandInNode&) = delete;
-    StandInNode(StandInNode&&) = delete;
-    StandInNode& operator=(StandInNode&&) = delete;
 
     [[nodiscard]] Address address() const;
     // Each request it has been sent, the first first.
     [[nodiscard]] std::vector<Sent> requests() const;
     [[nodiscard]] std::size_t asked() const;
+
+    StandInNode(const StandInNode&) = delete;
+    StandInNode& operator=(const StandInNode&) = delete;
+    StandInNode(StandInNode&&) = delete;
+    StandInNode& operator=(StandInNode&&) = delete;
 
 private:
     ISocket::Ptr m_listener;

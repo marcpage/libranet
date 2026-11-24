@@ -59,13 +59,6 @@ Identifier identifier_of(char digit) {
 // or a search would wait on peers slow to answer.
 class CountedPeers {
 public:
-    CountedPeers() = default;
-    ~CountedPeers() = default;
-    CountedPeers(const CountedPeers&) = delete;
-    CountedPeers& operator=(const CountedPeers&) = delete;
-    CountedPeers(CountedPeers&&) = delete;
-    CountedPeers& operator=(CountedPeers&&) = delete;
-
     [[nodiscard]] std::function<std::vector<Seeker::Session>()> function() {
         return [this] { return _asked(); };
     }
@@ -107,6 +100,14 @@ public:
         return m_waiting;
     }
 
+    CountedPeers() = default;
+    ~CountedPeers() = default;
+
+    CountedPeers(const CountedPeers&) = delete;
+    CountedPeers& operator=(const CountedPeers&) = delete;
+    CountedPeers(CountedPeers&&) = delete;
+    CountedPeers& operator=(CountedPeers&&) = delete;
+
 private:
     mutable std::mutex m_mutex;
     std::condition_variable m_changed;
@@ -133,13 +134,6 @@ private:
 // passes come due only when the test says.
 class StillClock {
 public:
-    StillClock() = default;
-    ~StillClock() = default;
-    StillClock(const StillClock&) = delete;
-    StillClock& operator=(const StillClock&) = delete;
-    StillClock(StillClock&&) = delete;
-    StillClock& operator=(StillClock&&) = delete;
-
     [[nodiscard]] Seeker::ClockFunction function() {
         return [this] {
             const std::scoped_lock lock(m_mutex);
@@ -151,6 +145,14 @@ public:
         const std::scoped_lock lock(m_mutex);
         m_time += interval;
     }
+
+    StillClock() = default;
+    ~StillClock() = default;
+
+    StillClock(const StillClock&) = delete;
+    StillClock& operator=(const StillClock&) = delete;
+    StillClock(StillClock&&) = delete;
+    StillClock& operator=(StillClock&&) = delete;
 
 private:
     std::mutex m_mutex;

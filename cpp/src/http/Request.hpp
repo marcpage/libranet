@@ -12,8 +12,6 @@ namespace http {
 
 class Request {
 public:
-    Request() = default;
-
     [[nodiscard]] std::string_view method() const noexcept;
     [[nodiscard]] std::string_view uri() const noexcept;
     [[nodiscard]] std::string_view version() const noexcept;
@@ -32,6 +30,8 @@ public:
     [[nodiscard]] std::string to_string() const;
 
     friend std::istream& operator>>(std::istream& in_stream, Request& request);
+
+    Request() = default;
 
 private:
     std::string m_method;

@@ -15,11 +15,6 @@ namespace crypto {
 class Sha256OpenSsl : public IHasher {
 public:
     Sha256OpenSsl();
-    ~Sha256OpenSsl() override = default;
-    Sha256OpenSsl(const Sha256OpenSsl&) = delete;
-    Sha256OpenSsl& operator=(const Sha256OpenSsl&) = delete;
-    Sha256OpenSsl(Sha256OpenSsl&&) noexcept = default;
-    Sha256OpenSsl& operator=(Sha256OpenSsl&&) noexcept = default;
 
     void update(std::string_view data) override;
     void update(const Data& data) override;
@@ -28,6 +23,13 @@ public:
     [[nodiscard]] std::size_t block_size() const noexcept override;
     [[nodiscard]] Ptr clone() const override;
     void reset() override;
+
+    ~Sha256OpenSsl() override = default;
+    Sha256OpenSsl(Sha256OpenSsl&&) noexcept = default;
+    Sha256OpenSsl& operator=(Sha256OpenSsl&&) noexcept = default;
+
+    Sha256OpenSsl(const Sha256OpenSsl&) = delete;
+    Sha256OpenSsl& operator=(const Sha256OpenSsl&) = delete;
 
 private:
     using Context = OpenSslObject<EVP_MD_CTX, EVP_MD_CTX_free>;

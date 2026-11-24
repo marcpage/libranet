@@ -179,14 +179,14 @@ public:
         Logger::remove_all_outputs();
     }
 
+    [[nodiscard]] const std::vector<std::string>& lines() const noexcept {
+        return *m_lines;
+    }
+
     KeptWarnings(const KeptWarnings&) = delete;
     KeptWarnings& operator=(const KeptWarnings&) = delete;
     KeptWarnings(KeptWarnings&&) = delete;
     KeptWarnings& operator=(KeptWarnings&&) = delete;
-
-    [[nodiscard]] const std::vector<std::string>& lines() const noexcept {
-        return *m_lines;
-    }
 
 private:
     using Lines = std::vector<std::string>;

@@ -26,18 +26,12 @@ public:
 #endif
     static constexpr unsigned word_bits = std::numeric_limits<word_t>::digits;
 
-    Integer() = default;
     // Integer converts implicitly from the built-in integers, as they convert
     // to each other.
     // cppcheck-suppress noExplicitConstructor
     // NOLINTNEXTLINE(*-explicit-constructor)
     Integer(std::int64_t value);
     explicit Integer(const std::string& text);
-    Integer(const Integer&) = default;
-    Integer(Integer&&) noexcept = default;
-    Integer& operator=(const Integer&) = default;
-    Integer& operator=(Integer&&) noexcept = default;
-    ~Integer() = default;
 
     [[nodiscard]] bool is_zero() const noexcept;
     [[nodiscard]] bool is_negative() const noexcept;
@@ -82,6 +76,13 @@ public:
     friend bool operator>=(const Integer& left, const Integer& right) noexcept;
     friend std::ostream& operator<<(std::ostream& out_stream, const Integer& value);
     friend std::istream& operator>>(std::istream& in_stream, Integer& value);
+
+    Integer() = default;
+    Integer(const Integer&) = default;
+    Integer(Integer&&) noexcept = default;
+    Integer& operator=(const Integer&) = default;
+    Integer& operator=(Integer&&) noexcept = default;
+    ~Integer() = default;
 
 private:
     static constexpr word_t decimal_base = 10;

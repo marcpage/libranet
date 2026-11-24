@@ -19,12 +19,13 @@ class ScratchFile {
 public:
     ScratchFile();
     ~ScratchFile();
+
+    [[nodiscard]] const std::filesystem::path& path() const noexcept;
+
     ScratchFile(const ScratchFile&) = delete;
     ScratchFile& operator=(const ScratchFile&) = delete;
     ScratchFile(ScratchFile&&) = delete;
     ScratchFile& operator=(ScratchFile&&) = delete;
-
-    [[nodiscard]] const std::filesystem::path& path() const noexcept;
 
 private:
     std::filesystem::path m_path;

@@ -75,12 +75,6 @@ public:
     // passes, a pass interval less than zero, or a hold that is not more than
     // zero, as the Python node refuses them; or for clock with no function.
     explicit PeerSearch(const Settings& settings, ClockFunction clock = &Clock::now);
-    ~PeerSearch() = default;
-    // Its mutex is neither copied nor moved.
-    PeerSearch(const PeerSearch&) = delete;
-    PeerSearch& operator=(const PeerSearch&) = delete;
-    PeerSearch(PeerSearch&&) = delete;
-    PeerSearch& operator=(PeerSearch&&) = delete;
 
     // Starts a search of the peers for prefix, its first pass due at once:
     // one asker asked this node, or, with no asker, one this node or a client
@@ -99,6 +93,14 @@ public:
     // thread is making is not made by another calling at once. Gives when the
     // next pass is due, or nothing when no search waits for one.
     std::optional<Clock::time_point> make_passes(const Sessions& sessions);
+
+    ~PeerSearch() = default;
+
+    // Its mutex is neither copied nor moved.
+    PeerSearch(const PeerSearch&) = delete;
+    PeerSearch& operator=(const PeerSearch&) = delete;
+    PeerSearch(PeerSearch&&) = delete;
+    PeerSearch& operator=(PeerSearch&&) = delete;
 
 private:
     // A search under way, and its next pass, counted from one.

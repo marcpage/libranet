@@ -28,10 +28,12 @@ public:
                                       const InitializationVector& vector) const override;
 
     ~AesOpenSsl() override;
-    AesOpenSsl(const AesOpenSsl&) = delete;
-    AesOpenSsl& operator=(const AesOpenSsl&) = delete;
+
     AesOpenSsl(AesOpenSsl&&) noexcept = default;
     AesOpenSsl& operator=(AesOpenSsl&&) noexcept = default;
+
+    AesOpenSsl(const AesOpenSsl&) = delete;
+    AesOpenSsl& operator=(const AesOpenSsl&) = delete;
 
 private:
     using Context = OpenSslObject<EVP_CIPHER_CTX, EVP_CIPHER_CTX_free>;

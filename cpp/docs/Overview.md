@@ -273,6 +273,7 @@ only through another, as `node` does `net`'s.
 | `http` | `crypto`, `io`, `types` | — |
 | `storage` | `crypto`, `io`, `logger`, `types` | zlib |
 | `web` | `http`, `io`, `net`, `storage`, `types` | Threads |
+| `web` | `http`, `io`, `logger`, `net`, `storage` | Threads |
 | `identity` | `crypto`, `http`, `io`, `logger`, `storage`, `types` | — |
 | `protocol` | `http`, `logger`, `net`, `storage`, `types` | — |
 | `eviction` | `logger`, `msg`, `storage`, `types` | Threads |

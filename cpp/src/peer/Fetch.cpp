@@ -73,10 +73,13 @@ public:
     ~AtEnd() {
         try {
             m_end();
+        } catch (const std::exception& error) {
+            lFatal << "Could not end a search:" << error.what();
         } catch (...) {
             std::terminate();
         }
     }
+
     AtEnd(const AtEnd&) = delete;
     AtEnd& operator=(const AtEnd&) = delete;
     AtEnd(AtEnd&&) = delete;

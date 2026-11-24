@@ -64,10 +64,6 @@ public:
     PeerConnection(net::Address address, const Limits& limits);
     // Closes the connection.
     ~PeerConnection();
-    PeerConnection(const PeerConnection&) = delete;
-    PeerConnection& operator=(const PeerConnection&) = delete;
-    PeerConnection(PeerConnection&&) = delete;
-    PeerConnection& operator=(PeerConnection&&) = delete;
 
     // Queues the request to be sent as HTTP/1.1, with a Host naming the node
     // and a Content-Length for its body, and gives its answer to come. The
@@ -92,6 +88,11 @@ public:
     // Closes the connection, failing every request still waiting, and waits
     // for its threads.
     void close();
+
+    PeerConnection(const PeerConnection&) = delete;
+    PeerConnection& operator=(const PeerConnection&) = delete;
+    PeerConnection(PeerConnection&&) = delete;
+    PeerConnection& operator=(PeerConnection&&) = delete;
 
 private:
     using Clock = std::chrono::steady_clock;
