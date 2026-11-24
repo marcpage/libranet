@@ -1,5 +1,6 @@
 #include "PeerSession.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <future>
 #include <memory>
@@ -29,6 +30,7 @@ using std::future;
 using std::invalid_argument;
 using std::nullopt;
 using std::optional;
+using std::shared_ptr;
 using std::size_t;
 using std::string;
 using std::string_view;
@@ -137,6 +139,21 @@ void PeerSession::close() {
 
 size_t PeerSession::matching_bits(const Identifier& identifier) const {
     return HashPrefix::parse(node_id().hash()).matching_bits(identifier);
+}
+
+vector<shared_ptr<PeerSession>> PeerSession::ranked(vector<shared_ptr<PeerSession>> sessions,
+                                                    const Identifier& identifier) {
+    const auto is_closed = [](const shared_ptr<PeerSession>& session) {
+        return !session || !session->is_open();
+    };
+
+    sessions.erase(std::remove_if(sessions.begin(), sessions.end(), is_closed), sessions.end());
+    std::stable_sort(sessions.begin(), sessions.end(),
+                     [&identifier](const shared_ptr<PeerSession>& left,
+                                   const shared_ptr<PeerSession>& right) {
+        return left->matching_bits(identifier) > right->matching_bits(identifier);
+    });
+    return sessions;
 }
 
 // Ends the session, and throws Unauthenticated, unless answer is shown to

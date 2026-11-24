@@ -70,7 +70,6 @@ private:
                                                const std::filesystem::directory_entry& entry) const;
     [[nodiscard]] static std::vector<std::filesystem::path>
     _subdirectories(const std::filesystem::path& directory);
-    [[nodiscard]] static bool _write(const std::filesystem::path& partial, const Data& body);
 };
 
 inline DataDir::Ptr DataDir::create(std::filesystem::path path) {
@@ -113,11 +112,7 @@ inline std::optional<DataDir::Data> DataDir::get(const Identifier& identifier) c
 inline void DataDir::put(const Identifier& identifier, const Data& body) const {
     io::SafeWriteFile file(_path(identifier));
 
-    if (!_write(file.writable_path(), body)) {
-        throw std::runtime_error("Failed to write file: " + file.writable_path().string());
-    }
-
-    file.commit();
+    file.write(body);
 }
 
 // Only a file is a body, so a directory in its place is left.
@@ -260,21 +255,6 @@ DataDir::_subdirectories(const std::filesystem::path& directory) {
     }
 
     return found;
-}
-
-// Writes body to a new file at partial, and closes it. Whether all of it was
-// written.
-inline bool DataDir::_write(const std::filesystem::path& partial, const Data& body) {
-    std::ofstream file(partial, std::ios::binary | std::ios::trunc);
-
-    if (!body.empty()) {
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-        file.write(reinterpret_cast<const char*>(body.data()),
-                   static_cast<std::streamsize>(body.size()));
-    }
-
-    file.close();
-    return !file.fail();
 }
 
 } // namespace storage

@@ -30,8 +30,6 @@ using std::string;
 using std::string_view;
 using std::to_string;
 using std::vector;
-using std::chrono::duration_cast;
-using std::chrono::milliseconds;
 using storage::Identifier;
 
 namespace {
@@ -102,16 +100,6 @@ constexpr string_view node_list_sql =
     "WHERE last_success IS NOT NULL AND node_id <> ?1) "
     "WHERE place = 1 AND consecutive_failures = 0 ORDER BY last_success DESC, endpoint";
 
-// The milliseconds since the Unix epoch of time, as the table holds a time.
-int64_t milliseconds_of(Clock::time_point time) {
-    return duration_cast<milliseconds>(time.time_since_epoch()).count();
-}
-
-// The time count milliseconds after the Unix epoch.
-Clock::time_point time_of(int64_t count) {
-    return Clock::time_point(milliseconds(count));
-}
-
 // Where column is in the rows addresses_sql() reads, as Statement numbers
 // columns.
 int place_of(Column column) {
@@ -124,7 +112,7 @@ optional<Clock::time_point> optional_time(const Statement& statement, Column col
         return nullopt;
     }
 
-    return time_of(statement.integer(place_of(column)));
+    return statement.time(place_of(column));
 }
 
 // The name a source is written as in the table.
@@ -204,7 +192,7 @@ Address address_of(const Statement& statement) {
     return Address{
         statement.text(place_of(Column::Endpoint)),
         source_named(statement.text(place_of(Column::SourceName))),
-        time_of(statement.integer(place_of(Column::LastLearned))),
+        statement.time(place_of(Column::LastLearned)),
         optional_time(statement, Column::FirstSuccess),
         optional_time(statement, Column::LastSuccess),
         statement.integer(place_of(Column::Attempts)),
@@ -242,7 +230,7 @@ NodeAddresses::NodeAddresses(Database& database, Limits limits, ClockFunction cl
 }
 
 void NodeAddresses::record_learned(const NodeList& list, Source source) {
-    const auto now = milliseconds_of(m_clock());
+    const auto now = m_clock();
     Statement statement(*m_database, learn_sql());
 
     for (const auto& entry : list.entries()) {
@@ -259,7 +247,7 @@ void NodeAddresses::record_success(const Identifier& node_id, string_view endpoi
     Statement statement(*m_database, success_sql);
 
     statement.bind(node_id.to_string()).bind(endpoint).bind(name_of(Source::Dialed));
-    statement.bind(milliseconds_of(m_clock()));
+    statement.bind(m_clock());
     (void)statement.step();
 }
 

@@ -127,19 +127,6 @@ void let_go(Until& until, Clock::time_point now) {
     }
 }
 
-// The sessions of peers still open, those whose node ids best match
-// identifier first, and those that match alike in the order given.
-vector<Session> ranked(vector<Session> peers, const Identifier& identifier) {
-    const auto is_closed = [](const Session& session) { return !session || !session->is_open(); };
-
-    peers.erase(std::remove_if(peers.begin(), peers.end(), is_closed), peers.end());
-    std::stable_sort(peers.begin(), peers.end(),
-                     [&identifier](const Session& left, const Session& right) {
-        return left->matching_bits(identifier) > right->matching_bits(identifier);
-    });
-    return peers;
-}
-
 // How long answer's Retry-After asks it be left, when it gives a number of
 // seconds (HttpApi §5.2), and no longer than longest_retry_after. Nothing
 // for none, or for the HTTP date RFC 9110 §10.2.3 also allows, as the
@@ -405,7 +392,7 @@ Fetch::Outcome Fetch::_search(const Identifier& identifier) {
             return Outcome::Found;
         }
 
-        const auto peers = ranked(m_get_peers(), identifier);
+        const auto peers = PeerSession::ranked(m_get_peers(), identifier);
         const auto now = m_clock();
 
         if (const auto session = search.next_peer(peers, now)) {
