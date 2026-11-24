@@ -23,6 +23,9 @@ namespace identity {
 // checks every one it knows against the body (HTTP API §11.2).
 class ContentDigest {
 public:
+    // The name of the field (RFC 9530 §2).
+    static constexpr std::string_view field_name = "Content-Digest";
+
     // The field a node sends for body: its sha-256.
     [[nodiscard]] static ContentDigest of(std::string_view body);
     // Reads a Content-Digest field's value. Throws std::invalid_argument for
