@@ -1,5 +1,3 @@
-# Data types. Only headers so far, so an INTERFACE library; it becomes
-# STATIC with its first .cpp file.
 add_library(libranet_types INTERFACE)
 add_library(libranet::types ALIAS libranet_types)
 target_include_directories(libranet_types INTERFACE ${PROJECT_SOURCE_DIR}/src)
@@ -10,7 +8,8 @@ if(BUILD_TESTING)
         tests/TestBlockingQueue.cpp
         tests/TestConverter.cpp
         tests/TestInteger.cpp
-        tests/TestJson.cpp)
+        tests/TestJson.cpp
+    )
     target_link_libraries(types_tests PRIVATE libranet::types GTest::gtest_main)
     gtest_discover_tests(types_tests)
 endif()

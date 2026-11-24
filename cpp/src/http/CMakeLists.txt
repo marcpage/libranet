@@ -1,5 +1,3 @@
-# Parsing and generating HTTP. Only headers so far, so an INTERFACE library;
-# it becomes STATIC with its first .cpp file.
 add_library(libranet_http INTERFACE)
 add_library(libranet::http ALIAS libranet_http)
 target_include_directories(libranet_http INTERFACE ${PROJECT_SOURCE_DIR}/src)
@@ -14,7 +12,8 @@ if(BUILD_TESTING)
         tests/TestResponse.cpp
         tests/TestResponseCode.cpp
         tests/TestStructuredField.cpp
-        tests/TestUrl.cpp)
+        tests/TestUrl.cpp
+    )
     target_link_libraries(http_tests PRIVATE libranet::http GTest::gtest_main)
     gtest_discover_tests(http_tests)
 endif()
