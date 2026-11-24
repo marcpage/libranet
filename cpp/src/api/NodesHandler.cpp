@@ -1,5 +1,6 @@
 #include "NodesHandler.hpp"
 
+#include <cstddef>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -39,6 +40,7 @@ using std::nullopt;
 using std::optional;
 using std::scoped_lock;
 using std::set;
+using std::size_t;
 using std::string;
 using std::string_view;
 using std::vector;
@@ -56,17 +58,18 @@ using Status = ResponseCode::Status;
 // The methods /data/nodes takes, as Allow names them.
 constexpr string_view allowed_methods = "GET, POST";
 
-// list, as it is sent.
-string body_of(const NodeList& list) {
-    return Converter::text_of(list.body());
+// list, as it is sent, in fewer than limit bytes.
+string body_of(const NodeList& list, size_t limit) {
+    return Converter::text_of(list.body(limit));
 }
 
-// The list the body of request, on connection, names, or nothing when it
-// names none, having answered 400 saying why (HttpApi §10.5).
+// The list the body of request, on connection, names, decompressed to no
+// more than list_bytes, or nothing when it names none, having answered 400
+// saying why (HttpApi §10.5).
 optional<NodeList> list_in(const Request& request, Response& response,
-                           const ConnectionInfo& connection) {
+                           const ConnectionInfo& connection, size_t list_bytes) {
     try {
-        return NodeList::from_body(Converter::bytes_of(request.body()));
+        return NodeList::from_body(Converter::bytes_of(request.body()), list_bytes);
     } catch (const invalid_argument& error) {
         lDebug << "Refused the node list from" << connection.remote_address().to_string() + ":"
                << error.what();
@@ -126,10 +129,12 @@ void answer_get(mutex& guard, const string& served, Response& response) {
     response.set_body(std::move(body));
 }
 
-// Tells the node's other parts of the list a peer sent, resolved by the
-// address its connection came from; or says why it is not one.
-void answer_post(const Request& request, Response& response, const ConnectionInfo& connection) {
-    const auto sent = list_in(request, response, connection);
+// Tells the node's other parts of the list a peer sent, decompressed to no
+// more than list_bytes, resolved by the address its connection came from;
+// or says why it is not one.
+void answer_post(size_t list_bytes, const Request& request, Response& response,
+                 const ConnectionInfo& connection) {
+    const auto sent = list_in(request, response, connection, list_bytes);
 
     if (!sent) {
         return;
@@ -147,11 +152,14 @@ void answer_post(const Request& request, Response& response, const ConnectionInf
 
 namespace api {
 
-NodesHandler::NodesHandler(const Identifier& own_id, const vector<string>& own_endpoints)
-    : m_body(body_of(NodeList(own_id, own_endpoints))) {}
+NodesHandler::NodesHandler(const Identifier& own_id, const vector<string>& own_endpoints,
+                           size_t list_bytes, size_t served_bytes)
+    : m_list_bytes(list_bytes)
+    , m_served_bytes(served_bytes)
+    , m_body(body_of(NodeList(own_id, own_endpoints), m_served_bytes)) {}
 
 void NodesHandler::set_nodes(const NodeList& nodes) {
-    auto body = body_of(nodes);
+    auto body = body_of(nodes, m_served_bytes);
     const scoped_lock lock(m_mutex);
 
     m_body = std::move(body);
@@ -171,7 +179,7 @@ void NodesHandler::operator()(const Request& request, Response& response,
     if ("GET" == method) {
         answer_get(m_mutex, m_body, response);
     } else if ("POST" == method) {
-        answer_post(request, response, connection);
+        answer_post(m_list_bytes, request, response, connection);
     } else {
         Problem::answer_method_not_allowed(request, allowed_methods, response);
     }

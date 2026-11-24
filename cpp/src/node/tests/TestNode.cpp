@@ -227,11 +227,21 @@ Values loopback(const path& data_dir) {
     };
 }
 
+// A node made with settings and seeds, on the heap. ThreadSanitizer knows a
+// lock by its address, and is not told when a std::mutex is destroyed, so it
+// would take a lock of a node made on the stack for the lock another node,
+// as Node::run() makes one, later has there, and find them taken in an order
+// neither is. It is told when memory on the heap is freed.
+std::unique_ptr<const Node> node_of(const SettingsFile& settings,
+                                    const vector<string>& seeds = {}) {
+    return std::make_unique<const Node>(settings, seeds);
+}
+
 // What making a node with values and seeds says, when it turns them down as
 // unusable, or nothing if it does not.
 string refusal(const Values& values, const vector<string>& seeds = {}) {
     try {
-        const Node node(settings_of(values), seeds);
+        const auto node = node_of(settings_of(values), seeds);
     } catch (const invalid_argument& error) {
         return error.what();
     }
@@ -334,17 +344,17 @@ private:
 } // namespace
 
 TEST_F(NodeTest, LaysOutTheDataDirectory) {
-    const Node node(settings_of(loopback(data_dir())));
+    const auto node = node_of(settings_of(loopback(data_dir())));
 
     EXPECT_TRUE(std::filesystem::is_directory(data_dir() / "cas"));
     EXPECT_TRUE(std::filesystem::is_directory(data_dir() / "incoming"));
 }
 
 TEST_F(NodeTest, ListensWhereTheSettingsSay) {
-    const Node node(settings_of(loopback(data_dir())));
+    const auto node = node_of(settings_of(loopback(data_dir())));
 
-    EXPECT_EQ(node.local_address().host(), "127.0.0.1");
-    EXPECT_NE(node.local_address().port(), 0);
+    EXPECT_EQ(node->local_address().host(), "127.0.0.1");
+    EXPECT_NE(node->local_address().port(), 0);
 }
 
 // Its settings, the address it listens on, and each setting it does not use.
@@ -352,23 +362,25 @@ TEST_F(NodeTest, LogsItsSettings) {
     auto values = loopback(data_dir());
 
     values["storage.max_storage_bytes"] = "5000000";
+    values["storage.max_decompressed_list_bytes"] = "8388608";
     values["karma.mining"] = "false";
 
-    const Node node(settings_of(values));
+    const auto node = node_of(settings_of(values));
 
     EXPECT_TRUE(logged("storage.data_dir = " + data_dir().string()));
     EXPECT_TRUE(logged("network.listen_address = 127.0.0.1"));
     EXPECT_TRUE(logged("network.listen_port = 0"));
     EXPECT_TRUE(logged("logging.level = INFO"));
     EXPECT_TRUE(logged("storage.max_storage_bytes = 5000000"));
+    EXPECT_TRUE(logged("storage.max_decompressed_list_bytes = 8388608"));
     EXPECT_TRUE(logged("Seeds: 0"));
-    EXPECT_TRUE(logged("Listening on " + node.local_address().to_string()));
+    EXPECT_TRUE(logged("Listening on " + node->local_address().to_string()));
     EXPECT_TRUE(logged("Setting not used: karma.mining"));
 }
 
 // What it remembers of the network is kept in its database.
 TEST_F(NodeTest, KeepsItsDatabase) {
-    const Node node(settings_of(loopback(data_dir())));
+    const auto node = node_of(settings_of(loopback(data_dir())));
 
     EXPECT_TRUE(std::filesystem::is_regular_file(data_dir() / "libranet.sqlite3"));
 }
@@ -386,7 +398,7 @@ TEST_F(NodeTest, TakesItsSeedsFromTheCommandLineAndTheSeedFile) {
         "http://127.0.0.1:8",
         "http://127.0.0.1:6=sha256/" + string(hello_hash),
     };
-    const Node node(settings_of(values), seeds);
+    const auto node = node_of(settings_of(values), seeds);
 
     EXPECT_TRUE(logged("Seeds: 4"));
 }
@@ -438,8 +450,8 @@ TEST_F(NodeTest, RefusesASeedFileItCannotUse) {
 TEST_F(NodeTest, ServesWhatCasHolds) {
     write_file(data_dir() / "cas" / "sha256" / "2cf" / hello_hash, hello);
 
-    const Node node(settings_of(loopback(data_dir())));
-    const auto answer = answer_to(node.local_address(), get_hello());
+    const auto node = node_of(settings_of(loopback(data_dir())));
+    const auto answer = answer_to(node->local_address(), get_hello());
 
     EXPECT_EQ(answer.rfind("HTTP/1.1 200 OK\r\n", 0), 0U) << answer;
     EXPECT_EQ(answer.substr(answer.find("\r\n\r\n")), "\r\n\r\nhello");
@@ -447,7 +459,7 @@ TEST_F(NodeTest, ServesWhatCasHolds) {
 
 // Its key is made the first time it starts, and only its owner may read it.
 TEST_F(NodeTest, MakesItsKeyTheFirstTimeItStarts) {
-    const Node node(settings_of(loopback(data_dir())));
+    const auto node = node_of(settings_of(loopback(data_dir())));
 
     EXPECT_EQ(std::filesystem::status(data_dir() / "node-key.pem").permissions(),
               perms::owner_read | perms::owner_write);
@@ -462,8 +474,8 @@ TEST_F(NodeTest, ServesItsPublicKeyUnderItsId) {
     std::filesystem::permissions(data_dir() / "node-key.pem",
                                  perms::owner_read | perms::owner_write);
 
-    const Node node(settings_of(loopback(data_dir())));
-    const auto answer = answer_to(node.local_address(),
+    const auto node = node_of(settings_of(loopback(data_dir())));
+    const auto answer = answer_to(node->local_address(),
                                   string("GET /data/sha256/") + python_hash
                                       + " HTTP/1.1\r\nConnection: close\r\n"
                                         "X-Node-Signature: test\r\n\r\n");
@@ -480,8 +492,8 @@ TEST_F(NodeTest, SignsItsAnswersAndRefusesUnsignedUploads) {
     std::filesystem::permissions(data_dir() / "node-key.pem",
                                  perms::owner_read | perms::owner_write);
 
-    const Node node(settings_of(loopback(data_dir())));
-    const auto answer = answer_to(node.local_address(),
+    const auto node = node_of(settings_of(loopback(data_dir())));
+    const auto answer = answer_to(node->local_address(),
                                   string("PUT /data/sha256/") + hello_hash
                                       + " HTTP/1.1\r\nConnection: close\r\n"
                                         "Content-Length: 5\r\n\r\nhello");
@@ -492,6 +504,37 @@ TEST_F(NodeTest, SignsItsAnswersAndRefusesUnsignedUploads) {
     EXPECT_FALSE(std::filesystem::exists(data_dir() / "cas" / "sha256" / "2cf" / hello_hash));
 }
 
+// A body larger than storage.max_object_bytes is refused unread.
+TEST_F(NodeTest, RefusesBodiesLargerThanItsSetting) {
+    auto values = loopback(data_dir());
+
+    values["storage.max_object_bytes"] = "4";
+
+    const auto node = node_of(settings_of(values));
+    const auto answer = answer_to(node->local_address(),
+                                  string("PUT /data/sha256/") + hello_hash
+                                      + " HTTP/1.1\r\nConnection: close\r\n"
+                                        "Content-Length: 5\r\n\r\nhello");
+
+    EXPECT_EQ(answer.rfind("HTTP/1.1 413 Payload Too Large\r\n", 0), 0U) << answer;
+    EXPECT_TRUE(logged("storage.max_object_bytes = 4"));
+}
+
+// Its node list is served in fewer bytes than stats.max_list_bytes, leaving
+// out what does not fit.
+TEST_F(NodeTest, ServesItsNodeListWithinItsSetting) {
+    auto values = loopback(data_dir());
+
+    values["stats.max_list_bytes"] = "64";
+
+    const auto node = node_of(settings_of(values));
+    const auto answer = answer_to(node->local_address(),
+                                  "GET /data/nodes HTTP/1.1\r\nConnection: close\r\n\r\n");
+
+    EXPECT_EQ(answer.rfind("HTTP/1.1 200 OK\r\n", 0), 0U) << answer;
+    EXPECT_EQ(answer.substr(answer.find("\r\n\r\n")), "\r\n\r\n{\"nodes\":{}}");
+}
+
 // Its node list names it at localhost, the port it listens on, until it is
 // given another (HttpApi §10.1), and is signed as each answer is.
 TEST_F(NodeTest, ServesItsOwnEndpointAsItsNodeList) {
@@ -499,10 +542,10 @@ TEST_F(NodeTest, ServesItsOwnEndpointAsItsNodeList) {
     std::filesystem::permissions(data_dir() / "node-key.pem",
                                  perms::owner_read | perms::owner_write);
 
-    const Node node(settings_of(loopback(data_dir())));
-    const auto answer = answer_to(node.local_address(),
+    const auto node = node_of(settings_of(loopback(data_dir())));
+    const auto answer = answer_to(node->local_address(),
                                   "GET /data/nodes HTTP/1.1\r\nConnection: close\r\n\r\n");
-    const auto port = std::to_string(node.local_address().port());
+    const auto port = std::to_string(node->local_address().port());
 
     EXPECT_EQ(answer.rfind("HTTP/1.1 200 OK\r\n", 0), 0U) << answer;
     EXPECT_NE(answer.find(string(";keyid=\"sha256/") + python_hash + "\""), string::npos)
@@ -516,8 +559,8 @@ TEST_F(NodeTest, ServesItsOwnEndpointAsItsNodeList) {
 TEST_F(NodeTest, ServesWhatIncomingHolds) {
     write_file(data_dir() / "incoming" / "batch" / "sha256" / "2cf" / hello_hash, hello);
 
-    const Node node(settings_of(loopback(data_dir())));
-    const auto answer = answer_to(node.local_address(), get_hello());
+    const auto node = node_of(settings_of(loopback(data_dir())));
+    const auto answer = answer_to(node->local_address(), get_hello());
 
     EXPECT_EQ(answer.rfind("HTTP/1.1 200 OK\r\n", 0), 0U) << answer;
     EXPECT_EQ(answer.substr(answer.find("\r\n\r\n")), "\r\n\r\nhello");
@@ -605,10 +648,15 @@ TEST_F(NodeTest, RefusesSettingsItCannotUse) {
         {"storage.stored_grace_seconds", "-1"},
         {"storage.search_cache_ttl_seconds", "0"},
         {"storage.search_min_bits", "257"},
+        {"storage.max_decompressed_list_bytes", "0"},
+        {"storage.max_object_bytes", "0"},
+        {"storage.max_object_bytes", "1048577"},
         {"identity.provisional_trust_attempts", "1"},
         {"identity.signature_max_age_seconds", "0"},
         {"identity.signature_clock_skew_seconds", "-1"},
         {"stats.derive_interval_seconds", "1e10"},
+        {"stats.max_list_bytes", "63"},
+        {"stats.max_list_bytes", "1048577"},
         {"stats.seek_entry_ttl_seconds", "0"},
         {"stats.max_address_failures", "0"},
         {"stats.max_node_failures", "0"},
@@ -633,7 +681,7 @@ TEST_F(NodeTest, DefaultDataDirectory) {
 
     values.erase("storage.data_dir");
 
-    const Node node(settings_of(values));
+    const auto node = node_of(settings_of(values));
 
 #ifdef __APPLE__
     EXPECT_TRUE(std::filesystem::is_directory(data_dir() / "Library" / "Application Support"
@@ -650,7 +698,7 @@ TEST_F(NodeTest, DefaultDataDirectoryInXdgDataHome) {
 
     values.erase("storage.data_dir");
 
-    const Node node(settings_of(values));
+    const auto node = node_of(settings_of(values));
 
     EXPECT_TRUE(std::filesystem::is_directory(data_dir() / "data" / "libranet" / "cas"));
 }

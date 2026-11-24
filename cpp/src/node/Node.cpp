@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "api/DataHandler.hpp"
 #include "api/Service.hpp"
 #include "eviction/Evictor.hpp"
 #include "http/Url.hpp"
@@ -39,12 +40,15 @@
 #include "peer/HandOff.hpp"
 #include "peer/Pusher.hpp"
 #include "peer/Seeker.hpp"
+#include "protocol/NodeList.hpp"
+#include "protocol/SeekList.hpp"
 #include "stats/Recorder.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Manager.hpp"
 #include "types/Converter.hpp"
 #include "types/Json.hpp"
 
+using api::DataHandler;
 using api::Service;
 using eviction::Evictor;
 using http::Url;
@@ -57,6 +61,8 @@ using node::Node;
 using node::SettingsFile;
 using peer::Connections;
 using peer::Fetch;
+using protocol::NodeList;
+using protocol::SeekList;
 using std::array;
 using std::domain_error;
 using std::exception;
@@ -116,10 +122,13 @@ constexpr auto max_candidates_setting = "storage.max_candidates";
 constexpr auto stored_grace_setting = "storage.stored_grace_seconds";
 constexpr auto search_ttl_setting = "storage.search_cache_ttl_seconds";
 constexpr auto search_min_bits_setting = "storage.search_min_bits";
+constexpr auto list_bytes_setting = "storage.max_decompressed_list_bytes";
+constexpr auto object_bytes_setting = "storage.max_object_bytes";
 constexpr auto trust_attempts_setting = "identity.provisional_trust_attempts";
 constexpr auto max_age_setting = "identity.signature_max_age_seconds";
 constexpr auto clock_skew_setting = "identity.signature_clock_skew_seconds";
 constexpr auto derive_interval_setting = "stats.derive_interval_seconds";
+constexpr auto max_list_setting = "stats.max_list_bytes";
 constexpr auto seek_ttl_setting = "stats.seek_entry_ttl_seconds";
 constexpr auto address_failures_setting = "stats.max_address_failures";
 constexpr auto node_failures_setting = "stats.max_node_failures";
@@ -153,10 +162,13 @@ constexpr array used_settings{
     stored_grace_setting,
     search_ttl_setting,
     search_min_bits_setting,
+    list_bytes_setting,
+    object_bytes_setting,
     trust_attempts_setting,
     max_age_setting,
     clock_skew_setting,
     derive_interval_setting,
+    max_list_setting,
     seek_ttl_setting,
     address_failures_setting,
     node_failures_setting,
@@ -187,6 +199,11 @@ constexpr size_t most_search_bits = 256;
 
 // The most bits a bucket's prefix may have, as the Python node allows.
 constexpr size_t most_prefix_bits = 16;
+
+// The fewest bytes the lists served may be held to, as the Python node
+// allows, and the most, as the protocol allows (HttpApi §10.6, §10.7.1).
+constexpr size_t least_list_bytes = 64;
+constexpr size_t most_list_bytes = std::min(NodeList::max_size, SeekList::max_bytes);
 
 // How long a peer's connection may be idle before the web server, the
 // Python node's, or this node's, closes it: a node's seek list must be read
@@ -696,6 +713,11 @@ Node::PartSettings Node::_settings_of(const SettingsFile& settings, const vector
         seconds(settings, clock_skew_setting, service.window.clock_skew, Zero::Allowed);
     service.provisional_trust_attempts =
         whole(settings, trust_attempts_setting, service.provisional_trust_attempts, 2);
+    service.list_bytes = whole(settings, list_bytes_setting, service.list_bytes, 1);
+    service.object_bytes = whole(settings, object_bytes_setting, service.object_bytes, 1,
+                                 DataHandler::max_body_bytes);
+    service.served_list_bytes = whole(settings, max_list_setting, service.served_list_bytes,
+                                      least_list_bytes, most_list_bytes);
 
     // The searches of the peers, for content and for prefixes.
     fetch.retry_after = service.retry_after;
@@ -705,6 +727,7 @@ Node::PartSettings Node::_settings_of(const SettingsFile& settings, const vector
     search.pass_interval = fetch.retry_after;
     search.relays = whole(settings, search_relays_setting, search.relays, 0);
     search.hold = seconds(settings, broadcast_hold_setting, search.hold);
+    search.list_bytes = service.list_bytes;
     parts.seeker.workers = whole(settings, search_workers_setting, parts.seeker.workers, 1);
     check_outlasts_searches(failed_hold_setting, fetch.failed_search_hold, fetch.passes,
                             fetch.retry_after);
@@ -727,6 +750,7 @@ Node::PartSettings Node::_settings_of(const SettingsFile& settings, const vector
         seconds(settings, connect_timeout_setting, connections.limits.connect_timeout);
     connections.limits.request_timeout =
         seconds(settings, request_timeout_setting, connections.limits.request_timeout);
+    connections.limits.answer.body_bytes = service.object_bytes;
     connections.rests.retry_delay =
         seconds(settings, retry_delay_setting, connections.rests.retry_delay);
     connections.rests.turned_away_rest =
@@ -735,6 +759,7 @@ Node::PartSettings Node::_settings_of(const SettingsFile& settings, const vector
     fulfiller.refresh = seconds(settings, seek_refresh_setting, fulfiller.refresh);
     fulfiller.search_min_bits = service.search_min_bits;
     fulfiller.pipeline_depth = whole(settings, pipeline_depth_setting, fulfiller.pipeline_depth, 1);
+    fulfiller.list_bytes = service.list_bytes;
 
     if (fulfiller.refresh >= idle_timeout) {
         throw invalid_argument(string(seek_refresh_setting) + ": must be less than the "

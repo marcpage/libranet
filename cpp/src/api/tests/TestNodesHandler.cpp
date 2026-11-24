@@ -205,6 +205,24 @@ TEST(NodesHandlerTest, ServesALargeListCompressed) {
     EXPECT_EQ(served.entries().size(), count);
 }
 
+// The list served is sent in fewer bytes than the handler is told, leaving
+// out the entries at its end that do not fit.
+TEST(NodesHandlerTest, ServesTheListWithinTheBytesItIsGiven) {
+    constexpr std::size_t served_bytes = 64;
+    NodesHandler handler(own_id(), {std::string(own_endpoint)}, types::max_decompressed_list_size,
+                         served_bytes);
+    const auto nodes = list_of({{own_endpoint, '0'}, {"http://192.0.2.5:4300", '2'}});
+
+    handler.set_nodes(nodes);
+
+    const auto response = answer(handler, get());
+    const auto served = NodeList::from_body(Converter::bytes_of(response.body()));
+
+    EXPECT_EQ(response.status_code(), 200);
+    EXPECT_LT(response.body().size(), served_bytes);
+    EXPECT_LT(served.entries().size(), nodes.entries().size());
+}
+
 // A query does not change what the path names, and a path beneath it names
 // nothing.
 TEST(NodesHandlerTest, QueryIsIgnoredAndPathBeneathIsNotFound) {
@@ -274,6 +292,24 @@ TEST(NodesHandlerTest, CompressedListIsRead) {
     ASSERT_TRUE(posted.has_value());
     EXPECT_EQ(named_in(posted->nodes),
               (std::vector<Named>{named("http://192.0.2.5:4300", '2')}));
+}
+
+// A compressed list that holds more than the handler takes once
+// decompressed is refused, and not posted. One sent as it is is held to
+// none.
+TEST(NodesHandlerTest, ListTooLargeOnceDecompressedIsInvalid) {
+    constexpr std::size_t list_bytes = 16;
+    const NodesHandler handler(own_id(), {std::string(own_endpoint)}, list_bytes);
+    Channel received(NodesReceived::name);
+    const auto sent = list_of({{"http://192.0.2.5:4300", '2'}});
+    const auto compressed = Zlib::compress(Converter::bytes_of(sent.to_string()), Zlib::max_level);
+
+    const auto response = answer(handler, post(Converter::text_of(compressed)));
+
+    EXPECT_EQ(response.status_code(), 400);
+    EXPECT_EQ(problem_type(response), "https://libranet.org/problems/invalid-list");
+    EXPECT_TRUE(received.empty());
+    EXPECT_EQ(answer(handler, post(sent.to_string())).status_code(), 202);
 }
 
 // A list from this machine keeps its loopback endpoints as sent, since the

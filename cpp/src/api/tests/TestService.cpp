@@ -380,6 +380,24 @@ TEST_F(ServiceTest, TellsClientsToRetryAfterItsSetting) {
     EXPECT_NE(std::string::npos, answer.find("Retry-After: 7\r\n")) << answer;
 }
 
+// A body larger than storage.max_object_bytes is refused unread, before it
+// reaches a handler (HttpApi §7.1).
+TEST_F(ServiceTest, RefusesBodiesLargerThanItsSetting) {
+    const fixtures::ScratchDirectory directory;
+    const auto store = std::make_shared<fixtures::MemorySource>();
+    const NodeIdentity identity(directory.path() / "node-key.pem", *store);
+    const auto hello_put = request_of("PUT", "/data/" + hello_id().to_string(), fixtures::hello);
+    Settings settings;
+
+    settings.object_bytes = std::string_view(fixtures::hello).size() - 1;
+
+    const Service cramped(loopback(), store, identity, settings);
+    const auto refused = answer_to(cramped.local_address(), hello_put);
+
+    EXPECT_TRUE(has_status(refused, "413 Payload Too Large")) << refused;
+    EXPECT_TRUE(has_status(answer_to(address(), hello_put), "401 Unauthorized"));
+}
+
 // Content whose search is held off is not looked for (HttpApi §5.3).
 TEST_F(ServiceTest, AnswersNotFoundWhileTheSearchIsHeldOff) {
     const fixtures::ScratchDirectory directory;

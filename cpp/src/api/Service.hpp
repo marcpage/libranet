@@ -16,8 +16,10 @@
 #include "identity/NodeIdentity.hpp"
 #include "msg/AsyncChannel.hpp"
 #include "net/Address.hpp"
+#include "protocol/NodeList.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/SearchAnswers.hpp"
+#include "types/Constants.hpp"
 #include "web/Server.hpp"
 
 namespace api {
@@ -46,6 +48,12 @@ public:
         identity::MessageVerifier::Window window;
         std::size_t provisional_trust_attempts =
             SignatureGuard::default_provisional_trust_attempts;
+        // The most a list sent compressed may decompress to.
+        std::size_t list_bytes = types::max_decompressed_list_size;
+        // The largest body a request may have, a PUT's content among them.
+        std::size_t object_bytes = DataHandler::max_body_bytes;
+        // The node list and seek list served are each sent in fewer bytes.
+        std::size_t served_list_bytes = protocol::NodeList::max_size;
     };
 
     // identity must outlive this. Throws std::invalid_argument for a setting

@@ -48,9 +48,9 @@ bool is_seek_path(string_view uri) {
     return seek_path == uri.substr(0, uri.find('?'));
 }
 
-// The list as it is sent, as text.
-string body_of(const SeekList& list) {
-    return Converter::text_of(list.write());
+// The list as it is sent, in fewer than limit bytes, as text.
+string body_of(const SeekList& list, size_t limit) {
+    return Converter::text_of(list.write(limit));
 }
 
 // The list the body of request, on connection, holds, decompressed to no
@@ -107,12 +107,13 @@ void answer_post(size_t list_bytes, const Request& request, Response& response,
 
 namespace api {
 
-SeekHandler::SeekHandler(size_t list_bytes)
+SeekHandler::SeekHandler(size_t list_bytes, size_t served_bytes)
     : m_list_bytes(list_bytes)
-    , m_body(body_of(SeekList())) {}
+    , m_served_bytes(served_bytes)
+    , m_body(body_of(SeekList(), m_served_bytes)) {}
 
 void SeekHandler::set_list(const SeekList& new_list) {
-    auto body = body_of(new_list);
+    auto body = body_of(new_list, m_served_bytes);
     const scoped_lock lock(m_mutex);
 
     m_body = std::move(body);

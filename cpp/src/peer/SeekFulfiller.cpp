@@ -55,7 +55,6 @@ using storage::SearchAnswers;
 using types::Converter;
 using types::data_path_prefix;
 using types::json_content_type;
-using types::max_decompressed_list_size;
 using types::octet_stream_content_type;
 using types::search_path_prefix;
 using types::seek_path;
@@ -163,16 +162,17 @@ Request post_of(const string& prefix, const vector<Identifier>& identifiers) {
     return request;
 }
 
-// The seek list answer carries, from the node from describes: nothing when
-// it carries none that can be read, as when it is not 200 OK.
-optional<SeekList> seek_list_in(const Response& answer, const string& from) {
+// The seek list answer carries, from the node from describes, decompressed
+// to no more than list_bytes: nothing when it carries none that can be read,
+// as when it is not 200 OK.
+optional<SeekList> seek_list_in(const Response& answer, const string& from, size_t list_bytes) {
     if (static_cast<int>(Status::Ok) != answer.status_code()) {
         lDebug << from << "sent no seek list but answered" << answer.status_code();
         return nullopt;
     }
 
     try {
-        return SeekList::read(Converter::bytes_of(answer.body()), max_decompressed_list_size);
+        return SeekList::read(Converter::bytes_of(answer.body()), list_bytes);
     } catch (const invalid_argument& error) {
         lDebug << "Ignoring the seek list from" << from + ":" << error.what();
         return nullopt;
@@ -256,6 +256,10 @@ size_t SeekFulfiller::pipeline_depth() const noexcept {
     return m_settings.pipeline_depth;
 }
 
+size_t SeekFulfiller::list_bytes() const noexcept {
+    return m_settings.list_bytes;
+}
+
 // Of sessions, those that are open and whose node's list is due to be read,
 // the first of each node's, each now marked as read now. What was pushed and
 // named to a node none is open to is let go once its list is due.
@@ -306,7 +310,7 @@ bool SeekFulfiller::_refresh(PeerSession& session) {
 
     try {
         const auto answers = session.exchange({seek_get()});
-        const auto seek = seek_list_in(answers.at(0), from);
+        const auto seek = seek_list_in(answers.at(0), from, m_settings.list_bytes);
 
         if (seek) {
             _fulfill(session, *seek);

@@ -137,6 +137,17 @@ Seconds checked(Seconds retry_after) {
     return retry_after;
 }
 
+// body_bytes, once checked, as the Python node checks it, though at least
+// as large as an object the protocol allows.
+size_t checked_body_bytes(size_t body_bytes) {
+    if (0 == body_bytes || body_bytes > api::DataHandler::max_body_bytes) {
+        throw invalid_argument("storage.max_object_bytes is not from 1 to "
+                               + to_string(api::DataHandler::max_body_bytes));
+    }
+
+    return body_bytes;
+}
+
 // Answers 503 for content not held yet, which the node looks for, telling
 // the client to ask again after retry_after (HttpApi §5.2), and that the
 // answer is not to be kept, as a retry is meant to find the content
@@ -155,11 +166,12 @@ void answer_unavailable(Seconds retry_after, Response& response) {
     response.headers().set("Cache-Control", "no-store");
 }
 
-// Answers 413 for a body of size bytes, larger than a PUT may have.
-void answer_too_large(size_t size, Response& response) {
+// Answers 413 for a body of size bytes, larger than the limit a PUT may
+// have.
+void answer_too_large(size_t size, size_t limit, Response& response) {
     Problem(Problem::Type::ContentTooLarge, Status::PayloadTooLarge,
-            "Request bodies are limited to " + to_string(api::DataHandler::max_body_bytes)
-                + " bytes; this one has " + to_string(size) + ".")
+            "Request bodies are limited to " + to_string(limit) + " bytes; this one has "
+                + to_string(size) + ".")
         .answer(response);
 }
 
@@ -198,12 +210,14 @@ void answer_get(const IDataSource& store, const IsHeldOff& is_held_off, Seconds 
     response.set_body(Converter::text_of(*body));
 }
 
-// Stores the body as it came, once it is checked to be the content, and
-// tells the node's other parts where it came from; or says why not.
-void answer_put(const IDataSource& store, size_t content_bytes, const Identifier& identifier,
-                const Request& request, Response& response, const ConnectionInfo& connection) {
-    if (request.body().size() > api::DataHandler::max_body_bytes) {
-        answer_too_large(request.body().size(), response);
+// Stores the body as it came, once it is checked to be no larger than
+// body_bytes and to be the content, and tells the node's other parts where
+// it came from; or says why not.
+void answer_put(const IDataSource& store, size_t content_bytes, size_t body_bytes,
+                const Identifier& identifier, const Request& request, Response& response,
+                const ConnectionInfo& connection) {
+    if (request.body().size() > body_bytes) {
+        answer_too_large(request.body().size(), body_bytes, response);
         return;
     }
 
@@ -229,11 +243,12 @@ void answer_put(const IDataSource& store, size_t content_bytes, const Identifier
 namespace api {
 
 DataHandler::DataHandler(IDataSource::Ptr store, size_t content_bytes, Seconds retry_after,
-                         IsHeldOff is_held_off)
+                         IsHeldOff is_held_off, size_t body_bytes)
     : m_store(std::move(store))
     , m_content_bytes(content_bytes)
     , m_retry_after(checked(retry_after))
-    , m_is_held_off(std::move(is_held_off)) {}
+    , m_is_held_off(std::move(is_held_off))
+    , m_body_bytes(checked_body_bytes(body_bytes)) {}
 
 void DataHandler::operator()(const Request& request, Response& response,
                              const ConnectionInfo& connection) const {
@@ -260,7 +275,8 @@ void DataHandler::operator()(const Request& request, Response& response,
     if ("GET" == method) {
         answer_get(*m_store, m_is_held_off, m_retry_after, *identifier, response);
     } else {
-        answer_put(*m_store, m_content_bytes, *identifier, request, response, connection);
+        answer_put(*m_store, m_content_bytes, m_body_bytes, *identifier, request, response,
+                   connection);
     }
 }
 

@@ -33,6 +33,7 @@
 #include "protocol/SeekList.hpp"
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
+#include "storage/Zlib.hpp"
 #include "storage/tests/Fixtures.hpp"
 #include "types/Converter.hpp"
 
@@ -52,6 +53,7 @@ using protocol::SearchResults;
 using protocol::SeekList;
 using storage::HashPrefix;
 using storage::Identifier;
+using storage::Zlib;
 using types::Converter;
 using namespace std::chrono_literals;
 using Status = http::ResponseCode::Status;
@@ -151,6 +153,8 @@ public:
     [[nodiscard]] Address address() const;
     // It seeks what list names, from now.
     void seeks(const SeekList& list);
+    // As seeks(), sending the list compressed though it would fit as it is.
+    void seeks_compressed(const SeekList& list);
     // It answers a get of its seek list with status, and no list, from now.
     void answers_seek_with(Status status);
     // The method and target of each request it has been sent, in order.
@@ -212,6 +216,13 @@ void StandInNode::seeks(const SeekList& list) {
     const std::scoped_lock lock(m_mutex);
 
     m_seek_answer = answer(Status::Ok, Converter::text_of(list.write()));
+}
+
+void StandInNode::seeks_compressed(const SeekList& list) {
+    const auto compressed = Zlib::compress(list.write(), Zlib::max_level);
+    const std::scoped_lock lock(m_mutex);
+
+    m_seek_answer = answer(Status::Ok, Converter::text_of(compressed));
 }
 
 void StandInNode::answers_seek_with(Status status) {
@@ -665,6 +676,25 @@ TEST_F(SeekFulfillerTest, ListThatCannotBeReadIsNotCounted) {
     EXPECT_TRUE(session->is_open());
 }
 
+// A list sent compressed is read only if it decompresses to no more than
+// the fulfiller takes.
+TEST_F(SeekFulfillerTest, ListTooLargeOnceDecompressedIsNotCounted) {
+    constexpr std::size_t list_bytes = 16;
+    const auto held = id_of(other_digits, 1);
+    StandInNode node(first_signer());
+    const auto session = first_at(node.address());
+    SeekFulfiller::Settings settings;
+
+    settings.list_bytes = list_bytes;
+    hold(held);
+    node.seeks_compressed(seeking({held}));
+
+    EXPECT_EQ(fulfiller(settings)->refresh({session}), 0U);
+    EXPECT_EQ(fulfiller()->refresh({session}), 1U);
+    EXPECT_EQ(node.asked(), (std::vector<std::string>{"GET /data/seek", "GET /data/seek",
+                                                      "PUT /data/" + held.to_string()}));
+}
+
 // The answer is not signed, so the session ends, and the read is logged as
 // having failed.
 TEST_F(SeekFulfillerTest, ReadThatFailsIsLoggedAndNotCounted) {
@@ -692,6 +722,15 @@ TEST_F(SeekFulfillerTest, PipelineDepthIsGiven) {
     settings.pipeline_depth = 3;
 
     EXPECT_EQ(fulfiller(settings)->pipeline_depth(), 3U);
+}
+
+TEST_F(SeekFulfillerTest, ListBytesIsGiven) {
+    constexpr std::size_t list_bytes = 1000;
+    SeekFulfiller::Settings settings;
+
+    settings.list_bytes = list_bytes;
+
+    EXPECT_EQ(fulfiller(settings)->list_bytes(), list_bytes);
 }
 
 TEST_F(SeekFulfillerTest, SettingsThatCannotBeWorkedWithAreRefused) {
