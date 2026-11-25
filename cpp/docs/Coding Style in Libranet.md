@@ -25,35 +25,45 @@ The commands are in the README's sections on
 [Coverage](../README.md#coverage), [Sanitizers](../README.md#sanitizers),
 [Fuzzing](../README.md#fuzzing), and [Checking](../README.md#checking).
 
-CI runs two C++ jobs, besides CodeQL, on every pull request that changes
-`cpp/` or a workflow, and on each push to `main` that does:
+CI runs four C++ jobs, besides CodeQL, on every pull request that changes
+`cpp/` or a workflow, and on each push to `main` that does. Each that builds
+compiles through ccache, with each build's cache kept from one run to the
+next:
 
 - **`cpp`**, on Ubuntu with GCC and on macOS with Apple's Clang, builds for
-  Debug, with coverage, for Release, and with each set of sanitizers, runs
-  the tests in the Debug build and in both sanitizer builds, and reports
-  coverage against the floor in [`gcovr.cfg`](../gcovr.cfg). On macOS it
-  also runs each test program under `leaks`. On Ubuntu it builds the
-  fuzzers with Clang and runs them all at once for two minutes.
+  Debug, with coverage, and for Release, runs the tests in the Debug build,
+  and reports coverage against the floor in [`gcovr.cfg`](../gcovr.cfg). On
+  macOS it also runs each test program under `leaks`.
+- **`cpp-sanitizers`**, on Ubuntu and on macOS, builds with AddressSanitizer
+  and UndefinedBehaviorSanitizer, and with ThreadSanitizer, and runs the
+  tests in both builds, each test program a few times, each time a share of
+  its tests.
+- **`cpp-fuzzers`**, on Ubuntu, builds the fuzzers with Clang,
+  AddressSanitizer, and UndefinedBehaviorSanitizer, runs them all at once
+  for two minutes, and uploads the input of any fault one finds.
 - **`cpp-lint`**, on Ubuntu and on macOS, configures, with Clang and the
   fuzzers on Ubuntu, and with Apple's Clang and no fuzzers on macOS, and
-  runs `clang-tidy` and `cppcheck` on what CMake writes. On Ubuntu it runs
-  `clang-format` as well. It runs LLVM 23.1 and Cppcheck 2.22.0, whose
-  findings change from one version to the next.
+  runs `clang-tidy` and `cppcheck` on what CMake writes. On a pull request,
+  `clang-tidy` checks only the `.cpp` files that changed, or whose headers
+  did, since an earlier run, as
+  [`scripts/filter_compilation_db.py`](../../scripts/filter_compilation_db.py)
+  finds them. On Ubuntu it runs `clang-format` as well. It runs LLVM 23.1
+  and Cppcheck 2.22.0, whose findings change from one version to the next.
 
-A job named `C++` passes when both passed, or were not needed, and is the
-check a pull request must pass.
+A job named `C++` passes when all four passed, or were not needed, and is
+the check a pull request must pass.
 
 Each lint run sees only what its platform builds: the code under
 `#if __APPLE__`, which is the Apple classes in `crypto/` (`*Macos.hpp`,
 `CFObject.hpp`, and `CFBytes.hpp`) and the macOS branches of
-`net/SocketPosix.cpp`, only on macOS, and the Linux branches only on
-Ubuntu. `cppcheck` is given `-D__linux__` on Ubuntu and `-D__APPLE__` on
-macOS. It reads less of the code both platforms build on macOS, without the
-fuzzers and with Apple's implementations chosen in place of OpenSSL's, so
-there the suppressions in `types/Integer.hpp`, `types/Json.hpp`, and
-`crypto/RsaOpenSsl.hpp` match nothing. The macOS run passes
-`--suppress=unmatchedSuppression`, and only the Ubuntu run fails on a
-suppression that matches nothing.
+`net/SocketPosix.cpp` and `io/Directories.cpp`, only on macOS, and the
+Linux branches only on Ubuntu. `cppcheck` is given `-D__linux__` on Ubuntu
+and `-D__APPLE__` on macOS. It reads less of the code both platforms build
+on macOS, without the fuzzers and with Apple's implementations chosen in
+place of OpenSSL's, so there the suppressions in `types/Integer.hpp`,
+`types/Json.hpp`, and `crypto/RsaOpenSsl.hpp` match nothing. The macOS run
+passes `--suppress=unmatchedSuppression`, and only the Ubuntu run fails on
+a suppression that matches nothing.
 
 [`.clang-tidy`](../.clang-tidy) turns off, as unable to apply, the checks
 for FPGA kernels (`altera-*`) and LLVM's C library (`llvmlibc-*`); two that
@@ -73,17 +83,21 @@ line it is for (§2.1).
 
 ## 3. What the Rules Lean On
 
-- **Libraries (§3.1).** `types`, `http`, `msg`, `net`, and `crypto`, each in
-  the namespace of its name, with the target `libranet_<name>` and the alias
-  `libranet::<name>`, a test program `<name>_tests`, and fuzzers named
-  `<parser>_fuzzer`, made by `libranet_add_fuzzer()` in the top
-  `CMakeLists.txt`. `types` and `http` are `INTERFACE` libraries.
+- **Libraries (§3.1).** `types`, `net`, `crypto`, `logger`, `db`, `msg`,
+  `io`, `http`, `storage`, `identity`, `protocol`, `web`, `api`, `eviction`,
+  `stats`, `peer`, and `node`, each in the namespace of its name, with the
+  target `libranet_<name>` and the alias `libranet::<name>`, a test program
+  `<name>_tests`, and fuzzers named `<parser>_fuzzer`, made by
+  `libranet_add_fuzzer()` in the top `CMakeLists.txt`. `types` and `http`
+  are `INTERFACE` libraries. The program, `libranet`, is `main.cpp`, linked
+  to `libranet::node`.
 - **Implementations (§6.2).** In `crypto/`, `*Macos` is built on Apple's
   CommonCrypto and Security frameworks, and `*OpenSsl` on OpenSSL. The
   factories `IHasher::Sha256()`, `IEncryptKey::Aes()`, and
   `IMultiKey::Rsa()` and `from_pem()` make the Apple class under
   `#if __APPLE__` and the OpenSSL one elsewhere. `ISignKey::from_pem()`
-  reads an RSA key in the same way, and any other as Ed25519.
+  reads an RSA key in the same way, and an Ed25519 key with OpenSSL, and
+  refuses any other.
   `ISignKey::Ed25519()` and `IPasswordHasher::Argon2id()` make OpenSSL's on
   both. In `net/`,
   `ISocket::bind()` and `connect()` make a `SocketPosix`, and `ISocket.cpp`
@@ -100,11 +114,12 @@ line it is for (§2.1).
   a `Database::Transaction` rolls back what it was not told to commit.
   `db::Statement` finalizes the SQLite statement it prepared.
   `io::SafeWriteFile` removes what was written to it unless it was
-  committed. `PartialFile`, in `identity/NodeIdentity.cpp`, closes and
-  removes the file a new key is written to before it is linked into place.
+  committed; `storage::DataDir` and `identity::NodeIdentity` write with it.
   `peer::PeerConnection`'s destructor closes its connection, failing the
   requests still waiting, and joins its two threads, ending the program if
-  closing throws.
+  closing throws. `StopSignals`, in `node/Node.cpp`, holds back SIGINT and
+  SIGTERM from the threads the node starts, and lets them through again
+  when it goes.
 - **Casts (§10.4).** `OpenSslBytes::of()` is where bytes held as
   `std::byte` or `char` become the `unsigned char*` OpenSSL takes, and
   `OpenSslDer` is where OpenSSL's `d2i_*` and `i2d_*` functions are called.
@@ -151,13 +166,12 @@ line it is for (§2.1).
 
 ## 4. Where the Code Departs
 
-These are in the code as of 2026-11-17. Paths are relative to `src/`. The
+These are in the code as of 2026-11-25. Paths are relative to `src/`. The
 checks `.clang-tidy` lists as not yet met are not repeated here.
 
 | Where | Departure |
 | --- | --- |
 | `types/Integer.hpp` `word_t`, `double_word_t` | A type alias in snake_case (§4) |
-| `crypto/Base64.hpp` `_get_character_value()`; `http/Query.hpp` `get_first()`, `get_all()`; `http/Url.hpp` `get_query()`; `net/Address.hpp` `get_local_addresses()`; `net/AddressPosix.cpp` `get_sockaddr_length()`, `get_numeric_ip()`, `get_reverse_dns_name()`; `types/Integer.hpp` `_get_normalization_shift()` | A function named with `get_` (§4) |
-| `http/Headers.hpp` `parse_header_line()`; `http/Url.hpp` `_extract_fragment()`, `_extract_query()`, `_extract_scheme()`, `_parse_authority()`; `crypto/Argon2idOpenSsl.hpp` `PhcString::_read_number()` | A result written to a parameter (§6.5) |
-| `http/ResponseCode.hpp` `default_reason_phrase(Status)`, with 55 lines of code | A function over 50 lines of code (§6.8) |
-| `http/Url.hpp` `append()` (36) and `to_string()` (32); `crypto/RsaPemMacos.hpp` `_create_sec_key_from_data()` (35); `types/Json.hpp` `Parser::_parse_number()` (34); `crypto/AesOpenSsl.hpp` `_process()` (31); tests: `UrlTest.PortValidationAndEffectivePorts` (40), `BlockingQueueTest.MultipleProducersConsumers` (39), `AsyncChannelTest.CallbackExceptionDoesNotStopProcessing` (33), `JsonTest.ConstructorsAndTypes` (32), and `BlockingQueueTest.ProducerConsumer` (31) | A function over 30 lines of code, the most it should generally have (§6.8) |
+| `http/Headers.hpp` `parse_header_line()`, `read_body()`; `http/Url.hpp` `_extract_fragment()`, `_extract_query()`, `_extract_scheme()`, `_parse_authority()`; `crypto/Argon2idOpenSsl.hpp` `PhcString::_read_number()`; `net/ISocket.hpp` `read_line(line, delimiter)`; `web/Server.cpp` `read_line()`, `body_length()` | A result written to a parameter (§6.5) |
+| `node/Node.cpp` `Node::_settings_of()`, with 92 lines of code; `http/ResponseCode.hpp` `default_reason_phrase(Status)`, with 56; the test `NodeTest.RefusesSettingsItCannotUse`, with 59 | A function over 50 lines of code (§6.8) |
+| `http/Url.hpp` `append()` (36) and `to_string()` (32); `stats/Recorder.cpp` `Recorder::_handle()` (35); `crypto/RsaPemMacos.hpp` `_create_sec_key_from_data()` (35); `web/Server.cpp` `read_request()` (34); `types/Json.hpp` `Parser::_parse_number()` (34); `http/Response.hpp` `read()` (32); `node/Node.cpp` `seeds_in()` (32); `crypto/AesOpenSsl.hpp` `_process()` (31); tests: `IntegerTest.BitwiseNegativeOperands` (45), `UrlTest.PortValidationAndEffectivePorts` (40), `BlockingQueueTest.MultipleProducersConsumers` (39), `AsyncChannelTest.CallbackExceptionDoesNotStopProcessing` (33), `JsonTest.ConstructorsAndTypes` (32), and `BlockingQueueTest.ProducerConsumer` (31) | A function over 30 lines of code, the most it should generally have (§6.8) |
