@@ -109,8 +109,10 @@ is the convention:
 
 1. **`PUT` local public key** — the client pushes its own public key to
    the server under `/data/{algo}/{client-identifier}`. This lets the
-   server authenticate the client's identity on this and all subsequent
-   requests in the exchange, without a separate lookup.
+   server authenticate the client's identity on all subsequent requests in
+   the exchange, without a separate lookup. The `PUT` itself is signed with
+   the key it carries, which the server does not hold until it has stored
+   it, so it is served under the grace period of §3.2.
 2. **`GET` remote public key** *(optional)* — if the client does not
    already hold the server's public key, it fetches
    `/data/{algo}/{server-identifier}` to authenticate the server's

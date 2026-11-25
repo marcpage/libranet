@@ -622,7 +622,8 @@ first is refused with `411 Length Required`.
 
 **Where.**
 
-- Specifications: [HTTP API §18](HttpApi.md#18-http-headers) (pipelining) and
+- Specifications: [HTTP API §3.2](HttpApi.md#32-connections) and
+  [§18](HttpApi.md#18-http-headers) (pipelining), and
   [§21](HttpApi.md#21-request-limits) (`411`).
 - Implementation:
   [`protocol/http_syntax.py`](../../python/src/libranet/protocol/http_syntax.py)
@@ -752,8 +753,8 @@ Content-Digest: sha-256=:<base64-sha256-of-body>:
 ```
 
 A receiver ignores digest algorithms it does not know, requires at least one
-it knows, and checks every one it knows, `sha-256` and `sha-512`, against the
-bytes received.
+it knows, and checks every one it knows against the bytes received. Every node
+knows `sha-256`, and the reference node `sha-512` too.
 
 **Where.**
 
