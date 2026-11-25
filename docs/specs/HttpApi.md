@@ -614,6 +614,27 @@ The reference node does not use HTTPS yet. It serves plain HTTP alone, and
 dials only the `http` endpoints a node list names (§10.6), passing over any
 `https` one.
 
+### 3.2 Connections
+
+Nodes speak HTTP/1.1 to one another
+([RFC 9112](https://www.rfc-editor.org/rfc/rfc9112.html)). A node keeps each
+connection to a peer open, and sends its requests down it one after another,
+without waiting for each answer. A node serving that connection MUST answer
+the requests in the order they came, since each answer is taken as the answer
+to the oldest request still waiting (RFC 9112 §9.3.2), and keeps the
+connection open after each answer.
+
+A node that answers with `Connection: close` turns its client away
+(HandshakeProtocol §5.2), and the reference node, as a client, rests a node
+that does so longer than after any other close (HandshakeProtocol §5.1). So a
+node closes a connection that way only when it means to.
+
+A node MAY close a connection that carries no request for a while. It SHOULD
+wait longer than a client waits between reads of its seek list
+(HandshakeProtocol §3.3), which keep a connection in use open. The reference
+node closes a connection once it has been idle for 60 seconds, and reads each
+seek list every 30 seconds (`peers.seek_refresh_seconds`).
+
 ---
 
 ## 4. HTTP Methods
@@ -664,7 +685,7 @@ This allows multiple hash algorithms to coexist.
 The names of the other endpoints beneath `/data` are never hash algorithms:
 `search`, `nodes`, `seek`, `client`, `directory`, `imports`, `bundles`,
 `store`, `applications`, `signed`, `drop`, `encrypted`, `users`, `fallback`,
-`session`, `peers`, `trust`, `archives`, and `karma`.
+`session`, `peers`, `trust`, `archives`, `karma`, `chaos`, and `zip`.
 
 A path that goes on past `{hash}` does not retrieve an object. It reads into
 the bundle the identifier names (§12.1). That includes an identifier written
@@ -982,6 +1003,12 @@ If the hash already exists and the content is the same as an existing content
 for that hash, it can be safely discarded.
 
 Content the node has shunned is accepted and discarded (§5.5).
+
+A node answers an upload it takes with a `2xx` status: `201 Created` once it
+has stored the content, `202 Accepted` when it checks the content later
+(§7.2), and `200 OK` or `204 No Content` for content it holds already. The node
+that uploaded it takes any `2xx` as the content taken, as a hand-off does
+(HighLevelDesign §4.5).
 
 ### 7.2 Content Storage
 
@@ -1568,6 +1595,14 @@ of the node list once decompressed. Missing `http` port is assumed to be `80`
 and missing `https` port is assumed to be `443`. The list SHOULD represent the
 last address the node was able to successfully connect to that identity.
 
+A compressed list is sent as `application/json`, with no `Content-Encoding`.
+So a node reads a list as JSON, and if it is not JSON, as one zlib stream of
+JSON, as it checks content (HighLevelDesign §4.1.1), whatever its headers say.
+An entry it cannot use, such as one whose node id is not a content identifier
+or names a hash algorithm it does not know, is left out, and the rest of the
+list is read. Only a body that is not a JSON object holding a `nodes` object is
+not well-formed (§10.5).
+
 The list SHOULD prioritize nodes by (priority could be determined by, but not
 limited to):
 
@@ -1634,6 +1669,13 @@ The seek list MAY be zlib-compressed (level at the discretion of the node
 generating it). The seek list MUST be less than 1 MiB in size as transferred;
 when it is compressed, this is the compressed size. There is no protocol limit
 on the size of the seek list once decompressed.
+
+A seek list is sent and read as a node list is (§10.6). A list that leaves out
+`data` or `search` seeks nothing of that kind, and members besides these are
+ignored. An entry that is not a content identifier, or not a prefix of one hex
+digit up to the length of the longest hash the node knows (§6), is left out.
+Only a body that is not a JSON object, or whose `data` or `search` is not an
+array, is not well-formed.
 
 #### 10.7.2 Fulfilling Seek List Entries
 
@@ -2031,9 +2073,10 @@ check, and that fails, closes the connection at once (HandshakeProtocol
   How old a signature may be is given in HandshakeProtocol §2.
 - **`Content-Digest`.** The digest a signature covers is an
   [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530.html) `Content-Digest`
-  header. A node sends `sha-256`. A receiver ignores digest algorithms it does
-  not know, but requires at least one it knows, and checks every one it knows
-  against the body. `sha-256` and `sha-512` are known.
+  header. A node sends `sha-256`, and so every node knows it. A receiver
+  ignores digest algorithms it does not know, but requires at least one it
+  knows, and checks every one it knows against the body. The reference node
+  knows `sha-512` too.
 
 ### 11.3 A Person's Identity
 
@@ -3983,9 +4026,11 @@ The following status codes are expected to have defined Libranet semantics.
 | `411 Length Required`        | A body was sent without a length (§21)    |
 | `412 Precondition Failed`    | A stored value changed since it was read  |
 | `413 Content Too Large`      | Request exceeds permitted size            |
+| `414 URI Too Long`           | A request line too long to read (§21)     |
 | `415 Unsupported Media Type` | Request body is not of an accepted type   |
 | `416 Range Not Satisfiable`  | The range asked for holds no bytes (§19)  |
 | `429 Too Many Requests`      | Rate limit exceeded                       |
+| `431 Request Header Fields Too Large` | Headers too long to read (§21) |
 | `500 Internal Server Error`  | Unexpected node error                     |
 | `503 Service Unavailable`    | Resource temporarily unavailable          |
 | `504 Gateway Timeout`        | Upstream peer did not respond in time     |
@@ -4053,24 +4098,25 @@ Libranet-specific problem types SHOULD use URIs under a Libranet-controlled
 namespace.
 
 These are defined so far, each named by its last segment beneath
-`https://libranet.org/problems/`:
+`https://libranet.org/problems/`, and sent with the one `title` given here,
+whatever the occurrence (RFC 9457 §3.1.3):
 
-| Type | Status | Meaning |
-| --- | --- | --- |
-| `invalid-content-address` | `400` | A `/data/{hash-algorithm}/{hash}` path that names no valid content identifier, or one under an algorithm the node does not know (§5.4), or an encrypted identifier whose key cannot be read (§12.1) |
-| `invalid-search-prefix` | `400` | A search prefix that is not from one hex digit up to the length of the longest hash the node knows (§6) |
-| `content-unavailable` | `503` | Content the node does not hold yet, and has asked for (§5.2). The extension member `retry_after` repeats `Retry-After`, in seconds |
-| `content-too-large` | `413` | A request body, or what it would store, larger than the node takes (§21). The extension member `max_bytes`, where one limit applies, is that limit |
-| `signature-required` | `401` | An unsigned request that needs a node identity (HandshakeProtocol §2.1) |
-| `invalid-signature` | `401` | A signature that fails verification; the connection is closed (HandshakeProtocol §5.3) |
-| `invalid-list` | `400` | A node list or seek list that is not well-formed (§10.6, §10.7.1) |
-| `credential-required` | `401` | A `/config` request without the credential the node holds (§2.3.1) |
-| `invalid-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of making a drop (§9.6), telling a Karma head (§10.9), making an identity, signing in, making a signed drop, opening an encrypted block, or changing a trust list (§11.3–§11.7), the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3); or a query an endpoint cannot act on, as a generation to list Karma's before (§10.10) |
-| `unusable-bundle` | `400` or `500` | Content that is not a bundle, or a bundle the node cannot read: `400` when a request named it (§11.5, §11.6, §12.1, §12.3), and `500` when it is an application's (§13) |
-| `bundle-authentication-required` | `401` | A password-protected application, asking for its password (§13.1) |
-| `session-required` | `401` | A request to sign as a person, to open what is encrypted for one, or to read or change their trust, from a browser no one is signed in on (§11.5–§11.7) |
-| `invalid-bundle-signature` | `400` | Signed content whose hash or signature does not check, or whose signer names no key that can sign it (§11.5, §11.6) |
-| `wrong-key` | `403` | A block that the key of whoever is signed in, or the username and password given, does not open (§11.6) |
+| Type | Title | Status | Meaning |
+| --- | --- | --- | --- |
+| `invalid-content-address` | Invalid content address | `400` | A `/data/{hash-algorithm}/{hash}` path that names no valid content identifier, or one under an algorithm the node does not know (§5.4), or an encrypted identifier whose key cannot be read (§12.1) |
+| `invalid-search-prefix` | Invalid search prefix | `400` | A search prefix that is not from one hex digit up to the length of the longest hash the node knows (§6) |
+| `content-unavailable` | Content temporarily unavailable | `503` | Content the node does not hold yet, and has asked for (§5.2). The extension member `retry_after` repeats `Retry-After`, in seconds |
+| `content-too-large` | Content too large | `413` | A request body, or what it would store, larger than the node takes (§21). The extension member `max_bytes`, where one limit applies, is that limit |
+| `signature-required` | Signature required | `401` | An unsigned request that needs a node identity (HandshakeProtocol §2.1) |
+| `invalid-signature` | Invalid signature | `401` | A signature that fails verification; the connection is closed (HandshakeProtocol §5.3) |
+| `invalid-list` | Invalid list | `400` | A node list or seek list that is not well-formed (§10.6, §10.7.1) |
+| `credential-required` | Credential required | `401` | A `/config` request without the credential the node holds (§2.3.1) |
+| `invalid-request` | Invalid request | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of making a drop (§9.6), telling a Karma head (§10.9), making an identity, signing in, making a signed drop, opening an encrypted block, or changing a trust list (§11.3–§11.7), the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3); or a query an endpoint cannot act on, as a generation to list Karma's before (§10.10) |
+| `unusable-bundle` | Unusable bundle | `400` or `500` | Content that is not a bundle, or a bundle the node cannot read: `400` when a request named it (§11.5, §11.6, §12.1, §12.3), and `500` when it is an application's (§13) |
+| `bundle-authentication-required` | Authentication required | `401` | A password-protected application, asking for its password (§13.1) |
+| `session-required` | Session required | `401` | A request to sign as a person, to open what is encrypted for one, or to read or change their trust, from a browser no one is signed in on (§11.5–§11.7) |
+| `invalid-bundle-signature` | Invalid bundle signature | `400` | Signed content whose hash or signature does not check, or whose signer names no key that can sign it (§11.5, §11.6) |
+| `wrong-key` | Wrong key | `403` | A block that the key of whoever is signed in, or the username and password given, does not open (§11.6) |
 
 An error its status code describes fully uses `about:blank`, whose `title` is
 the status code's reason phrase (RFC 9457 §4.2.1).
@@ -4360,7 +4406,10 @@ A request whose body is larger than the node takes is refused with
 `413 Content Too Large` (§17.2, `content-too-large`), unread if its
 `Content-Length` already says so. A body whose length is not declared, sent
 with `Transfer-Encoding`, is refused with `411 Length Required` by an endpoint
-that must know a body's size before it reads it.
+that must know a body's size before it reads it. A request line longer than
+the node reads is refused with `414 URI Too Long`, and headers longer than it
+reads with `431 Request Header Fields Too Large`. Either closes the
+connection, since where the request ends is not known.
 
 **TBD:**
 

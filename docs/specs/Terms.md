@@ -2265,8 +2265,10 @@ among participants: a staker that waits is paid for the wait when it wins.
 
 ### Reference Node
 
-Libranet's own implementation. Where a specification leaves a choice to each
-node, it notes what the reference node does, and its defaults.
+Libranet's own implementation, the Python node in `python/`. Where a
+specification leaves a choice to each node, it notes what the reference node
+does, and its defaults. The C++ node in `cpp/`, begun later, has built only
+part of it so far, and takes the reference node's defaults where it has.
 
 - **Sources:** [HTTP API](HttpApi.md), [RFC References](RfcReferences.md).
 - **See also:** [Node](#node).
