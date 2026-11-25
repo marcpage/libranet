@@ -80,7 +80,8 @@ std::optional<Contents> contents_at(const std::vector<std::byte>& der, std::size
         size = 0;
 
         for (std::size_t index = 0; index < length_bytes; ++index) {
-            size = (size << types::bits_per_byte) | std::to_integer<std::size_t>(der.at(start + index));
+            size = (size << types::bits_per_byte)
+                   | std::to_integer<std::size_t>(der.at(start + index));
         }
 
         start += length_bytes;

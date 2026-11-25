@@ -182,7 +182,8 @@ inline Json::Json(bool value) noexcept
 inline Json::Json(int value) noexcept
     : m_data(static_cast<std::int64_t>(value)) {}
 
-// NOLINTBEGIN(google-runtime-int): long and long long by name, as declared
+// long and long long by name, as declared.
+// NOLINTBEGIN(google-runtime-int)
 inline Json::Json(long value) noexcept
     : m_data(static_cast<std::int64_t>(value)) {}
 

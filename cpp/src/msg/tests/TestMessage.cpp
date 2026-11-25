@@ -30,7 +30,8 @@ TEST(MessageTest, ConstructionAndValue) {
     constexpr auto double_value = 3.14159;
     const Message<double> double_message(double_value);
     EXPECT_DOUBLE_EQ(double_message.value(), double_value);
-    // std::to_string precision can vary slightly; just check it starts correctly
+    // std::to_string precision can vary slightly; just check it starts
+    // correctly
     EXPECT_EQ(double_message.to_string().find("3.14"), 0U);
 
     // String-like types
@@ -55,7 +56,7 @@ TEST(MessageTest, ToStringDispatch) {
     EXPECT_EQ(string_message.to_string(), "constructible");
 
     // is_arithmetic_v path
-    constexpr auto int_value = 12345;
+    constexpr auto int_value = 12'345;
     const Message<int> int_message(int_value);
     EXPECT_EQ(int_message.to_string(), "12345");
 

@@ -77,7 +77,6 @@ using ConnectionOpened = Recorder::ConnectionOpened;
 using NodesUpdated = Recorder::NodesUpdated;
 using SeekUpdated = Recorder::SeekUpdated;
 
-
 // The thread takes these events, which stats::Recorder posts from another
 // file, so nothing here would make their messages' virtual to_string(),
 // which value_of() casts to.

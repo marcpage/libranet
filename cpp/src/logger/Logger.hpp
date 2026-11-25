@@ -32,7 +32,8 @@ public:
 
     static void add_output(ILogOutput::Ptr output);
     static void remove_all_outputs();
-    static void set_formatter(ILogFormatter::Ptr new_formatter); // nullptr for the DefaultFormatter.
+    // nullptr for the DefaultFormatter.
+    static void set_formatter(ILogFormatter::Ptr new_formatter);
     static void set_level(Level level, std::string pattern = "");
     static void reset_levels(Level level);
     [[nodiscard]] static bool is_shown(Level level, std::string_view file = "");

@@ -64,7 +64,8 @@ constexpr std::string_view rfc_ed25519_public_key =
 //       load_pem_private_key(test_key_ed25519_pem, None), "sha256")
 //   signer = MessageSigner(identity, clock=lambda: 1757080000)
 //   signer.sign_request("PUT", hello_path,
-//                       {"Content-Type": "application/octet-stream"}, b"hello")
+//                       {"Content-Type": "application/octet-stream"},
+//                       b"hello")
 //   signer.sign_request("GET", "/data/seek", {})
 //   signer.sign_response(200, {"Content-Type": "application/octet-stream"},
 //                        b"hello")

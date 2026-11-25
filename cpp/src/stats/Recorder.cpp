@@ -142,7 +142,8 @@ void record_received(NodeAddresses& addresses, Database& database,
 // same order.
 bool same_entries(const NodeList& left, const NodeList& right) {
     return equal(left.entries().begin(), left.entries().end(), right.entries().begin(),
-                 right.entries().end(), [](const NodeList::Entry& one, const NodeList::Entry& other) {
+                 right.entries().end(),
+                 [](const NodeList::Entry& one, const NodeList::Entry& other) {
         return one.endpoint == other.endpoint
                && one.node_id.to_string() == other.node_id.to_string();
     });
@@ -437,6 +438,7 @@ void Recorder::_handle(const IMessage::Ptr& message) {
         if (m_sought.found(stored->identifier)) {
             _post_seek_list();
         }
+
         m_content_uses.record_stored(stored->identifier, stored->size);
     } else if (const auto* const deleted = value_of<DataDeleted>(message)) {
         m_content_uses.record_deleted(deleted->identifier);

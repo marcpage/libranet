@@ -81,7 +81,8 @@ constexpr std::string_view hello_prefix = "2cf24d";
 // Content the store does not hold, whose hash begins as hello's does, so
 // that a search for hello's prefix finds it once a peer names it.
 Identifier near_hello_id() {
-    return {"sha256", std::string(hello_prefix) + std::string(hash_digits - hello_prefix.size(), 'a')};
+    return {"sha256",
+            std::string(hello_prefix) + std::string(hash_digits - hello_prefix.size(), 'a')};
 }
 
 // Content the store does not hold, far from hello.
@@ -317,8 +318,8 @@ TEST_F(ServiceTest, ServesAnEmptySeekListUntilOneIsPosted) {
 }
 
 TEST_F(ServiceTest, ServesEachSeekListPosted) {
-    const std::string hello_sought = R"({"data":["sha256/2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa)"
-                                     R"(7425e73043362938b9824"],"search":["2cf2"]})";
+    const std::string hello_sought = R"({"data":["sha256/2cf24dba5fb0a30e26e83b2ac5b9e29e1b161)"
+                                     R"(e5c1fa7425e73043362938b9824"],"search":["2cf2"]})";
     const std::string nothing_sought = R"({"data":[],"search":[]})";
 
     Channel::post(SeekUpdated::name,

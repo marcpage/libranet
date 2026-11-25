@@ -111,7 +111,8 @@ inline bool MemorySource::has(const storage::Identifier& identifier) const {
     return m_data.find(identifier.to_string()) != m_data.end();
 }
 
-inline std::optional<storage::IDataSource::Data> MemorySource::get(const storage::Identifier& identifier) const {
+inline std::optional<storage::IDataSource::Data> MemorySource::get(
+    const storage::Identifier& identifier) const {
     const auto found = m_data.find(identifier.to_string());
 
     if (found == m_data.end()) {

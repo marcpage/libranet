@@ -72,7 +72,6 @@ inline AesMacos::AesMacos(Data key, AesMode mode, AesPadding padding)
     : m_key(std::move(key))
     , m_mode(mode)
     , m_padding(padding) {
-
     if (m_key.size() != aes_128_key_bytes && m_key.size() != aes_192_key_bytes
         && m_key.size() != aes_256_key_bytes) {
         throw std::invalid_argument(

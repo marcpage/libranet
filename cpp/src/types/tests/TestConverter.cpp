@@ -20,7 +20,7 @@ TEST(ConverterTest, BytesOfTextReadBack) {
 }
 
 TEST(ConverterTest, ParseHex) {
-    constexpr std::uint64_t two_digits = 0xa5;
+    constexpr std::uint64_t two_digits = 0xA5;
 
     EXPECT_EQ(Converter::parse_hex(""), 0U);
     EXPECT_EQ(Converter::parse_hex("a5"), two_digits);

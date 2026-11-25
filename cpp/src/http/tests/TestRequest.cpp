@@ -96,7 +96,7 @@ TEST(RequestTest, ContentLengthBeyondStream) {
 }
 
 TEST(RequestTest, BodyLongerThanOnePiece) {
-    constexpr std::size_t body_bytes = 100000;
+    constexpr std::size_t body_bytes = 100'000;
     const std::string body(body_bytes, 'x');
     std::istringstream in_stream(
         std::string("POST /upload HTTP/1.1\r\n")

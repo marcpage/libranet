@@ -367,7 +367,7 @@ TEST(SeekListTest, LimitTooSmallForAnEmptyListIsRefused) {
 // A list is sent in less than 1 MiB unless told otherwise. One of 20,000
 // identifiers is about 1.4 MiB as JSON, and half that compressed.
 TEST(SeekListTest, WrittenInLessThanOneMebibyte) {
-    constexpr std::size_t count = 20000;
+    constexpr std::size_t count = 20'000;
     const SeekList list(identifiers(count), {});
 
     const auto body = list.body();

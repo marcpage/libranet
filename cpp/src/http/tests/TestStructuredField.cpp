@@ -138,14 +138,14 @@ TEST(StructuredFieldTest, ReadsASignatureInput) {
     ASSERT_EQ(list.items.size(), 6U);
     EXPECT_EQ(list.items.at(0), component("@method"));
     EXPECT_EQ(list.items.at(5), component("content-type"));
-    EXPECT_EQ(list.parameters, (Parameters{{"created", std::int64_t{1618884473}},
+    EXPECT_EQ(list.parameters, (Parameters{{"created", std::int64_t{1'618'884'473}},
                                            {"keyid", std::string("test-key-rsa-pss")}}));
     EXPECT_EQ(field.to_string(), text);
 }
 
 // As HTTP API §11 has a node sign a request with a body.
 TEST(StructuredFieldTest, WritesASignatureInput) {
-    constexpr std::int64_t created = 1757080000;
+    constexpr std::int64_t created = 1'757'080'000;
     const InnerList signature_input{
         {component("@method"), component("@path"), component("content-digest")},
         {{"created", created}, {"keyid", std::string("sha256/def567")}},

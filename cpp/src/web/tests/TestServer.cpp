@@ -233,8 +233,9 @@ void throw_invalid_identifier(const Request& /*request*/, Response& /*response*/
 }
 
 // A handler that answers with where the connection came from.
-void answer_with_remote_address(const Request& /*request*/, Response& response,
-                                ConnectionInfo& connection) { // cppcheck-suppress constParameterCallback
+void answer_with_remote_address(
+    const Request& /*request*/, Response& response,
+    ConnectionInfo& connection) { // cppcheck-suppress constParameterCallback
     response.set_body(connection.remote_address().to_string());
 }
 

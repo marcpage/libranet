@@ -1,5 +1,4 @@
 #include "Zlib.hpp"
-#include "types/Constants.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -11,6 +10,8 @@
 
 #include <zconf.h>
 #include <zlib.h>
+
+#include "types/Constants.hpp"
 
 using std::bad_alloc;
 using std::invalid_argument;
@@ -52,7 +53,8 @@ auto* bytes_at(Data& data, size_t offset) {
 
 // As many of count bytes as zlib takes in one call.
 auto per_call(size_t count) {
-    // The most bytes zlib reads or writes in one call: it counts them in an unsigned int.
+    // The most bytes zlib reads or writes in one call: it counts them in an
+    // unsigned int.
     return static_cast<uInt>(min(count, static_cast<size_t>(numeric_limits<uInt>::max())));
 }
 

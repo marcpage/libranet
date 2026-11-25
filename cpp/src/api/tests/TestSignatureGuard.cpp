@@ -55,7 +55,7 @@ constexpr std::string_view invalid_signature = "https://libranet.org/problems/in
 // Where a connection comes from: an address set aside for documentation
 // (RFC 5737), and a port the system might pick for a client.
 constexpr std::string_view remote_host = "192.0.2.1";
-constexpr Address::Port remote_port = 50000;
+constexpr Address::Port remote_port = 50'000;
 
 ConnectionInfo new_connection() {
     return ConnectionInfo(Address(remote_host, remote_port));

@@ -252,7 +252,8 @@ void StandInPeers::let_go() {
 Texts StandInPeers::offered(std::size_t count) {
     std::unique_lock lock(m_mutex);
 
-    (void)m_changed.wait_for(lock, post_timeout, [this, count] { return m_offered.size() >= count; });
+    (void)m_changed.wait_for(lock, post_timeout,
+                             [this, count] { return m_offered.size() >= count; });
 
     auto offered = m_offered;
 

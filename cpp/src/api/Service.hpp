@@ -37,8 +37,10 @@ public:
     static constexpr Milliseconds default_search_cache_ttl{300'000};
 
     struct Settings {
-        std::size_t search_min_bits = default_search_min_bits;    // storage.search_min_bits
-        Milliseconds search_cache_ttl = default_search_cache_ttl; // storage.search_cache_ttl_seconds
+        // storage.search_min_bits
+        std::size_t search_min_bits = default_search_min_bits;
+        // storage.search_cache_ttl_seconds
+        Milliseconds search_cache_ttl = default_search_cache_ttl;
         // How long a client asking for content the node will look for is told
         // to wait.
         DataHandler::Seconds retry_after = DataHandler::default_retry_after;

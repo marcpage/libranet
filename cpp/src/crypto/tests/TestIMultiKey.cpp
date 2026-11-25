@@ -216,4 +216,4 @@ TEST(RsaInteropTest, AppleAndOpenSslReadEachOthersPem) {
                     ->RsaPssSha256()
                     ->verify(message, open_ssl->RsaPssSha256()->sign(message)));
 }
-#endif
+#endif // __APPLE__

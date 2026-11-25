@@ -15,7 +15,7 @@ namespace {
 // Where a connection came from: an address set aside for documentation
 // (RFC 5737), and a port the system might pick for a client.
 constexpr std::string_view remote_host = "192.0.2.1";
-constexpr Address::Port remote_port = 50000;
+constexpr Address::Port remote_port = 50'000;
 
 // The ids of two nodes, each the identifier of its public key (HTTP API
 // §11.2): here the SHA-256 of nothing, and of "abc" (FIPS 180-2 B.1).

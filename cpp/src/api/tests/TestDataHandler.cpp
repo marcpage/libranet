@@ -68,7 +68,7 @@ constexpr std::string_view node_hash =
 // Where a connection came from: an address set aside for documentation
 // (RFC 5737), and a port the system might pick for a client.
 constexpr std::string_view remote_host = "192.0.2.1";
-constexpr Address::Port remote_port = 50000;
+constexpr Address::Port remote_port = 50'000;
 
 // A store that keeps what it is given in memory, by identifier. put() is
 // const in IDataSource, so what it keeps is mutable.

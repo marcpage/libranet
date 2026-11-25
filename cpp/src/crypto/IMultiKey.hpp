@@ -35,5 +35,4 @@ protected:
     IMultiKey() = default;
 };
 
-
 } // namespace crypto

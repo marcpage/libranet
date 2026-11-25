@@ -103,7 +103,8 @@ TEST(DatabaseTest, FileThatCannotBeOpenedSaysWhy) {
 
     const auto error = open_error(path);
 
-    EXPECT_EQ(error, "Cannot open the database " + path.string() + ": unable to open database file");
+    EXPECT_EQ(error,
+              "Cannot open the database " + path.string() + ": unable to open database file");
 }
 
 TEST(DatabaseTest, SchemaThatCannotBeRunThrows) {

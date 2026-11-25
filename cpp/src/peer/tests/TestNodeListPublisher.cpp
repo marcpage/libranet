@@ -252,7 +252,8 @@ protected:
 
     // Whether request was signed by this node, with its key.
     [[nodiscard]] bool signed_by_this_node(const Request& request) const {
-        const auto signer = MessageVerifier(std::make_shared<KnownKeys>(m_store), {}).verify(request);
+        const auto signer =
+            MessageVerifier(std::make_shared<KnownKeys>(m_store), {}).verify(request);
 
         return signer && signer->verified
                && signer->node_id.to_string() == m_this_node.id().to_string();
@@ -390,8 +391,10 @@ TEST_F(NodeListPublisherTest, EachPeerIsPostedTheOthers) {
     EXPECT_EQ(to_first.at(0).headers().get("Content-Type", ""), "application/json");
     EXPECT_TRUE(signed_by_this_node(to_first.at(0)));
     EXPECT_TRUE(signed_by_this_node(to_second.at(0)));
-    EXPECT_EQ(to_first.at(0).body(), list_of({{second_endpoint, second_id()}, {third_endpoint, third}}));
-    EXPECT_EQ(to_second.at(0).body(), list_of({{first_endpoint, first_id()}, {third_endpoint, third}}));
+    EXPECT_EQ(to_first.at(0).body(),
+              list_of({{second_endpoint, second_id()}, {third_endpoint, third}}));
+    EXPECT_EQ(to_second.at(0).body(),
+              list_of({{first_endpoint, first_id()}, {third_endpoint, third}}));
 }
 
 // The first request the peer is sent is the one after the publishing, so
@@ -463,5 +466,6 @@ TEST_F(NodeListPublisherTest, SessionsClosedOrMissingArePostedNothing) {
 
 TEST_F(NodeListPublisherTest, NeedsAnIdAndEndpoints) {
     EXPECT_THROW((void)NodeListPublisher(Identifier(), {own_endpoint}), std::invalid_argument);
-    EXPECT_THROW((void)NodeListPublisher(own_id(), {"ftp://localhost:8080"}), std::invalid_argument);
+    EXPECT_THROW((void)NodeListPublisher(own_id(), {"ftp://localhost:8080"}),
+                 std::invalid_argument);
 }

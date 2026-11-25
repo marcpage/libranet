@@ -426,7 +426,7 @@ TEST(NodeListTest, SmallListIsSentAsJson) {
 // A list is sent in less than 1 MiB, compressed when it would not fit
 // otherwise (HttpApi §10.6).
 TEST(NodeListTest, ListOverOneMibIsSentCompressed) {
-    constexpr std::size_t entry_count = 12000;
+    constexpr std::size_t entry_count = 12'000;
     NodeList list;
 
     for (std::size_t index = 0; index < entry_count; ++index) {

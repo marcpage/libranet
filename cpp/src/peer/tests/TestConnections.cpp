@@ -466,8 +466,8 @@ TEST_F(ConnectionsTest, CheckIntervalOfZeroIsRefused) {
     auto refused = settings();
 
     refused.check_interval = 0ms;
-    EXPECT_THROW(Connections(this_node(), {own_endpoint}, std::make_shared<fixtures::MemorySource>(),
-                             verifier(), refused),
+    EXPECT_THROW(Connections(this_node(), {own_endpoint},
+                             std::make_shared<fixtures::MemorySource>(), verifier(), refused),
                  std::invalid_argument);
 }
 
@@ -515,7 +515,8 @@ TEST_F(ConnectionsTest, OwnEndpointsArePostedBeforeTheNodeList) {
 
     ASSERT_EQ(posted.size(), 1U);
     EXPECT_EQ(entries_of(posted.front()),
-              std::vector<std::string>{std::string(own_endpoint) + "=" + this_node().id().to_string()});
+              std::vector<std::string>{std::string(own_endpoint) + "="
+                                       + this_node().id().to_string()});
 }
 
 TEST_F(ConnectionsTest, NodeListIsPostedAtFirstContact) {

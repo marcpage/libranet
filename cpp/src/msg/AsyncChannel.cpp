@@ -18,7 +18,9 @@ using std::thread;
 using std::vector;
 
 namespace {
+
 void noop(const string& /*unused*/) {}
+
 } // namespace
 
 namespace msg {
@@ -31,7 +33,6 @@ AsyncChannel::AsyncChannel(vector<string> names, const Callback& callback, const
     , m_logger(nullptr == logger ? noop : logger)
     , m_running(true)
     , m_callback(callback) {
-
     if (nullptr == callback) {
         throw invalid_argument("You must pass a callback");
     }

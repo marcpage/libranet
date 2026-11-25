@@ -221,7 +221,8 @@ inline RsaDer::Element RsaDer::_read(const Data& der, std::size_t& offset, std::
         size = 0;
 
         for (std::size_t index = 0; index < length_bytes; ++index) {
-            size = (size << types::bits_per_byte) | std::to_integer<std::size_t>(der.at(offset + index));
+            size = (size << types::bits_per_byte)
+                   | std::to_integer<std::size_t>(der.at(offset + index));
         }
 
         offset += length_bytes;

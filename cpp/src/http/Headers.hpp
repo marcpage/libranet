@@ -152,7 +152,8 @@ inline bool operator==(const Headers& left, const Headers& right) noexcept {
     auto right_entry = right.m_headers.begin();
 
     while (left_entry != left.m_headers.end() && right_entry != right.m_headers.end()) {
-        // Keys must be equivalent case-insensitively (neither is less than the other)
+        // Keys must be equivalent case-insensitively (neither is less than the
+        // other)
         if (less(left_entry->first, right_entry->first)
             || less(right_entry->first, left_entry->first)) {
             return false;
@@ -346,4 +347,5 @@ inline void Headers::read_body(std::istream& in_stream, std::size_t length, std:
         }
     }
 }
+
 } // namespace http

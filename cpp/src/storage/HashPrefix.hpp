@@ -64,7 +64,6 @@ inline const std::string& HashPrefix::to_string() const noexcept {
 
 inline HashPrefix::HashPrefix(std::string hex)
     : m_hex(std::move(hex)) {
-
     if (m_hex.empty() || m_hex.size() > Identifier::longest_hash_digits()
         || m_hex.find_first_not_of(types::hex_digits_either_case) != std::string::npos) {
         throw std::invalid_argument("Invalid hash prefix: not 1 to "

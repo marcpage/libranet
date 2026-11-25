@@ -356,8 +356,8 @@ MessageVerifier::MessageVerifier(std::shared_ptr<KnownKeys> keys, Window window,
 }
 
 optional<MessageVerifier::Signer> MessageVerifier::verify(const Request& request) const {
-    return signer_of(request, {SignatureBase::method_component, SignatureBase::path_component}, *m_keys, m_window,
-                     std::chrono::time_point_cast<Duration>(m_clock()));
+    return signer_of(request, {SignatureBase::method_component, SignatureBase::path_component},
+                     *m_keys, m_window, std::chrono::time_point_cast<Duration>(m_clock()));
 }
 
 optional<MessageVerifier::Signer> MessageVerifier::verify(const Response& response) const {

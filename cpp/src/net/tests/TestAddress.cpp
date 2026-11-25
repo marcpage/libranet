@@ -14,7 +14,7 @@ constexpr auto ssh_port = 22;
 constexpr auto http_port = 80;
 constexpr auto development_port = 3000;
 constexpr auto alternate_http_port = 8080;
-constexpr auto highest_port = 65535;
+constexpr auto highest_port = 65'535;
 
 } // namespace
 
@@ -95,7 +95,7 @@ TEST(AddressTest, PortOutOfRange) {
     EXPECT_THROW((void)Address::parse("127.0.0.1:65536"), std::invalid_argument);
     EXPECT_THROW((void)Address::parse("127.0.0.1:99999999999"), std::invalid_argument);
     EXPECT_THROW((void)Address::parse("127.0.0.1:-1"), std::invalid_argument);
-    EXPECT_EQ(Address::parse("127.0.0.1:65535").port(), 65535);
+    EXPECT_EQ(Address::parse("127.0.0.1:65535").port(), 65'535);
 }
 
 TEST(AddressTest, BracketsOnlyAroundIpv6) {
@@ -110,7 +110,8 @@ TEST(AddressTest, Resolve) {
     const Address addr1("127.0.0.1", http_port);
     const std::vector<std::string> resolved_ips = addr1.resolve();
 
-    // Should resolve to at least one entry (e.g., "127.0.0.1" or loopback representation)
+    // Should resolve to at least one entry (e.g., "127.0.0.1" or loopback
+    // representation)
     EXPECT_FALSE(resolved_ips.empty());
 
     // 2. Resolve localhost hostname
@@ -118,7 +119,8 @@ TEST(AddressTest, Resolve) {
     const std::vector<std::string> resolved_local = addr2.resolve();
     EXPECT_FALSE(resolved_local.empty());
 
-    // 3. Test that resolving a non-existent or invalid host throws a runtime_error
+    // 3. Test that resolving a non-existent or invalid host throws a
+    // runtime_error
     const Address addr3("this-host-definitely-does-not-exist-12345.invalid", http_port);
     EXPECT_THROW((void)addr3.resolve(), std::runtime_error);
 }
@@ -126,6 +128,7 @@ TEST(AddressTest, Resolve) {
 TEST(AddressTest, LocalAddresses) {
     const std::vector<std::string> local_addrs = Address::local_addresses();
 
-    // A machine should at least have loopback addresses (like 127.0.0.1 or ::1) active
+    // A machine should at least have loopback addresses (like 127.0.0.1 or
+    // ::1) active
     EXPECT_FALSE(local_addrs.empty());
 }

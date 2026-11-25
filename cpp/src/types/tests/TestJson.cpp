@@ -156,7 +156,8 @@ TEST(JsonTest, ExceptionsAndTypeSafety) {
     constexpr auto number = 100;
     const Json number_json(number);
 
-    // Expect std::domain_error or std::runtime_error when requesting bad conversions
+    // Expect std::domain_error or std::runtime_error when requesting bad
+    // conversions
     bool caught_bad_string_cast = false;
 
     try {

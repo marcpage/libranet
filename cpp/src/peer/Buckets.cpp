@@ -50,8 +50,8 @@ void check_prefix_bits(size_t bits, const string& setting) {
     }
 }
 
-// sizes, once checked. Throws invalid_argument, naming the setting, for
-// sizes a node cannot spread its server nodes by, as the Python node refuses them.
+// sizes, once checked. Throws invalid_argument, naming the setting, for sizes
+// a node cannot spread its server nodes by, as the Python node refuses them.
 Buckets::ExpectedSizes checked(const Buckets::ExpectedSizes& sizes) {
     check_prefix_bits(sizes.primary_prefix_bits, "peers.bucket_prefix_bits");
     check_prefix_bits(sizes.secondary_prefix_bits, "peers.neighborhood_prefix_bits");
@@ -73,8 +73,8 @@ Buckets::ExpectedSizes checked(const Buckets::ExpectedSizes& sizes) {
     return sizes;
 }
 
-// The value of the first bits bits of node_id's hash. Throws
-// invalid_argument for a hash shorter than that, as an identifier made with no hash has.
+// The value of the first bits bits of node_id's hash. Throws invalid_argument
+// for a hash shorter than that, as an identifier made with no hash has.
 uint64_t leading_bits(const Identifier& node_id, size_t bits) {
     const auto& hash = node_id.hash();
     const auto digits = (bits + bits_per_hex_digit - 1) / bits_per_hex_digit;
