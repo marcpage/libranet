@@ -21,14 +21,14 @@ relative to `src/`:
 
 - Each message is a struct with its name, `static constexpr auto name`, in
   the header of the class that posts or takes it: `storage/` for those about
-  content, and `stats/Recorder.hpp`, `eviction/Evictor.hpp`,
-  `peer/Connections.hpp`, and `peer/PeerSearch.hpp` for the rest.
+  content, and `stats/Recorder.hpp`, `eviction/Evictor.hpp`, and
+  `peer/Connections.hpp` for the rest.
 - Each part's `msg::AsyncChannel`, made in its constructor, lists exactly
   the names it takes.
 - Each class posts its messages from its `.cpp` file, with
   `Channel::post()`.
 
-These are in the code as of 2026-11-24.
+These are in the code as of 2026-11-25.
 
 ## 2. Conventions
 
@@ -54,7 +54,8 @@ listens on that name as it is posted, the poster's own among them. One
 posted under a name no channel listens on goes nowhere, and a channel made
 after a message was posted never sees it. So a part that must see the first
 of a message is made before the part that posts it: `api::Service` and
-`peer::Connections` before `stats::Recorder`.
+`peer::Connections` before `stats::Recorder`, which `node::Node` makes
+last.
 
 Every channel that takes a message is given the same one, which none may
 change. A part that is given a message of a type it does not take logs it
@@ -70,21 +71,19 @@ Work a part does every so often is cued by a `msg::Timer`, which posts a
 | --- | --- | --- |
 | Web | `api::Service`, which takes for the handlers; `DataHandler`, `NodesHandler`, and `SearchHandler`, which post from the threads serving connections | `api/` |
 | Stats | `stats::Recorder` | `stats/` |
-| Connections | `peer::Connections`, which takes, and posts from its threads; `FirstContact`, `Fetch`, and `PeerSearch`, which post from the threads using them; `Pusher`, which takes on a channel of its own | `peer/` |
+| Connections | `peer::Connections`, which takes, and posts from its threads; `FirstContact`, `Fetch`, and `PeerSearch`, which post from the threads using them; `Seeker`, which takes on a channel of its own, and runs `Fetch` and `PeerSearch` on threads of its own; `Pusher`, which takes on a channel of its own | `peer/` |
 | Eviction | `eviction::Evictor` | `eviction/` |
 
-For now `node::Node` makes only the web server (`node/Node.hpp`). The
-other parts are built and tested on their own, and are not yet made by the
-node.
+`node::Node` makes every part (`node/Node.cpp`), each after those it uses.
 
 ## 3. Summary
 
 | Message | Type | Posted by | Taken by | Purpose in brief |
 | --- | --- | --- | --- | --- |
 | `data.requested` | `storage::DataRequested` | Web | Stats | Count a request for content |
-| `data.not_found` | `storage::DataNotFound` | Web | Stats | Content is needed that is not held |
-| `data.search_requested` | `stats::Recorder::SearchRequested` | Web | Stats | A prefix search was asked of this node |
-| `data.search_answered` | `storage::SearchAnswered`, `peer::PeerSearch::SearchAnswered` | Web, Connections | (none yet) | What a peer named for a prefix |
+| `data.not_found` | `storage::DataNotFound` | Web | Stats, Connections | Content is needed that is not held |
+| `data.search_requested` | `stats::Recorder::SearchRequested` | Web | Stats, Connections | A prefix search was asked of this node |
+| `data.search_answered` | `storage::SearchAnswered` | Web, Connections | Web | What a peer named for a prefix |
 | `data.stored` | `storage::DataStored` | Web, Connections | Stats, Eviction, Connections | New content is held |
 | `data.deleted` | `storage::DataDeleted` | Eviction | Stats | Content is no longer held |
 | `nodes.received` | `stats::Recorder::NodesReceived` | Web, Connections | Stats | Peer addresses learned |
@@ -99,6 +98,7 @@ node.
 | `eviction.handed_off` | `eviction::Evictor::HandedOff` | Eviction | Eviction | What came of a hand-off |
 | `stats.derive_due` | `msg::Timer::Tick` | Stats | Stats | Derive the lists |
 | `peers.check_due` | `msg::Timer::Tick` | Connections | Connections | Look at the connections |
+| `peers.search_pass_due` | `msg::Timer::Tick` | Connections | Connections | Make the passes of searches that are due |
 
 ## 4. The Messages
 
@@ -125,9 +125,14 @@ and what each does with it.
   it answers 503 (HttpApi §5.2). It posts none while a search for the
   content is held off, as its `IsHeldOff` says, and answers 404 then
   (§5.3).
-- **Taken by:** `stats::Recorder`, which adds the content to the seek list
-  (`Sought`), posting `seek.updated` at once if the list did not name it,
-  so that peers send it.
+- **Taken by:**
+  - `stats::Recorder`, which adds the content to the seek list (`Sought`),
+    posting `seek.updated` at once if the list did not name it, so that
+    peers send it.
+  - `peer::Seeker`, which fetches the content from the peers
+    (`peer::Fetch`), each fetch on a thread of its own, at most
+    `peers.search_workers` at once. Content beyond those waits its turn, in
+    the order it came, and waits once however often it is posted.
 - **Purpose:** get content this node needs from its peers.
 
 #### `data.search_requested`
@@ -140,28 +145,33 @@ and what each does with it.
 - **Posted by:** `api::SearchHandler`, once it has answered a
   `GET /data/search/{prefix}`, naming the node whose signature the
   connection carries.
-- **Taken by:** `stats::Recorder`, which adds the prefix to the seek list,
-  posting `seek.updated` at once if the list did not name it.
+- **Taken by:**
+  - `stats::Recorder`, which adds the prefix to the seek list, posting
+    `seek.updated` at once if the list did not name it.
+  - `peer::Seeker`, which starts a search of the peers for the prefix
+    (`peer::PeerSearch`), asking each but the node that asked, and telling
+    each how many times more it may be passed on, one fewer than that node
+    allowed, and no more than `peers.search_relays`. It makes the first pass
+    at once, on a thread of its own, or, while passes are being made, once
+    they are. No search starts while one for the prefix is under way or held
+    off, nor for a node that allowed it to be passed on no more.
 - **Purpose:** have peers name what matches, so that later searches list it.
 
 #### `data.search_answered`
 
-- **Type:** two of the same members, posted under the one name:
-  `storage::SearchAnswered` (`storage/SearchAnswered.hpp`) and
-  `peer::PeerSearch::SearchAnswered` (`peer/PeerSearch.hpp`). A part that
-  takes this message reads both.
+- **Type:** `storage::SearchAnswered` (`storage/SearchAnswered.hpp`).
 - **Payload:** `prefix`, `node`, the node that named them, and `results`,
   the content ids it named, best match first.
 - **Posted by:**
-  - `api::SearchHandler`, as `storage::SearchAnswered`, for a
-    `POST /data/search/{prefix}` from a node whose signature the connection
-    carries, naming what it holds that matches a search this node seeks
-    (HttpApi §10.7.2), unless it names nothing.
-  - `peer::PeerSearch`, as `peer::PeerSearch::SearchAnswered`, for each
-    peer that answered a search for the prefix with anything.
-- **Taken by:** no part yet. The Python node's stats adds the content ids
-  to the answer it keeps for the prefix, as `storage::SearchAnswers::add()`
-  would here.
+  - `api::SearchHandler`, for a `POST /data/search/{prefix}` from a node
+    whose signature the connection carries, naming what it holds that
+    matches a search this node seeks (HttpApi §10.7.2), unless it names
+    nothing.
+  - `peer::PeerSearch`, for each peer that answered a search for the prefix
+    with anything, from the thread `peer::Seeker` makes the passes on.
+- **Taken by:** `api::Service`, which adds the content ids to the answer
+  its `SearchHandler` keeps for the prefix (`storage::SearchAnswers::add()`),
+  as the Python node's stats does.
 - **Purpose:** let the next search list what peers hold.
 
 ### 4.2 Content Held
@@ -261,7 +271,8 @@ and what each does with it.
 - **Posted by:** `peer::Connections`, as it starts, naming none, and
   whenever a node joins or leaves. Each replaces the one before.
 - **Taken by:** no part yet. `eviction::Evictor` asks for the nodes
-  connected when it needs them, through `Evictor::Peers::connected`.
+  connected when it needs them, through `Evictor::Peers::connected`, which
+  `node::Node` binds to `peer::Connections::connected_ids()`.
 - **Purpose:** name the peers connected now.
 
 ### 4.4 The Lists Stats Derives
@@ -293,7 +304,8 @@ starts, posting all three, and then every `stats.derive_interval_seconds`
   order to try them (`NodeAddresses::Candidate`).
 - **Posted by:** `stats::Recorder`.
 - **Taken by:** `peer::Connections`, which keeps them and dials as its
-  `DialPlan` says. It dials nothing until the first.
+  `DialPlan` says. It dials nothing until the first. While they name none,
+  it dials the seeds in their place (`--seed` and `peers.seed_file`).
 - **Purpose:** give the connections the nodes to dial.
 
 #### `seek.updated`
@@ -325,9 +337,9 @@ starts, posting all three, and then every `stats.derive_interval_seconds`
   stored within `storage.stored_grace_seconds`.
 - **Posted by:** `eviction::Evictor`, when what is held comes within
   `storage.max_hand_offs` MiB of a limit, the hand-offs under way would not
-  free enough, and its list has run out. It asks at most once for each `data.stored` and each object
-  deleted, and while one is asked for, again only once
-  `storage.candidates_timeout_seconds` have passed.
+  free enough, and its list has run out. It asks at most once for each
+  `data.stored` and each object deleted, and while one is asked for, again
+  only once `storage.candidates_timeout_seconds` have passed.
 - **Taken by:** `stats::Recorder`, which answers with
   `eviction.candidates`.
 - **Purpose:** ask for the content best let go of.
@@ -338,9 +350,9 @@ starts, posting all three, and then every `stats.derive_interval_seconds`
 - **Payload:** `objects`, each an `identifier` and its `size`
   (`Evictor::Held`).
 - **Posted by:** `stats::Recorder`: what is held, ranked as
-  `eviction::Score` scores it, ties in order of hash, then algorithm, leaving
-  out this node's own key and what `exclude` names, until the sizes add up
-  to `bytes` or the list holds `storage.max_candidates`.
+  `eviction::Scorer` scores it, ties in order of hash, then algorithm,
+  leaving out this node's own key and what `exclude` names, until the sizes
+  add up to `bytes` or the list holds `storage.max_candidates`.
 - **Taken by:** `eviction::Evictor`, which hands each off in turn,
   `storage.max_hand_offs` at once at most. One that is empty, or names
   nothing it can hand off, leaves nothing to let go of until the next
@@ -383,18 +395,33 @@ class's channel listens on it. The tick's `count` counts from 1.
 - **Posted by:** `peer::Connections`'s timer, every check interval, once a
   second by default.
 - **Taken by:** `peer::Connections`, which lets go of each connection that
-  has closed, resting its node, and dials as its `DialPlan` says, as the
-  rests that have ended allow.
+  has closed, resting its node; dials as its `DialPlan` says, as the rests
+  that have ended allow; and has its `SeekFulfiller` read again the seek
+  list of each node connected that has gone `peers.seek_refresh_seconds`
+  unread, and fulfill it, on a thread of its own, unless that thread is
+  still at it.
 - **Purpose:** notice closed connections and ended rests when nothing else
-  happens.
+  happens, and keep up with what the peers seek.
+
+#### `peers.search_pass_due`
+
+- **Type:** `msg::Timer::Tick` (`msg/Timer.hpp`).
+- **Payload:** `name`, `count`.
+- **Posted by:** `peer::Seeker`'s timer, every check interval, once a second
+  by default.
+- **Taken by:** `peer::Seeker`, which makes the passes of the peers'
+  searches that are due, on a thread of its own, unless passes are being
+  made already.
+- **Purpose:** make each pass of a search as it comes due,
+  `network.retry_after_seconds` after the one before.
 
 ## 5. Messages per Part
 
 | Part | Posts | Takes |
 | --- | --- | --- |
-| Web | `data.requested`, `data.not_found`, `data.search_requested`, `data.search_answered`, `data.stored`, `nodes.received` | `nodes.updated`, `seek.updated` |
+| Web | `data.requested`, `data.not_found`, `data.search_requested`, `data.search_answered`, `data.stored`, `nodes.received` | `nodes.updated`, `seek.updated`, `data.search_answered` |
 | Stats | `nodes.updated`, `candidates.updated`, `seek.updated`, `eviction.candidates`, `stats.derive_due` | `data.requested`, `data.not_found`, `data.search_requested`, `data.stored`, `data.deleted`, `nodes.received`, `connection.opened`, `connection.failed`, `eviction.candidates_requested`, `stats.derive_due` |
-| Connections | `data.search_answered`, `data.stored`, `nodes.received`, `connection.opened`, `connection.failed`, `peers.connected`, `peers.check_due` | `data.stored` (`Pusher`), `nodes.updated`, `candidates.updated`, `seek.updated`, `peers.check_due` |
+| Connections | `data.search_answered`, `data.stored`, `nodes.received`, `connection.opened`, `connection.failed`, `peers.connected`, `peers.check_due`, `peers.search_pass_due` | `data.stored` (`Pusher`), `data.not_found` and `data.search_requested` (`Seeker`), `nodes.updated`, `candidates.updated`, `seek.updated`, `peers.check_due`, `peers.search_pass_due` (`Seeker`) |
 | Eviction | `data.deleted`, `eviction.candidates_requested`, `eviction.handed_off` | `data.stored`, `eviction.candidates`, `eviction.handed_off` |
 
 ## 6. Where It Differs from the Python Node
@@ -405,7 +432,8 @@ class's channel listens on it. The tick's `count` counts from 1.
 - **The poster takes its own.** The Python dispatcher delivers a message to
   every module that subscribes but the one that published it. Here a channel
   of the poster's that listens on the name takes it too, which the evictor's
-  `eviction.handed_off` and the recorder's first `stats.derive_due` rely on.
+  `eviction.handed_off`, the recorder's first `stats.derive_due`, and the
+  web server's `data.search_answered` rely on.
 - **The lists travel in the messages.** The Python node's stats writes the
   node list, the candidate list, and the seek list to files, and posts
   `nodes.updated` with no payload. Here `nodes.updated` carries the node

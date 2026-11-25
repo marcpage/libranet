@@ -31,13 +31,16 @@ elsewhere:
 The authority remains the code: each class's header says what it is for, in
 its name and interface, and in the comment above it where those leave
 something out. Paths below are relative to `cpp/src/`, and are as of
-2026-11-24.
+2026-11-25.
 
 ## 2. The Node at a Glance
 
-`main.cpp` reads the command line, and the YAML settings file it names
-(`node::SettingsFile`), and runs a `node::Node` until the process is sent
-SIGINT or SIGTERM. As it is made, the node:
+`main.cpp` reads the command line: the YAML settings file `--config` names
+(`node::SettingsFile`), and the nodes to dial first, each named by a
+`--seed`. It runs a `node::Node` until the process is sent SIGINT or
+SIGTERM. The node reads every setting it uses, by the Python node's name and
+with its default, and refuses one it cannot use, naming it, before it makes
+anything. Then it:
 
 1. lays out its data directory: `cas/`, where content is stored, and
    `incoming/`, whose directories are read as content too, together as one
@@ -45,23 +48,27 @@ SIGINT or SIGTERM. As it is made, the node:
 2. reads its Ed25519 key from `node-key.pem`, or makes one the first time, as
    an `identity::NodeIdentity`, whose public key it puts in the store, so that
    other nodes can fetch it by the node's id;
-3. makes its parts, handing each what it needs of the store and the identity.
-   Each part starts the threads it needs as it is made, and stops and joins
-   them as it goes.
+3. makes its parts, each after those it uses, handing each what it needs of
+   the store, the identity, and the settings, and binding the functions that
+   stand in for what one part asks of another (§4.3). The recorder is made
+   last, as the lists it posts as it starts are for the others, and keeps
+   `libranet.sqlite3` in the data directory. Each part starts the threads it
+   needs as it is made, and stops and joins them as it goes, last made
+   first.
 
-A node has four parts, each a class that runs threads of its own:
+A node has four parts, each a class, or a few, that run threads of their
+own:
 
 | Part | Class | Job |
 | --- | --- | --- |
-| Web | `api::Service` | Runs `web::Server`, with a handler for each endpoint beneath `/data`, each behind an `api::SignatureGuard`; keeps the latest lists the stats derive, to serve |
+| Web | `api::Service` | Runs `web::Server`, with a handler for each endpoint beneath `/data`, each behind an `api::SignatureGuard`; keeps the latest lists the stats derive, to serve, and what peers name for searches |
 | Stats | `stats::Recorder` | Records, in SQLite, the addresses of nodes and how content is used; derives the node list, the candidates to dial, and the seek list; ranks content for eviction |
-| Connections | `peer::Connections` | Owns the outgoing connections, and keeps up the mix of peers; makes first contact; with the classes beside it in `peer/`, fetches, searches, fulfills peers' seek lists, pushes new content, and hands content off |
+| Connections | `peer::Connections`, `peer::Seeker`, `peer::Pusher` | Owns the outgoing connections, and keeps up the mix of peers, dialing the seeds while it knows no other; makes first contact, and reads peers' seek lists again; with the classes beside it in `peer/`, fetches and searches for what the node lacks (`Seeker`), fulfills peers' seek lists, pushes new content (`Pusher`), and hands content off |
 | Eviction | `eviction::Evictor` | Keeps storage within its limits, handing content off to peers before deleting it |
 
-**For now, `node::Node` makes only the web server.** The other three parts
-are built and tested on their own. `libranet::node` does not yet link
-`libranet::peer`, and nothing makes a `stats::Recorder` or an
-`eviction::Evictor` but their tests.
+The node also makes a `peer::Fetch`, before the web server, which asks it
+whether a search for content is held off, and which the seeker runs; and a
+`peer::HandOff`, through which the evictor hands content off.
 
 ```mermaid
 flowchart LR
@@ -69,12 +76,12 @@ flowchart LR
     Node --> Store[("storage::Manager<br/>cas/ and incoming/")]
     Node --> Identity["identity::NodeIdentity<br/>node-key.pem"]
     Node --> Web["Web<br/>api::Service"]
-    Node -. "not yet" .-> Stats["Stats<br/>stats::Recorder"]
-    Node -. "not yet" .-> Conn["Connections<br/>peer::Connections"]
-    Node -. "not yet" .-> Evict["Eviction<br/>eviction::Evictor"]
+    Node --> Stats["Stats<br/>stats::Recorder"]
+    Node --> Conn["Connections<br/>peer::Connections"]
+    Node --> Evict["Eviction<br/>eviction::Evictor"]
     Clients(["Clients and peers"]) -- "HTTP" --> Web
     Conn -- "HTTP" --> Peers(["Peers"])
-    Stats --- DB[("SQLite database")]
+    Stats --- DB[("SQLite database<br/>libranet.sqlite3")]
 ```
 
 The parts do not call each other. Each posts what happened as a message on a
@@ -87,7 +94,7 @@ each, who takes it, and why.
 flowchart LR
     Web["Web<br/>api::Service"]
     Stats["Stats<br/>stats::Recorder"]
-    Conn["Connections<br/>peer::Connections<br/>peer::Pusher"]
+    Conn["Connections<br/>peer::Connections<br/>peer::Seeker<br/>peer::Pusher"]
     Evict["Eviction<br/>eviction::Evictor"]
     Web -- "data.requested<br/>data.not_found<br/>data.search_requested<br/>data.stored<br/>nodes.received" --> Stats
     Stats -- "nodes.updated<br/>seek.updated" --> Web
@@ -95,14 +102,16 @@ flowchart LR
     Stats -- "nodes.updated<br/>candidates.updated<br/>seek.updated" --> Conn
     Evict -- "data.deleted<br/>eviction.candidates_requested" --> Stats
     Stats -- "eviction.candidates" --> Evict
-    Web -- "data.stored" --> Conn
+    Web -- "data.not_found<br/>data.search_requested<br/>data.stored" --> Conn
+    Conn -- "data.search_answered" --> Web
     Web -- "data.stored" --> Evict
     Conn -- "data.stored" --> Evict
 ```
 
 Left out above: `data.stored` from Connections to its own `peer::Pusher`;
-`data.search_answered` and `peers.connected`, which no part takes yet; and
-the timers' ticks, which each part posts to itself.
+`data.search_answered` from the web server's `api::SearchHandler` to its
+`api::Service`; `peers.connected`, which no part takes yet; and the timers'
+ticks, which each part posts to itself.
 
 ## 3. Where to Find Things
 
@@ -130,10 +139,15 @@ What makes a thing easy to find:
   `src/`, as `#include "storage/Identifier.hpp"`. Small types that only one
   class uses are nested in it, as its `Settings`, its `Limits`, and the
   messages it posts or takes.
-- **Most code is in the header**, below the class. A `.cpp` file holds what
+- **Some libraries are mostly headers, and some mostly `.cpp` files.** In
+  `types/`, `http/`, `crypto/`, `storage/`, `protocol/`, `io/`, and `msg/`,
+  most code is in the header, below the class, and a `.cpp` file holds what
   a header must not: code that includes a platform's or another library's
   headers, such as sockets, OpenSSL, SQLite, zlib, or yaml-cpp; static data;
-  and the factory that picks an implementation for the platform.
+  and the factory that picks an implementation for the platform. Each class
+  of the parts and of `node/`, and many of the rest, has a `.cpp` file of
+  its own, whose anonymous namespace holds the steps of its methods, so that
+  its header holds little more than the class.
 - **An interface is named `I…`**, as `storage::IDataSource` and
   `net::ISocket`, and makes its implementations with static factories, as
   `crypto::ISignKey::Ed25519()` and `net::ISocket::connect()`. An
@@ -145,8 +159,7 @@ What makes a thing easy to find:
 - **A message is a struct with a `static constexpr auto name`**, in the
   header of the class that posts or takes it: `storage/` for those about
   content, as `storage::DataStored`, and `stats::Recorder`,
-  `eviction::Evictor`, `peer::Connections`, and `peer::PeerSearch` for the
-  rest.
+  `eviction::Evictor`, and `peer::Connections` for the rest.
 
 ### 3.2 The Libraries
 
@@ -154,7 +167,7 @@ From those every other library uses, to the node itself:
 
 | Library | Holds | Main classes |
 | --- | --- | --- |
-| [`types/`](../src/types/) | Values every library uses | `Json`, `Integer` (of any size), `BlockingQueue<Type>`, `Converter` (text, bytes, and hex), and `Constants.hpp` (`Kilobyte`, `Megabyte`, `Gigabyte`) |
+| [`types/`](../src/types/) | Values every library uses | `Json`, `Integer` (of any size), `BlockingQueue<Type>`, `Converter` (text, bytes, and hex), and `Constants.hpp`: sizes, as `Megabyte`; the bits of bytes and hex digits; the HTTP API's paths, `X-Search-Relays`, and media types; and the limits on what is decompressed |
 | [`net/`](../src/net/) | Addresses and sockets, on POSIX systems | `Address`, `IpAddress`, `ISocket`, `SocketPosix` |
 | [`crypto/`](../src/crypto/) | Hashing, signing, encrypting, and password hashing, with OpenSSL, and on macOS with Apple's frameworks where they serve | `IHasher`, `ISignKey`, `IEncryptKey`, `IMultiKey`, `IPasswordHasher`, and their implementations; `Base64`, `Pem`, `RsaDer` |
 | [`logger/`](../src/logger/) | The log: lines at levels, from any thread, to stderr, stdout, a file, or the system log | `Logger` and its macros, `lInfo`, `lWarn`, and so on; `ILogOutput`, `ILogFormatter` |
@@ -169,7 +182,7 @@ From those every other library uses, to the node itself:
 | [`api/`](../src/api/) | What the web server serves, beneath `/data` | `Service`, `SignatureGuard`, `DataHandler`, `NodesHandler`, `SeekHandler`, `SearchHandler` |
 | [`eviction/`](../src/eviction/) | Keeping storage within its limits | `Evictor`, `Scorer` |
 | [`stats/`](../src/stats/) | What the node remembers of the network, in SQLite | `Recorder`, `NodeAddresses`, `ContentUses`, `Sought` |
-| [`peer/`](../src/peer/) | The node's outgoing connections, and all it does over them | `Connections`, `DialPlan`, `Buckets`, `FirstContact`, `NodeListPublisher`, `SeekFulfiller`, `PeerSession`, `PeerConnection`, `Fetch`, `PeerSearch`, `Pusher`, `HandOff` |
+| [`peer/`](../src/peer/) | The node's outgoing connections, and all it does over them | `Connections`, `DialPlan`, `Buckets`, `FirstContact`, `NodeListPublisher`, `SeekFulfiller`, `PeerSession`, `PeerConnection`, `Seeker`, `Fetch`, `PeerSearch`, `Pusher`, `HandOff` |
 | [`node/`](../src/node/) | The node, which makes the rest, and its settings file | `Node`, `SettingsFile` |
 
 ### 3.3 Where to Look
@@ -187,9 +200,10 @@ From those every other library uses, to the node itself:
 | The bodies nodes exchange | `protocol/NodeList`, `protocol/SeekList`, `protocol/SearchResults` |
 | A message: what it holds, who posts it, who takes it | [Messages](Messages.md), then the header that declares it |
 | The tables in the database | The `schema` of `stats/NodeAddresses`, `stats/ContentUses`, and `stats/Sought` |
-| Which nodes are dialed, and when | `peer/DialPlan` and `peer/Buckets`; `peer/Connections` dials them |
-| What happens at first contact with a peer | `peer/FirstContact`, with `peer/SeekFulfiller` |
-| Fetching, searching, pushing, and handing off content | `peer/Fetch`, `peer/PeerSearch`, `peer/Pusher`, and `peer/HandOff` |
+| The HTTP API's paths, headers, and media types, and the limits on what is decompressed | `types/Constants.hpp` |
+| Which nodes are dialed, and when | `peer/DialPlan` and `peer/Buckets`; `peer/Connections` dials them, and the seeds while it knows no other |
+| What happens at first contact with a peer | `peer/FirstContact`, with `peer/SeekFulfiller`, which `peer/Connections` also has read each peer's seek list again |
+| Fetching, searching, pushing, and handing off content | `peer/Seeker`, which runs `peer/Fetch` and `peer/PeerSearch`; `peer/Pusher`; and `peer/HandOff` |
 | What is evicted first, and when | `eviction/Scorer` for the order, `eviction/Evictor` for when |
 | The code built on OpenSSL, Apple's frameworks, SQLite, zlib, or yaml-cpp | `crypto/*OpenSsl*` and `crypto/OpenSsl.hpp`; `crypto/*Macos*`, `crypto/CFObject.hpp`, and `crypto/CFBytes.hpp`; `db/`; `storage/Zlib.cpp`; `node/SettingsFile.cpp` |
 | The fuzzer of a parser | The library's `fuzz/`; the [README](../README.md#fuzzing) lists them |
@@ -200,15 +214,15 @@ From those every other library uses, to the node itself:
 
 Each arrow points from a library to one it uses. Arrows that follow from
 others are left out: `api` uses `storage` too, through `web` and `identity`.
-§4.2 lists every library each uses directly. The parts of §2, and `node`,
-are drawn with a heavy border; `peer`, drawn dashed, is not yet linked into
-the node.
+§4.2 lists every library each uses directly. The libraries of the parts of
+§2, and `node`, are drawn with a heavy border.
 
 ```mermaid
 flowchart TD
     libranet(["libranet<br/>main.cpp"])
     libranet --> node
     node --> api
+    node --> peer
     api --> identity
     api --> stats
     api --> web
@@ -227,26 +241,25 @@ flowchart TD
     protocol --> storage
     http --> crypto
     http --> io
-    http --> types
     storage --> crypto
     storage --> io
     storage --> logger
-    storage --> types
     msg --> types
     io --> net
+    net --> types
+    crypto --> types
 
     classDef part stroke-width:3px
-    classDef unlinked stroke-width:3px,stroke-dasharray: 5 5
-    class node,api,stats,eviction part
-    class peer unlinked
+    class node,api,stats,eviction,peer part
 ```
 
 There are no cycles: no library uses one that uses it. The libraries fall
 in three layers, each using only those in its own layer or below:
 
 - **Foundations**: `types`, `net`, `crypto`, `logger`, `db`, `msg`, and
-  `io`. They use no other library of the node's, but for `msg`, which uses
-  `types`, and `io`, which uses `net`. Each is of use to any program.
+  `io`. They use no other library of the node's, but for `types`, which
+  `net`, `crypto`, `msg`, and `io` use, and `net`, which `io` uses. Each is
+  of use to any program.
 - **Building blocks**: `http`, `storage`, `identity`, `protocol`, and
   `web`. They are what nodes say to each other, and how: HTTP, content and
   its ids, signatures, and the bodies of the protocol. Each knows the
@@ -258,43 +271,43 @@ in three layers, each using only those in its own layer or below:
 ### 4.2 Every Library Each Uses
 
 What each library's code includes, tests and fuzzers aside, and what it is
-built on from outside. Each `CMakeLists.txt` links the libraries its
-headers name `PUBLIC`, so a library may include a header of one it reaches
-only through another, as `node` does `net`'s.
+built on from outside. Each `CMakeLists.txt` links these libraries
+`PUBLIC`, or `INTERFACE` in `types` and `http`, which are headers alone;
+and what it is built on `PRIVATE` where only its `.cpp` files include it,
+as `db` does SQLite, `storage` zlib, and `node` yaml-cpp.
 
 | Library | Uses | Built on |
 | --- | --- | --- |
 | `types` | — | Threads |
-| `net` | — | POSIX sockets |
-| `crypto` | — | OpenSSL 3.2 or newer; on macOS, CoreFoundation and Security |
+| `net` | `types` | POSIX sockets |
+| `crypto` | `types` | OpenSSL 3.2 or newer; on macOS, CoreFoundation and Security |
 | `logger` | — | Threads; syslog |
 | `db` | — | SQLite |
 | `msg` | `types` | Threads |
-| `io` | `net` | — |
+| `io` | `net`, `types` | — |
 | `http` | `crypto`, `io`, `types` | — |
 | `storage` | `crypto`, `io`, `logger`, `types` | zlib |
-| `web` | `http`, `io`, `net`, `storage`, `types` | Threads |
-| `web` | `http`, `io`, `logger`, `net`, `storage` | Threads |
+| `web` | `http`, `io`, `logger`, `net`, `storage`, `types` | Threads |
 | `identity` | `crypto`, `http`, `io`, `logger`, `storage`, `types` | — |
 | `protocol` | `http`, `logger`, `net`, `storage`, `types` | — |
 | `eviction` | `logger`, `msg`, `storage`, `types` | Threads |
 | `stats` | `db`, `eviction`, `logger`, `msg`, `protocol`, `storage` | — |
 | `api` | `http`, `identity`, `logger`, `msg`, `net`, `protocol`, `stats`, `storage`, `types`, `web` | — |
 | `peer` | `http`, `identity`, `io`, `logger`, `msg`, `net`, `protocol`, `stats`, `storage`, `types` | Threads |
-| `node` | `api`, `identity`, `io`, `logger`, `net`, `storage` | yaml-cpp |
+| `node` | `api`, `eviction`, `http`, `identity`, `io`, `logger`, `net`, `peer`, `protocol`, `stats`, `storage`, `types` | yaml-cpp; POSIX signals |
 | `libranet` | `node` | — |
 
 The tests are built on GoogleTest, and the fuzzers on libFuzzer. Conan
 provides OpenSSL, SQLite, zlib, yaml-cpp, and GoogleTest
 ([`conanfile.py`](../conanfile.py)).
 
-`storage`'s `CMakeLists.txt` links `http` as well, though its code includes
-no header of it.
-
 ### 4.3 Why Some Arrows Are There
 
 Most arrows are what they seem. These are less plain:
 
+- **`net`, `crypto`, and `io` use `types`** for `types/Constants.hpp`
+  alone: the bits in a byte and in a hex digit, the hex digits, and how
+  much is read at a time.
 - **`http` uses `crypto`** for `crypto::Base64`, in which
   `http::StructuredField` reads and writes byte sequences; and **`io`** for
   `http::Response::read()`, which reads an answer through an
@@ -309,23 +322,29 @@ Most arrows are what they seem. These are less plain:
 - **`api` and `peer` use `stats`** for the messages `stats::Recorder` posts
   and takes, which are declared in `stats/Recorder.hpp`:
   `api::Service` takes `nodes.updated` and `seek.updated`, and
-  `api::SearchHandler` posts `data.search_requested`. `peer::DialPlan` also
-  takes `stats::NodeAddresses::Candidate`s.
+  `api::SearchHandler` posts `data.search_requested`, which `peer::Seeker`
+  takes. `peer::DialPlan` also takes `stats::NodeAddresses::Candidate`s.
 - **`stats` uses `eviction`** to answer `eviction::Evictor`'s
   `CandidatesRequested`, ranking what is held with `eviction::Scorer`.
+- **`node` uses every part's library**, as it makes each part, and binds
+  the functions below.
 
 And some arrows are missing on purpose. A class that must ask something of
 a library above it, or beside it, is given a function in its place, which
-whoever makes it binds:
+`node::Node` binds:
 
-- `eviction::Evictor::Peers` hands an object off, as `peer::HandOff` does,
-  and names the nodes connected; so `eviction` does not use `peer`.
-- `api::DataHandler::IsHeldOff` says whether a search for content is held
-  off, as `peer::Fetch::is_held_off()` does; so `api` does not use `peer`.
-- `peer::Fetch`, `peer::HandOff`, and `peer::Pusher` each take a `GetPeers`,
-  giving the sessions connected now, as `peer::Connections` has them.
+- `eviction::Evictor::Peers` hands an object off, and names the nodes
+  connected: the node binds them to `peer::HandOff::hand_off()` and
+  `peer::Connections::connected_ids()`; so `eviction` does not use `peer`.
+- `api::DataHandler::IsHeldOff`, given in `api::Service::Settings`, says
+  whether a search for content is held off: the node binds it to
+  `peer::Fetch::is_held_off()`; so `api` does not use `peer`.
+- `peer::Fetch`, `peer::HandOff`, `peer::Pusher`, and `peer::Seeker` each
+  take a `GetPeers`, giving the sessions connected now: the node binds each
+  to `peer::Connections::open_sessions()`, so that none of them needs the
+  connections.
 - `storage::SearchAnswers::Held` gives what the store holds that begins with
-  a prefix.
+  a prefix: `api::Service` binds it to the store's `starting_with()`.
 
 ## 5. Class Diagrams
 
@@ -346,18 +365,19 @@ most nested types and every message but a few.
 
 ### 5.1 The Node and the Web Server
 
-`node`, `api`, and `web`. `api::Service` owns a `web::Server`, and registers
-each handler with it behind its `api::SignatureGuard`, which checks the
-signature on each request before the handler sees it, and signs each answer
-as the node. The server calls the handler on the thread serving the
-connection, with the `web::ConnectionInfo` it made for it.
+`node`, `api`, and `web`. `node::Node` owns each part, and what they share.
+`api::Service` owns a `web::Server`, and registers each handler with it
+behind its `api::SignatureGuard`, which checks the signature on each request
+before the handler sees it, and signs each answer as the node. The server
+calls the handler on the thread serving the connection, with the
+`web::ConnectionInfo` it made for it.
 
 ```mermaid
 classDiagram
     direction TB
     namespace node {
         class Node {
-            +run(SettingsFile)$
+            +run(SettingsFile, seeds)$
             +local_address() Address
         }
         class SettingsFile {
@@ -370,6 +390,7 @@ classDiagram
     namespace api {
         class Service {
             +local_address() Address
+            +own_endpoints() strings
         }
         class SignatureGuard {
             +in_front_of(Handler) Handler
@@ -412,11 +433,33 @@ classDiagram
             <<interface>>
         }
     }
+    namespace peer {
+        class Fetch {
+            +is_held_off(Identifier) bool
+        }
+        class Connections
+        class Seeker
+        class Pusher
+        class HandOff
+    }
+    namespace eviction {
+        class Evictor
+    }
+    namespace stats {
+        class Recorder
+    }
 
     Node ..> SettingsFile : reads
     Node o-- Manager : makes, shares
     Node *-- NodeIdentity
+    Node *-- Fetch
     Node *-- Service
+    Node *-- Connections
+    Node *-- Seeker
+    Node *-- Pusher
+    Node *-- HandOff
+    Node *-- Evictor
+    Node *-- Recorder : made last
     IDataSource <|.. Manager
     Service *-- SignatureGuard
     Service *-- DataHandler
@@ -424,11 +467,13 @@ classDiagram
     Service *-- SeekHandler
     Service *-- SearchHandler
     Service *-- Server
-    Service *-- AsyncChannel : keeps the lists
+    Service *-- AsyncChannel : keeps the lists, and what peers name
+    Service o-- SearchAnswers : adds what peers name to
     SignatureGuard *-- MessageVerifier
     SignatureGuard *-- MessageSigner
     MessageSigner --> NodeIdentity : signs as
     DataHandler o-- IDataSource
+    DataHandler ..> Fetch : asks, as the node binds it
     SearchHandler o-- SearchAnswers
     Server *-- ISocket : listens on
     Server ..> ConnectionInfo : one per connection
@@ -463,7 +508,9 @@ classDiagram
         }
         class DataDir
         class Identifier {
-            +from(text)$ Identifier
+            +parse(text)$ Identifier
+            +of(content)$ Identifier
+            +from_json(value)$ optional~Identifier~
             +to_string() string
             +content_of(body, limit) optional~Data~
         }
@@ -498,19 +545,19 @@ classDiagram
     namespace protocol {
         class NodeList {
             +parse(text)$ NodeList
-            +from_body(body)$ NodeList
+            +from_body(body, limit)$ NodeList
             +add(endpoint, node_id)
             +resolved(source_address) NodeList
             +body(limit) Data
         }
         class SeekList {
-            +read(body, limit)$ SeekList
+            +from_body(body, limit)$ SeekList
             +data() Identifiers
             +search() HashPrefixes
-            +write(limit) Data
+            +body(limit) Data
         }
         class SearchResults {
-            +parse(body, limit)$ SearchResults
+            +from_body(body, limit)$ SearchResults
             +results() Identifiers
             +answer(Response)
         }
@@ -712,14 +759,18 @@ over a new `peer::PeerConnection` (`peer::FirstContact`), which gives a
 `peer::PeerSession` once the node has proved its id. A session signs each
 request, and checks each answer, over a connection that sends requests
 without waiting for each answer. `Connections` takes its messages on an
-`msg::AsyncChannel`, with a `msg::Timer` for its checks; `FirstContact` and
-`SeekFulfiller` share the store.
+`msg::AsyncChannel`, with a `msg::Timer` for its checks, at each of which it
+has the `peer::SeekFulfiller` it shares with `FirstContact` read again the
+seek lists that are due; `FirstContact` and `SeekFulfiller` share the store.
 
 ```mermaid
 classDiagram
     direction TB
     namespace peer {
-        class Connections
+        class Connections {
+            +open_sessions() sessions
+            +connected_ids() Identifiers
+        }
         class DialPlan {
             +to_dial(candidates, connected) Candidates
             +rest_failed(node_id)
@@ -766,6 +817,7 @@ classDiagram
     Connections *-- DialPlan
     Connections *-- FirstContact
     Connections *-- NodeListPublisher
+    Connections o-- SeekFulfiller : refreshes with
     Connections o-- "*" PeerSession : peers connected
     Connections ..> PeerConnection : makes, to dial
     DialPlan *-- Buckets
@@ -782,18 +834,23 @@ classDiagram
 ```
 
 The rest of `peer` does its work over the sessions connected: `Fetch`,
-`HandOff`, and `Pusher` are each given a function that gives them
+`HandOff`, `Pusher`, and `Seeker` are each given a function that gives them
 (`GetPeers`), and `PeerSearch` is given them for each pass. `Fetch`,
-`PeerSearch`, and `HandOff` run on the threads that call them; `Pusher`
-takes `data.stored` on a `msg::AsyncChannel` of its own.
+`PeerSearch`, and `HandOff` run on the threads that call them. `Seeker`
+takes `data.not_found` and `data.search_requested` on a `msg::AsyncChannel`
+of its own, with a `msg::Timer` for the passes that come due, and runs each
+fetch, and each making of passes, on a thread of its own. `Pusher` takes
+`data.stored` on a `msg::AsyncChannel` of its own.
 
 ```mermaid
 classDiagram
     direction TB
     namespace peer {
+        class Seeker
         class Fetch {
             +fetch(Identifier) Outcome
             +is_held_off(Identifier) bool
+            +stop()
         }
         class PeerSearch {
             +start(HashPrefix, asker) bool
@@ -813,6 +870,8 @@ classDiagram
         }
     }
 
+    Seeker --> Fetch : fetches with
+    Seeker *-- PeerSearch
     Fetch ..> PeerSession : asks
     PeerSearch ..> PeerSession : asks
     HandOff ..> PeerSession : puts to
@@ -898,7 +957,7 @@ classDiagram
 `eviction`. `eviction::Evictor` asks `stats::Recorder`, by message, what to
 let go of first, and the recorder ranks what is held with
 `eviction::Scorer`. The evictor hands each object off through the functions
-it is given (`Evictor::Peers`), which are to be bound to `peer::HandOff`
+it is given (`Evictor::Peers`), which `node::Node` binds to `peer::HandOff`
 and `peer::Connections`, and deletes it from the store once a peer took it.
 
 ```mermaid
@@ -943,7 +1002,7 @@ classDiagram
     Recorder ..> Candidates : posts
     Evictor ..> Candidates : takes
     Recorder ..> Scorer : ranks with
-    Peers ..> HandOff : to be bound to
+    Peers ..> HandOff : bound to
 ```
 
 ### 5.8 Messages and Threads
@@ -1083,7 +1142,7 @@ classDiagram
         }
         class Response {
             +read(reader, limits)$ optional~Response~
-            +status() ResponseCode
+            +code() ResponseCode
             +headers() Headers
             +body() string
         }
@@ -1196,11 +1255,17 @@ sequenceDiagram
     Handler->>Store: get(identifier)
     Store-->>Handler: the body, if held
     Handler->>Channel: post data.requested
-    Handler-->>Guard: 200 and the body, or 503 and data.not_found
+    Handler-->>Guard: 200 and the body, or 503 and data.not_found, or 404 while a search is held off
     Guard->>Signer: sign(response)
     Guard-->>Server: the response
     Server-->>Client: the response, with X-Request-Path
 ```
+
+A `503` tells the client when to ask again. Meanwhile `stats::Recorder`
+adds the content to the seek list, and `peer::Seeker` fetches it from the
+peers (`peer::Fetch`), each on taking `data.not_found`, so that the next
+`GET` may find it held. Whether a search is held off, the handler asks of
+`peer::Fetch::is_held_off()`, as the node binds it.
 
 A `PUT` goes the same way to `DataHandler`, which checks the body against
 its id (`storage::Identifier::content_of()`), puts it in the store, and posts
@@ -1244,9 +1309,13 @@ sequenceDiagram
     end
 ```
 
+While the candidates name no node, as when the database is new,
+`Connections` dials the seeds in their place, each endpoint on a thread of
+its own, expecting the node id the seed names, if it names one, and rests
+each endpoint for `peers.retry_delay_seconds` whatever came of it.
+
 [Handshake Protocol §3](../../docs/specs/HandshakeProtocol.md) gives the
-steps of first contact; `peer/FirstContact.hpp` says how the code takes
-each.
+steps of first contact; `peer/FirstContact.cpp` takes each.
 
 ## 7. Patterns Used Throughout
 
@@ -1257,10 +1326,10 @@ each.
   and the registry of channels.
 - **A class that starts threads owns them**, and stops and joins them as it
   goes: a `msg::AsyncChannel`, a `msg::Timer`, a `web::Server`, a
-  `peer::PeerConnection`'s sender and reader, and the jobs `peer::Connections`
-  and `eviction::Evictor` start. Such a class is neither copied nor moved,
-  and declares its threads last, so that they stop first, before what they
-  use goes.
+  `peer::PeerConnection`'s sender and reader, and the jobs
+  `peer::Connections`, `peer::Seeker`, and `eviction::Evictor` start. Such a
+  class is neither copied nor moved, and declares its threads last, so that
+  they stop first, before what they use goes.
 - **Time is a function.** A class that needs the time takes a
   `ClockFunction`, `&Clock::now` by default, so that a test can set it.
 - **A function stands in for a library above.** As §4.3 says, a class that
@@ -1268,10 +1337,13 @@ each.
   call in its place.
 - **Settings are a struct of the class's own**, as
   `eviction::Evictor::Settings`, with the defaults the Python node has, as
-  `default_…` constants.
+  `default_…` constants. `node::Node` reads each from the settings file, by
+  the Python node's name, and checks it as the Python node does, before it
+  makes anything.
 - **A message is a plain struct**, with its `name` and an
   `explicit operator std::string() const` for the log, posted with
   `msg::Channel::post()` and read with `msg::value_of<Type>()`.
-- **A parser is a static method**, `parse()`, `read()`, or `from_body()`,
-  that refuses what it cannot read with `std::invalid_argument`, or an empty
+- **A parser is a static method**: `parse()` for text, `from_body()` for
+  what a node sends, which may be compressed, or `read()` from a reader. It
+  refuses what it cannot read with `std::invalid_argument`, or an empty
   `std::optional`, and has a fuzzer.
