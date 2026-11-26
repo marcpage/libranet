@@ -294,6 +294,8 @@ TEST_F(CredentialTest, AFileFarLargerThanAHashIsRefused) {
 TEST_F(CredentialTest, OfRequestsRacingToCaptureOneWins) {
     vector<string> given;
 
+    given.reserve(racers);
+
     for (std::size_t index = 0; index < racers; ++index) {
         given.push_back("user" + std::to_string(index) + ":password");
     }
