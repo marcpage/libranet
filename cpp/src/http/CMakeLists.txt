@@ -5,6 +5,7 @@ target_link_libraries(libranet_http INTERFACE libranet::crypto libranet::io libr
 
 if(BUILD_TESTING)
     add_executable(http_tests
+        tests/TestBasicCredentials.cpp
         tests/TestHeaders.cpp
         tests/TestProblem.cpp
         tests/TestQuery.cpp
@@ -19,6 +20,7 @@ if(BUILD_TESTING)
 endif()
 
 if(LIBRANET_FUZZERS)
+    libranet_add_fuzzer(basic_credentials_fuzzer fuzz/FuzzBasicCredentials.cpp libranet::http)
     libranet_add_fuzzer(headers_fuzzer fuzz/FuzzHeaders.cpp libranet::http)
     libranet_add_fuzzer(query_fuzzer fuzz/FuzzQuery.cpp libranet::http)
     libranet_add_fuzzer(request_fuzzer fuzz/FuzzRequest.cpp libranet::http)
