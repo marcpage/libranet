@@ -34,7 +34,7 @@ and can be built alongside any phase.
 
 ## 2. What It Adds
 
-Twelve steps, the first ten built:
+Twelve steps, the first eleven built:
 
 - **Importing a file encrypted.** The node's one change. Step 160.
 - **The photos application, and its albums.** Step 161.
@@ -1532,9 +1532,9 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 170 — Sharing an Album
+## Step 170 — Sharing an Album ✅
 
-**Issue:** to be made (§4), from #477. **Depends on:** Step 162; Music App
+**Issue:** #678, from #477. **Depends on:** Step 162; Music App
 Step 152.
 
 Settled with the user:
@@ -1579,6 +1579,85 @@ apart; the shared bundle holding no `source` and no version before it; the
 album imported, changed, and the sharer's unchanged; and a playlist, a
 collection, and a series refused by Import a shared album, and an album by
 the movie, TV, and music pages.
+
+Built, in one change set, the page alone, on Step 169's. It was checked on
+a node of its own in headless Chromium, signed in as two people, with
+photos made for the purpose and kept out of the repository, imported as
+Step 162 imports them. By the first: an album of three photos, renamed, and
+shared, Share showing its id, carrying its key, with Copy, which copied it;
+the bundle shared holding `album.json`, `{"name": "Trip", "cover", "count":
+3}`, the album's `photos/` whole, and `index/` with no `source`, where the
+album's own holds it, and naming no version or extension, where the album's
+own names one; the album shared again, unchanged, given the same id; and an
+album holding no photos showing no Share. By the other: what is not an id
+refused; a playlist, a collection of movies, a series, a song, a movie, and
+an episode, each made for the purpose as its application shares it,
+refused, each said to be what it is, and a bundle of none of these said to
+be no shared album; the album imported by a link reading into it, listed
+under its name, naming the bundle shared, with its cover, and opened, its
+three photos in its grid, and shown in the viewer; imported again, its name
+held, asked to be named apart, `Trip (2)` suggested, a name held in another
+case asked about again, and imported under a name of its own; both read
+again after a reload; a photo of one removed, and a photo of the other
+given a title, each then a bundle of that person's own, the sharer's album,
+and the bundle shared, staying as they were; that album shared again, its
+title going with it; and the movie, TV, and music pages' Add by id, and
+their Import a collection, Import a series, and Import a playlist, each
+refusing the album. A bundle shared larger than one request takes was
+checked by having the page make one with three files of 1.2 MB each: made
+in three requests, each within 4 MiB, it held them all, and named no
+version. The dialogs were seen at a phone's width. Safari is yet to be
+checked.
+
+Calls made while building it, not yet reviewed:
+
+- **Share is an icon**, after Play, shown for any album holding photos, as
+  Play is, since sharing changes nothing of the album. An album holding no
+  photos, as its index is read whole, is not shared, and the page says so.
+- **Import a shared album is an icon** in the upper right corner, after
+  Import, a circle with a plus, as Add by id is in the other applications,
+  shown while the albums can be changed.
+- **The cover.** The cover shared is the album's, or, if the album holds
+  that photo no longer, its first with a thumbnail, as the grid shows them.
+  The album imported takes the cover `album.json` names, if its index holds
+  that photo, or else its first with a thumbnail.
+- **Read whole.** Share reads the album's index whole, and Import a shared
+  album the index of the bundle given, as a copy reads an album, so that
+  one part of which cannot be read is neither shared nor imported. The
+  count imported is how many the index lists.
+- **Versioning nothing, whatever its size.** The bundle shared is made with
+  no base. If what it holds is more than one request takes, as the index of
+  a large album is, its files are first made bundles of their own, each with
+  no base and within what the node takes, and copied from them, so that it
+  still names no bundle before it.
+- **One id for an album shared twice**, unchanged, since what it holds is
+  encrypted by its bytes.
+- **Naming apart** suggests the name held followed by the first number, in
+  brackets, of no album held, as `Trip (2)`, as importing a playlist does.
+  A name given that is held too is asked about again.
+- **What each is refused as.** A bundle holding no `album.json` is said to
+  be a playlist, by a `playlist.json` listing songs; a collection of movies,
+  by a `playlist.json` ordering movies; a series, by a `series.json`; a
+  song, by an `info.json` naming audio; an episode, by an `info.json`
+  naming a video and giving a season; and a movie, by one giving none. Each
+  is said to be taken in the application it is of. Any other is said to be
+  no shared album.
+- **The movie, TV, and music pages are not changed.** Each refuses an album
+  already, which holds none of the `info.json`, `playlist.json`, and
+  `series.json` they read, though none says that it is an album.
+- **Once imported**, the album is opened, and the page says how many photos
+  it holds.
+- **`album.json` stays in an album imported**, since nothing is copied.
+  Nothing reads it there, and the name it gives is the one shared.
+
+**Open questions:**
+
+- **Whether the movie, TV, and music pages should say an album is one**,
+  rather than only that it is not theirs, as the photos page says what each
+  of theirs is.
+- **An album imported twice**, under two names, names one bundle twice
+  until either is changed. Whether importing an album held already, by its
+  bundle, should say so.
 
 ---
 
@@ -1630,7 +1709,7 @@ and this table then given their numbers.
 | #675 | Step 167 — Copying, Moving, and Removing Photos | 167 |
 | #676 | Step 168 — Editing a Photo's Details | 168 |
 | #677 | Step 169 — Slideshow | 169 |
-| *to be made* | Step 170 — Sharing an Album | 170 |
+| #678 | Step 170 — Sharing an Album | 170 |
 | *to be made* | Step 171 — Playing a Live Photo | 171 |
 
 ## 5. Suggested Build Order
