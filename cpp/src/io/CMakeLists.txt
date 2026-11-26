@@ -9,6 +9,7 @@ target_link_libraries(libranet_io PUBLIC libranet::net libranet::types)
 if(BUILD_TESTING)
     add_executable(io_tests
         tests/TestBufferedReader.cpp
+        tests/TestDirectories.cpp
         tests/TestMeteredReader.cpp
         tests/TestSafeWriteFile.cpp
         tests/TestSocketReader.cpp
