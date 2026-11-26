@@ -54,6 +54,7 @@ using protocol::SeekList;
 using stats::Recorder;
 using std::any_of;
 using std::exception;
+using std::find_if;
 using std::function;
 using std::future;
 using std::future_status;
@@ -76,6 +77,9 @@ using ConnectionFailed = Recorder::ConnectionFailed;
 using ConnectionOpened = Recorder::ConnectionOpened;
 using NodesUpdated = Recorder::NodesUpdated;
 using SeekUpdated = Recorder::SeekUpdated;
+using AddressDialed = Connections::AddressDialed;
+using DialRequested = Connections::DialRequested;
+using Outcome = AddressDialed::Outcome;
 
 // The thread takes these events, which stats::Recorder posts from another
 // file, so nothing here would make their messages' virtual to_string(),
@@ -83,6 +87,8 @@ using SeekUpdated = Recorder::SeekUpdated;
 template class msg::Message<CandidatesUpdated>;
 template class msg::Message<NodesUpdated>;
 template class msg::Message<SeekUpdated>;
+// And this, which config::ConnectHandler posts.
+template class msg::Message<DialRequested>;
 
 namespace {
 
@@ -112,6 +118,10 @@ Address address_of(const string& endpoint) {
     return {url->host(), *port};
 }
 
+// Why a dial asked for reaches no node while connections are stopping,
+// even one that answered.
+constexpr auto stopping_detail = "connections are stopping";
+
 // Reports what the thread could not handle.
 void log_error(const string& text) {
     lErr << text;
@@ -123,6 +133,35 @@ namespace peer {
 
 Connections::PeersConnected::operator string() const {
     return to_string(node_ids.size()) + " peers";
+}
+
+Connections::DialRequested::operator string() const {
+    return "dial " + dial_id + " of " + endpoint;
+}
+
+string_view Connections::AddressDialed::outcome_name() const {
+    switch (outcome) {
+        case Outcome::Connected:
+            return "connected";
+        case Outcome::AlreadyConnected:
+            return "already_connected";
+        case Outcome::ThisNode:
+            return "this_node";
+        case Outcome::Unreached:
+            break;
+    }
+
+    return "unreached";
+}
+
+Connections::AddressDialed::operator string() const {
+    auto text = "dial " + dial_id + " " + string(outcome_name());
+
+    if (node_id) {
+        text += " " + node_id->to_string();
+    }
+
+    return detail.empty() ? text : text + ": " + detail;
 }
 
 Connections::Connections(const NodeIdentity& identity, const vector<string>& own_endpoints,
@@ -139,7 +178,13 @@ Connections::Connections(const NodeIdentity& identity, const vector<string>& own
     , m_clock(clock)
     , m_plan(m_own_id, settings.sizes, settings.rests, std::move(clock))
     , m_own_list(m_own_id, own_endpoints)
-    , m_channel({CandidatesUpdated::name, NodesUpdated::name, SeekUpdated::name, check_due},
+    , m_channel({
+                    CandidatesUpdated::name,
+                    NodesUpdated::name,
+                    SeekUpdated::name,
+                    DialRequested::name,
+                    check_due,
+                },
                 [this](const IMessage::Ptr& message) { _handle(message); }, log_error)
     , m_timer(check_due, m_check_interval) {
     const scoped_lock lock(m_mutex);
@@ -188,6 +233,8 @@ void Connections::_handle(const IMessage::Ptr& message) {
     } else if (const auto* const seek = value_of<SeekUpdated>(message)) {
         const scoped_lock lock(m_mutex);
         m_own_seek = seek->seek;
+    } else if (const auto* const request = value_of<DialRequested>(message)) {
+        _take_request(*request);
     } else if (nullptr != value_of<Timer::Tick>(message)) {
         _check_closed();
         _maintain();
@@ -390,6 +437,80 @@ void Connections::_dial_seed(const Seed& seed) {
     _maintain();
 }
 
+// Answers request at once when a node is connected at its endpoint, or
+// when it is stopping, and otherwise dials the endpoint on a thread of its
+// own, outside the peer mix and whatever its rest.
+void Connections::_take_request(const DialRequested& request) {
+    const scoped_lock lock(m_mutex);
+    const auto connected = find_if(m_peers.begin(), m_peers.end(), [&request](const auto& entry) {
+        return entry.second.endpoint == request.endpoint;
+    });
+
+    AddressDialed answer;
+
+    answer.dial_id = request.dial_id;
+
+    if (m_peers.end() != connected) {
+        answer.outcome = Outcome::AlreadyConnected;
+        answer.node_id = connected->second.session->node_id();
+    } else if (m_stopping) {
+        answer.detail = stopping_detail;
+    } else {
+        _start([this, to_dial = request] { _dial_requested(to_dial); });
+        return;
+    }
+
+    Channel::post(AddressDialed::name, std::move(answer));
+}
+
+// Dials the endpoint request names, expecting no node in particular, and
+// posts what came of it. The node reached is taken in, as any node dialed
+// is; an endpoint where none was is not remembered.
+void Connections::_dial_requested(const DialRequested& request) {
+    AddressDialed dialed;
+    optional<FirstContact::Contact> contact;
+
+    dialed.dial_id = request.dial_id;
+
+    try {
+        contact.emplace(_contact(request.endpoint));
+    } catch (const exception& error) {
+        lInfo << "Could not reach" << request.endpoint + ":" << error.what();
+        dialed.detail = error.what();
+        Channel::post(AddressDialed::name, std::move(dialed));
+        return;
+    }
+
+    const auto node_id = contact->session.node_id();
+
+    dialed.outcome =
+        _admit(make_shared<PeerSession>(std::move(contact->session)), request.endpoint);
+
+    if (Outcome::Unreached == dialed.outcome) {
+        dialed.detail = stopping_detail;
+    } else {
+        dialed.node_id = node_id;
+    }
+
+    Channel::post(AddressDialed::name, std::move(dialed));
+}
+
+// Dials endpoint and makes first contact with whichever node proves its
+// identity there. Throws, saying why, when none does.
+FirstContact::Contact Connections::_contact(const string& endpoint) {
+    NodeList own_list;
+    SeekList own_seek;
+
+    {
+        const scoped_lock lock(m_mutex);
+        own_list = m_own_list;
+        own_seek = m_own_seek;
+    }
+
+    return m_first_contact.make(make_unique<PeerConnection>(address_of(endpoint), m_limits),
+                                own_list, own_seek);
+}
+
 // Dials endpoint, expecting the node expected there, or any node where it
 // is none, and makes first contact. Posts what came of it, and takes the
 // node reached in, if it is wanted. Says whether to dial the node's other
@@ -399,17 +520,7 @@ bool Connections::_reach(const string& endpoint, const optional<Identifier>& exp
     optional<FirstContact::Contact> contact;
 
     try {
-        NodeList own_list;
-        SeekList own_seek;
-
-        {
-            const scoped_lock lock(m_mutex);
-            own_list = m_own_list;
-            own_seek = m_own_seek;
-        }
-
-        contact.emplace(m_first_contact.make(
-            make_unique<PeerConnection>(address_of(endpoint), m_limits), own_list, own_seek));
+        contact.emplace(_contact(endpoint));
     } catch (const exception& error) {
         lInfo << "Could not reach" << endpoint + ":" << error.what();
 
@@ -430,7 +541,8 @@ bool Connections::_reach(const string& endpoint, const optional<Identifier>& exp
         was_expected = false;
     }
 
-    const auto admitted = _admit(make_shared<PeerSession>(std::move(contact->session)), endpoint);
+    const auto admitted = Outcome::Connected
+                          == _admit(make_shared<PeerSession>(std::move(contact->session)), endpoint);
 
     return admitted || was_expected;
 }
@@ -438,21 +550,26 @@ bool Connections::_reach(const string& endpoint, const optional<Identifier>& exp
 // Takes session, reached at endpoint, in as a node connected, unless it is
 // this node, is connected already, or this is stopping, when it is closed.
 // A node other than this one proved its identity at endpoint all the same,
-// which is posted. Says whether it was taken in.
-bool Connections::_admit(const shared_ptr<PeerSession>& session, const string& endpoint) {
+// which is posted. Says what came of it: Connected when it was taken in,
+// and Unreached when this is stopping.
+Outcome Connections::_admit(const shared_ptr<PeerSession>& session, const string& endpoint) {
     const auto& node_id = session->node_id();
     const auto node = node_id.to_string();
     const auto is_this_node = node == m_own_id.to_string();
+    auto outcome = Outcome::Connected;
     string_view refusal;
 
     {
         const scoped_lock lock(m_mutex);
 
         if (m_stopping) {
-            refusal = "connections are stopping";
+            outcome = Outcome::Unreached;
+            refusal = stopping_detail;
         } else if (is_this_node) {
+            outcome = Outcome::ThisNode;
             refusal = "it is this node";
         } else if (0 != m_peers.count(node)) {
+            outcome = Outcome::AlreadyConnected;
             refusal = "it is connected already";
         } else {
             m_peers.emplace(node, Peer{session, endpoint});
@@ -467,11 +584,11 @@ bool Connections::_admit(const shared_ptr<PeerSession>& session, const string& e
     if (!refusal.empty()) {
         lInfo << "Closing the connection to" << node << "at" << endpoint + ":" << refusal;
         session->close();
-        return false;
+        return outcome;
     }
 
     lInfo << "Connected to" << node << "at" << endpoint;
-    return true;
+    return outcome;
 }
 
 vector<shared_ptr<PeerSession>> Connections::open_sessions() const {

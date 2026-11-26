@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <future>
 #include <list>
@@ -10,6 +11,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Buckets.hpp"
@@ -33,7 +35,8 @@ namespace peer {
 
 // Owns the outgoing connections, and keeps up the peer mix (High-Level Design
 // §4.6), dialing as the DialPlan says, each dial on a thread of its own. It
-// dials nothing until the first candidates come.
+// dials nothing until the first candidates come, but for an address asked
+// for, which it dials at once, outside the peer mix.
 class Connections {
 public:
     using Candidate = DialPlan::Candidate;
@@ -49,6 +52,38 @@ public:
 
         std::vector<storage::Identifier> node_ids;
 
+        explicit operator std::string() const;
+    };
+
+    // Asks for endpoint to be dialed, whatever its rest; what came of it is
+    // posted as AddressDialed, naming dial_id.
+    struct DialRequested {
+        static constexpr auto name = "address.dial_requested";
+
+        std::string dial_id;
+        std::string endpoint;
+
+        explicit operator std::string() const;
+    };
+
+    struct AddressDialed {
+        static constexpr auto name = "address.dialed";
+
+        enum class Outcome : std::uint8_t {
+            Connected,        // A node proved its id there, and joined the peers
+            AlreadyConnected, // The node there was connected already
+            ThisNode,         // The endpoint is this node's own
+            Unreached,        // No node proved its id there
+        };
+
+        std::string dial_id;
+        Outcome outcome = Outcome::Unreached;
+        std::optional<storage::Identifier> node_id = std::nullopt; // The node reached, if any
+        std::string detail;                                        // Why no node was reached
+
+        // As the Python node names it: connected, already_connected,
+        // this_node, or unreached.
+        [[nodiscard]] std::string_view outcome_name() const;
         explicit operator std::string() const;
     };
 
@@ -140,10 +175,13 @@ private:
     void _start(std::function<void()> job);
     void _dial(const Candidate& candidate);
     void _dial_seed(const Seed& seed);
+    void _take_request(const DialRequested& request);
+    void _dial_requested(const DialRequested& request);
+    [[nodiscard]] FirstContact::Contact _contact(const std::string& endpoint);
     [[nodiscard]] bool _reach(const std::string& endpoint,
                               const std::optional<storage::Identifier>& expected);
-    [[nodiscard]] bool _admit(const std::shared_ptr<PeerSession>& session,
-                              const std::string& endpoint);
+    [[nodiscard]] AddressDialed::Outcome _admit(const std::shared_ptr<PeerSession>& session,
+                                                const std::string& endpoint);
     void _post_connected() const;
     [[nodiscard]] std::vector<std::shared_ptr<PeerSession>> _open() const;
 };
