@@ -65,6 +65,11 @@ constexpr std::string_view node_hash =
 constexpr std::string_view remote_host = "192.0.2.1";
 constexpr Address::Port remote_port = 50'000;
 
+// The address of this machine the connection reached: another set aside for
+// documentation, and the port a node might listen on.
+constexpr std::string_view local_host = "198.51.100.1";
+constexpr Address::Port local_port = 8'080;
+
 // The leading bits a match must share with what is searched for, as
 // storage.search_min_bits is by default, and how long an answer is kept.
 constexpr std::size_t min_bits = 24;
@@ -126,7 +131,7 @@ Request post(std::string uri, std::string body) {
 
 // A connection that carries no node's signature.
 ConnectionInfo anonymous() {
-    return ConnectionInfo(Address(remote_host, remote_port));
+    return ConnectionInfo(Address(remote_host, remote_port), Address(local_host, local_port));
 }
 
 // A connection that carries the signature of the node node_id() names.

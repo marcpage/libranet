@@ -54,6 +54,11 @@ constexpr std::string_view node_hash =
 constexpr std::string_view remote_host = "192.0.2.1";
 constexpr Address::Port remote_port = 50'000;
 
+// The address of this machine the connection reached: another set aside for
+// documentation, and the port a node might listen on.
+constexpr std::string_view local_host = "198.51.100.1";
+constexpr Address::Port local_port = 8'080;
+
 // A list that seeks hello, by identifier and by the prefix of its hash, as
 // it is posted.
 constexpr std::string_view hello_list_text =
@@ -85,7 +90,7 @@ Request post(std::string body) {
 
 // A connection that carries no node's signature.
 ConnectionInfo unsigned_connection() {
-    return ConnectionInfo(Address(remote_host, remote_port));
+    return ConnectionInfo(Address(remote_host, remote_port), Address(local_host, local_port));
 }
 
 // A connection that carries the signature of the node node_hash names.
