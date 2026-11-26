@@ -1,7 +1,9 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <thread>
@@ -12,6 +14,7 @@
 #include "SearchHandler.hpp"
 #include "SeekHandler.hpp"
 #include "SignatureGuard.hpp"
+#include "identity/MessageSigner.hpp"
 #include "identity/MessageVerifier.hpp"
 #include "identity/NodeIdentity.hpp"
 #include "msg/AsyncChannel.hpp"
@@ -71,6 +74,14 @@ public:
     // Those its node list names the node at until it is given another.
     [[nodiscard]] const std::vector<std::string>& own_endpoints() const noexcept;
 
+    // From now on, a GET on this port of a path beneath /config, outside
+    // /config/api, is sent to the same path on port, at the host its Host
+    // header names, and anything else beneath /config is 404, naming where
+    // /config is (HTTP API §2.3). Until then, nothing is served beneath
+    // /config. Any thread may call it. Throws std::invalid_argument for port
+    // 0.
+    void set_config_port(std::uint16_t port);
+
     // Its threads hold this object, so it is neither copied nor moved.
     Service(const Service&) = delete;
     Service& operator=(const Service&) = delete;
@@ -83,6 +94,11 @@ private:
     std::shared_ptr<storage::SearchAnswers> m_answers; // What m_search_handler answers from
     SearchHandler m_search_handler;
     SignatureGuard m_guard; // In front of each of m_server's handlers
+    // Signing what is answered beneath /config, which m_guard is not in
+    // front of.
+    identity::MessageSigner m_signer;
+    // The port /config is served on, 0 until the service is told.
+    std::atomic<std::uint16_t> m_config_port{0};
     web::Server m_server;
     // Mistaken: cppcheck loses the constructors in files `using` the class.
     // cppcheck-suppress uninitMemberVarNoCtor

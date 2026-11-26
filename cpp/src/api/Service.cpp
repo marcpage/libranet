@@ -1,7 +1,11 @@
 #include "Service.hpp"
 
+#include <algorithm>
+#include <cctype>
+#include <cstdint>
 #include <exception>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -11,8 +15,12 @@
 #include "NodesHandler.hpp"
 #include "SeekHandler.hpp"
 #include "SignatureGuard.hpp"
+#include "http/Headers.hpp"
+#include "http/Problem.hpp"
 #include "http/Request.hpp"
 #include "http/Response.hpp"
+#include "http/ResponseCode.hpp"
+#include "http/Url.hpp"
 #include "identity/KnownKeys.hpp"
 #include "identity/MessageSigner.hpp"
 #include "identity/MessageVerifier.hpp"
@@ -33,8 +41,11 @@
 using api::NodesHandler;
 using api::SeekHandler;
 using api::Service;
+using http::Headers;
+using http::Problem;
 using http::Request;
 using http::Response;
+using http::Url;
 using identity::KnownKeys;
 using identity::MessageSigner;
 using identity::MessageVerifier;
@@ -44,6 +55,7 @@ using msg::Message;
 using msg::value_of;
 using net::Address;
 using std::exception;
+using std::invalid_argument;
 using std::make_shared;
 using std::shared_ptr;
 using std::string;
@@ -51,6 +63,7 @@ using std::string_view;
 using std::terminate;
 using std::thread;
 using std::to_string;
+using std::uint16_t;
 using std::vector;
 using storage::HashPrefix;
 using storage::IDataSource;
@@ -74,6 +87,7 @@ namespace {
 
 using NodesUpdated = stats::Recorder::NodesUpdated;
 using SeekUpdated = stats::Recorder::SeekUpdated;
+using Status = http::ResponseCode::Status;
 
 // How many connections may wait to be accepted.
 constexpr int backlog = 128;
@@ -81,6 +95,15 @@ constexpr int backlog = 128;
 // Where the data handler is registered with the server: it takes what is
 // beneath it that the other handlers do not.
 constexpr string_view data_path = "/data";
+
+// Where /config is, which is served on a port of its own, and its endpoints
+// beneath it (HTTP API §2.3).
+constexpr string_view config_path = "/config";
+constexpr string_view config_api_path = "/config/api";
+
+// Where /config is said to be served when a request's Host header names no
+// host: the address /config listens at.
+constexpr string_view config_listen_address = "127.0.0.1";
 
 // The answers to searches of what store holds, kept as settings says.
 // Throws invalid_argument for a ttl that is not more than zero.
@@ -116,6 +139,95 @@ void log_error(const string& text) {
 void register_guarded(Server& server, api::SignatureGuard& guard, string_view path,
                       const Server::RequestHandler& handler) {
     server.register_handler(path, guard.in_front_of(handler));
+}
+
+// The path uri names, percent-decoded, without its query.
+string path_of(string_view uri) {
+    return Url::decode(uri.substr(0, uri.find('?')), Url::EncodeContext::UriComponent);
+}
+
+// Whether uri names /config/api, or what is beneath it.
+bool names_config_api(string_view uri) {
+    const auto path = path_of(uri);
+    const string api(config_api_path);
+
+    return path == api || 0 == path.rfind(api + '/', 0);
+}
+
+// The host request's Host header names, in lower case, without its port or an
+// IPv6 address's brackets. It is empty when the header names none, as when it
+// is not there, or its brackets are not closed.
+string host_named_by(const Request& request) {
+    string authority(Headers::trim_whitespace(request.headers().get("Host", "")));
+
+    std::transform(authority.begin(), authority.end(), authority.begin(), [](char character) {
+        return static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+    });
+
+    if (!authority.empty() && '[' == authority.front()) {
+        const auto closing = authority.find(']');
+
+        return string::npos == closing ? string() : authority.substr(1, closing - 1);
+    }
+
+    return authority.substr(0, authority.find(':'));
+}
+
+// Where request's target is on config_port, at the host its Host header
+// names, or at config_listen_address when it names none.
+string config_location(const Request& request, uint16_t config_port) {
+    auto host = host_named_by(request);
+
+    if (host.empty()) {
+        host = config_listen_address;
+    }
+
+    if (string::npos != host.find(':')) {
+        host = "[" + host + "]";
+    }
+
+    return "http://" + host + ":" + to_string(config_port) + string(request.uri());
+}
+
+// Answers request, for a path beneath /config, on the main port. Once /config
+// is served on config_port, a GET of one of its pages is sent there, so that
+// an address typed or bookmarked before it moved still reaches it, and
+// anything else is told where it is. With config_port 0, nothing is served
+// there. No credential is asked for or looked at: a browser that sent one to
+// this port would send it with every request to it (HTTP API §2.3).
+void answer_moved_config(uint16_t config_port, const Request& request, Response& response) {
+    if (0 == config_port) {
+        Problem(Status::NotFound, "No resource exists at this path.").answer(response);
+        return;
+    }
+
+    const auto location = config_location(request, config_port);
+
+    if ("GET" == request.method() && !names_config_api(request.uri())) {
+        response.set_status_code(Status::Found);
+        response.headers().set("Location", location);
+        return;
+    }
+
+    Problem(Status::NotFound,
+            "/config is served on port " + to_string(config_port) + ", at " + location)
+        .answer(response);
+}
+
+// Signs response with signer as it is sent, as SignatureGuard signs what it
+// stands in front of: an answer to a HEAD goes without its body, so its
+// signature covers none.
+void sign_answer(const MessageSigner& signer, const Request& request, Response& response) {
+    if ("HEAD" != request.method()) {
+        signer.sign(response);
+        return;
+    }
+
+    auto body = string(response.body());
+
+    response.set_body("");
+    signer.sign(response);
+    response.set_body(std::move(body));
 }
 
 // Has the handler that serves the list message carries keep it.
@@ -154,6 +266,7 @@ Service::Service(const Address& address, const IDataSource::Ptr& store,
     , m_search_handler(m_answers, settings.list_bytes)
     , m_guard(MessageVerifier(make_shared<KnownKeys>(store), settings.window),
               MessageSigner(identity), settings.provisional_trust_attempts)
+    , m_signer(identity)
     , m_server(address, limits_of(settings))
     , m_local_address(m_server.local_address())
     , m_own_endpoints(endpoints_at(m_local_address))
@@ -184,6 +297,14 @@ Service::Service(const Address& address, const IDataSource::Ptr& store,
                             ConnectionInfo& connection) {
         m_search_handler(request, response, connection);
     });
+    // Not behind m_guard: anything beneath /config is answered so, whatever
+    // signature it carries, or none.
+    m_server.register_handler(config_path,
+                              [this](const Request& request, Response& response,
+                                     [[maybe_unused]] ConnectionInfo& connection) {
+        answer_moved_config(m_config_port.load(), request, response);
+        sign_answer(m_signer, request, response);
+    });
     m_server_thread = thread([this] {
         serve(m_server);
     });
@@ -209,6 +330,14 @@ const Address& Service::local_address() const noexcept {
 
 const vector<string>& Service::own_endpoints() const noexcept {
     return m_own_endpoints;
+}
+
+void Service::set_config_port(uint16_t port) {
+    if (0 == port) {
+        throw invalid_argument("/config's port must not be 0");
+    }
+
+    m_config_port = port;
 }
 
 } // namespace api
