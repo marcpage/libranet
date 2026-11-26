@@ -1,4 +1,5 @@
 add_library(libranet_protocol STATIC
+    DialRequest.cpp
     NodeList.cpp
 )
 add_library(libranet::protocol ALIAS libranet_protocol)
@@ -13,6 +14,7 @@ target_link_libraries(libranet_protocol PUBLIC
 
 if(BUILD_TESTING)
     add_executable(protocol_tests
+        tests/TestDialRequest.cpp
         tests/TestNodeList.cpp
         tests/TestSearchResults.cpp
         tests/TestSeekList.cpp
@@ -22,6 +24,7 @@ if(BUILD_TESTING)
 endif()
 
 if(LIBRANET_FUZZERS)
+    libranet_add_fuzzer(dial_request_fuzzer fuzz/FuzzDialRequest.cpp libranet::protocol)
     libranet_add_fuzzer(node_list_fuzzer fuzz/FuzzNodeList.cpp libranet::protocol)
     libranet_add_fuzzer(search_results_fuzzer fuzz/FuzzSearchResults.cpp libranet::protocol)
     libranet_add_fuzzer(seek_list_fuzzer fuzz/FuzzSeekList.cpp libranet::protocol)
