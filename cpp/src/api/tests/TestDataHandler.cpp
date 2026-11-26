@@ -70,6 +70,11 @@ constexpr std::string_view node_hash =
 constexpr std::string_view remote_host = "192.0.2.1";
 constexpr Address::Port remote_port = 50'000;
 
+// The address of this machine the connection reached: another set aside for
+// documentation, and the port a node might listen on.
+constexpr std::string_view local_host = "198.51.100.1";
+constexpr Address::Port local_port = 8'080;
+
 // A store that keeps what it is given in memory, by identifier. put() is
 // const in IDataSource, so what it keeps is mutable.
 class MemoryStore : public IDataSource {
@@ -167,7 +172,10 @@ Response answer(const DataHandler& handler, const Request& request,
 // What handler answers request with, on a connection that carries no
 // node's signature.
 Response answer(const DataHandler& handler, const Request& request) {
-    return answer(handler, request, ConnectionInfo(Address(remote_host, remote_port)));
+    const ConnectionInfo connection(Address(remote_host, remote_port),
+                                    Address(local_host, local_port));
+
+    return answer(handler, request, connection);
 }
 
 // The status handler answers request with.
@@ -487,7 +495,7 @@ TEST(DataHandlerTest, PutStoresCompressedContentAsReceived) {
 // connection carries.
 TEST(DataHandlerTest, PutNamesTheNodeItCameFrom) {
     const DataHandler handler(std::make_shared<MemoryStore>());
-    ConnectionInfo connection(Address(remote_host, remote_port));
+    ConnectionInfo connection(Address(remote_host, remote_port), Address(local_host, local_port));
     Channel stored(DataStored::name);
     connection.set_node(Identifier("sha256", std::string(node_hash)));
 

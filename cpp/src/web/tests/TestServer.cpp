@@ -239,6 +239,13 @@ void answer_with_remote_address(
     response.set_body(connection.remote_address().to_string());
 }
 
+// A handler that answers with where the connection reached.
+void answer_with_local_address(
+    const Request& /*request*/, Response& response,
+    ConnectionInfo& connection) { // cppcheck-suppress constParameterCallback
+    response.set_body(connection.local_address().to_string());
+}
+
 // A handler that answers with how many requests the connection has carried.
 void answer_with_requests(const Request& /*request*/, Response& response,
                           ConnectionInfo& connection) { // cppcheck-suppress constParameterCallback
@@ -285,6 +292,9 @@ protected:
     // Makes the server again, with limits, before its handlers are
     // registered.
     void limit(const Server::Limits& limits);
+    // Makes the server again, at endpoint, before its handlers are
+    // registered.
+    void bind(const Address& endpoint);
 
     [[nodiscard]] Server& server() noexcept;
     [[nodiscard]] const Address& address() const noexcept;
@@ -310,6 +320,11 @@ void ServerTest::TearDown() {
 
 void ServerTest::limit(const Server::Limits& limits) {
     m_server = std::make_unique<Server>(Address("127.0.0.1", 0), limits);
+    m_address = m_server->local_address();
+}
+
+void ServerTest::bind(const Address& endpoint) {
+    m_server = std::make_unique<Server>(endpoint);
     m_address = m_server->local_address();
 }
 
@@ -828,6 +843,33 @@ TEST_F(ServerTest, HandlerKnowsWhereTheConnectionCameFrom) {
 
     connection->send_all(get("/from"));
     EXPECT_EQ(read_answer(*connection), answer("200 OK", "/from", from));
+}
+
+// A handler is given the address and port of this machine the connection
+// reached.
+TEST_F(ServerTest, HandlerKnowsWhereTheConnectionReached) {
+    server().register_handler("/to", answer_with_local_address);
+    start();
+
+    const auto connection = connect_when_listening(address());
+    const auto reached = connection->remote_address().to_string();
+
+    connection->send_all(get("/to"));
+    EXPECT_EQ(read_answer(*connection), answer("200 OK", "/to", reached));
+}
+
+// A server bound to every address gives a handler the one the connection
+// reached, not the one the server was bound to.
+TEST_F(ServerTest, HandlerKnowsWhichOfEveryAddressTheConnectionReached) {
+    bind(Address("0.0.0.0", 0));
+    server().register_handler("/to", answer_with_local_address);
+    start();
+
+    const Address loopback("127.0.0.1", address().port());
+    const auto connection = connect_when_listening(loopback);
+
+    connection->send_all(get("/to"));
+    EXPECT_EQ(read_answer(*connection), answer("200 OK", "/to", loopback.to_string()));
 }
 
 // Each connection counts every request it carries, the one being answered

@@ -610,7 +610,7 @@ void Server::_converse(Client& client) {
     try {
         // Only this thread changes client.socket, so it reads it unguarded.
         auto& socket = *client.socket;
-        ConnectionInfo connection(socket.remote_address());
+        ConnectionInfo connection(socket.remote_address(), socket.local_address());
         // One reader for the connection, whose buffer keeps what was sent
         // after one request, as the next, for the next read.
         auto buffered = std::make_unique<BufferedReader>(std::make_unique<SocketReader>(socket));

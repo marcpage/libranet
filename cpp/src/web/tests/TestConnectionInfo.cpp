@@ -17,6 +17,11 @@ namespace {
 constexpr std::string_view remote_host = "192.0.2.1";
 constexpr Address::Port remote_port = 50'000;
 
+// The address of this machine the connection reached: another set aside for
+// documentation, and the port a node might listen on.
+constexpr std::string_view local_host = "198.51.100.1";
+constexpr Address::Port local_port = 8'080;
+
 // The ids of two nodes, each the identifier of its public key (HTTP API
 // §11.2): here the SHA-256 of nothing, and of "abc" (FIPS 180-2 B.1).
 constexpr std::string_view first_node =
@@ -24,9 +29,10 @@ constexpr std::string_view first_node =
 constexpr std::string_view second_node =
     "sha256/ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
-// A connection from remote_host and remote_port.
+// A connection from remote_host and remote_port, to local_host and
+// local_port.
 ConnectionInfo from_remote() {
-    return ConnectionInfo(Address(remote_host, remote_port));
+    return {Address(remote_host, remote_port), Address(local_host, local_port)};
 }
 
 // The id of the node the connection knows, or "" when it knows none.
@@ -43,6 +49,13 @@ TEST(ConnectionInfoTest, KeepsTheAddressItCameFrom) {
 
     EXPECT_EQ(connection.remote_address().host(), remote_host);
     EXPECT_EQ(connection.remote_address().port(), remote_port);
+}
+
+TEST(ConnectionInfoTest, KeepsTheAddressItReached) {
+    const auto connection = from_remote();
+
+    EXPECT_EQ(connection.local_address().host(), local_host);
+    EXPECT_EQ(connection.local_address().port(), local_port);
 }
 
 TEST(ConnectionInfoTest, CountsEachRequest) {

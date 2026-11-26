@@ -58,6 +58,11 @@ using Named = std::pair<std::string, std::string>;
 constexpr std::string_view remote_host = "203.0.113.42";
 constexpr Address::Port remote_port = 50'000;
 
+// The address of this machine the connection reached: another set aside for
+// documentation, and the port a node might listen on.
+constexpr std::string_view local_host = "198.51.100.1";
+constexpr Address::Port local_port = 8'080;
+
 // This node's own endpoint, as it names itself when it does not know the
 // address it is reached at (HttpApi §10.1).
 constexpr std::string_view own_endpoint = "http://localhost:4300";
@@ -128,7 +133,7 @@ Request post(std::string body) {
 
 // A connection from host, carrying the signature of the peer.
 ConnectionInfo peer_connection(std::string_view host = remote_host) {
-    ConnectionInfo connection(Address(host, remote_port));
+    ConnectionInfo connection(Address(host, remote_port), Address(local_host, local_port));
 
     connection.set_node(peer_id());
     return connection;
@@ -335,8 +340,9 @@ TEST(NodesHandlerTest, ListFromNoNodeWasRelayed) {
     Channel received(NodesReceived::name);
     const auto sent = list_of({{"http://localhost:4300", '1'}});
 
-    const auto response = answer(handler, post(sent.to_string()),
-                                 ConnectionInfo(Address(remote_host, remote_port)));
+    const ConnectionInfo connection(Address(remote_host, remote_port),
+                                    Address(local_host, local_port));
+    const auto response = answer(handler, post(sent.to_string()), connection);
     const auto posted = received.next<NodesReceived>(0ms);
 
     EXPECT_EQ(response.status_code(), 202);
