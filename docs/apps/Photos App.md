@@ -34,7 +34,7 @@ and can be built alongside any phase.
 
 ## 2. What It Adds
 
-Twelve steps, the first eleven built:
+Twelve steps, all built:
 
 - **Importing a file encrypted.** The node's one change. Step 160.
 - **The photos application, and its albums.** Step 161.
@@ -1661,9 +1661,9 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 171 — Playing a Live Photo
+## Step 171 — Playing a Live Photo ✅
 
-**Issue:** to be made (§4), from #477. **Depends on:** Steps 163, 166.
+**Issue:** #679, from #477. **Depends on:** Steps 163, 166.
 
 Settled with the user:
 
@@ -1688,6 +1688,70 @@ My calls, not yet reviewed:
 viewer, by holding it, by the Live mark, and by `L`, in Safari and in
 Chrome; its motion downloaded; and one whose motion cannot be played.
 
+Built, in one change set, the page alone, on Step 170's. No phone was at
+hand, so Live Photos were made by `ffmpeg` for the purpose, and kept out of
+the repository, each a JPEG beside a video of its name, 2.5 seconds long,
+imported as Step 166 imports one: a MOV of H.264 with sound; a MOV of HEVC,
+which Chromium says it may play, as an MP4, but cannot; and an MP4 named as a
+WMV, which Chromium says it cannot play; with a photo beside no video. It
+was checked on a node of its own, in headless Chromium: the tiles of the
+first two given a Live mark, and named as Live Photos, and the others not;
+in the viewer, the first given its Live mark once its motion loaded, which
+played it over the photo, laid out as it is, with its sound, while the mouse
+pointed at it, and showed the photo again once it no longer did; the photo
+pressed and held played it until it was let go, and was not zoomed, though
+a click zoomed it still, and, zoomed, held, played it over the photo as
+zoomed; `L` pressed played it to its end, and held, until it was let go;
+the Live mark pressed with Enter played it; P, as it played,
+paused it, and showed the photo again under the slideshow; turned a
+quarter by Edit, its motion played turned as it is; and Download its
+motion saved `IMG_0001.MOV`, its bytes the original's. The HEVC MOV gave no
+Live mark in the viewer, as it failed to load, and its tile's was taken
+away then; the WMV gave none, and was not asked for; and each still offered
+Download its motion, which the photo beside no video did not. At a phone's
+width, with a touch screen: a tap on the Live mark played it to its end; a
+touch held on the photo played it until it was let go, and did not zoom
+it; and a tap zoomed it, and a swipe moved to the next, still. Safari is yet
+to be checked, and with it a real iPhone's Live Photos.
+
+Calls made while building it, not yet reviewed:
+
+- **The Live mark** is in the viewer's upper left corner, over the photo, as
+  `LIVE` beside rings, the outer one dotted, and on a tile in its lower right
+  corner, where a video's duration is, as the rings alone. A tile's is shown
+  when the photo's entry in the index names a `motion` this browser does not
+  say it cannot play, by its extension's type, as for a video; the viewer's
+  once that motion has loaded and shows a picture.
+- **A motion that fails as it loads** is found out only in the viewer, which
+  then shows no Live mark for it, and takes its tile's away, while the page
+  is open. A tile is not given one by loading every motion of an album.
+- **Loaded once the photo is**, before the photos beside it, whole, so that
+  it plays at once, and only once the node gives its start, waiting out the
+  503s it answers while it fetches what it lacks, as a video is played.
+- **Held** is pressed for 0.4 seconds, and moved less than a drag moves, so
+  that a click zooms still, and a drag, or a swipe, is not taken for a hold.
+  A touch held is given no menu of the browser's.
+- **Pointing at the Live mark** plays the motion with a mouse alone. Clicked,
+  tapped, or pressed with Enter or Space, it plays the motion to its end.
+- **`L`** pressed plays the motion to its end, and held for 0.4 seconds or
+  more, until it is let go, so that a key pressed briefly does not stop it
+  at once. `D` still downloads the original.
+- **With its sound**, where the browser lets a page play one, as the
+  slideshow plays a video, and else without it.
+- **Download its motion** is a link of its own, after Download, shown for a
+  Live Photo, though its motion cannot be played, and saved under its file's
+  name.
+- **The motion is laid out as the photo is**, turned as it is, zoomed, and
+  dragged with it, and fitted within it, if it is not of its shape.
+- **A slideshow played over it** pauses it, and the photo is shown again.
+
+**Open questions:**
+
+- **A photo that cannot be shown** has its placeholder, and so no Live mark,
+  though its motion could be played; only Download its motion is offered.
+- **A Live Photo whose motion this browser cannot play** has no mark at all.
+  Whether it should still be said to be one, as in Details.
+
 ---
 
 ## 4. Issues in the Milestone
@@ -1710,7 +1774,7 @@ and this table then given their numbers.
 | #676 | Step 168 — Editing a Photo's Details | 168 |
 | #677 | Step 169 — Slideshow | 169 |
 | #678 | Step 170 — Sharing an Album | 170 |
-| *to be made* | Step 171 — Playing a Live Photo | 171 |
+| #679 | Step 171 — Playing a Live Photo | 171 |
 
 ## 5. Suggested Build Order
 

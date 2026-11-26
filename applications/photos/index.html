@@ -271,6 +271,19 @@
 
   .tile .duration svg { width: 0.65rem; height: 0.65rem; fill: currentColor; filter: drop-shadow(0 0 2px #000); }
 
+  /* A Live Photo's tile, with its Live mark in the same corner. */
+  .tile .live {
+    position: absolute;
+    right: 0.3rem;
+    bottom: 0.3rem;
+    display: flex;
+    color: #fff;
+    filter: drop-shadow(0 0 2px #000);
+    pointer-events: none;
+  }
+
+  .tile .live svg { width: 1.1rem; height: 1.1rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+
   /* Choosing photos of the album open: how many are chosen, and what is done
      with them, kept in sight above the grid as it is scrolled. */
   .choose-bar {
@@ -377,7 +390,9 @@
   a.icon:hover { border-color: var(--border); }
   a.icon:not([href]) { opacity: 0.6; }
 
-  .stage { position: absolute; inset: 0; overflow: hidden; cursor: zoom-in; }
+  /* A photo held, as a Live Photo's is to play its motion, is given no menu
+     of the browser's. */
+  .stage { position: absolute; inset: 0; overflow: hidden; cursor: zoom-in; -webkit-touch-callout: none; }
   .stage.zoomed { cursor: grab; }
   .stage.dragging { cursor: grabbing; }
 
@@ -406,6 +421,11 @@
     background: #000;
     cursor: default;
   }
+
+  /* The motion of a Live Photo shown, over it, laid out as it is, and seen
+     only as it plays. What is pressed on it is the stage's. */
+  .stage video.motion { background: transparent; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+  .stage video.motion.playing { opacity: 1; }
 
   /* The placeholder of a photo shown that cannot be viewed, large, with
      Download below it. */
@@ -439,6 +459,30 @@
   .viewer button.side.previous { left: 0.5rem; }
   .viewer button.side.next { right: 0.5rem; }
   .viewer .side svg { width: 1.75rem; height: 1.75rem; }
+
+  /* The Live mark of a Live Photo shown, in the upper left corner, which
+     plays its motion while it is pointed at, or once pressed. */
+  .viewer button.live {
+    position: absolute;
+    top: 0.75rem;
+    left: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.6rem 0.25rem 0.35rem;
+    border: 0;
+    border-radius: 999px;
+    background: rgb(0 0 0 / 0.45);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .viewer button.live svg { width: 1.25rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; }
+  .viewer button.live.playing { color: var(--accent); }
 
   /* An album played as a slideshow, full screen, on black, over everything
      else, each photo fading into the next, with its controls below, shown
@@ -639,6 +683,9 @@
       <a class="icon" id="viewer-download" title="Download" aria-label="Download" download>
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12 M7 10l5 5 5-5 M4 15v5h16v-5"/></svg>
       </a>
+      <a class="icon" id="viewer-download-motion" title="Download its motion" aria-label="Download its motion" download hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="6" r="4.5" stroke-dasharray="0 3.53"/><path d="M12 12.5v5 M9.5 15l2.5 2.5 2.5-2.5 M4 15v5h16v-5"/></svg>
+      </a>
       <button type="button" class="icon changes-only" id="viewer-edit" title="Edit" aria-label="Edit" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4l5 5L9 20H4v-5z M12.5 6.5l5 5"/></svg>
       </button>
@@ -663,6 +710,10 @@
     <div class="viewer-body">
       <p class="state" id="viewer-state" role="status" hidden></p>
       <div class="stage" id="viewer-stage"></div>
+      <button type="button" class="live" id="viewer-live" title="Play Live Photo" aria-label="Play Live Photo" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="9.5" stroke-dasharray="0 3.73"/></svg>
+        Live
+      </button>
       <button type="button" class="icon side previous" id="viewer-previous" title="Previous" aria-label="Previous">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
       </button>
@@ -919,6 +970,8 @@
     <dd>Full screen, or leave it.</dd>
     <dt><kbd>D</kbd></dt>
     <dd>Download its original.</dd>
+    <dt><kbd>L</kbd></dt>
+    <dd>Play a Live Photo's motion, with its sound, to its end, or, held, until it is let go.</dd>
     <dt><kbd>P</kbd></dt>
     <dd>Play the album as a slideshow, from the photo shown.</dd>
     <dt><kbd>Esc</kbd></dt>
@@ -1369,6 +1422,11 @@ const COVER_TRIES = 3;
 const DRAG_PIXELS = 8;
 const SWIPE_PIXELS = 50;
 
+// How long a photo shown is pressed, and not moved, or `L` held, to play the
+// motion of a Live Photo until it is let go: a pointer let go sooner clicks
+// it, and `L` let go sooner plays it to its end.
+const HOLD_SECONDS = 0.4;
+
 // How many pixels a turn of a mouse wheel of a line moves a photo zoomed.
 const WHEEL_LINE_PIXELS = 16;
 
@@ -1385,6 +1443,9 @@ const CONTROLS_SECONDS = 3;
 // paused.
 const PAUSE_PATH = "M8 5v14 M16 5v14";
 const PLAY_PATH = "M7 4v16l13-8z";
+
+// The Live mark of a Live Photo, as its tile shows it, drawn as the viewer's is.
+const LIVE_MARK = '<svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="9.5" stroke-dasharray="0 3.73"/></svg>';
 
 // A content id, plain or carrying the key of a bundle stored encrypted (HttpApi 5).
 const CONTENT_ID = /^[a-z0-9-]+\/[0-9a-f]+(?:\/[A-Za-z0-9:-]+\/[0-9a-f]+)?$/;
@@ -2863,8 +2924,9 @@ class Grid {
   // The tile of the photo in `folder`, as `entry`, its entry in the index,
   // describes it, at `position`, [the day, and where in the day]: its
   // thumbnail, or, if it has none, the placeholder of a photo that cannot be
-  // viewed, and a video's duration. A tile made with no thumbnail is made
-  // again once the photo has one, as when its view is made later.
+  // viewed, and a video's duration, or a Live Photo's Live mark, unless its
+  // motion is one this browser cannot play. A tile made with no thumbnail is
+  // made again once the photo has one, as when its view is made later.
   tile(folder, entry, position) {
     const thumb = isText(entry.thumb) && !entry.thumb.includes("/") ? entry.thumb : null;
     let tile = this.tiles.get(folder);
@@ -2884,6 +2946,13 @@ class Grid {
         duration.innerHTML = '<svg viewBox="0 0 24 24" focusable="false"><path d="M7 4v16l13-8z"/></svg>';
         duration.append(length);
         tile.append(duration);
+      }
+
+      if (Clip.isLive(entry) && !viewer.stilled.has(`${this.id} ${folder}`)) {
+        const live = make("span", null, "live");
+        live.setAttribute("aria-hidden", "true");
+        live.innerHTML = LIVE_MARK;
+        tile.append(live);
       }
 
       // While photos are chosen, a click chooses it, or leaves it out, and
@@ -2911,20 +2980,33 @@ class Grid {
 
   // Names the photo in `folder` of `tile`, as `entry`, its entry in the
   // index, describes it: by its title, or else its name, with when it was
-  // taken, and of a video, how long it plays; and turns its thumbnail as its
-  // rotation says. A tile kept as the photo is edited is named and turned
-  // again.
+  // taken, and of a video, how long it plays, or that it is a Live Photo, if
+  // it has a Live mark; and turns its thumbnail as its rotation says. A tile
+  // kept as the photo is edited is named and turned again.
   static describe(tile, folder, entry) {
     const name = isText(entry.title) ? entry.title : (isText(entry.name) ? entry.name : folder);
     const taken = isText(entry.taken) ? takenText(entry.taken) : "Undated";
     const length = entry.kind === VIDEO_KIND ? durationText(entry.duration_seconds) : "";
     const video = entry.kind === VIDEO_KIND ? `, a video${length ? ` of ${length}` : ""}` : "";
+    const live = tile.querySelector(".live") ? ", a Live Photo" : "";
     const image = tile.querySelector("img.cover");
     tile.title = `${name}\n${taken}`;
-    tile.setAttribute("aria-label", `${name}${video}, ${taken}`);
+    tile.setAttribute("aria-label", `${name}${video}${live}, ${taken}`);
 
     if (image) {
       showTurned(image, turnOf(entry));
+    }
+  }
+
+  // Takes the Live mark from the tile of the photo in `folder`, if it is
+  // made, as its motion is one this browser could not play after all.
+  stillTile(folder) {
+    const tile = this.tiles.get(folder);
+    const place = this.place(folder);
+
+    if (tile && place) {
+      tile.querySelector(".live")?.remove();
+      Grid.describe(tile, folder, this.photoAt(place)[1]);
     }
   }
 
@@ -3670,6 +3752,18 @@ class Viewer {
     this.picture = null;
     this.undrawn = new Set();
     this.keeping = new Set();
+    // The Live mark, and the link to download a Live Photo's motion; its
+    // motion, a video over it, once this browser may play it; the timer of a
+    // press held to play it until it is let go, and when `L` was pressed, if
+    // it is held; and the Live Photos whose motion this browser could not
+    // play, by "{album id} {folder}", which have no Live mark while the page
+    // is open.
+    this.live = byId("viewer-live");
+    this.motionDownload = byId("viewer-download-motion");
+    this.motion = null;
+    this.hold = null;
+    this.pressed = null;
+    this.stilled = new Set();
     // Its details, shown beside it, or not.
     this.panel = new DetailsPanel();
     byId("viewer-fullscreen").hidden = !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
@@ -3700,6 +3794,27 @@ class Viewer {
         event.preventDefault();
       }
     }, { passive: false });
+    // A photo held on a touch screen plays its motion, if it is a Live
+    // Photo, rather than opening the browser's menu.
+    this.stage.addEventListener("contextmenu", (event) => {
+      if (this.drag && this.drag.touch) {
+        event.preventDefault();
+      }
+    });
+    // The Live mark plays its motion while the mouse points at it, and, once
+    // clicked, tapped, or pressed with Enter or Space, to its end.
+    this.live.addEventListener("pointerenter", (event) => {
+      if (event.pointerType === "mouse") {
+        this.playMotion();
+      }
+    });
+    this.live.addEventListener("pointerleave", (event) => {
+      if (event.pointerType === "mouse") {
+        this.stopMotion();
+      }
+    });
+    this.live.addEventListener("click", () => this.playMotion());
+    window.addEventListener("keyup", (event) => this.keyUp(event));
     this.element.addEventListener("wheel", (event) => this.wheel(event), { passive: false });
     // Laid out again as the stage changes size: with the window, or as what
     // is said above it takes more lines, or fewer.
@@ -3839,6 +3954,8 @@ class Viewer {
     this.stage.replaceChildren();
     this.stage.classList.remove("zoomed");
     this.download.removeAttribute("href");
+    this.motionDownload.removeAttribute("href");
+    this.motionDownload.hidden = true;
     byId("viewer-zoom").setAttribute("aria-pressed", "false");
     byId("viewer-zoom").hidden = entry.kind === VIDEO_KIND;
     // A cover is shown by its thumbnail, so a photo with none is not made one.
@@ -3861,6 +3978,13 @@ class Viewer {
 
     this.download.href = photo.original;
     this.download.download = photo.name;
+
+    if (photo.motion) {
+      this.motionDownload.href = photo.motion.url;
+      this.motionDownload.download = photo.motion.name;
+      this.motionDownload.hidden = false;
+    }
+
     this.tell(photo.name, entry, photo.info);
     this.turnTo(turnOf({ ...entry, ...photo.info }));
     this.load(photo);
@@ -3988,8 +4112,9 @@ class Viewer {
   // its view, if it has one, or else its original, each as its info.json
   // names it, or, if that cannot be read, as its entry does; its info.json,
   // or {}; whether it is a `video`, and where its thumbnail is read, or null;
-  // and whether it is `viewless`, a photo with no view, though of a kind not
-  // every browser shows as it is.
+  // whether it is `viewless`, a photo with no view, though of a kind not
+  // every browser shows as it is; and of a Live Photo, its `motion`, {name,
+  // url}, the name it is kept under and where it is read, or else null.
   static async described(bundle, folder, entry) {
     const info = await readEntry(bundle, `${PHOTOS}/${folder}/${INFO_FILE}`).catch((error) => {
       console.warn(`What is known of a photo could not be read: ${error.message}`);
@@ -4003,6 +4128,7 @@ class Viewer {
     const view = file(known.view);
     const thumb = file(known.thumb) || file(entry.thumb);
     const video = (isText(known.kind) ? known.kind : entry.kind) === VIDEO_KIND;
+    const motion = video ? null : file(known.motion) || file(entry.motion);
     return {
       name,
       original: url(original),
@@ -4011,6 +4137,7 @@ class Viewer {
       video,
       poster: thumb ? url(thumb) : null,
       viewless: !video && !view && !everyBrowserShows(name),
+      motion: motion ? { name: motion, url: url(motion) } : null,
     };
   }
 
@@ -4065,14 +4192,124 @@ class Viewer {
   }
 
   // Lays out `image`, the photo shown, or a video, once it is loaded, at its
-  // own width and height, turned as it is, then loads the photos before and
-  // after it.
+  // own width and height, turned as it is, then readies the motion of a Live
+  // Photo, and loads the photos before and after it.
   loaded(image) {
     const video = image instanceof HTMLVideoElement;
     this.size = this.seen(video ? [image.videoWidth, image.videoHeight] : [image.naturalWidth, image.naturalHeight]);
     show(this.status, "");
     this.layout();
+
+    if (!video) {
+      this.readyMotion();
+    }
+
     this.loadAhead();
+  }
+
+  // Readies the motion of the photo shown, if it is a Live Photo whose
+  // motion this browser may play: a video over it, laid out as it is, loaded
+  // once the node gives its start, waiting out the 503s it answers while it
+  // fetches what it lacks, as a video is played; and shows the Live mark
+  // once it can be played. One that fails as it loads, or shows no picture,
+  // is taken away, and its Live mark with it.
+  async readyMotion() {
+    const [id, folder, shown] = [this.grid.id, this.folder, this.shown];
+    const { motion } = await this.describe(this.grid, folder);
+    const playable = motion && !this.stilled.has(`${id} ${folder}`) && Clip.canPlay(Clip.typeOf(motion.name));
+
+    if (!playable || this.shown !== shown || !this.isOpen() || this.motion) {
+      return;
+    }
+
+    try {
+      await new StoredFile(motion.url).at(0, 1);
+    } catch (error) {
+      console.warn(`The motion of a Live Photo could not be read: ${error.message}`);
+      return;
+    }
+
+    if (this.shown !== shown || !this.isOpen() || !this.image || this.motion) {
+      return;
+    }
+
+    const video = make("video", null, "motion");
+    video.playsInline = true;
+    video.preload = "auto";
+    video.setAttribute("aria-hidden", "true");
+    video.addEventListener("loadedmetadata", () => {
+      if (this.motion === video && video.videoWidth && video.videoHeight) {
+        this.live.hidden = false;
+      } else if (this.motion === video) {
+        this.stillMotion();
+      }
+    });
+    video.addEventListener("error", () => {
+      if (this.motion === video) {
+        this.stillMotion();
+      }
+    });
+
+    // The photo is shown again once it ends, or is paused, as a slideshow
+    // played over it pauses it, but not as it is played again without its
+    // sound, where the browser would not play it with it.
+    for (const name of ["ended", "pause"]) {
+      video.addEventListener(name, () => {
+        if (this.motion === video && video.paused) {
+          this.stopMotion();
+        }
+      });
+    }
+
+    this.motion = video;
+    this.stage.append(video);
+    video.src = motion.url;
+    this.layout();
+  }
+
+  // Plays the motion of the Live Photo shown over it, from its start, with
+  // its sound, where the browser lets it, until it ends or is stopped.
+  playMotion() {
+    const video = this.motion;
+
+    if (!video || this.live.hidden || video.classList.contains("playing")) {
+      return;
+    }
+
+    video.currentTime = 0;
+    video.classList.add("playing");
+    this.live.classList.add("playing");
+    Slideshow.start(video);
+  }
+
+  // Stops the motion of the Live Photo shown, if it plays, and shows the
+  // photo again.
+  stopMotion() {
+    clearTimeout(this.hold);
+    this.hold = null;
+
+    if (this.motion) {
+      this.motion.pause();
+      this.motion.classList.remove("playing");
+    }
+
+    this.live.classList.remove("playing");
+  }
+
+  // Takes away the motion of the Live Photo shown, which this browser could
+  // not play after all, and its Live mark, and its tile's, while the page is
+  // open.
+  stillMotion() {
+    const grid = this.current();
+    const video = this.motion;
+    this.stilled.add(`${grid.id} ${this.folder}`);
+    this.stopMotion();
+    this.motion = null;
+    this.live.hidden = true;
+    video.removeAttribute("src");
+    video.load();
+    video.remove();
+    grid.stillTile(this.folder);
   }
 
   // Shows `photo`, a video, as described gives it, to be played with the
@@ -4204,9 +4441,14 @@ class Viewer {
     this.loadAhead();
   }
 
-  // Stops the video shown, if it is one, so that it is read no further, and
-  // closes the picture drawn of the photo shown, if it was.
+  // Stops the video shown, if it is one, or the motion of a Live Photo, so
+  // that it is read no further, hiding its Live mark, and closes the picture
+  // drawn of the photo shown, if it was.
   release() {
+    this.stopMotion();
+    this.motion = null;
+    this.live.hidden = true;
+
     for (const video of this.stage.querySelectorAll("video")) {
       video.removeAttribute("src");
       video.load();
@@ -4322,9 +4564,13 @@ class Viewer {
     const turned = this.turn
       ? ` translate(${this.laid[0] / 2}px, ${this.laid[1] / 2}px) rotate(${this.turn}deg) translate(${-width / 2}px, ${-height / 2}px)`
       : "";
-    image.style.width = `${width}px`;
-    image.style.height = `${height}px`;
-    image.style.transform = `translate(${this.offset[0]}px, ${this.offset[1]}px)${turned}`;
+    // The motion of a Live Photo is laid out over it as it is.
+    for (const laid of this.motion ? [image, this.motion] : [image]) {
+      laid.style.width = `${width}px`;
+      laid.style.height = `${height}px`;
+      laid.style.transform = `translate(${this.offset[0]}px, ${this.offset[1]}px)${turned}`;
+    }
+
     this.stage.classList.toggle("zoomed", this.zoomed);
     byId("viewer-zoom").setAttribute("aria-pressed", String(this.zoomed));
   }
@@ -4346,7 +4592,8 @@ class Viewer {
   }
 
   // A pointer pressed on the photo, which drags it, zoomed, or else, on a
-  // touch screen, swipes to the photo before or after.
+  // touch screen, swipes to the photo before or after; or, held still, plays
+  // the motion of a Live Photo until it is let go.
   pointerDown(event) {
     this.dragged = false;
 
@@ -4356,14 +4603,23 @@ class Viewer {
       return;
     }
 
-    this.drag = {
+    const drag = {
       id: event.pointerId,
       from: [event.clientX, event.clientY],
       offset: this.offset,
       moved: false,
+      held: false,
       touch: event.pointerType !== "mouse",
     };
+    this.drag = drag;
     this.stage.setPointerCapture(event.pointerId);
+    clearTimeout(this.hold);
+    this.hold = this.live.hidden ? null : setTimeout(() => {
+      if (this.drag === drag && !drag.moved) {
+        drag.held = true;
+        this.playMotion();
+      }
+    }, HOLD_SECONDS * 1000);
   }
 
   pointerMove(event) {
@@ -4384,7 +4640,7 @@ class Viewer {
   }
 
   // The pointer let go, or taken away, as when the browser takes over a
-  // touch.
+  // touch. A photo held to play its motion is shown again, and not clicked.
   pointerUp(event) {
     const drag = this.drag;
 
@@ -4394,8 +4650,15 @@ class Viewer {
 
     const [across, down] = [event.clientX - drag.from[0], event.clientY - drag.from[1]];
     this.drag = null;
-    this.dragged = drag.moved;
+    this.dragged = drag.moved || drag.held;
     this.stage.classList.remove("dragging");
+    clearTimeout(this.hold);
+    this.hold = null;
+
+    if (drag.held) {
+      this.stopMotion();
+      return;
+    }
 
     if (event.type === "pointerup" && drag.touch && !this.zoomed && Math.abs(across) >= SWIPE_PIXELS
         && Math.abs(across) > Math.abs(down)) {
@@ -4474,8 +4737,9 @@ class Viewer {
   // Hears every key while it is open, but while a dialog is open over it:
   // the left and right arrow keys move to the photo before or after, `I`
   // shows its details, `E` edits them, `Z` zooms, `F` shows it full screen,
-  // `D` downloads its original, `P` plays the album as a slideshow from it,
-  // Escape closes it, and `?` or `/` shows the keys.
+  // `D` downloads its original, `L` plays the motion of a Live Photo, `P`
+  // plays the album as a slideshow from it, Escape closes it, and `?` or `/`
+  // shows the keys.
   key(event) {
     const key = String(event.key).toLowerCase();
     const keys = {
@@ -4487,6 +4751,7 @@ class Viewer {
       z: () => this.zoom(),
       f: () => this.toggleFullscreen(),
       d: () => this.download.click(),
+      l: () => this.pressMotion(),
       p: () => slideshow.open(this.current(), this.folder),
       "?": () => byId("keys-dialog").showModal(),
       "/": () => byId("keys-dialog").showModal(),
@@ -4501,6 +4766,28 @@ class Viewer {
     event.preventDefault();
     event.stopPropagation();
     keys[key]();
+  }
+
+  // `L` pressed plays the motion of a Live Photo shown, to its end, or, held
+  // for HOLD_SECONDS at least, until it is let go.
+  pressMotion() {
+    if (this.motion && !this.live.hidden) {
+      this.pressed = Date.now();
+      this.playMotion();
+    }
+  }
+
+  keyUp(event) {
+    if (this.pressed === null || String(event.key).toLowerCase() !== "l") {
+      return;
+    }
+
+    const held = Date.now() - this.pressed >= HOLD_SECONDS * 1000;
+    this.pressed = null;
+
+    if (held) {
+      this.stopMotion();
+    }
   }
 }
 
@@ -5107,7 +5394,8 @@ class Slideshow {
   }
 
   // Plays `video` with its sound, or, where the browser lets a page play
-  // none unasked, as Safari does, without it.
+  // none unasked, as Safari does, without it, as the viewer plays the motion
+  // of a Live Photo too.
   static start(video) {
     video.muted = false;
     video.play().catch((error) => {
@@ -5117,7 +5405,7 @@ class Slideshow {
 
       video.muted = true;
       return video.play();
-    }).catch((error) => console.warn(`A video could not be played in the slideshow: ${error.message}`));
+    }).catch((error) => console.warn(`A video could not be played: ${error.message}`));
   }
 
   // Once the video `slide` ends, or fails as it plays, the photo after it is
@@ -8028,6 +8316,12 @@ class Clip {
   static canPlay(type) {
     const video = document.createElement("video");
     return !type || video.canPlayType(type) !== "" || (type === QUICKTIME_TYPE && video.canPlayType(MP4_TYPE) !== "");
+  }
+
+  // Whether `known`, a photo's entry in an album's index, or its info.json,
+  // names the motion of a Live Photo this browser may play, by its type.
+  static isLive(known) {
+    return known.kind !== VIDEO_KIND && isText(known.motion) && Clip.canPlay(Clip.typeOf(known.motion));
   }
 
   // Resolves once `video` fires `event`, once `start` is called; or rejects,
