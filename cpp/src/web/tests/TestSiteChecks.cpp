@@ -40,9 +40,8 @@ constexpr Address::Port config_port = 8'180;
 constexpr std::string_view reached_ipv4 = "192.0.2.7";
 constexpr std::string_view reached_ipv6 = "2001:db8::7";
 
-// As long as a host name may be on Linux (HOST_NAME_MAX), as SiteChecks reads
-// it.
-constexpr std::size_t machine_name_size = 64;
+// As long as a host name may be on macOS (MAXHOSTNAMELEN).
+constexpr std::size_t machine_name_size = 256;
 
 // The hosts /config is served as by default (HTTP API §2.3.3), but for the
 // name this machine gives itself, which SiteChecks adds.
@@ -95,9 +94,9 @@ std::string reason_for(std::initializer_list<Header> headers) {
 
 // The name this machine gives itself.
 std::string machine_name() {
-    std::array<char, machine_name_size + 2> name{};
+    std::array<char, machine_name_size + 1> name{};
 
-    if (0 != ::gethostname(name.data(), machine_name_size + 1)) {
+    if (0 != ::gethostname(name.data(), machine_name_size)) {
         throw std::runtime_error("Cannot read this machine's name");
     }
 

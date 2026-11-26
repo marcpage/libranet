@@ -43,9 +43,8 @@ using web::SiteChecks;
 
 namespace {
 
-// As long as a host name may be on Linux (HOST_NAME_MAX), the shortest of the
-// limits of the platforms built for. macOS allows longer, and cuts one short.
-constexpr size_t machine_name_size = 64;
+// As long as a host name may be on macOS (MAXHOSTNAMELEN). Linux allows 64.
+constexpr size_t machine_name_size = 256;
 
 // What Sec-Fetch-Site says of a request a page of the same origin made, and
 // of one the person using the browser asked for, by typing an address or
@@ -55,11 +54,10 @@ constexpr string_view user_initiated = "none";
 
 // The name this machine gives itself, in lower case.
 string machine_name() {
-    // Room for its NUL, which glibc refuses to leave out, and one more than
-    // is asked for, so that a name cut short still ends in NUL.
-    array<char, machine_name_size + 2> name{};
+    // One more than is asked for, so that a name cut short still ends in NUL.
+    array<char, machine_name_size + 1> name{};
 
-    if (0 != ::gethostname(name.data(), machine_name_size + 1)) {
+    if (0 != ::gethostname(name.data(), machine_name_size)) {
         throw system_error(errno, generic_category(), "gethostname");
     }
 
