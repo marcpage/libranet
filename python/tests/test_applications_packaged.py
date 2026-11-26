@@ -1294,6 +1294,33 @@ def test_the_photos_page_plays_a_slideshow_as_the_plan_names_it(photos_page: str
     assert 'navigator.wakeLock.request("screen")' in photos_page
 
 
+def test_the_photos_page_shares_an_album_as_the_plan_names_it(photos_page: str) -> None:
+    # Share, beside the album's heading; and Import a shared album, beside
+    # New album and Import.
+    assert 'id="share-album" title="Share" aria-label="Share"' in photos_page
+    name = "Import a shared album"
+    assert f'id="import-shared" title="{name}" aria-label="{name}"' in photos_page
+    # What is shared: album.json, the album's photos/ copied whole, and its
+    # index/ written again with no source.
+    assert 'const ALBUM_FILE = "album.json";' in photos_page
+    assert 'const ALBUM_KEYS = ["name", "cover", "count"];' in photos_page
+    assert "[PHOTOS]: { from: album.bundle, path: PHOTOS }," in photos_page
+    assert "shared.set(month, folder, defined({ ...entry, source: undefined }));" in photos_page
+    # In a new encrypted bundle, versioning nothing: no request it makes
+    # names a base.
+    [unversioned] = findall(
+        r"^async function makeUnversioned\(add\) \{\n(.*?)\n\}$", photos_page, DOTALL | MULTILINE
+    )
+    assert "base:" not in unversioned
+    assert findall(r"makeBundle\(\{ encrypted: true, add[:} ]", unversioned) != []
+    # Nothing is copied: the album imported names the bundle shared.
+    assert "Album.made(name, shared.bundle)" in photos_page
+    # Each application refuses the others', saying what a bundle is by what
+    # it holds.
+    assert 'const PLAYLIST_FILE = "playlist.json";' in photos_page
+    assert 'const SERIES_FILE = "series.json";' in photos_page
+
+
 def test_the_photos_page_is_black_as_the_movie_and_tv_pages_are_dark(photos_page: str) -> None:
     assert '<meta name="color-scheme" content="dark">' in photos_page
     assert "--background: #000;" in photos_page

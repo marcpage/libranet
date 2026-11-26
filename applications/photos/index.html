@@ -63,6 +63,7 @@
   .state { margin: 1rem 0 0; }
   .result { margin: 0.75rem 0 0; }
   .error { color: var(--bad); }
+  .id { user-select: all; word-break: break-all; }
 
   .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 0; }
   .buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; margin: 1rem 0 0; }
@@ -554,6 +555,9 @@
     <button type="button" class="icon changes-only" id="import-photos" title="Import" aria-label="Import" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12 M7 10l5 5 5-5 M4 15v5h16v-5"/></svg>
     </button>
+    <button type="button" class="icon changes-only" id="import-shared" title="Import a shared album" aria-label="Import a shared album" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 8v8 M8 12h8"/></svg>
+    </button>
     <button type="button" class="icon" id="show-keys" title="Keys" aria-label="Keys">
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.75 2.17C12.5 12.1 12 12.6 12 13.5V14 M12 17.5v.01"/></svg>
     </button>
@@ -581,6 +585,9 @@
       <div class="icons">
         <button type="button" class="icon" id="play-album" title="Play" aria-label="Play" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16l13-8z"/></svg>
+        </button>
+        <button type="button" class="icon" id="share-album" title="Share" aria-label="Share" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15V3 M8 7l4-4 4 4 M9 10H5v11h14V10h-4"/></svg>
         </button>
         <button type="button" class="icon changes-only" id="select-photos" title="Select" aria-label="Select" aria-pressed="false" aria-controls="choose-bar" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12l3 3 5-6"/></svg>
@@ -747,6 +754,41 @@
     <div class="buttons">
       <button type="button" class="secondary" data-close>Cancel</button>
       <button type="submit">Make</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="shared-dialog" aria-labelledby="shared-heading">
+  <h3 id="shared-heading"></h3>
+  <p class="hint" id="shared-hint"></p>
+  <p><code class="id" id="shared-id"></code></p>
+  <div class="toolbar"><button type="button" class="secondary small" data-copy="shared-id">Copy</button></div>
+  <div class="buttons">
+    <button type="button" class="secondary" data-close>Done</button>
+  </div>
+</dialog>
+
+<dialog id="import-shared-dialog" aria-labelledby="import-shared-heading">
+  <form id="import-shared-form">
+    <h3 id="import-shared-heading">Import a shared album</h3>
+    <p class="hint">The id an album was shared by. It is added to your albums, under the name it was
+    shared under, as it was when it was shared. Nothing is copied: what you change in it is yours,
+    and whoever shared it never sees it.</p>
+    <div class="fields">
+      <label class="wide">Album id
+        <input id="import-shared-id" required autocomplete="off" spellcheck="false" placeholder="sha256/…">
+      </label>
+    </div>
+    <div id="import-shared-apart" hidden>
+      <p class="hint" id="import-shared-apart-note"></p>
+      <div class="fields">
+        <label class="wide">Name <input id="import-shared-name" autocomplete="off"></label>
+      </div>
+    </div>
+    <p class="result" id="import-shared-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Import</button>
     </div>
   </form>
 </dialog>
@@ -949,6 +991,19 @@ const UNDATED = "undated";
 const PHOTO_FOLDER = /^[0-9a-f]{16}$/;
 const INDEX_FILE = /^(\d{4}-(?:0[1-9]|1[0-2])|undated)(?:\.([2-9]|[1-9]\d+))?\.json$/;
 const PART_PHOTOS = 2000;
+
+// What a shared album holds, beside its photos/ and its index/: its name,
+// the folder of its cover, and how many photos it holds, in this order. A
+// bundle holding none is not a shared album.
+const ALBUM_FILE = "album.json";
+const ALBUM_KEYS = ["name", "cover", "count"];
+
+// What the other applications' bundles hold, by which one given as an album
+// shared is said to be what it is: a playlist of songs, or a collection of
+// movies, holds PLAYLIST_FILE, and a series SERIES_FILE; and a song, a
+// movie, or an episode, its INFO_FILE.
+const PLAYLIST_FILE = "playlist.json";
+const SERIES_FILE = "series.json";
 
 // A photo's thumbnail, in its folder, which is what shows an album's cover.
 const THUMB_FILE = "thumb.jpg";
@@ -1589,6 +1644,20 @@ async function readEntry(bundle, path) {
   return result.value;
 }
 
+// The content id `text` gives, as it was shared, or as a link reading into
+// a bundle; or null if it gives none.
+function parseId(text) {
+  let id = text.trim();
+  const at = id.indexOf(DATA);
+
+  if (at >= 0) {
+    id = id.slice(at + DATA.length);
+  }
+
+  id = id.replace(/\/+$/, "");
+  return CONTENT_ID.test(id) ? id : null;
+}
+
 // `value` as a JSON file holds it, `keys` first, in their order, then any
 // others it has, leaving out any undefined.
 function jsonText(keys, value) {
@@ -1659,6 +1728,55 @@ async function editInParts(base, add, remove = []) {
   }
 
   return makeBundle({ base: bundle, ...part });
+}
+
+// Makes a new encrypted bundle holding the entries `add` names, as
+// makeBundle takes them, versioning nothing: it has no base, so that it
+// names no bundle before it, nor carries the key of one (HttpApi 12.3). The
+// files whose bytes it gives, if more than one request takes, are first
+// made bundles of their own, as many as keep each request within what the
+// node takes, each versioning nothing too, and copied from them, as each is
+// stored.
+async function makeUnversioned(add) {
+  const encoder = new TextEncoder();
+  const sizeOf = (path, entry) => encoder.encode(JSON.stringify({ [path]: entry })).length;
+  const entries = Object.entries(add);
+
+  if (entries.reduce((total, [path, entry]) => total + sizeOf(path, entry), 0) <= EDIT_BYTES) {
+    return makeBundle({ encrypted: true, add });
+  }
+
+  const whole = {};
+  let part = {};
+  let size = 0;
+  const makePart = async () => {
+    const bundle = await makeBundle({ encrypted: true, add: part });
+    Object.keys(part).forEach((path) => { whole[path] = { from: bundle, path }; });
+    part = {};
+    size = 0;
+  };
+
+  for (const [path, entry] of entries) {
+    const bytes = sizeOf(path, entry);
+
+    if (!Object.hasOwn(entry, "text") && !Object.hasOwn(entry, "base64")) {
+      whole[path] = entry;
+      continue;
+    }
+
+    if (size + bytes > EDIT_BYTES && size > 0) {
+      await makePart();
+    }
+
+    part[path] = entry;
+    size += bytes;
+  }
+
+  if (size > 0) {
+    await makePart();
+  }
+
+  return makeBundle({ encrypted: true, add: whole });
 }
 
 // The day the photo an entry of an album's index describes was taken, as
@@ -2513,6 +2631,7 @@ function renderAlbum(album) {
   byId("album-name").textContent = album.name;
   facts.textContent = album.count ? countText(album) : "This album holds no photos.";
   byId("play-album").hidden = album.count === 0;
+  byId("share-album").hidden = album.count === 0;
   byId("select-photos").hidden = !canChange() || album.count === 0;
 
   if (album.count === 0) {
@@ -5360,6 +5479,211 @@ function goBack() {
   } else {
     backToAlbums();
   }
+}
+
+// Sharing an album, and importing one shared.
+
+// An album as it is shared: a new encrypted bundle, versioning nothing, so
+// that whoever is given its id reads the album as it was then, and not the
+// versions before it, which name every photo it ever held. It holds
+// album.json, {"name", "cover", "count"}; photos/, copied whole from the
+// album; and index/, written again with no `source`, as where each photo was
+// on the person's machine is theirs alone. Whoever is given its id imports
+// it as an album of their own naming that bundle, and nothing is copied.
+class SharedAlbum {
+  constructor(bundle, name, index, cover) {
+    this.bundle = bundle;
+    this.name = name;
+    this.index = index;
+    this.cover = cover;
+  }
+
+  // Shares `album`, an Album, as it is now: gives the id of the bundle made,
+  // carrying its key, and how many photos it holds; or an error, if it holds
+  // none, or part of its index could not be read.
+  static async make(album) {
+    const index = await AlbumIndex.whole(album);
+
+    if (index.size === 0) {
+      throw new Error("This album holds no photos, so there is nothing to share.");
+    }
+
+    const shared = new AlbumIndex();
+
+    for (const [month, entries] of index.months) {
+      for (const [folder, entry] of entries) {
+        shared.set(month, folder, defined({ ...entry, source: undefined }));
+      }
+    }
+
+    const cover = album.cover && index.holds(album.cover) ? album.cover : index.cover();
+    const about = { name: album.name, cover, count: index.size };
+    const bundle = await makeUnversioned({
+      [ALBUM_FILE]: { text: jsonText(ALBUM_KEYS, about) },
+      [PHOTOS]: { from: album.bundle, path: PHOTOS },
+      ...shared.files(new Set(shared.months.keys())).add,
+    });
+    return { bundle, count: index.size };
+  }
+
+  // The album shared at `bundle`, as its album.json and its index, read
+  // whole, give it; or an error, saying what the bundle is if it is no album
+  // shared.
+  static async read(bundle) {
+    let about;
+
+    try {
+      about = await readEntry(bundle, ALBUM_FILE);
+    } catch (error) {
+      if (error.status === 404) {
+        throw new Error(await SharedAlbum.refusal(bundle));
+      }
+
+      throw error;
+    }
+
+    if (!isObject(about)) {
+      throw new Error(`That bundle's ${ALBUM_FILE} is not an album this page reads.`);
+    }
+
+    const name = isText(about.name) && about.name.trim() ? about.name.trim() : "Untitled";
+    const index = await AlbumIndex.whole({ bundle, name });
+    const cover = isText(about.cover) && index.holds(about.cover) ? about.cover : index.cover();
+    return new SharedAlbum(bundle, name, index, cover);
+  }
+
+  // Why the bundle `bundle`, which holds no album.json, is not imported: as
+  // each application refuses the others', what it is, and where it is taken
+  // in, as its files say.
+  static async refusal(bundle) {
+    const [playlist, series, info] = await Promise.all([PLAYLIST_FILE, SERIES_FILE, INFO_FILE]
+      .map((name) => readEntry(bundle, name).catch(() => null)));
+    const not = `That bundle holds no ${ALBUM_FILE}, so it is not a shared album`;
+
+    if (isObject(playlist) && Array.isArray(playlist.songs)) {
+      return `${not}: it is a playlist. A playlist is imported in the music application.`;
+    }
+
+    if (isObject(playlist) && Array.isArray(playlist.order)) {
+      return `${not}: it is a collection of movies. A collection is imported in the movie application.`;
+    }
+
+    if (isObject(series)) {
+      return `${not}: it is a series. A series is imported in the TV application.`;
+    }
+
+    if (isObject(info) && isText(info.audio)) {
+      return `${not}: it is a song. A song is added to a library in the music application.`;
+    }
+
+    if (isObject(info) && isText(info.video)) {
+      return Object.hasOwn(info, "season")
+        ? `${not}: it is an episode. An episode is added to a series in the TV application.`
+        : `${not}: it is a movie. A movie is added to a collection in the movie application.`;
+    }
+
+    return `${not}. An album is shared with Share, beside its name.`;
+  }
+}
+
+// Shares the album open, and shows the id it was shared by, to be copied.
+async function shareAlbum() {
+  const album = openAlbumOf();
+
+  if (!album) {
+    return null;
+  }
+
+  show(byId("album-result"), `Sharing “${album.name}”…`);
+  const { bundle, count } = await SharedAlbum.make(album);
+  byId("shared-heading").textContent = `Share “${album.name}”`;
+  byId("shared-hint").textContent = `Whoever is given this id can import this album, with its `
+    + `${plural(count, "photo", "photos")}, into albums of their own, as it is now, and no one else can see it. `
+    + "Photos added to it later are not seen until it is shared again. Where each photo was taken goes "
+    + "with it, but not where it was on your machine.";
+  byId("shared-id").textContent = bundle;
+  byId("shared-dialog").showModal();
+  return null;
+}
+
+// The album shared whose id was read, once it is, a SharedAlbum.
+let sharedAlbum = null;
+
+function openImportShared() {
+  if (byId("import-shared").hidden) {
+    return;
+  }
+
+  sharedAlbum = null;
+  byId("import-shared-form").reset();
+  byId("import-shared-apart").hidden = true;
+  show(byId("import-shared-result"), "");
+  byId("import-shared-dialog").showModal();
+}
+
+// Asks for a name for the album imported, apart from `held`, an album of
+// the name it was to be imported under, suggesting the first not held of
+// that name followed by a number.
+function askApart(held) {
+  const field = byId("import-shared-name");
+  byId("import-shared-apart").hidden = false;
+  byId("import-shared-apart-note").textContent = `You have an album named “${held.name}” already. Give the one imported a name of its own.`;
+  field.value = freeName(state.albums, held.name);
+  field.select();
+  field.focus();
+}
+
+// Imports the album shared whose id is given: an album of the person's own
+// is made naming its bundle, under the name it was shared under, or, if an
+// album of that name is held, a name the person gives it apart. Nothing is
+// copied: the bundle given is the album, and what the person changes in it
+// is a new bundle of their own, which whoever shared it never sees.
+async function importShared() {
+  const bundle = parseId(byId("import-shared-id").value);
+
+  if (!bundle) {
+    throw new Error("That is not a content id, such as sha256/….");
+  }
+
+  if (!sharedAlbum || sharedAlbum.bundle !== bundle) {
+    byId("import-shared-apart").hidden = true;
+    show(byId("import-shared-result"), "Reading the album…");
+    sharedAlbum = await SharedAlbum.read(bundle);
+  }
+
+  const shared = sharedAlbum;
+  const name = byId("import-shared-apart").hidden ? shared.name : byId("import-shared-name").value.trim();
+
+  if (!name) {
+    throw new Error("Give the album a name.");
+  }
+
+  const named = (albums) => albums.find((album) => sameName(album.name, name)) || null;
+  let apart = named(state.albums);
+  let made = null;
+
+  if (!apart) {
+    await changeAlbums((albums) => {
+      apart = named(albums);
+
+      if (apart) {
+        return albums;
+      }
+
+      made = Album.made(name, shared.bundle).with({ count: shared.index.size, cover: shared.cover });
+      return [...albums, made];
+    });
+  }
+
+  if (apart) {
+    askApart(apart);
+    return null;
+  }
+
+  byId("import-shared-dialog").close();
+  openAlbum(made.id);
+  show(byId("album-result"), `Imported “${made.name}”, holding ${plural(made.count, "photo", "photos")}.`);
+  return null;
 }
 
 // What the dialog copying photos offers them to as a new album, rather than
@@ -8592,6 +8916,22 @@ for (const control of document.querySelectorAll("[data-close]")) {
   control.addEventListener("click", () => control.closest("dialog").close());
 }
 
+for (const control of document.querySelectorAll("[data-copy]")) {
+  control.addEventListener("click", async () => {
+    const text = byId(control.dataset.copy).textContent;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      control.textContent = "Copied";
+    } catch (error) {
+      window.getSelection().selectAllChildren(byId(control.dataset.copy));
+      control.textContent = "Selected: copy it";
+    }
+
+    setTimeout(() => { control.textContent = "Copy"; }, 2000);
+  });
+}
+
 function onClick(id, message, action) {
   const control = byId(id);
   control.addEventListener("click", () => perform(control, byId(message), action));
@@ -8600,6 +8940,7 @@ function onClick(id, message, action) {
 byId("show-keys").addEventListener("click", () => byId("keys-dialog").showModal());
 byId("new-album").addEventListener("click", openNew);
 byId("import-photos").addEventListener("click", openImport);
+byId("import-shared").addEventListener("click", openImportShared);
 byId("back").addEventListener("click", backToAlbums);
 byId("play-album").addEventListener("click", () => slideshow.playAlbum());
 byId("rename-album").addEventListener("click", openRename);
@@ -8624,11 +8965,13 @@ onSubmit("rename-form", "rename-result", renameAlbum);
 onSubmit("remove-form", "remove-result", removeAlbum);
 onSubmit("copy-form", "copy-result", copyChosen);
 onSubmit("remove-photos-form", "remove-photos-result", removePhotos);
+onSubmit("import-shared-form", "import-shared-result", importShared);
 onSubmit("edit-form", "edit-result", () => editing.save());
 onSubmit("found-form", "found-result", importFound);
 onClick("folder-all", "folder-state", findEvery);
 onClick("import-chosen", "folder-state", findChosen);
 onClick("viewer-cover", "viewer-result", () => viewer.useAsCover());
+onClick("share-album", "album-result", shareAlbum);
 
 start();
 </script>
