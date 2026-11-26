@@ -1193,8 +1193,8 @@ def test_the_photos_page_shows_a_photo_with_the_keys_the_plan_names(photos_page:
     [keys, _] = findall(r"^    const keys = \{\n(.*?)\n    \};$", photos_page, DOTALL | MULTILINE)
 
     # The photo before and after, Details, Edit, Zoom, Full screen,
-    # Download, the slideshow, and Close, with the keys, as the keys dialog
-    # shows them.
+    # Download, a Live Photo's motion, the slideshow, and Close, with the
+    # keys, as the keys dialog shows them.
     assert set(findall(r'^\s+"?([a-z?/]+)"?: ', keys, MULTILINE)) == {
         "arrowleft",
         "arrowright",
@@ -1203,6 +1203,7 @@ def test_the_photos_page_shows_a_photo_with_the_keys_the_plan_names(photos_page:
         "z",
         "f",
         "d",
+        "l",
         "p",
         "escape",
         "?",
@@ -1319,6 +1320,21 @@ def test_the_photos_page_shares_an_album_as_the_plan_names_it(photos_page: str) 
     # it holds.
     assert 'const PLAYLIST_FILE = "playlist.json";' in photos_page
     assert 'const SERIES_FILE = "series.json";' in photos_page
+
+
+def test_the_photos_page_plays_a_live_photo_as_the_plan_names_it(photos_page: str) -> None:
+    # The Live mark in the viewer, and Download its motion, after Download.
+    assert 'id="viewer-live" title="Play Live Photo" aria-label="Play Live Photo"' in photos_page
+    name = "Download its motion"
+    assert f'id="viewer-download-motion" title="{name}" aria-label="{name}" download' in photos_page
+    # A tile marked by the motion its entry names, unless this browser says
+    # it cannot play it, as for a video.
+    assert "isText(known.motion) && Clip.canPlay(Clip.typeOf(known.motion))" in photos_page
+    # Held, the photo, or L, plays it until it is let go.
+    assert "const HOLD_SECONDS = 0.4;" in photos_page
+    # Not in the slideshow.
+    [slideshow] = findall(r"^class Slideshow \{\n(.*?)\n\}$", photos_page, DOTALL | MULTILINE)
+    assert ".motion" not in slideshow
 
 
 def test_the_photos_page_is_black_as_the_movie_and_tv_pages_are_dark(photos_page: str) -> None:
