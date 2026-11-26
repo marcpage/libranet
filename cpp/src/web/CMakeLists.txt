@@ -1,5 +1,6 @@
 add_library(libranet_web STATIC
     Server.cpp
+    SiteChecks.cpp
 )
 add_library(libranet::web ALIAS libranet_web)
 target_include_directories(libranet_web PUBLIC ${PROJECT_SOURCE_DIR}/src)
@@ -17,6 +18,7 @@ if(BUILD_TESTING)
     add_executable(web_tests
         tests/TestConnectionInfo.cpp
         tests/TestServer.cpp
+        tests/TestSiteChecks.cpp
     )
     target_link_libraries(web_tests PRIVATE libranet::web GTest::gtest_main)
     gtest_discover_tests(web_tests)
