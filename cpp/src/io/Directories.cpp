@@ -22,27 +22,52 @@ string environment(const char* name) {
     return nullptr == value ? "" : value;
 }
 
-} // namespace
-
-namespace io {
-
-optional<path> Directories::user_app_data() {
+// The directory at relative in HOME, if HOME is set.
+optional<path> in_home(const path& relative) {
     const auto home = environment("HOME");
-
-#if !__APPLE__
-    if (const auto data_home = environment("XDG_DATA_HOME"); !data_home.empty()) {
-        return path(data_home);
-    }
-#endif
 
     if (home.empty()) {
         return nullopt;
     }
 
+    return path(home) / relative;
+}
+
 #if __APPLE__
-    return path(home) / "Library" / "Application Support";
+// Where macOS keeps each user's data and settings for applications.
+optional<path> application_support() {
+    return in_home(path("Library") / "Application Support");
+}
 #else
-    return path(home) / ".local" / "share";
+// The directory the XDG environment variable named variable gives, if it is
+// set, or else the one at fallback in HOME, as the XDG Base Directory
+// Specification has it.
+optional<path> xdg_home(const char* variable, const path& fallback) {
+    if (const auto directory = environment(variable); !directory.empty()) {
+        return path(directory);
+    }
+
+    return in_home(fallback);
+}
+#endif
+
+} // namespace
+
+namespace io {
+
+optional<path> Directories::user_app_data() {
+#if __APPLE__
+    return application_support();
+#else
+    return xdg_home("XDG_DATA_HOME", path(".local") / "share");
+#endif
+}
+
+optional<path> Directories::user_config() {
+#if __APPLE__
+    return application_support();
+#else
+    return xdg_home("XDG_CONFIG_HOME", ".config");
 #endif
 }
 
