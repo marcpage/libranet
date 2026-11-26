@@ -2,6 +2,7 @@
 #include <array>
 #include <cstddef>
 #include <initializer_list>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -67,13 +68,16 @@ ConnectionInfo reached_at(std::string_view host) {
     return {Address(loopback, client_port), Address(host, config_port)};
 }
 
+// The header refusal names, or "" if there is none.
+std::string header_of(const std::optional<SiteChecks::Refusal>& refusal) {
+    return refusal.has_value() ? std::string(refusal->header) : "";
+}
+
 // The header checks refuses a request carrying headers for, on a
 // connection that reached host, or "" if they pass it.
 std::string refused_for(const SiteChecks& checks, std::initializer_list<Header> headers,
                         std::string_view host = loopback) {
-    const auto refusal = checks.refusal(with_headers(headers), reached_at(host));
-
-    return refusal.has_value() ? std::string(refusal->header) : "";
+    return header_of(checks.refusal(with_headers(headers), reached_at(host)));
 }
 
 // The header the default checks refuse a request carrying headers for.
@@ -285,12 +289,9 @@ TEST(SiteChecksTest, EachCheckIsMadeAlone) {
         {"Host", "attacker.example"},
         {"Sec-Fetch-Site", "same-site"},
     });
-    const auto host_refusal = checks.host_refusal(request, reached_at(loopback));
-    const auto page_refusal = checks.page_refusal(request);
+    const auto host_only = with_headers({{"Host", "attacker.example"}});
 
-    ASSERT_TRUE(host_refusal.has_value());
-    EXPECT_EQ(host_refusal->header, "Host");
-    ASSERT_TRUE(page_refusal.has_value());
-    EXPECT_EQ(page_refusal->header, "Sec-Fetch-Site");
-    EXPECT_FALSE(checks.page_refusal(with_headers({{"Host", "attacker.example"}})).has_value());
+    EXPECT_EQ(header_of(checks.host_refusal(request, reached_at(loopback))), "Host");
+    EXPECT_EQ(header_of(checks.page_refusal(request)), "Sec-Fetch-Site");
+    EXPECT_EQ(header_of(checks.page_refusal(host_only)), "");
 }
