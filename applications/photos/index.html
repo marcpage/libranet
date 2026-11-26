@@ -439,6 +439,73 @@
   .viewer button.side.next { right: 0.5rem; }
   .viewer .side svg { width: 1.75rem; height: 1.75rem; }
 
+  /* An album played as a slideshow, full screen, on black, over everything
+     else, each photo fading into the next, with its controls below, shown
+     as the pointer moves, and hidden, with the pointer, once it is still. */
+  .slideshow {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    overflow: hidden;
+    background: #000;
+    touch-action: none;
+  }
+
+  .slideshow:focus { outline: none; }
+  .slideshow.still { cursor: none; }
+  .slides { position: absolute; inset: 0; overflow: hidden; }
+
+  /* Each photo shown, or fading, laid out as the viewer lays one out, its
+     fade as long as FADE_SECONDS says. */
+  .slides > .slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    max-width: none;
+    transform-origin: 0 0;
+    opacity: 0;
+    transition: opacity 1s ease-in-out;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  .slides > video.slide { background: #000; }
+  .slides > .slide.shown { opacity: 1; }
+  .slideshow > .state { position: absolute; top: 50%; left: 1rem; right: 1rem; margin: 0; text-align: center; transform: translateY(-50%); }
+
+  .slideshow-controls {
+    position: absolute;
+    left: 50%;
+    bottom: 1.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem 0.75rem;
+    width: max-content;
+    max-width: calc(100% - 1rem);
+    padding: 0.35rem 0.75rem;
+    border-radius: 8px;
+    background: rgb(20 20 20 / 0.8);
+    transform: translateX(-50%);
+    transition: opacity 0.3s;
+  }
+
+  .slideshow.still .slideshow-controls { opacity: 0; pointer-events: none; }
+  .slideshow-controls button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+
+  button.interval {
+    padding: 0.15rem 0.45rem;
+    border-color: transparent;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  button.interval:hover { border-color: var(--border); }
+
   dialog {
     width: min(40rem, calc(100vw - 2rem));
     border: 1px solid var(--border);
@@ -512,6 +579,9 @@
       </div>
       <h2 id="album-name"></h2>
       <div class="icons">
+        <button type="button" class="icon" id="play-album" title="Play" aria-label="Play" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16l13-8z"/></svg>
+        </button>
         <button type="button" class="icon changes-only" id="select-photos" title="Select" aria-label="Select" aria-pressed="false" aria-controls="choose-bar" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12l3 3 5-6"/></svg>
         </button>
@@ -597,6 +667,37 @@
       <h3 id="details-heading">Details</h3>
       <dl class="details" id="details-list"></dl>
     </aside>
+  </div>
+</div>
+
+<div class="slideshow" id="slideshow" role="dialog" aria-modal="true" aria-label="Slideshow" tabindex="-1" hidden>
+  <div class="slides" id="slides"></div>
+  <p class="state" id="slideshow-state" role="status" hidden></p>
+  <div class="slideshow-controls" id="slideshow-controls" role="group" aria-label="Slideshow controls">
+    <div class="icons">
+      <button type="button" class="icon" id="slideshow-previous" title="Previous" aria-label="Previous">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 6l-9 6 9 6z M6 6v12"/></svg>
+      </button>
+      <button type="button" class="icon" id="slideshow-pause" title="Pause" aria-label="Pause">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14 M16 5v14"/></svg>
+      </button>
+      <button type="button" class="icon" id="slideshow-next" title="Next" aria-label="Next">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l9 6-9 6z M18 6v12"/></svg>
+      </button>
+    </div>
+    <div class="icons" role="group" aria-label="How long each photo is shown">
+      <button type="button" class="interval" data-seconds="3" title="Show each photo for 3 seconds" aria-label="3 seconds" aria-pressed="false">3 s</button>
+      <button type="button" class="interval" data-seconds="5" title="Show each photo for 5 seconds" aria-label="5 seconds" aria-pressed="false">5 s</button>
+      <button type="button" class="interval" data-seconds="10" title="Show each photo for 10 seconds" aria-label="10 seconds" aria-pressed="false">10 s</button>
+    </div>
+    <div class="icons">
+      <button type="button" class="icon" id="slideshow-shuffle" title="Shuffle" aria-label="Shuffle" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 7h3c4.5 0 6.5 10 11 10h4 M3 17h3c1.7 0 3-1.4 4.1-3.2 M13.9 10.2C15 8.4 16.3 7 18 7h3 M18 4l3 3-3 3 M18 14l3 3-3 3"/></svg>
+      </button>
+      <button type="button" class="icon" id="slideshow-close" title="Close" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12 M18 6L6 18"/></svg>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -757,6 +858,8 @@
     <dd>Make a new album.</dd>
     <dt><kbd>S</kbd></dt>
     <dd>Choose photos of the album open, to copy, move, or remove them, or stop choosing. A click with Shift chooses every photo from the last chosen, and a day's heading every photo of that day.</dd>
+    <dt><kbd>P</kbd></dt>
+    <dd>Play the album open as a slideshow, from the first photo chosen, or the photo with focus, or else from its first.</dd>
     <dt><kbd>?</kbd> <kbd>/</kbd></dt>
     <dd>These keys.</dd>
   </dl>
@@ -774,8 +877,19 @@
     <dd>Full screen, or leave it.</dd>
     <dt><kbd>D</kbd></dt>
     <dd>Download its original.</dd>
+    <dt><kbd>P</kbd></dt>
+    <dd>Play the album as a slideshow, from the photo shown.</dd>
     <dt><kbd>Esc</kbd></dt>
     <dd>Back to the album, at the photo shown.</dd>
+  </dl>
+  <h4 class="keys-heading">In a slideshow</h4>
+  <dl class="keys">
+    <dt><kbd>Space</kbd></dt>
+    <dd>Pause, or play again.</dd>
+    <dt><kbd>←</kbd> <kbd>→</kbd></dt>
+    <dd>The photo before, or after.</dd>
+    <dt><kbd>Esc</kbd></dt>
+    <dd>Close it, back to where it was played from, at the photo last shown.</dd>
   </dl>
   <div class="buttons">
     <button type="button" class="secondary" data-close>Done</button>
@@ -810,8 +924,11 @@ const ALBUM_ID_BYTES = 16;
 const DROP_SECONDS = 1;
 const DROP_MINIMUM_BITS = 24;
 
-// Where this browser remembers the album last open, by its id.
+// Where this browser remembers the album last open, by its id; and how long
+// a slideshow shows each photo, and whether Shuffle is on.
 const REMEMBERED = "photos.album";
+const REMEMBERED_INTERVAL = "photos.interval";
+const REMEMBERED_SHUFFLE = "photos.shuffle";
 
 // Why nothing is changed for whoever is signed in with their fallback
 // password, before the fallback takes over: nothing they keep is signed
@@ -1199,6 +1316,20 @@ const SWIPE_PIXELS = 50;
 
 // How many pixels a turn of a mouse wheel of a line moves a photo zoomed.
 const WHEEL_LINE_PIXELS = 16;
+
+// How long a slideshow shows each photo, in seconds: each that may be
+// chosen, and the one to start with; how long a photo takes to fade into the
+// next, as the page's style fades it; and how long its controls stay shown
+// once the pointer is still.
+const SLIDE_SECONDS = [3, 5, 10];
+const DEFAULT_SLIDE_SECONDS = 5;
+const FADE_SECONDS = 1;
+const CONTROLS_SECONDS = 3;
+
+// What Pause is drawn as while a slideshow plays, and as Play while it is
+// paused.
+const PAUSE_PATH = "M8 5v14 M16 5v14";
+const PLAY_PATH = "M7 4v16l13-8z";
 
 // A content id, plain or carrying the key of a bundle stored encrypted (HttpApi 5).
 const CONTENT_ID = /^[a-z0-9-]+\/[0-9a-f]+(?:\/[A-Za-z0-9:-]+\/[0-9a-f]+)?$/;
@@ -2381,6 +2512,7 @@ function renderAlbum(album) {
   const facts = byId("album-facts");
   byId("album-name").textContent = album.name;
   facts.textContent = album.count ? countText(album) : "This album holds no photos.";
+  byId("play-album").hidden = album.count === 0;
   byId("select-photos").hidden = !canChange() || album.count === 0;
 
   if (album.count === 0) {
@@ -4223,8 +4355,8 @@ class Viewer {
   // Hears every key while it is open, but while a dialog is open over it:
   // the left and right arrow keys move to the photo before or after, `I`
   // shows its details, `E` edits them, `Z` zooms, `F` shows it full screen,
-  // `D` downloads its original, Escape closes it, and `?` or `/` shows the
-  // keys.
+  // `D` downloads its original, `P` plays the album as a slideshow from it,
+  // Escape closes it, and `?` or `/` shows the keys.
   key(event) {
     const key = String(event.key).toLowerCase();
     const keys = {
@@ -4236,6 +4368,7 @@ class Viewer {
       z: () => this.zoom(),
       f: () => this.toggleFullscreen(),
       d: () => this.download.click(),
+      p: () => slideshow.open(this.current(), this.folder),
       "?": () => byId("keys-dialog").showModal(),
       "/": () => byId("keys-dialog").showModal(),
     };
@@ -4253,6 +4386,874 @@ class Viewer {
 }
 
 const viewer = new Viewer();
+
+// An album played as a slideshow, full screen, on black, over everything
+// else on the page, the viewer too, in the grid's order, or shuffled, and
+// round again after its last photo: each photo shown as the viewer shows it,
+// for as long as is chosen, then fading into the next, which is loaded
+// before it is shown; and each video played to its end, with its sound. A
+// photo with no view, and a video that cannot be played, are passed over.
+// Its controls are shown as the pointer moves, and the screen is kept awake
+// while it plays.
+class Slideshow {
+  constructor() {
+    this.element = byId("slideshow");
+    this.stage = byId("slides");
+    this.status = byId("slideshow-state");
+    this.controls = byId("slideshow-controls");
+    // The grid it was played from; the folders of the photos in the order
+    // they are played, which goes on round after round as it is played;
+    // where in it the photo shown is, and the photo being moved to; and the
+    // folders of the photos passed over, which are not tried again.
+    this.grid = null;
+    this.order = [];
+    this.at = 0;
+    this.aim = 0;
+    this.passed = new Set();
+    // The photo shown, a slide, {folder, element, size, turn, video}, and
+    // those fading out; each photo being loaded, by its folder, to a promise
+    // of its slide, or of null if it is passed over; how many moves have
+    // been made, so that a photo loaded for one made before the last is not
+    // shown; and whether a move is loading the photo it moves to.
+    this.slide = null;
+    this.fading = new Set();
+    this.loads = new Map();
+    this.moves = 0;
+    this.seeking = false;
+    // Whether it is paused; the timer showing the photo after the one shown,
+    // and when it is due; and, while paused, how long the photo shown had
+    // left, in milliseconds.
+    this.paused = false;
+    this.timer = null;
+    this.due = 0;
+    this.left = null;
+    // How long each photo is shown, in seconds, and whether Shuffle is on,
+    // as this browser remembers them.
+    this.seconds = Slideshow.recallSeconds();
+    this.shuffle = Slideshow.recallShuffle();
+    // The screen's wake lock, a promise of it, while it plays; whether it
+    // has been shown full screen; what had focus before it, what gives focus
+    // back once full screen is left, and whether each part of the page was
+    // inert; the timer hiding its controls once the pointer is still; where
+    // the pointer was last; and whether a mouse is over its controls.
+    this.lock = null;
+    this.full = false;
+    this.before = null;
+    this.refocus = null;
+    this.held = new Map();
+    this.still = null;
+    this.pointer = null;
+    this.over = false;
+    this.showSeconds();
+    this.showShuffle();
+    this.listen();
+  }
+
+  listen() {
+    byId("slideshow-previous").addEventListener("click", () => this.move(false));
+    byId("slideshow-next").addEventListener("click", () => this.move(true));
+    byId("slideshow-pause").addEventListener("click", () => this.togglePause());
+    byId("slideshow-shuffle").addEventListener("click", () => this.toggleShuffle());
+    byId("slideshow-close").addEventListener("click", () => this.close());
+
+    for (const control of this.controls.querySelectorAll("[data-seconds]")) {
+      control.addEventListener("click", () => this.showFor(Number(control.dataset.seconds)));
+    }
+
+    // Its controls are shown as the pointer moves, or touches it, or as one
+    // of them is reached from the keyboard.
+    this.element.addEventListener("pointermove", (event) => this.pointed(event));
+    this.element.addEventListener("pointerdown", () => this.showControls());
+    this.controls.addEventListener("focusin", () => this.showControls());
+    this.controls.addEventListener("pointerenter", (event) => {
+      this.over = event.pointerType === "mouse";
+    });
+    this.controls.addEventListener("pointerleave", () => {
+      this.over = false;
+    });
+    // Nothing under it is scrolled.
+    this.element.addEventListener("wheel", (event) => event.preventDefault(), { passive: false });
+    this.element.addEventListener("touchmove", (event) => event.preventDefault(), { passive: false });
+    new ResizeObserver(() => this.layout()).observe(this.stage);
+
+    for (const name of ["fullscreenchange", "webkitfullscreenchange"]) {
+      document.addEventListener(name, () => this.fullscreenChanged());
+    }
+
+    // The browser lets go of the screen's wake lock as the page is hidden,
+    // so it is asked for again once the page is shown.
+    document.addEventListener("visibilitychange", () => this.keepAwake());
+  }
+
+  isOpen() {
+    return !this.element.hidden;
+  }
+
+  // Plays the album open, from the first of its photos chosen, if any are,
+  // or else from the one with focus, or else from its first.
+  playAlbum() {
+    const grid = shownGrid;
+
+    if (byId("play-album").hidden || !grid || grid.id !== state.open || grid.days.length === 0) {
+      return;
+    }
+
+    const folders = grid.folders();
+    const position = grid.positions.get(document.activeElement);
+    const chosen = selection.active ? folders.find((folder) => selection.has(folder)) : undefined;
+    this.open(grid, chosen || (position ? grid.photoAt(position)[0] : folders[0]));
+  }
+
+  // Plays the photos of `grid`, from the one in `folder`, full screen, where
+  // the browser can show it so.
+  open(grid, folder) {
+    const folders = grid.folders();
+    const album = openAlbumOf();
+    this.grid = grid;
+    this.order = this.shuffle ? [folder, ...Slideshow.shuffled(folders.filter((each) => each !== folder))] : folders;
+    this.at = Math.max(0, this.order.indexOf(folder));
+    this.aim = this.at;
+    this.passed = new Set();
+    this.slide = null;
+    this.paused = false;
+    this.left = null;
+    this.full = false;
+    this.before = document.activeElement;
+    this.refocus = null;
+    this.showPaused();
+    this.element.setAttribute("aria-label", album ? `Slideshow of “${album.name}”` : "Slideshow");
+    this.element.hidden = false;
+    this.holdBack(true);
+    this.element.focus();
+
+    // A video the viewer shows is paused, as it would be heard under it.
+    for (const video of viewer.stage.querySelectorAll("video")) {
+      video.pause();
+    }
+
+    this.enterFullscreen();
+    this.showControls();
+    this.keepAwake();
+    show(this.status, "Loading…");
+    this.seek(this.at, true);
+  }
+
+  // Goes back to where it was played from, the viewer or the album, at the
+  // photo last shown, leaving full screen first.
+  close() {
+    if (!this.isOpen()) {
+      return;
+    }
+
+    const folder = this.slide ? this.slide.folder : null;
+    const grid = folder ? this.gridOf(folder) : null;
+    this.moves += 1;
+    this.seeking = false;
+    clearTimeout(this.timer);
+    clearTimeout(this.still);
+    this.forgo(null);
+
+    for (const element of this.stage.children) {
+      Slideshow.release(element);
+    }
+
+    this.stage.replaceChildren();
+    this.slide = null;
+    this.fading.clear();
+    this.letSleep();
+    this.element.hidden = true;
+    this.holdBack(false);
+    this.grid = null;
+
+    // What is under it takes focus only once it is no longer full screen.
+    if (Viewer.fullscreenElement() === this.element) {
+      this.refocus = () => this.backTo(grid, folder);
+      Viewer.leaveFullscreen();
+    } else {
+      this.backTo(grid, folder);
+    }
+  }
+
+  // Back where it was played from: the viewer, showing the photo in
+  // `folder` of `grid`, the photo last shown, or else the album, that
+  // photo's tile given focus; or, if none was shown, whatever had focus
+  // before.
+  backTo(grid, folder) {
+    if (viewer.isOpen()) {
+      if (grid && folder !== viewer.folder) {
+        viewer.present(grid, folder);
+      }
+
+      viewer.element.focus();
+    } else if (grid && grid === shownGrid) {
+      grid.focus(grid.place(folder));
+    } else if (this.before && this.before.isConnected) {
+      this.before.focus();
+    }
+  }
+
+  // Makes everything on the page but it and the dialogs inert, the viewer
+  // too, or, no longer `inert`, as each was, so that what is under it is
+  // neither reached nor read.
+  holdBack(inert) {
+    if (!inert) {
+      for (const [child, held] of this.held) {
+        child.inert = held;
+      }
+
+      this.held = new Map();
+      return;
+    }
+
+    for (const child of document.body.children) {
+      if (!(child instanceof HTMLDialogElement) && !(child instanceof HTMLScriptElement)) {
+        this.held.set(child, child.inert);
+        child.inert = child !== this.element;
+      }
+    }
+  }
+
+  // Shows it full screen, where this browser can. One that cannot show it
+  // so while the viewer is, leaves full screen, as the viewer would be shown
+  // over it.
+  enterFullscreen() {
+    if (!(document.fullscreenEnabled || document.webkitFullscreenEnabled)) {
+      return;
+    }
+
+    const enter = this.element.requestFullscreen || this.element.webkitRequestFullscreen;
+    Promise.resolve(enter.call(this.element)).catch((error) => {
+      console.warn(`The slideshow was not shown full screen: ${error.message}`);
+
+      if (this.isOpen() && Viewer.fullscreenElement()) {
+        Viewer.leaveFullscreen();
+      }
+    });
+  }
+
+  // Once full screen is left, as with Escape, which the browser keeps from
+  // the page, it is closed too; and once it is closed, and full screen left,
+  // focus is given back.
+  fullscreenChanged() {
+    if (!this.isOpen()) {
+      const refocus = this.refocus;
+      this.refocus = null;
+
+      if (refocus) {
+        refocus();
+      }
+
+      return;
+    }
+
+    if (Viewer.fullscreenElement() === this.element) {
+      this.full = true;
+    } else if (this.full) {
+      this.close();
+    }
+  }
+
+  // The grid the photo in `folder` is played from: the one shown of the
+  // album, which grows as photos are added to it, if it holds the photo, or
+  // else the one it was played from, if that does; or null.
+  gridOf(folder) {
+    if (shownGrid && shownGrid.id === this.grid.id && shownGrid.place(folder)) {
+      return shownGrid;
+    }
+
+    return this.grid.place(folder) ? this.grid : null;
+  }
+
+  // The folders of the photos of the album to play in another round, after
+  // those in the order, but those passed over: in the grid's order, or, with
+  // Shuffle on, in an order chosen at random, not starting with the photo
+  // just before it.
+  round() {
+    const grid = shownGrid && shownGrid.id === this.grid.id ? shownGrid : this.grid;
+    const folders = grid.folders().filter((folder) => !this.passed.has(folder));
+
+    if (!this.shuffle) {
+      return folders;
+    }
+
+    const order = Slideshow.shuffled(folders);
+
+    if (order.length > 1 && order[0] === this.order[this.order.length - 1]) {
+      order.push(order.shift());
+    }
+
+    return order;
+  }
+
+  // Where in the order the photo after the one at `at` is, or before it if
+  // not `after`: after the last, the first of another round, and before the
+  // first, the last; or null, if every photo is passed over.
+  beside(at, after) {
+    if (this.order.length === 0) {
+      return null;
+    }
+
+    if (!after) {
+      return at > 0 ? at - 1 : this.order.length - 1;
+    }
+
+    if (at + 1 >= this.order.length) {
+      this.order.push(...this.round());
+    }
+
+    return at + 1 < this.order.length ? at + 1 : null;
+  }
+
+  // Shows the photo after the one shown, or the one being moved to, or
+  // before it if not `after`, passing over those that cannot be shown.
+  move(after) {
+    if (!this.isOpen()) {
+      return;
+    }
+
+    const at = this.beside(this.aim, after);
+
+    if (at !== null) {
+      this.seek(at, after);
+    }
+  }
+
+  // Shows the photo at `at` in the order, once it is loaded, or, if it is
+  // passed over, the first after it, or before it if not `after`, that is
+  // not; or says that none can be shown.
+  async seek(at, after) {
+    const moves = this.moves + 1;
+    let order = this.order;
+    this.moves = moves;
+    this.seeking = true;
+    clearTimeout(this.timer);
+
+    for (let tried = 0; at !== null && tried <= this.order.length; tried += 1, at = this.beside(at, after)) {
+      const folder = this.order[at];
+      this.aim = at;
+
+      if (this.passed.has(folder)) {
+        continue;
+      }
+
+      if (this.slide && this.slide.folder === folder) {
+        this.seeking = false;
+        this.at = at;
+        this.again();
+        return;
+      }
+
+      const slide = await this.load(folder);
+
+      if (this.moves !== moves || !this.isOpen()) {
+        return;
+      }
+
+      // The order made again while it was loaded, as Shuffle is turned on
+      // or off.
+      if (this.order !== order) {
+        order = this.order;
+        at = Math.max(0, order.indexOf(folder));
+        this.aim = at;
+      }
+
+      if (slide) {
+        this.seeking = false;
+        this.at = at;
+        this.present(slide);
+        return;
+      }
+
+      this.passed.add(folder);
+    }
+
+    this.seeking = false;
+    this.aim = this.at;
+    this.none();
+  }
+
+  // The slide of the photo in `folder`, as prepare loads it, loaded once.
+  load(folder) {
+    if (!this.loads.has(folder)) {
+      this.loads.set(folder, this.prepare(folder).catch((error) => {
+        console.warn(`A photo was passed over in the slideshow: ${error.message}`);
+        return null;
+      }));
+    }
+
+    return this.loads.get(folder);
+  }
+
+  // The slide of the photo in `folder`, loaded, as the viewer shows it: its
+  // view, or else its original, turned as it is, or a video, ready to be
+  // played; or null, if it is passed over: if the album holds it no longer,
+  // if it has no view though not every browser shows it as it is, or if it
+  // cannot be shown, or played.
+  async prepare(folder) {
+    const grid = this.gridOf(folder);
+
+    if (!grid) {
+      return null;
+    }
+
+    const [, entry] = grid.photoAt(grid.place(folder));
+    const photo = await Viewer.described(grid.bundle, folder, entry);
+
+    if (photo.viewless) {
+      return null;
+    }
+
+    const known = { ...entry, ...photo.info };
+    const slide = photo.video ? await Slideshow.video(photo) : await Slideshow.image(photo.shown);
+
+    if (!slide) {
+      return null;
+    }
+
+    slide.element.classList.add("slide");
+    slide.element.setAttribute(photo.video ? "aria-label" : "alt", isText(known.title) ? known.title : photo.name);
+    return { ...slide, folder, turn: turnOf(known) };
+  }
+
+  // A slide of the image at `url`, once it is decoded, asked for again a
+  // few times, as the viewer asks, if the node is still fetching it; or
+  // null, if it cannot be shown.
+  static async image(url) {
+    for (let tries = 1; ; tries += 1) {
+      const image = make("img");
+      image.draggable = false;
+      image.src = url;
+
+      try {
+        await image.decode();
+        return { element: image, size: [image.naturalWidth, image.naturalHeight], video: false };
+      } catch (error) {
+        if (tries >= COVER_TRIES) {
+          console.warn(`A photo could not be shown in the slideshow: ${error.message}`);
+          return null;
+        }
+      }
+
+      await sleep(DEFAULT_RETRY_SECONDS);
+    }
+  }
+
+  // A slide of the video `photo`, as described gives it, once the node
+  // gives its start, waiting out the 503s it answers while it fetches it,
+  // and this browser knows its width and height; or null, if this browser
+  // says it cannot play it, or it fails as it loads, or shows no picture.
+  static async video(photo) {
+    if (!Clip.canPlay(Clip.typeOf(photo.name))) {
+      return null;
+    }
+
+    await new StoredFile(photo.shown).at(0, 1);
+    const video = make("video");
+    video.playsInline = true;
+    video.preload = "auto";
+
+    if (photo.poster) {
+      video.poster = photo.poster;
+    }
+
+    try {
+      await Clip.when(video, "loadedmetadata", () => { video.src = photo.shown; });
+    } catch (error) {
+      console.warn(`A video could not be played in the slideshow: ${error.message}`);
+    }
+
+    if (!video.videoWidth || !video.videoHeight) {
+      Slideshow.release(video);
+      return null;
+    }
+
+    return { element: video, size: [video.videoWidth, video.videoHeight], video: true };
+  }
+
+  // Stops `element`, if it is a video, so that it is read no further.
+  static release(element) {
+    if (element instanceof HTMLVideoElement) {
+      element.pause();
+      element.removeAttribute("src");
+      element.load();
+    }
+  }
+
+  // Lets go of every photo loaded but the one in `keep`.
+  forgo(keep) {
+    for (const [folder, loading] of this.loads) {
+      if (folder !== keep) {
+        this.loads.delete(folder);
+        loading.then((slide) => slide && Slideshow.release(slide.element));
+      }
+    }
+  }
+
+  // Shows `slide`, fading it in over the photo shown, which fades out, plays
+  // it, unless paused, and loads the photo after it.
+  present(slide) {
+    const before = this.slide;
+    const element = slide.element;
+    this.loads.delete(slide.folder);
+    this.slide = slide;
+    this.left = null;
+    show(this.status, "");
+    this.stage.append(element);
+    this.place(slide);
+    // Laid out unseen first, so that it fades in.
+    element.getBoundingClientRect();
+    element.classList.add("shown");
+
+    if (slide.video) {
+      element.addEventListener("ended", () => this.ended(slide));
+      element.addEventListener("error", () => {
+        this.passed.add(slide.folder);
+        this.ended(slide);
+      });
+    }
+
+    if (before) {
+      this.fade(before);
+    }
+
+    this.run();
+    this.preload();
+  }
+
+  // Fades `slide` out, stopping it if it is a video, then takes it away.
+  fade(slide) {
+    this.fading.add(slide);
+    slide.element.classList.remove("shown");
+
+    if (slide.video) {
+      slide.element.pause();
+    }
+
+    setTimeout(() => {
+      this.fading.delete(slide);
+      slide.element.remove();
+      Slideshow.release(slide.element);
+    }, FADE_SECONDS * 1000);
+  }
+
+  // Loads the photo after the one shown, but those passed over, so that it
+  // is shown as soon as its time comes, and lets go of any other loaded.
+  preload() {
+    let next = null;
+
+    for (let at = this.beside(this.at, true), tried = 0; at !== null && next === null && tried <= this.order.length;
+      at = this.beside(at, true), tried += 1) {
+      if (!this.passed.has(this.order[at])) {
+        next = this.order[at];
+      }
+    }
+
+    this.forgo(next);
+
+    if (next !== null && next !== this.slide.folder) {
+      this.load(next);
+    }
+  }
+
+  // Shows the photo shown again, as the only one that can be: a photo for
+  // as long as is chosen, and a video from its start.
+  again() {
+    if (this.slide.video) {
+      this.slide.element.currentTime = 0;
+    }
+
+    this.left = null;
+    this.run();
+  }
+
+  // Plays the photo shown, unless paused, or a move is loading the photo it
+  // moves to: a photo for as long as it had left, or else as is chosen, then
+  // the photo after it; and a video to its end.
+  run() {
+    clearTimeout(this.timer);
+
+    if (this.paused || this.seeking || !this.slide) {
+      return;
+    }
+
+    if (this.slide.video) {
+      Slideshow.start(this.slide.element);
+      return;
+    }
+
+    const wait = this.left === null ? this.seconds * 1000 : this.left;
+    this.left = null;
+    this.due = Date.now() + wait;
+    this.timer = setTimeout(() => this.move(true), wait);
+  }
+
+  // Plays `video` with its sound, or, where the browser lets a page play
+  // none unasked, as Safari does, without it.
+  static start(video) {
+    video.muted = false;
+    video.play().catch((error) => {
+      if (error.name !== "NotAllowedError") {
+        return undefined;
+      }
+
+      video.muted = true;
+      return video.play();
+    }).catch((error) => console.warn(`A video could not be played in the slideshow: ${error.message}`));
+  }
+
+  // Once the video `slide` ends, or fails as it plays, the photo after it is
+  // shown.
+  ended(slide) {
+    if (this.slide === slide && !this.paused) {
+      this.move(true);
+    }
+  }
+
+  // Says that none of the album's photos can be shown.
+  none() {
+    if (this.slide) {
+      this.fade(this.slide);
+      this.slide = null;
+    }
+
+    show(this.status, "None of this album's photos can be shown in a slideshow.", true);
+    this.letSleep();
+  }
+
+  // Pauses it, or plays it again: the photo shown for as long as it had
+  // left, and a video from where it was.
+  togglePause() {
+    this.paused = !this.paused;
+    this.showPaused();
+
+    if (this.paused) {
+      clearTimeout(this.timer);
+
+      if (this.slide && this.slide.video) {
+        this.slide.element.pause();
+      } else if (this.slide && !this.seeking) {
+        this.left = Math.max(0, this.due - Date.now());
+      }
+
+      this.letSleep();
+    } else {
+      this.keepAwake();
+      this.run();
+    }
+
+    this.showControls();
+  }
+
+  showPaused() {
+    const control = byId("slideshow-pause");
+    const text = this.paused ? "Play" : "Pause";
+    control.title = text;
+    control.setAttribute("aria-label", text);
+    control.querySelector("path").setAttribute("d", this.paused ? PLAY_PATH : PAUSE_PATH);
+  }
+
+  // Shows each photo for `seconds`, one of SLIDE_SECONDS, the photo shown
+  // for that long from now.
+  showFor(seconds) {
+    this.seconds = seconds;
+    Slideshow.remember(REMEMBERED_INTERVAL, String(seconds));
+    this.showSeconds();
+
+    if (this.slide && !this.slide.video) {
+      this.left = null;
+      this.run();
+    }
+  }
+
+  showSeconds() {
+    for (const control of this.controls.querySelectorAll("[data-seconds]")) {
+      control.setAttribute("aria-pressed", String(Number(control.dataset.seconds) === this.seconds));
+    }
+  }
+
+  // Turns Shuffle on or off, as the music application does. The photos
+  // after the one shown are played in an order chosen at random, each once,
+  // or in the grid's order.
+  toggleShuffle() {
+    const folder = this.slide ? this.slide.folder : this.order[this.at];
+    const aimed = this.order[this.aim];
+    const grid = shownGrid && shownGrid.id === this.grid.id ? shownGrid : this.grid;
+    const folders = grid.folders().filter((each) => !this.passed.has(each));
+    this.shuffle = !this.shuffle;
+    Slideshow.remember(REMEMBERED_SHUFFLE, String(this.shuffle));
+    this.showShuffle();
+    this.order = this.shuffle ? [folder, ...Slideshow.shuffled(folders.filter((each) => each !== folder))] : folders;
+    this.at = Math.max(0, this.order.indexOf(folder));
+    this.aim = Math.max(0, this.order.indexOf(aimed));
+
+    if (this.slide && !this.seeking) {
+      this.preload();
+    }
+  }
+
+  showShuffle() {
+    const control = byId("slideshow-shuffle");
+    control.setAttribute("aria-pressed", String(this.shuffle));
+    control.title = this.shuffle ? "Shuffle is on" : "Shuffle";
+  }
+
+  // `list`, in an order chosen at random.
+  static shuffled(list) {
+    const order = [...list];
+
+    for (let at = order.length - 1; at > 0; at -= 1) {
+      const other = Math.floor(Math.random() * (at + 1));
+      [order[at], order[other]] = [order[other], order[at]];
+    }
+
+    return order;
+  }
+
+  // How long each photo is shown, in seconds, as this browser remembers it,
+  // or else DEFAULT_SLIDE_SECONDS.
+  static recallSeconds() {
+    try {
+      const seconds = Number(localStorage.getItem(REMEMBERED_INTERVAL));
+      return SLIDE_SECONDS.includes(seconds) ? seconds : DEFAULT_SLIDE_SECONDS;
+    } catch (error) {
+      return DEFAULT_SLIDE_SECONDS;
+    }
+  }
+
+  static recallShuffle() {
+    try {
+      return localStorage.getItem(REMEMBERED_SHUFFLE) === "true";
+    } catch (error) {
+      return false;
+    }
+  }
+
+  static remember(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (error) {
+      console.warn(`This browser cannot remember how a slideshow is played: ${error.message}`);
+    }
+  }
+
+  // Keeps the screen awake while it plays, where the browser can, and the
+  // page is shown.
+  keepAwake() {
+    if (this.lock || !navigator.wakeLock || !this.isOpen() || this.paused || document.visibilityState !== "visible") {
+      return;
+    }
+
+    const lock = navigator.wakeLock.request("screen").then((sentinel) => {
+      sentinel.addEventListener("release", () => {
+        if (this.lock === lock) {
+          this.lock = null;
+        }
+      });
+      return sentinel;
+    }, (error) => {
+      console.warn(`The screen is not kept awake: ${error.message}`);
+
+      if (this.lock === lock) {
+        this.lock = null;
+      }
+
+      return null;
+    });
+    this.lock = lock;
+  }
+
+  // Lets the screen sleep again.
+  letSleep() {
+    const lock = this.lock;
+    this.lock = null;
+
+    if (lock) {
+      lock.then((sentinel) => sentinel && sentinel.release()).catch(() => undefined);
+    }
+  }
+
+  // The pointer moved over it, which shows its controls; but not for a move
+  // of nowhere, as a browser may report as what is under the pointer
+  // changes.
+  pointed(event) {
+    const at = [event.clientX, event.clientY];
+
+    if (this.pointer && this.pointer[0] === at[0] && this.pointer[1] === at[1]) {
+      return;
+    }
+
+    this.pointer = at;
+    this.showControls();
+  }
+
+  // Shows its controls, and the pointer, until the pointer has been still
+  // for CONTROLS_SECONDS, but while a mouse is over them, one of them is
+  // reached from the keyboard, or it is paused.
+  showControls() {
+    clearTimeout(this.still);
+    this.element.classList.remove("still");
+    this.still = setTimeout(() => {
+      if (this.paused || this.over || this.controls.querySelector(":focus-visible")) {
+        this.showControls();
+      } else {
+        this.element.classList.add("still");
+      }
+    }, CONTROLS_SECONDS * 1000);
+  }
+
+  // Lays each photo shown, or fading, out again, as the window changes size.
+  layout() {
+    for (const slide of [this.slide, ...this.fading]) {
+      if (slide) {
+        this.place(slide);
+      }
+    }
+  }
+
+  // Lays `slide` out as the viewer lays out a photo fitting the window: as
+  // large as fits it, uncropped, in its middle, turned as it is.
+  place(slide) {
+    const room = [this.stage.clientWidth, this.stage.clientHeight];
+    const seen = slide.turn % 180 ? [slide.size[1], slide.size[0]] : slide.size;
+    const scale = Math.min(room[0] / seen[0], room[1] / seen[1]);
+    const laid = seen.map((side) => side * scale);
+    const [width, height] = slide.turn % 180 ? [laid[1], laid[0]] : laid;
+    const offset = laid.map((side, at) => (room[at] - side) / 2);
+    const turned = slide.turn
+      ? ` translate(${laid[0] / 2}px, ${laid[1] / 2}px) rotate(${slide.turn}deg) translate(${-width / 2}px, ${-height / 2}px)`
+      : "";
+    slide.element.style.width = `${width}px`;
+    slide.element.style.height = `${height}px`;
+    slide.element.style.transform = `translate(${offset[0]}px, ${offset[1]}px)${turned}`;
+  }
+
+  // Hears every key while it is open: Space pauses it, or plays it again,
+  // the left and right arrow keys move to the photo before or after, and
+  // Escape closes it. Space on one of its controls presses that control, and
+  // the keys it does not hear do nothing on the page under it.
+  key(event) {
+    const key = String(event.key).toLowerCase();
+    const keys = {
+      " ": () => this.togglePause(),
+      arrowleft: () => this.move(false),
+      arrowright: () => this.move(true),
+      escape: () => this.close(),
+    };
+    const onControl = event.target instanceof Element && event.target.closest("button");
+    const ignored = event.altKey || event.ctrlKey || event.metaKey || event.isComposing || !Object.hasOwn(keys, key)
+      || (event.repeat && !key.startsWith("arrow")) || (key === " " && onControl);
+
+    if (ignored) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    keys[key]();
+  }
+}
+
+const slideshow = new Slideshow();
 
 function openAlbum(id) {
   state.open = id;
@@ -7508,6 +8509,7 @@ const SHORTCUTS = {
   backspace: goBack,
   n: openNew,
   s: () => selection.toggle(),
+  p: () => slideshow.playAlbum(),
   arrowleft: intoTiles,
   arrowright: intoTiles,
   arrowup: intoTiles,
@@ -7519,7 +8521,13 @@ const SHORTCUTS = {
 };
 
 window.addEventListener("keydown", (event) => {
-  // A photo shown hears the keys, rather than the page under it.
+  // A slideshow, or else a photo shown, hears the keys, rather than the page
+  // under it.
+  if (slideshow.isOpen()) {
+    slideshow.key(event);
+    return;
+  }
+
   if (viewer.isOpen()) {
     viewer.key(event);
     return;
@@ -7593,6 +8601,7 @@ byId("show-keys").addEventListener("click", () => byId("keys-dialog").showModal(
 byId("new-album").addEventListener("click", openNew);
 byId("import-photos").addEventListener("click", openImport);
 byId("back").addEventListener("click", backToAlbums);
+byId("play-album").addEventListener("click", () => slideshow.playAlbum());
 byId("rename-album").addEventListener("click", openRename);
 byId("remove-album").addEventListener("click", openRemove);
 byId("select-photos").addEventListener("click", () => selection.toggle());

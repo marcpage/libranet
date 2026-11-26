@@ -34,7 +34,7 @@ and can be built alongside any phase.
 
 ## 2. What It Adds
 
-Twelve steps, the first nine built:
+Twelve steps, the first ten built:
 
 - **Importing a file encrypted.** The node's one change. Step 160.
 - **The photos application, and its albums.** Step 161.
@@ -1388,9 +1388,9 @@ Calls made while building it, not yet reviewed:
 
 ---
 
-## Step 169 — Slideshow
+## Step 169 — Slideshow ✅
 
-**Issue:** to be made (§4), from #477. **Depends on:** Step 163.
+**Issue:** #677, from #477. **Depends on:** Step 163.
 
 Settled with the user:
 
@@ -1425,6 +1425,110 @@ My calls, not yet reviewed:
 photo and from one chosen; paused, moved through, and closed; each
 interval; shuffled; a video played through; a photo with no view passed
 over; and the screen kept awake.
+
+Built, in one change set, the page alone, on Step 168's. It was checked on
+a node of its own in headless Chromium, with photos and videos made for the
+purpose and kept out of the repository, imported as Step 162 imports them
+into an album of eight: photos of 4,000 by 3,000, 1,200 by 1,800, and 2,000
+by 1,000, and a PNG of 640 by 360; an HEIC that was none, kept with no view;
+a WebM and an MP4, each of three seconds, with a tone; and an AVI, which
+Chromium cannot play. Play showing the album full screen, from its first
+photo, each photo fitting the window, uncropped; each shown for five
+seconds, and then, once 3 s was chosen, for three, the photo shown then
+shown three seconds from then, each fading into the next; the HEIC and the
+AVI passed over; each video played to its end, with its sound, and then the
+next shown; after the last, the first again; the controls shown as the
+pointer moved, and hidden, with the pointer, three seconds after it was
+still; Space pausing it, the controls then kept in sight, and playing it
+again, the photo shown for the second and a half it had left; the left and
+right arrow keys, Previous at the first showing the last, Next at the last
+the first, and Next pressed three times quickly moving three, past the
+HEIC; Escape, and Close, leaving full screen and going back to the album,
+the tile of the photo last shown having focus; full screen left otherwise
+closing it too; `P` from a photo with focus starting from it, and Play,
+while photos were chosen, from the first chosen; `P` in the viewer starting
+from the photo shown, and Escape then going back to the viewer, showing the
+photo last shown; from the viewer full screen, the slideshow full screen
+over it, and the viewer full screen again once closed; a photo turned three
+quarters in Edit shown turned, 400 by 800 of 2,000 by 1,000; Shuffle playing
+each photo that could be shown once, in an order chosen at random, then each
+once again in another, not starting with the photo before it; 3 s and
+Shuffle remembered after a reload, as `photos.interval` and
+`photos.shuffle`; Tab reaching the controls while hidden, and showing them,
+and Space on one pressing it alone; an album of the HEIC and the AVI alone
+saying that none of its photos can be shown; the screen's wake lock asked
+for as it played, let go as it was paused, asked for again, and let go as it
+closed, checked with a stand-in for the browser's, as headless Chromium
+refuses it; and a phone's width, the controls in one row. Safari is yet to
+be checked, and so is a screen kept awake by a real browser.
+
+Calls made while building it, not yet reviewed:
+
+- **Play is an icon**, first after the album's heading, shown for any album
+  holding photos, as playing changes nothing.
+- **Where it starts.** Play, or `P`, starts from the first photo chosen,
+  while photos are chosen, or else, by `P`, from the photo with focus, as
+  Play takes focus as it is clicked; or else from the first. In the viewer,
+  `P` alone starts it, with no icon there.
+- **Closed, back where it was played from**: the album, the tile of the
+  photo last shown given focus, or the viewer, showing that photo, as the
+  viewer goes back at the photo shown. A video the viewer is playing is
+  paused as the slideshow is shown over it. Focus is given back once full
+  screen is left, as Chromium makes all but what is full screen inert until
+  then.
+- **Leaving full screen closes it.** A browser keeps Escape from the page
+  while it shows it full screen, and leaves full screen instead; so leaving
+  full screen, by Escape or otherwise, closes the slideshow too. A browser
+  that cannot show it full screen, as an iPhone's, shows it filling the
+  window.
+- **The controls** are a bar at the bottom of the screen: Previous, Pause,
+  named Play while paused, and Next; 3 s, 5 s, and 10 s, the one chosen
+  shown pressed; Shuffle; and Close. They are shown as the pointer moves,
+  or touches the screen, or as Tab reaches one of them, and hidden, with the
+  pointer, three seconds after it is still, but while a mouse is over them,
+  one has focus from the keyboard, or it is paused. A tap while they are
+  hidden only shows them. A move of the pointer to where it was already is
+  not taken as a move.
+- **A photo's time** counts from when it starts to fade in. Paused, it
+  keeps what it had left; a time chosen as it plays counts from then.
+- **The fade** takes a second, the photo before fading out as the next fades
+  in, and Previous and Next fade too. The next photo is loaded while the one
+  before it is shown, and if it is not loaded when its time comes, the one
+  shown stays until it is.
+- **Passed over**: a photo with no view, of a kind not every browser shows,
+  though this browser might draw it, as Safari draws an HEIC; a video the
+  browser says it cannot play, or that fails as it loads, or as it plays;
+  and a photo that cannot be shown, asked for three times, five seconds
+  apart, as the viewer asks. One passed over is not tried again until the
+  album is played again. An album none of whose photos can be shown says
+  so.
+- **With its sound, or else without.** A video is played with its sound,
+  which Chromium lets a page do once it has been clicked. Where a browser
+  will not let a page play sound unasked, as Safari may not, the video is
+  played without it, rather than stopping the slideshow.
+- **Each round is the album as its grid shows it then**, so that photos
+  imported as it plays are played in the next round.
+- **Shuffle is the music application's.** Turned on, the photos after the
+  one shown are played in an order chosen at random, each once; each round
+  after is shuffled again, and does not start with the photo shown last.
+  Previous goes back through the photos as they were played.
+- **The screen is kept awake** by the Screen Wake Lock API while it plays,
+  but not while it is paused, and is asked for again as the page is shown
+  again. A page that is not of a secure context, as one reached at a node's
+  address on the network over HTTP, has none, and the screen is not kept
+  awake.
+
+**Open questions:**
+
+- **Sound in Safari.** A video played on its own, not as Play is pressed,
+  may be played without its sound. Whether a video element should be kept,
+  and played first as Play is pressed, so that Safari lets it play each
+  video after with its sound.
+- **Swipes and taps.** On a touch screen, only the controls move through
+  the slideshow. Whether a swipe should, as in the viewer, and whether a tap
+  should pause it.
+- **The photo's name** is not shown. Whether its title, or name, and when
+  it was taken should be shown with the controls.
 
 ---
 
@@ -1525,7 +1629,7 @@ and this table then given their numbers.
 | #674 | Step 166 — Videos | 166 |
 | #675 | Step 167 — Copying, Moving, and Removing Photos | 167 |
 | #676 | Step 168 — Editing a Photo's Details | 168 |
-| *to be made* | Step 169 — Slideshow | 169 |
+| #677 | Step 169 — Slideshow | 169 |
 | *to be made* | Step 170 — Sharing an Album | 170 |
 | *to be made* | Step 171 — Playing a Live Photo | 171 |
 

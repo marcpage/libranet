@@ -1190,10 +1190,11 @@ def test_the_photos_page_reads_a_photos_details_as_the_plan_names_them(photos_pa
 
 
 def test_the_photos_page_shows_a_photo_with_the_keys_the_plan_names(photos_page: str) -> None:
-    [keys] = findall(r"^    const keys = \{\n(.*?)\n    \};$", photos_page, DOTALL | MULTILINE)
+    [keys, _] = findall(r"^    const keys = \{\n(.*?)\n    \};$", photos_page, DOTALL | MULTILINE)
 
     # The photo before and after, Details, Edit, Zoom, Full screen,
-    # Download, and Close, with the keys, as the keys dialog shows them.
+    # Download, the slideshow, and Close, with the keys, as the keys dialog
+    # shows them.
     assert set(findall(r'^\s+"?([a-z?/]+)"?: ', keys, MULTILINE)) == {
         "arrowleft",
         "arrowright",
@@ -1202,6 +1203,7 @@ def test_the_photos_page_shows_a_photo_with_the_keys_the_plan_names(photos_page:
         "z",
         "f",
         "d",
+        "p",
         "escape",
         "?",
         "/",
@@ -1256,6 +1258,40 @@ def test_the_photos_page_edits_a_photos_details_as_the_plan_names_them(
     assert "changes.taken_from = day ? TAKEN_FROM_EDITED : undefined;" in photos_page
     # The photo shown is made its album's cover.
     assert "each.with({ cover: folder })" in photos_page
+
+
+def test_the_photos_page_plays_a_slideshow_as_the_plan_names_it(photos_page: str) -> None:
+    # Play, beside the album's heading, or P.
+    assert 'id="play-album" title="Play" aria-label="Play"' in photos_page
+    [shortcuts] = findall(r"^const SHORTCUTS = \{\n(.*?)\n\};$", photos_page, DOTALL | MULTILINE)
+    assert "  p: () => slideshow.playAlbum()," in shortcuts.splitlines()
+    # Each photo shown for 3, 5, or 10 seconds, 5 to start with, which the
+    # browser remembers, as it does whether Shuffle is on.
+    assert "const SLIDE_SECONDS = [3, 5, 10];" in photos_page
+    assert "const DEFAULT_SLIDE_SECONDS = 5;" in photos_page
+    assert findall(r'data-seconds="(\d+)"', photos_page) == ["3", "5", "10"]
+    assert 'const REMEMBERED_INTERVAL = "photos.interval";' in photos_page
+    assert 'const REMEMBERED_SHUFFLE = "photos.shuffle";' in photos_page
+    # Its controls, and its keys: Space, the arrow keys, and Escape.
+    for control, name in [
+        ("slideshow-previous", "Previous"),
+        ("slideshow-pause", "Pause"),
+        ("slideshow-next", "Next"),
+        ("slideshow-shuffle", "Shuffle"),
+        ("slideshow-close", "Close"),
+    ]:
+        assert f'id="{control}" title="{name}" aria-label="{name}"' in photos_page
+    [_, keys] = findall(r"^    const keys = \{\n(.*?)\n    \};$", photos_page, DOTALL | MULTILINE)
+    assert set(findall(r'^\s+"?([a-z ]+)"?: ', keys, MULTILINE)) == {
+        " ",
+        "arrowleft",
+        "arrowright",
+        "escape",
+    }
+    # Each photo fades into the next; and the screen is kept awake.
+    assert "const FADE_SECONDS = 1;" in photos_page
+    assert "transition: opacity 1s ease-in-out;" in photos_page
+    assert 'navigator.wakeLock.request("screen")' in photos_page
 
 
 def test_the_photos_page_is_black_as_the_movie_and_tv_pages_are_dark(photos_page: str) -> None:
