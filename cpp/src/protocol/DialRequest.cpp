@@ -41,18 +41,6 @@ struct HostAndPort {
     string_view port; // Empty when none is named
 };
 
-// text without the whitespace around it, as an address pasted often has.
-string_view trimmed(string_view text) {
-    constexpr string_view whitespace = " \t\n\v\f\r";
-    const auto first = text.find_first_not_of(whitespace);
-
-    if (string_view::npos == first) {
-        return {};
-    }
-
-    return text.substr(first, text.find_last_not_of(whitespace) - first + 1);
-}
-
 // The authority of address, between its "http://" and its path, query, or
 // fragment, less any user info, which the node does not dial with. Throws
 // invalid_argument for an address that is not an http URL.
@@ -179,7 +167,7 @@ DialRequest DialRequest::parse(string_view text) {
 }
 
 DialRequest::DialRequest(string_view address)
-    : m_endpoint(written(trimmed(address))) {}
+    : m_endpoint(written(Converter::trimmed(address))) {}
 
 const string& DialRequest::endpoint() const noexcept {
     return m_endpoint;

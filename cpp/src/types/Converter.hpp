@@ -23,6 +23,8 @@ public:
     static std::string text_of(const Converter::Bytes& bytes);
     static std::uint64_t hex_digit_value(char hex_digit);
     static std::uint64_t parse_hex(std::string_view hex_text);
+    // text without the whitespace around it.
+    [[nodiscard]] static std::string_view trimmed(std::string_view text);
     // Whether text is in UTF-8 (RFC 3629).
     [[nodiscard]] static bool is_utf8(std::string_view text);
 
@@ -102,6 +104,17 @@ inline std::uint64_t Converter::parse_hex(std::string_view hex_text) {
     };
 
     return std::accumulate(hex_text.begin(), hex_text.end(), std::uint64_t{0}, append_digit);
+}
+
+inline std::string_view Converter::trimmed(std::string_view text) {
+    constexpr std::string_view whitespace = " \t\n\v\f\r";
+    const auto first = text.find_first_not_of(whitespace);
+
+    if (std::string_view::npos == first) {
+        return {};
+    }
+
+    return text.substr(first, text.find_last_not_of(whitespace) - first + 1);
 }
 
 inline bool Converter::is_utf8(std::string_view text) {
