@@ -29,6 +29,24 @@ bool is_loopback(std::string_view text) {
     return address && address->is_loopback();
 }
 
+// Whether left and right name addresses that are equal; false when either
+// names none.
+bool equal(std::string_view left, std::string_view right) {
+    const auto left_address = IpAddress::parse(left);
+    const auto right_address = IpAddress::parse(right);
+
+    return left_address && right_address && *left_address == *right_address;
+}
+
+// Whether left and right name addresses that are not equal; false when either
+// names none.
+bool not_equal(std::string_view left, std::string_view right) {
+    const auto left_address = IpAddress::parse(left);
+    const auto right_address = IpAddress::parse(right);
+
+    return left_address && right_address && *left_address != *right_address;
+}
+
 } // namespace
 
 TEST(IpAddressTest, ReadsIpv4) {
@@ -82,6 +100,20 @@ TEST(IpAddressTest, AddressesThatAreNotLoopback) {
     EXPECT_FALSE(is_loopback("::"));
     EXPECT_FALSE(is_loopback("::2"));
     EXPECT_FALSE(is_loopback("::ffff:203.0.113.42"));
+}
+
+TEST(IpAddressTest, SameAddressIsEqual) {
+    EXPECT_TRUE(equal("203.0.113.42", "203.0.113.42"));
+    EXPECT_TRUE(equal("2001:DB8:0::1", "2001:db8::1"));
+    EXPECT_TRUE(equal("::ffff:203.0.113.42", "203.0.113.42"));
+    EXPECT_FALSE(not_equal("::1", "0:0:0:0:0:0:0:1"));
+}
+
+TEST(IpAddressTest, AnotherAddressIsNotEqual) {
+    EXPECT_TRUE(not_equal("203.0.113.42", "203.0.113.43"));
+    EXPECT_TRUE(not_equal("2001:db8::1", "2001:db8::2"));
+    EXPECT_TRUE(not_equal("::1", "127.0.0.1"));
+    EXPECT_FALSE(equal("::", "0.0.0.0"));
 }
 
 // RFC 3986 §3.2.2: an IPv6 address is in brackets in a URL.

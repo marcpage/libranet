@@ -26,6 +26,9 @@ public:
     // As a URL names it as its host: IPv6 in brackets (RFC 3986 §3.2.2).
     [[nodiscard]] std::string url_host() const;
 
+    friend bool operator==(const IpAddress& left, const IpAddress& right) noexcept;
+    friend bool operator!=(const IpAddress& left, const IpAddress& right) noexcept;
+
 private:
     // RFC 4291 §2.
     static constexpr std::size_t ipv6_size = 16;
@@ -62,6 +65,14 @@ inline std::string IpAddress::url_host() const {
     }
 
     return "[" + to_string() + "]";
+}
+
+inline bool operator==(const IpAddress& left, const IpAddress& right) noexcept {
+    return left.m_bytes == right.m_bytes;
+}
+
+inline bool operator!=(const IpAddress& left, const IpAddress& right) noexcept {
+    return !(left == right);
 }
 
 inline bool IpAddress::_is_ipv4() const {
