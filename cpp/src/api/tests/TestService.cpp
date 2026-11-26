@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <mutex>
@@ -101,6 +102,24 @@ std::string request_of(std::string_view method, std::string_view target,
 
 std::string get(std::string_view target) {
     return request_of("GET", target);
+}
+
+// A request for target, by method, unsigned and with no body, carrying
+// headers, each ending in CRLF, on a connection the service closes once it
+// answers.
+std::string request_with(std::string_view method, std::string_view target,
+                         std::string_view headers) {
+    return std::string(method) + " " + std::string(target) + " HTTP/1.1\r\n"
+           + std::string(headers) + "Connection: close\r\nContent-Length: 0\r\n\r\n";
+}
+
+// The port the tests tell the service /config is served on.
+constexpr std::uint16_t config_port = 8180;
+
+// Whether answer carries the header name, with value.
+bool has_header(const std::string& answer, std::string_view name, std::string_view value) {
+    return std::string::npos
+           != answer.find("\r\n" + std::string(name) + ": " + std::string(value) + "\r\n");
 }
 
 // A connection to address, once the service there is listening.
@@ -433,6 +452,129 @@ TEST_F(ServiceTest, RefusesUnsignedUploadsToEachHandler) {
         EXPECT_TRUE(has_status(answer, "401 Unauthorized")) << upload << answer;
         EXPECT_TRUE(is_signed_by_node(answer)) << upload << answer;
     }
+}
+
+// Until it is told where /config is, nothing is served beneath it.
+TEST_F(ServiceTest, ServesNothingBeneathConfigUntilToldItsPort) {
+    for (const auto* const target : {"/config", "/config/", "/config/api"}) {
+        const auto answer = answer_to(address(), get(target));
+
+        EXPECT_TRUE(has_status(answer, "404 Not Found")) << target << answer;
+        EXPECT_NE(std::string::npos, body_of(answer).find("No resource exists at this path."))
+            << target << answer;
+    }
+}
+
+// A page of /config, typed or bookmarked on the main port, is sent to
+// /config's port, at the host the request named, or at the address /config
+// listens at when it names none (HttpApi §2.3).
+TEST_F(ServiceTest, SendsAConfigPageToConfigsPortAtTheHostNamed) {
+    const std::vector<std::pair<std::string, std::string>> hosts = {
+        {"Host: localhost:8080\r\n", "http://localhost:8180"},
+        {"Host: 127.0.0.1:8080\r\n", "http://127.0.0.1:8180"},
+        {"Host: LocalHost\r\n", "http://localhost:8180"},
+        {"Host: [::1]:8080\r\n", "http://[::1]:8180"},
+        {"Host: [::1\r\n", "http://127.0.0.1:8180"},
+        {"", "http://127.0.0.1:8180"},
+    };
+
+    service().set_config_port(config_port);
+
+    for (const auto& [host, origin] : hosts) {
+        const auto answer = answer_to(address(), request_with("GET", "/config/", host));
+
+        EXPECT_TRUE(has_status(answer, "302 Found")) << host << answer;
+        EXPECT_TRUE(has_header(answer, "Location", origin + "/config/")) << host << answer;
+        EXPECT_TRUE(is_signed_by_node(answer)) << host << answer;
+        EXPECT_EQ(std::string::npos, answer.find("WWW-Authenticate")) << host << answer;
+    }
+}
+
+// Each page of /config is sent to the same path on /config's port, its query
+// kept.
+TEST_F(ServiceTest, SendsEachConfigPageToItsPathOnConfigsPort) {
+    const std::vector<std::string> targets = {
+        "/config",
+        "/config/",
+        "/config/index.html",
+        "/config/%61pis",
+        "/config/?section=node",
+    };
+
+    service().set_config_port(config_port);
+
+    for (const auto& target : targets) {
+        const auto answer = answer_to(address(),
+                                      request_with("GET", target, "Host: localhost:8080\r\n"));
+
+        EXPECT_TRUE(has_status(answer, "302 Found")) << target << answer;
+        EXPECT_TRUE(has_header(answer, "Location", "http://localhost:8180" + target))
+            << target << answer;
+    }
+}
+
+// Whatever else is asked beneath /config on the main port is 404, naming
+// where /config is, whatever credential or signature it carries, or none
+// (HttpApi §2.3).
+TEST_F(ServiceTest, AnswersAnythingElseBeneathConfigWithWhereItIs) {
+    const std::vector<std::pair<std::string, std::string>> requests = {
+        {"GET", "/config/api"},
+        {"GET", "/config/api/"},
+        {"GET", "/config/api/node"},
+        {"GET", "/config/api?x=1"},
+        {"GET", "/config/%61pi/node"},
+        {"POST", "/config/api/connections"},
+        {"DELETE", "/config/api/applications/wiki"},
+        {"POST", "/config/"},
+        {"PUT", "/config/index.html"},
+    };
+
+    service().set_config_port(config_port);
+
+    for (const auto& [method, target] : requests) {
+        const auto answer = answer_to(
+            address(), request_with(method, target,
+                                    "Host: localhost:8080\r\n"
+                                    "Authorization: Basic YWRtaW46c2VjcmV0\r\n"));
+
+        EXPECT_TRUE(has_status(answer, "404 Not Found")) << method << target << answer;
+        EXPECT_NE(std::string::npos,
+                  body_of(answer).find("/config is served on port 8180, at http://localhost:8180"
+                                       + target))
+            << method << target << answer;
+        EXPECT_TRUE(is_signed_by_node(answer)) << method << target << answer;
+        EXPECT_EQ(std::string::npos, answer.find("WWW-Authenticate")) << answer;
+    }
+}
+
+// The answer to a HEAD has no body, and is signed as having none.
+TEST_F(ServiceTest, AnswersAHeadBeneathConfigWithNotFound) {
+    service().set_config_port(config_port);
+
+    const auto answer = answer_to(address(), request_of("HEAD", "/config/"));
+
+    EXPECT_TRUE(has_status(answer, "404 Not Found")) << answer;
+    EXPECT_TRUE(is_signed_by_node(answer)) << answer;
+    EXPECT_EQ(body_of(answer), "");
+}
+
+// Told /config's port, it serves what it did elsewhere.
+TEST_F(ServiceTest, ServesOtherPathsAsBeforeOnceToldConfigsPort) {
+    service().set_config_port(config_port);
+
+    const auto nodes = answer_to(address(), get("/data/nodes"));
+    const auto configuration = answer_to(address(), get("/configuration"));
+
+    EXPECT_TRUE(has_status(nodes, "200 OK")) << nodes;
+    EXPECT_EQ(body_of(nodes), own_list().to_string());
+    EXPECT_TRUE(has_status(configuration, "404 Not Found")) << configuration;
+    EXPECT_NE(std::string::npos,
+              body_of(configuration).find("No resource exists at this path."))
+        << configuration;
+}
+
+TEST_F(ServiceTest, RefusesAConfigPortOfZero) {
+    EXPECT_THROW(service().set_config_port(0), std::invalid_argument);
 }
 
 // What is posted under a list's name that is not one is logged, and the
