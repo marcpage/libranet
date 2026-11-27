@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "Body.hpp"
 #include "http/Response.hpp"
 #include "logger/Logger.hpp"
 #include "storage/Identifier.hpp"
@@ -24,11 +25,6 @@ namespace protocol {
 class SearchResults {
 public:
     using Identifiers = std::vector<storage::Identifier>;
-
-    struct Body {
-        std::string text;
-        bool compressed = false; // Sent with Content-Encoding: deflate
-    };
 
     // As sent, compressed or not (HttpApi §6.1).
     static constexpr std::size_t max_size = 1 * types::Megabyte;
@@ -82,7 +78,7 @@ inline const SearchResults::Identifiers& SearchResults::results() const noexcept
     return m_results;
 }
 
-inline SearchResults::Body SearchResults::body() const {
+inline Body SearchResults::body() const {
     auto text = _json_text(m_results.size());
 
     if (text.size() < max_size) {
@@ -108,7 +104,7 @@ inline void SearchResults::answer(http::Response& response) const {
 // many as do. Those are found by narrowing the range of how many it names,
 // between as many as are known to fit, none at first, and as many as are
 // known not to, until they are one apart.
-inline SearchResults::Body SearchResults::_compressed_body() const {
+inline Body SearchResults::_compressed_body() const {
     auto all = _compressed(m_results.size());
 
     if (all.text.size() < max_size) {
