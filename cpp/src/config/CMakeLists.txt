@@ -13,6 +13,7 @@ target_link_libraries(libranet_config PUBLIC
     libranet::msg
     libranet::net
     libranet::peer
+    libranet::types
     libranet::web
 )
 

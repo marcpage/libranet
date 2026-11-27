@@ -3,8 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
-#include <ios>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -18,6 +16,7 @@
 #include "HashPrefix.hpp"
 #include "IDataSource.hpp"
 #include "Identifier.hpp"
+#include "io/FileReader.hpp"
 #include "io/SafeWriteFile.hpp"
 #include "logger/Logger.hpp"
 
@@ -92,21 +91,18 @@ inline std::optional<DataDir::Data> DataDir::get(const Identifier& identifier) c
         return std::nullopt;
     }
 
-    std::ifstream file(path, std::ios::binary);
-    Data buffer(length);
+    try {
+        auto buffer = io::FileReader(path).read_exact(length);
 
-    if (!file) {
+        // Cut short since its size was looked at.
+        if (buffer.size() < length) {
+            return std::nullopt;
+        }
+
+        return buffer;
+    } catch (const std::runtime_error&) {
         return std::nullopt;
     }
-
-    if (length > 0
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-        && !file.read(reinterpret_cast<char*>(buffer.data()),
-                      static_cast<std::streamsize>(length))) {
-        return std::nullopt;
-    }
-
-    return buffer;
 }
 
 inline void DataDir::put(const Identifier& identifier, const Data& body) const {

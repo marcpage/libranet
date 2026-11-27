@@ -1,5 +1,6 @@
 add_library(libranet_io STATIC
     Directories.cpp
+    FileReader.cpp
     SafeWriteFile.cpp
 )
 add_library(libranet::io ALIAS libranet_io)
@@ -10,6 +11,7 @@ if(BUILD_TESTING)
     add_executable(io_tests
         tests/TestBufferedReader.cpp
         tests/TestDirectories.cpp
+        tests/TestFileReader.cpp
         tests/TestMeteredReader.cpp
         tests/TestSafeWriteFile.cpp
         tests/TestSocketReader.cpp
