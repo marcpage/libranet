@@ -9,6 +9,7 @@ target_include_directories(libranet_node PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(libranet_node
     PUBLIC
         libranet::api
+        libranet::config
         libranet::eviction
         libranet::http
         libranet::identity

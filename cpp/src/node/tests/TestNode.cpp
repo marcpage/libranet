@@ -218,12 +218,13 @@ SettingsFile settings_of(const Values& values) {
 }
 
 // The settings of a node keeping its data in data_dir, and listening on the
-// loopback address, at a port the system picks.
+// loopback address, at a port the system picks, with /config at another.
 Values loopback(const path& data_dir) {
     return {
         {"storage.data_dir", "'" + data_dir.string() + "'"},
         {"network.listen_address", "127.0.0.1"},
         {"network.listen_port", "0"},
+        {"network.config_port", "0"},
     };
 }
 
@@ -370,6 +371,8 @@ TEST_F(NodeTest, LogsItsSettings) {
     EXPECT_TRUE(logged("storage.data_dir = " + data_dir().string()));
     EXPECT_TRUE(logged("network.listen_address = 127.0.0.1"));
     EXPECT_TRUE(logged("network.listen_port = 0"));
+    EXPECT_TRUE(logged("network.config_port = 0"));
+    EXPECT_TRUE(logged("/config is at http://127.0.0.1:"));
     EXPECT_TRUE(logged("logging.level = INFO"));
     EXPECT_TRUE(logged("storage.max_storage_bytes = 5000000"));
     EXPECT_TRUE(logged("storage.max_decompressed_list_bytes = 8388608"));
@@ -556,6 +559,58 @@ TEST_F(NodeTest, ServesItsOwnEndpointAsItsNodeList) {
                   + "\"}}");
 }
 
+// /config is served on a port of its own, which a GET of /config/ on the main
+// port is sent to, and behind a credential, which the first request captures
+// in the data directory.
+TEST_F(NodeTest, ServesConfigOnAPortOfItsOwn) {
+    const auto node = node_of(settings_of(loopback(data_dir())));
+    const auto moved = answer_to(node->local_address(),
+                                 "GET /config/ HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                                 "Connection: close\r\n\r\n");
+    const string location_field = "\r\nLocation: http://127.0.0.1:";
+    const auto location = moved.find(location_field);
+
+    ASSERT_EQ(moved.rfind("HTTP/1.1 302 Found\r\n", 0), 0U) << moved;
+    ASSERT_NE(location, string::npos) << moved;
+
+    const auto port_start = location + location_field.size();
+    const auto port = moved.substr(port_start, moved.find('/', port_start) - port_start);
+    const Address config("127.0.0.1", static_cast<Address::Port>(std::stoul(port)));
+
+    EXPECT_NE(config.port(), node->local_address().port());
+    EXPECT_NE(moved.find("\r\nLocation: http://127.0.0.1:" + port + "/config/\r\n"),
+              string::npos)
+        << moved;
+    EXPECT_TRUE(logged("/config is at http://127.0.0.1:" + port + "/config/"));
+
+    const auto answer = answer_to(config,
+                                  "GET /config/api HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                                  "Authorization: Basic YWRtaW46c2VjcmV0\r\n"
+                                  "Connection: close\r\n\r\n");
+
+    EXPECT_EQ(answer.rfind("HTTP/1.1 200 OK\r\n", 0), 0U) << answer;
+    EXPECT_TRUE(std::filesystem::is_regular_file(data_dir() / "config-credential"));
+}
+
+// network.config_port may be neither the main port nor, when it is not set,
+// left with no port above the main port to take, which is turned down before
+// the node makes anything.
+TEST_F(NodeTest, RefusesAConfigPortItCannotUse) {
+    const auto unmade = data_dir() / "unmade";
+    auto same = loopback(unmade);
+    auto none_left = loopback(unmade);
+
+    same["network.listen_port"] = "8080";
+    same["network.config_port"] = "8080";
+    none_left["network.listen_port"] = "65500";
+    none_left.erase("network.config_port");
+
+    EXPECT_NE(refusal(same).find("network.config_port: must not be network.listen_port"),
+              string::npos);
+    EXPECT_NE(refusal(none_left).find("network.config_port: must be set"), string::npos);
+    EXPECT_FALSE(std::filesystem::exists(unmade));
+}
+
 // What each directory in incoming/ holds is served from /data too.
 TEST_F(NodeTest, ServesWhatIncomingHolds) {
     write_file(data_dir() / "incoming" / "batch" / "sha256" / "2cf" / hello_hash, hello);
@@ -618,6 +673,9 @@ TEST_F(NodeTest, RefusesSettingsItCannotUse) {
         {"network.listen_port", "123456"},
         {"network.listen_port", "''"},
         {"network.listen_port", "[80, 81]"},
+        {"network.config_port", "x"},
+        {"network.config_port", "65536"},
+        {"network.config_port", "-1"},
         {"network.listen_address", "[a, b]"},
         {"logging.level", "LOUD"},
         {"logging.level", "info"},
