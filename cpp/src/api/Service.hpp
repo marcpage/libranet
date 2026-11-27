@@ -3,7 +3,6 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <thread>
@@ -75,12 +74,12 @@ public:
     [[nodiscard]] const std::vector<std::string>& own_endpoints() const noexcept;
 
     // From now on, a GET on this port of a path beneath /config, outside
-    // /config/api, is sent to the same path on port, at the host its Host
-    // header names, and anything else beneath /config is 404, naming where
-    // /config is (HTTP API §2.3). Until then, nothing is served beneath
+    // /config/api, is sent to the same path on new_config_port, at the host
+    // its Host header names, and anything else beneath /config is 404, naming
+    // where /config is (HTTP API §2.3). Until then, nothing is served beneath
     // /config. Any thread may call it. Throws std::invalid_argument for port
     // 0.
-    void set_config_port(std::uint16_t port);
+    void set_config_port(net::Address::Port new_config_port);
 
     // Its threads hold this object, so it is neither copied nor moved.
     Service(const Service&) = delete;
@@ -98,7 +97,7 @@ private:
     // front of.
     identity::MessageSigner m_signer;
     // The port /config is served on, 0 until the service is told.
-    std::atomic<std::uint16_t> m_config_port{0};
+    std::atomic<net::Address::Port> m_config_port{0};
     web::Server m_server;
     // Mistaken: cppcheck loses the constructors in files `using` the class.
     // cppcheck-suppress uninitMemberVarNoCtor
