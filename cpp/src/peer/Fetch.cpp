@@ -311,17 +311,17 @@ bool Search::has_asked() const noexcept {
 
 namespace peer {
 
-Fetch::Fetch(IDataSource::Ptr store, GetPeers get_peers, const Settings& settings,
+Fetch::Fetch(IDataSource::Ptr store, Peers peers, const Settings& settings,
              ClockFunction clock)
     : m_store(std::move(store))
-    , m_get_peers(std::move(get_peers))
+    , m_peers(std::move(peers))
     , m_settings(checked(settings))
     , m_clock(std::move(clock)) {
     if (!m_store) {
         throw invalid_argument("A fetch needs a store to keep what it finds");
     }
 
-    if (!m_get_peers) {
+    if (!m_peers) {
         throw invalid_argument("A fetch needs the peers to ask");
     }
 
@@ -392,7 +392,7 @@ Fetch::Outcome Fetch::_search(const Identifier& identifier) {
             return Outcome::Found;
         }
 
-        const auto peers = PeerSession::ranked(m_get_peers(), identifier);
+        const auto peers = PeerSession::ranked(m_peers(), identifier);
         const auto now = m_clock();
 
         if (const auto session = search.next_peer(peers, now)) {

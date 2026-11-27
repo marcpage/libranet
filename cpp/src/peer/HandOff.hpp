@@ -18,11 +18,11 @@ class HandOff {
 public:
     using Session = std::shared_ptr<PeerSession>;
     // Called from the threads handing off, several at once.
-    using GetPeers = std::function<std::vector<Session>()>;
+    using Peers = std::function<std::vector<Session>()>;
 
-    // Throws std::invalid_argument for no store, or get_peers with no
+    // Throws std::invalid_argument for no store, or peers with no
     // function.
-    HandOff(storage::IDataSource::Ptr store, GetPeers get_peers);
+    HandOff(storage::IDataSource::Ptr store, Peers peers);
 
     // The node id of the peer that took it; nothing when none did, or the
     // store does not hold it. Throws what the store throws.
@@ -31,7 +31,7 @@ public:
 
 private:
     storage::IDataSource::Ptr m_store;
-    GetPeers m_get_peers;
+    Peers m_peers;
 };
 
 } // namespace peer

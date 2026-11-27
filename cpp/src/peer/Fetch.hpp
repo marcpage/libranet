@@ -30,7 +30,7 @@ public:
     using ClockFunction = std::function<Clock::time_point()>;
     using Session = std::shared_ptr<PeerSession>;
     // Called from the threads searching, several at once.
-    using GetPeers = std::function<std::vector<Session>()>;
+    using Peers = std::function<std::vector<Session>()>;
 
     enum class Outcome : std::uint8_t {
         Found,     // A peer sent the content, or the node came to hold it
@@ -57,7 +57,7 @@ public:
 
     // Throws std::invalid_argument for a setting it cannot use, no store, or a
     // function missing.
-    Fetch(storage::IDataSource::Ptr store, GetPeers get_peers, const Settings& settings,
+    Fetch(storage::IDataSource::Ptr store, Peers peers, const Settings& settings,
           ClockFunction clock = &Clock::now);
 
     // Unless the node holds it, a search for it is under way, or a new one is
@@ -81,7 +81,7 @@ public:
 
 private:
     storage::IDataSource::Ptr m_store;
-    GetPeers m_get_peers;
+    Peers m_peers;
     Settings m_settings;
     ClockFunction m_clock;
     mutable std::mutex m_mutex;

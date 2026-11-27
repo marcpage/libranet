@@ -30,7 +30,7 @@ public:
     using ClockFunction = PeerSearch::ClockFunction;
     using Session = std::shared_ptr<PeerSession>;
     // Called from the thread making the passes.
-    using GetPeers = std::function<std::vector<Session>()>;
+    using Peers = std::function<std::vector<Session>()>;
 
     struct Settings {
         // As the Python node's peers.search_workers is.
@@ -46,7 +46,7 @@ public:
 
     // fetch must outlive this. Throws std::invalid_argument for a setting it
     // cannot use, or a function missing.
-    Seeker(Fetch& fetch, GetPeers get_peers, const Settings& settings,
+    Seeker(Fetch& fetch, Peers peers, const Settings& settings,
            const ClockFunction& clock = &Clock::now);
     // Stops fetch, then waits for the fetches and passes under way, which end
     // within the request timeout.
@@ -64,7 +64,7 @@ private:
     // Mistaken: cppcheck loses the constructors in files `using` the class.
     // cppcheck-suppress uninitMemberVarPrivate
     Fetch* m_fetch;
-    GetPeers m_get_peers;
+    Peers m_peers;
     // cppcheck-suppress uninitMemberVarPrivate
     std::size_t m_workers;
     ClockFunction m_clock;

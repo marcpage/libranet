@@ -280,7 +280,7 @@ class Connected {
 public:
     explicit Connected(std::vector<Session> sessions = {});
 
-    [[nodiscard]] Pusher::GetPeers get_peers();
+    [[nodiscard]] Pusher::Peers peers();
 
 private:
     std::mutex m_mutex;
@@ -290,7 +290,7 @@ private:
 Connected::Connected(std::vector<Session> sessions)
     : m_sessions(std::move(sessions)) {}
 
-Pusher::GetPeers Connected::get_peers() {
+Pusher::Peers Connected::peers() {
     return [this] {
         const std::scoped_lock lock(m_mutex);
 
@@ -335,7 +335,7 @@ protected:
     // A pusher to the peers connected gives, of what store() holds.
     [[nodiscard]] Pusher pusher_to(Connected& connected,
                                    std::size_t run_length = Pusher::default_run_length) const {
-        return {m_store, connected.get_peers(), run_length};
+        return {m_store, connected.peers(), run_length};
     }
 
     // New content, now held, whose hash shares more leading bits with
@@ -432,11 +432,11 @@ private:
     }
 };
 
-// Whether making a pusher of store, get_peers, and run_length is refused.
-bool refused(const IDataSource::Ptr& store, const Pusher::GetPeers& get_peers,
+// Whether making a pusher of store, peers, and run_length is refused.
+bool refused(const IDataSource::Ptr& store, const Pusher::Peers& peers,
              std::size_t run_length) {
     try {
-        const Pusher pusher(store, get_peers, run_length);
+        const Pusher pusher(store, peers, run_length);
     } catch (const std::invalid_argument&) {
         return true;
     }
@@ -670,8 +670,8 @@ TEST_F(PusherTest, MissingPartsAreRefused) {
     const auto store = std::make_shared<fixtures::MemorySource>();
     Connected connected;
 
-    EXPECT_TRUE(refused(nullptr, connected.get_peers(), Pusher::default_run_length));
+    EXPECT_TRUE(refused(nullptr, connected.peers(), Pusher::default_run_length));
     EXPECT_TRUE(refused(store, nullptr, Pusher::default_run_length));
-    EXPECT_TRUE(refused(store, connected.get_peers(), 0));
-    EXPECT_FALSE(refused(store, connected.get_peers(), 1));
+    EXPECT_TRUE(refused(store, connected.peers(), 0));
+    EXPECT_FALSE(refused(store, connected.peers(), 1));
 }
