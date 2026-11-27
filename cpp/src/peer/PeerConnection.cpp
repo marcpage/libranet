@@ -286,6 +286,7 @@ PeerConnection::~PeerConnection() {
 }
 
 future<Response> PeerConnection::send(Request request) {
+    auto asked = string(request.method()) + " " + string(request.uri());
     auto text = framed(std::move(request), m_address);
     promise<Response> answer;
     auto answered = answer.get_future();
@@ -302,7 +303,7 @@ future<Response> PeerConnection::send(Request request) {
             m_last_progress = Clock::now();
         }
 
-        m_waiting.push_back(std::move(answer));
+        m_waiting.push_back({std::move(asked), std::move(answer)});
         m_unsent.push_back(std::move(text));
     }
 
@@ -415,13 +416,16 @@ bool PeerConnection::_read_answer(MeteredReader& reader) {
     auto waiting = _take_oldest();
     const auto closing = says_close(answer->headers());
 
+    lInfo << m_address.to_string() << "answered" << waiting.asked + ":"
+          << to_string(answer->status_code()) + "," << answer->body().size() << "bytes";
+
     // Closed before the answer is given, so that its request sees it so.
     if (closing) {
         _close_for(make_exception_ptr(Closed(m_address.to_string() + " turned this node away")),
                    true);
     }
 
-    waiting.set_value(std::move(*answer));
+    waiting.answer.set_value(std::move(*answer));
     return !closing;
 }
 
@@ -478,9 +482,9 @@ void PeerConnection::_progressed() {
     m_last_progress = Clock::now();
 }
 
-// The promise of the oldest request waiting. Throws invalid_argument where
-// none waits, for an answer nothing asked for.
-promise<Response> PeerConnection::_take_oldest() {
+// The oldest request waiting. Throws invalid_argument where none waits, for
+// an answer nothing asked for.
+PeerConnection::Waiting PeerConnection::_take_oldest() {
     const scoped_lock lock(m_mutex);
 
     if (m_waiting.empty()) {
@@ -513,11 +517,11 @@ void PeerConnection::_close_for(const exception_ptr& failure, bool turned_away) 
     m_sending.notify_all();
 }
 
-// Fails every request still waiting, once the reader has stopped: the
-// oldest with what closed the connection, and the others with Closed,
-// saying so.
+// Fails every request still waiting, once the reader has stopped, logging
+// each: the oldest with what closed the connection, and the others with
+// Closed, saying so.
 void PeerConnection::_fail_waiting() {
-    std::deque<promise<Response>> waiting;
+    std::deque<Waiting> waiting;
     exception_ptr failure;
 
     {
@@ -532,14 +536,19 @@ void PeerConnection::_fail_waiting() {
         return;
     }
 
-    const auto because = "The connection to " + m_address.to_string()
-                         + " closed before the answer came: " + reason(failure);
+    const auto why = reason(failure);
+    const auto because =
+        "The connection to " + m_address.to_string() + " closed before the answer came: " + why;
 
-    waiting.front().set_exception(failure);
+    for (const auto& request : waiting) {
+        lInfo << m_address.to_string() << "did not answer" << request.asked + ":" << why;
+    }
+
+    waiting.front().answer.set_exception(failure);
     waiting.pop_front();
 
     for (auto& request : waiting) {
-        request.set_exception(make_exception_ptr(Closed(because)));
+        request.answer.set_exception(make_exception_ptr(Closed(because)));
     }
 }
 

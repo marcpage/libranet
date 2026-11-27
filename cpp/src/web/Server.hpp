@@ -24,7 +24,7 @@
 namespace web {
 
 // An HTTP/1.1 server, with a thread for each connection. Each answer names the
-// path and query it answers in X-Request-Path.
+// path and query it answers in X-Request-Path, and is logged at Info.
 class Server {
 public:
     using RequestHandler = std::function<void(const http::Request& req, http::Response& res,
