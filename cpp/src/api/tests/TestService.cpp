@@ -28,6 +28,7 @@
 #include "storage/Identifier.hpp"
 #include "storage/SearchAnswered.hpp"
 #include "storage/tests/Fixtures.hpp"
+#include "types/Converter.hpp"
 
 using api::Service;
 using identity::NodeIdentity;
@@ -41,6 +42,7 @@ using protocol::SeekList;
 using storage::HashPrefix;
 using storage::Identifier;
 using storage::SearchAnswered;
+using types::Converter;
 
 namespace {
 
@@ -217,7 +219,7 @@ protected:
     void SetUp() override {
         Logger::remove_all_outputs();
         Logger::add_output(std::make_unique<LockedOutput>(m_kept));
-        m_store->put(hello_id(), fixtures::bytes_of(fixtures::hello));
+        m_store->put(hello_id(), Converter::bytes_of(fixtures::hello));
         m_service = std::make_unique<Service>(loopback(), m_store, m_identity, Settings{});
     }
 

@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
@@ -9,8 +8,10 @@
 #include <vector>
 
 #include "http/StructuredField.hpp"
+#include "types/Converter.hpp"
 
 using http::StructuredField;
+using types::Converter;
 
 namespace {
 
@@ -48,15 +49,6 @@ bool refused_to_set(std::string key, Member value) {
 // What StructuredField::parse() reads from text, written back out.
 std::string rewritten(std::string_view text) {
     return StructuredField::parse(text).to_string();
-}
-
-// The bytes of text.
-Bytes bytes_of(std::string_view text) {
-    Bytes bytes(text.size());
-
-    std::transform(text.begin(), text.end(), bytes.begin(),
-                   [](char character) { return static_cast<std::byte>(character); });
-    return bytes;
 }
 
 // count keys, from k0 on, each after separator.
@@ -100,7 +92,7 @@ TEST(StructuredFieldTest, ReadsADictionary) {
     EXPECT_EQ(field.members().at(0).first, "en");
     EXPECT_EQ(field.members().at(1).first, "da");
     EXPECT_EQ(field.member("en"), Member(Item{std::string("Applepie"), {}}));
-    EXPECT_EQ(field.member("da"), Member(Item{bytes_of(aebletaerte), {}}));
+    EXPECT_EQ(field.member("da"), Member(Item{Converter::bytes_of(aebletaerte), {}}));
     EXPECT_EQ(field.to_string(), R"(en="Applepie", da=:w4ZibGV0w6ZydGU=:)");
 }
 
@@ -176,13 +168,15 @@ TEST(StructuredFieldTest, ReadsAContentDigest) {
 TEST(StructuredFieldTest, ReadsAByteSequence) {
     const auto field = StructuredField::parse("a=:cHJldGVuZCB0aGlzIGlzIGJpbmFyeSBjb250ZW50Lg==:");
 
-    EXPECT_EQ(field.member("a"), Member(Item{bytes_of("pretend this is binary content."), {}}));
+    const auto content = Converter::bytes_of("pretend this is binary content.");
+
+    EXPECT_EQ(field.member("a"), Member(Item{content, {}}));
 }
 
 // RFC 9651 §4.2.7 asks that a byte sequence be read without its padding.
 TEST(StructuredFieldTest, ReadsAByteSequenceWithoutPadding) {
     EXPECT_EQ(StructuredField::parse("a=:AQI:").member("a"),
-              Member(Item{bytes_of("\x01\x02"), {}}));
+              Member(Item{Converter::bytes_of("\x01\x02"), {}}));
     EXPECT_EQ(rewritten("a=:AQI:"), "a=:AQI=:");
     EXPECT_EQ(rewritten("a=::"), "a=::");
 }

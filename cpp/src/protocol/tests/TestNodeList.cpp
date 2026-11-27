@@ -15,12 +15,14 @@
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
 #include "types/Constants.hpp"
+#include "types/Converter.hpp"
 
 using logger::ILogOutput;
 using logger::Logger;
 using protocol::NodeList;
 using storage::Identifier;
 using storage::Zlib;
+using types::Converter;
 
 namespace {
 
@@ -44,15 +46,6 @@ constexpr std::string_view python_list_compressed =
     "76ee9aad5c63ae9d234430d9ac51c80747ad939cb5f85ea13028058d5ca9345f935252ac18507dc35e0e21af"
     "078330074a1c6b8a24e6f51b08d88245642b9485e19fc9f37c01bf95399c";
 
-// The bytes of text, a byte for each char.
-NodeList::Data bytes_of(std::string_view text) {
-    NodeList::Data bytes(text.size());
-
-    std::transform(text.begin(), text.end(), bytes.begin(),
-                   [](char character) { return static_cast<std::byte>(character); });
-    return bytes;
-}
-
 // The bytes that lowercase hex names.
 NodeList::Data bytes_of_hex(std::string_view hex) {
     constexpr std::string_view digits = "0123456789abcdef";
@@ -71,7 +64,7 @@ NodeList::Data bytes_of_hex(std::string_view hex) {
 
 // A node's id of its own for each number.
 Identifier node(std::size_t number) {
-    return Identifier::of(bytes_of("node " + std::to_string(number)));
+    return Identifier::of(Converter::bytes_of("node " + std::to_string(number)));
 }
 
 // The endpoints list names, in order.
@@ -110,7 +103,7 @@ bool refused(const NodeList::Data& body,
 }
 
 bool refused(std::string_view text) {
-    return refused(bytes_of(text));
+    return refused(Converter::bytes_of(text));
 }
 
 // Whether a list takes endpoint as one.
@@ -210,7 +203,7 @@ TEST(NodeListTest, ReadsEachEntry) {
 }
 
 TEST(NodeListTest, ReadsBodyAsItIsOrCompressed) {
-    const auto plain = NodeList::from_body(bytes_of(python_list));
+    const auto plain = NodeList::from_body(Converter::bytes_of(python_list));
     const auto compressed = NodeList::from_body(bytes_of_hex(python_list_compressed));
 
     EXPECT_EQ(endpoints_of(plain),
@@ -252,8 +245,8 @@ TEST(NodeListTest, CompressedBodyThatIsNotANodeListIsRefused) {
     const auto compressed = bytes_of_hex(python_list_compressed);
     const NodeList::Data truncated(compressed.begin(), std::prev(compressed.end()));
 
-    EXPECT_TRUE(refused(Zlib::compress(bytes_of("not JSON"), Zlib::max_level)));
-    EXPECT_TRUE(refused(Zlib::compress(bytes_of("[]"), Zlib::max_level)));
+    EXPECT_TRUE(refused(Zlib::compress(Converter::bytes_of("not JSON"), Zlib::max_level)));
+    EXPECT_TRUE(refused(Zlib::compress(Converter::bytes_of("[]"), Zlib::max_level)));
     EXPECT_TRUE(refused(truncated));
 }
 
@@ -420,7 +413,7 @@ TEST(NodeListTest, OwnEndpointThatIsNotOneIsRefused) {
 TEST(NodeListTest, SmallListIsSentAsJson) {
     const NodeList list(node(0), {"http://localhost:8080"});
 
-    EXPECT_EQ(list.body(), bytes_of(list.to_string()));
+    EXPECT_EQ(list.body(), Converter::bytes_of(list.to_string()));
 }
 
 // A list is sent in less than 1 MiB, compressed when it would not fit
@@ -473,7 +466,7 @@ TEST(NodeListTest, LimitThatHoldsNoListIsRefused) {
     constexpr std::size_t empty_size = 12;
     const NodeList list(node(0), {"http://localhost:8080"});
 
-    EXPECT_EQ(list.body(empty_size + 1), bytes_of(R"({"nodes":{}})"));
+    EXPECT_EQ(list.body(empty_size + 1), Converter::bytes_of(R"({"nodes":{}})"));
     EXPECT_THROW((void)list.body(empty_size), std::invalid_argument);
 }
 

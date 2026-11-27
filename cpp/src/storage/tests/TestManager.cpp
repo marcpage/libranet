@@ -9,8 +9,8 @@
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Manager.hpp"
+#include "types/Converter.hpp"
 
-using fixtures::bytes_of;
 using fixtures::hello;
 using fixtures::hello_hash;
 using fixtures::MemorySource;
@@ -19,6 +19,7 @@ using fixtures::write_file;
 using storage::HashPrefix;
 using storage::Identifier;
 using storage::Manager;
+using types::Converter;
 
 namespace {
 
@@ -31,7 +32,7 @@ TEST(ManagerTest, PutWithNoSourceIsRefused) {
     const auto manager = Manager::create();
     const Identifier identifier("sha256", hello_hash);
 
-    EXPECT_THROW(manager->put(identifier, bytes_of(hello)), std::invalid_argument);
+    EXPECT_THROW(manager->put(identifier, Converter::bytes_of(hello)), std::invalid_argument);
 }
 
 TEST(ManagerTest, PutGoesToTheFirstSourceAdded) {
@@ -42,9 +43,9 @@ TEST(ManagerTest, PutGoesToTheFirstSourceAdded) {
 
     manager->add(first);
     manager->add(second);
-    manager->put(identifier, bytes_of(hello));
+    manager->put(identifier, Converter::bytes_of(hello));
 
-    EXPECT_EQ(first->get(identifier), bytes_of(hello));
+    EXPECT_EQ(first->get(identifier), Converter::bytes_of(hello));
     EXPECT_FALSE(second->has(identifier));
 }
 
@@ -56,10 +57,10 @@ TEST(ManagerTest, HasAndGetLookInEverySource) {
 
     manager->add(first);
     manager->add(second);
-    second->put(identifier, bytes_of(hello));
+    second->put(identifier, Converter::bytes_of(hello));
 
     EXPECT_TRUE(manager->has(identifier));
-    EXPECT_EQ(manager->get(identifier), bytes_of(hello));
+    EXPECT_EQ(manager->get(identifier), Converter::bytes_of(hello));
 }
 
 TEST(ManagerTest, DataInNoSourceIsNotThere) {
@@ -81,7 +82,7 @@ TEST(ManagerTest, AddDirectoryReadsFromIt) {
     manager->add(directory.path());
 
     EXPECT_TRUE(manager->has(identifier));
-    EXPECT_EQ(manager->get(identifier), bytes_of(hello));
+    EXPECT_EQ(manager->get(identifier), Converter::bytes_of(hello));
 }
 
 TEST(ManagerTest, ScanAddsEachDirectoryInIt) {
@@ -95,7 +96,7 @@ TEST(ManagerTest, ScanAddsEachDirectoryInIt) {
     manager->scan(directory.path());
 
     EXPECT_TRUE(manager->has(identifier));
-    EXPECT_EQ(manager->get(identifier), bytes_of(hello));
+    EXPECT_EQ(manager->get(identifier), Converter::bytes_of(hello));
 }
 
 TEST(ManagerTest, ScanOfAMissingDirectoryAddsNothing) {
@@ -104,7 +105,7 @@ TEST(ManagerTest, ScanOfAMissingDirectoryAddsNothing) {
 
     manager->scan(directory.path() / "missing");
 
-    EXPECT_THROW(manager->put(Identifier("sha256", hello_hash), bytes_of(hello)),
+    EXPECT_THROW(manager->put(Identifier("sha256", hello_hash), Converter::bytes_of(hello)),
                  std::invalid_argument);
 }
 
@@ -117,8 +118,8 @@ TEST(ManagerTest, RemoveTakesFromEverySource) {
 
     manager->add(first);
     manager->add(second);
-    first->put(identifier, bytes_of(hello));
-    second->put(identifier, bytes_of(hello));
+    first->put(identifier, Converter::bytes_of(hello));
+    second->put(identifier, Converter::bytes_of(hello));
 
     EXPECT_TRUE(manager->remove(identifier));
     EXPECT_FALSE(manager->has(identifier));
@@ -134,7 +135,7 @@ TEST(ManagerTest, RemoveFromOneSourceOfTwo) {
 
     manager->add(first);
     manager->add(second);
-    first->put(identifier, bytes_of(hello));
+    first->put(identifier, Converter::bytes_of(hello));
 
     EXPECT_TRUE(manager->remove(identifier));
     EXPECT_FALSE(manager->has(identifier));
@@ -155,8 +156,8 @@ TEST(ManagerTest, SizeIsWhatEverySourceHolds) {
 
     manager->add(first);
     manager->add(second);
-    first->put(identifier, bytes_of(hello));
-    second->put(identifier, bytes_of("hello, compressed"));
+    first->put(identifier, Converter::bytes_of(hello));
+    second->put(identifier, Converter::bytes_of("hello, compressed"));
 
     EXPECT_EQ(manager->size(), 22U);
 }
@@ -174,8 +175,8 @@ TEST(ManagerTest, StartingWithNamesWhatEverySourceHoldsOnce) {
 
     manager->add(first);
     manager->add(second);
-    first->put(hello_identifier, bytes_of(hello));
-    second->put(hello_identifier, bytes_of(hello));
+    first->put(hello_identifier, Converter::bytes_of(hello));
+    second->put(hello_identifier, Converter::bytes_of(hello));
     second->put(empty_identifier, {});
 
     const auto hello_found = manager->starting_with(HashPrefix::parse("2cf"));

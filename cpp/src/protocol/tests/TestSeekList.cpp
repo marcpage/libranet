@@ -17,6 +17,7 @@
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Converter.hpp"
 
 using logger::ILogOutput;
 using logger::Logger;
@@ -24,6 +25,7 @@ using protocol::SeekList;
 using storage::HashPrefix;
 using storage::Identifier;
 using storage::Zlib;
+using types::Converter;
 
 namespace {
 
@@ -34,24 +36,6 @@ constexpr auto empty_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca49
 // More than any list here holds once decompressed, as the Python node's
 // storage.max_decompressed_list_bytes is.
 constexpr std::size_t decompressed_limit = 4UL * 1024UL * 1024UL;
-
-// The bytes of text, a byte for each char.
-SeekList::Data bytes_of(std::string_view text) {
-    SeekList::Data bytes(text.size());
-
-    std::transform(text.begin(), text.end(), bytes.begin(),
-                   [](char character) { return static_cast<std::byte>(character); });
-    return bytes;
-}
-
-// The text of bytes, a char for each byte.
-std::string text_of(const SeekList::Data& bytes) {
-    std::string text(bytes.size(), '\0');
-
-    std::transform(bytes.begin(), bytes.end(), text.begin(),
-                   [](std::byte byte) { return static_cast<char>(byte); });
-    return text;
-}
 
 // The text of the SHA-256 identifier of hash.
 std::string sha256(std::string_view hash) {
@@ -65,7 +49,7 @@ std::string quoted(std::string_view hash) {
 
 // The list text holds, as JSON.
 SeekList read_text(std::string_view text) {
-    return SeekList::from_body(bytes_of(text), decompressed_limit);
+    return SeekList::from_body(Converter::bytes_of(text), decompressed_limit);
 }
 
 // Whether SeekList::from_body() turns down body as not a seek list.
@@ -81,7 +65,7 @@ bool refused(const SeekList::Data& body) {
 
 // Whether SeekList::from_body() turns down text, as JSON, as not a seek list.
 bool refused(std::string_view text) {
-    return refused(bytes_of(text));
+    return refused(Converter::bytes_of(text));
 }
 
 // The text of each entry.
@@ -106,7 +90,7 @@ std::vector<Identifier> identifiers(std::size_t count) {
     result.reserve(count);
 
     for (std::size_t index = 0; index < count; ++index) {
-        result.push_back(Identifier::of(bytes_of(std::to_string(index))));
+        result.push_back(Identifier::of(Converter::bytes_of(std::to_string(index))));
     }
 
     return result;
@@ -175,7 +159,7 @@ TEST(SeekListTest, DefaultIsEmpty) {
 
     EXPECT_TRUE(list.data().empty());
     EXPECT_TRUE(list.search().empty());
-    EXPECT_EQ(text_of(list.body()), R"({"data":[],"search":[]})");
+    EXPECT_EQ(Converter::text_of(list.body()), R"({"data":[],"search":[]})");
 }
 
 // A kind the list does not name is none sought, and a member HttpApi
@@ -248,7 +232,8 @@ TEST(SeekListDeathTest, NothingLeftOutIsNotLogged) {
 
 // A list may be sent zlib-compressed (HttpApi §10.7.1).
 TEST(SeekListTest, ZlibCompressedIsRead) {
-    const auto json = bytes_of(R"({"data": [)" + quoted(hello_hash) + R"(], "search": ["2cf2"]})");
+    const auto json = Converter::bytes_of(R"({"data": [)" + quoted(hello_hash)
+                                          + R"(], "search": ["2cf2"]})");
 
     const auto list = SeekList::from_body(Zlib::compress(json, Zlib::max_level),
                                           decompressed_limit);
@@ -260,7 +245,7 @@ TEST(SeekListTest, ZlibCompressedIsRead) {
 // A small body could expand without bound, so one that holds more than the
 // limit once decompressed is refused.
 TEST(SeekListTest, MoreThanTheLimitDecompressedIsRefused) {
-    const auto json = bytes_of(R"({"data":[],"search":[]})");
+    const auto json = Converter::bytes_of(R"({"data":[],"search":[]})");
     const auto body = Zlib::compress(json, Zlib::max_level);
 
     EXPECT_NO_THROW((void)SeekList::from_body(body, json.size()));
@@ -268,20 +253,20 @@ TEST(SeekListTest, MoreThanTheLimitDecompressedIsRefused) {
 }
 
 TEST(SeekListTest, CompressedNotASeekListIsRefused) {
-    auto truncated = Zlib::compress(bytes_of("{}"), Zlib::max_level);
+    auto truncated = Zlib::compress(Converter::bytes_of("{}"), Zlib::max_level);
 
     truncated.pop_back();
 
-    EXPECT_TRUE(refused(Zlib::compress(bytes_of("not JSON"), Zlib::max_level)));
-    EXPECT_TRUE(refused(Zlib::compress(bytes_of("[]"), Zlib::max_level)));
-    EXPECT_TRUE(refused(Zlib::compress(bytes_of(R"({"data": 1})"), Zlib::max_level)));
+    EXPECT_TRUE(refused(Zlib::compress(Converter::bytes_of("not JSON"), Zlib::max_level)));
+    EXPECT_TRUE(refused(Zlib::compress(Converter::bytes_of("[]"), Zlib::max_level)));
+    EXPECT_TRUE(refused(Zlib::compress(Converter::bytes_of(R"({"data": 1})"), Zlib::max_level)));
     EXPECT_TRUE(refused(truncated));
 }
 
 TEST(SeekListTest, WrittenAsCompactJson) {
     const SeekList list({Identifier("sha256", hello_hash)}, {HashPrefix::parse("2CF2")});
 
-    EXPECT_EQ(text_of(list.body()),
+    EXPECT_EQ(Converter::text_of(list.body()),
               R"({"data":[)" + quoted(hello_hash) + R"(],"search":["2cf2"]})");
 }
 
@@ -359,7 +344,7 @@ TEST(SeekListTest, LimitTooSmallForAnEmptyListIsRefused) {
     const SeekList list(identifiers(1), prefixes(1));
 
     EXPECT_THROW((void)list.body(empty_list_size), std::invalid_argument);
-    EXPECT_EQ(text_of(list.body(empty_list_size + 1)), R"({"data":[],"search":[]})");
+    EXPECT_EQ(Converter::text_of(list.body(empty_list_size + 1)), R"({"data":[],"search":[]})");
 }
 
 // cppcheck-suppress-end danglingTemporaryLifetime

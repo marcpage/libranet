@@ -20,6 +20,7 @@
 #include "net/Address.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/tests/Fixtures.hpp"
+#include "types/Converter.hpp"
 #include "types/Json.hpp"
 #include "web/ConnectionInfo.hpp"
 
@@ -31,6 +32,7 @@ using identity::MessageSigner;
 using identity::MessageVerifier;
 using identity::NodeIdentity;
 using net::Address;
+using types::Converter;
 using types::Json;
 using web::ConnectionInfo;
 
@@ -149,7 +151,7 @@ protected:
 
     // Has this node's store hold peer's key, as once it was put there.
     void obtain_key(const NodeIdentity& peer) const {
-        m_store->put(peer.id(), fixtures::bytes_of(peer.public_pem()));
+        m_store->put(peer.id(), Converter::bytes_of(peer.public_pem()));
     }
 
     // Whether this node signed response, and the signature verifies.

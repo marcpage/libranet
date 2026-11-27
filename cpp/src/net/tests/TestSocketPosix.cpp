@@ -1,8 +1,6 @@
 #include <gtest/gtest.h>
-#include <algorithm>
 #include <chrono>
 #include <cstddef>
-#include <iterator>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -14,23 +12,15 @@
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
 #include "net/SocketPosix.hpp"
+#include "types/Converter.hpp"
 
 using net::Address;
 using net::ISocket;
 using net::SocketPosix;
+using types::Converter;
 using std::chrono_literals::operator""ms;
 
 namespace {
-
-// The bytes as text, a char for each.
-std::string as_text(const std::vector<std::byte>& bytes) {
-    std::string text;
-    text.reserve(bytes.size());
-    std::transform(bytes.begin(), bytes.end(), std::back_inserter(text), [](std::byte byte) {
-        return static_cast<char>(std::to_integer<unsigned char>(byte));
-    });
-    return text;
-}
 
 // Helper that binds to an ephemeral port and returns both the socket and the
 // actual address that was assigned by the OS. It throws, failing the test,
@@ -146,7 +136,7 @@ TEST(SocketPosixTest, SendAndReceive) {
     EXPECT_TRUE(success);
 
     // Convert bytes back to string for assertion
-    const std::string received_message = as_text(buffer);
+    const std::string received_message = Converter::text_of(buffer);
     EXPECT_EQ(received_message, message);
 
     client->close();
@@ -175,7 +165,7 @@ TEST(SocketPosixTest, HelpersSendAllAndReadExact) {
     const std::vector<std::byte> exact_bytes = peer->read_exact(payload.size());
     EXPECT_EQ(exact_bytes.size(), payload.size());
 
-    const std::string received_payload = as_text(exact_bytes);
+    const std::string received_payload = Converter::text_of(exact_bytes);
     EXPECT_EQ(received_payload, payload);
 
     client->close();
@@ -206,7 +196,7 @@ TEST(SocketPosixTest, ReadExactBeyondWhatArrives) {
     const std::vector<std::byte> bytes =
         peer->read_exact(std::numeric_limits<std::size_t>::max());
 
-    EXPECT_EQ(as_text(bytes), "partial");
+    EXPECT_EQ(Converter::text_of(bytes), "partial");
 
     peer->close();
     server->close();
@@ -238,8 +228,8 @@ TEST(SocketPosixTest, ReadExactLongerThanOnePiece) {
 
     sender.join();
 
-    EXPECT_EQ(as_text(bytes), payload);
-    EXPECT_EQ(as_text(extra_bytes), "extra");
+    EXPECT_EQ(Converter::text_of(bytes), payload);
+    EXPECT_EQ(Converter::text_of(extra_bytes), "extra");
 
     client->close();
     peer->close();
@@ -331,9 +321,9 @@ TEST(SocketPosixTest, ConnectWithinATimeout) {
     const auto peer = server->accept();
 
     client->send_all("ping");
-    EXPECT_EQ(as_text(peer->read_exact(4)), "ping");
+    EXPECT_EQ(Converter::text_of(peer->read_exact(4)), "ping");
     peer->send_all("pong");
-    EXPECT_EQ(as_text(client->read_exact(4)), "pong");
+    EXPECT_EQ(Converter::text_of(client->read_exact(4)), "pong");
 }
 
 // A listener that takes no connection holds as many as its queue has room

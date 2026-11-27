@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <cstddef>
-#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -10,23 +9,14 @@
 
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
+#include "types/Converter.hpp"
 
 using net::Address;
 using net::ISocket;
+using types::Converter;
 using std::chrono_literals::operator""ms;
 
 namespace {
-
-// The bytes as text, a char for each.
-std::string as_text(const std::vector<std::byte>& bytes) {
-    std::string text;
-
-    text.reserve(bytes.size());
-    std::transform(bytes.begin(), bytes.end(), std::back_inserter(text), [](std::byte byte) {
-        return static_cast<char>(std::to_integer<unsigned char>(byte));
-    });
-    return text;
-}
 
 // A socket that reads the text it is given, as much as fits each read, and
 // keeps what is sent to it, at most a set number of bytes at a time. It
@@ -150,14 +140,14 @@ TEST(ISocketTest, ReadExactStopsAtTheSize) {
     constexpr std::size_t size = 2;
     ScriptedSocket socket("abc", 0);
 
-    EXPECT_EQ(as_text(socket.read_exact(size)), "ab");
+    EXPECT_EQ(Converter::text_of(socket.read_exact(size)), "ab");
 }
 
 TEST(ISocketTest, ReadExactStopsAtTheEndOfInput) {
     constexpr std::size_t size = 10;
     ScriptedSocket socket("abc", 0);
 
-    EXPECT_EQ(as_text(socket.read_exact(size)), "abc");
+    EXPECT_EQ(Converter::text_of(socket.read_exact(size)), "abc");
 }
 
 // A line's carriage returns are dropped, and a last line without the

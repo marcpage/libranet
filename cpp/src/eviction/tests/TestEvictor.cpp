@@ -25,6 +25,7 @@
 #include "storage/Identifier.hpp"
 #include "storage/tests/Fixtures.hpp"
 #include "types/Constants.hpp"
+#include "types/Converter.hpp"
 
 using eviction::Evictor;
 using fixtures::MemorySource;
@@ -35,6 +36,7 @@ using storage::DataStored;
 using storage::HashPrefix;
 using storage::IDataSource;
 using storage::Identifier;
+using types::Converter;
 using types::Megabyte;
 using namespace std::chrono_literals;
 
@@ -333,7 +335,7 @@ void EvictorTest::start_evicting(const Settings& settings) {
 }
 
 void EvictorTest::hold(char digit) {
-    m_store->put(named(digit), fixtures::bytes_of(std::string(1, digit)));
+    m_store->put(named(digit), Converter::bytes_of(std::string(1, digit)));
 }
 
 void EvictorTest::store(char digit, std::size_t size) {
@@ -349,7 +351,7 @@ void EvictorTest::go_over(const Settings& settings) {
 
 void EvictorTest::answer(const std::vector<Held>& objects) const {
     for (const auto& object : objects) {
-        m_store->put(object.identifier, fixtures::bytes_of("content"));
+        m_store->put(object.identifier, Converter::bytes_of("content"));
     }
 
     Channel::post(Candidates::name, Candidates{objects});

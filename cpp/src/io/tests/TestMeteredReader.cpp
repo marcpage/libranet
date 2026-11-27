@@ -2,33 +2,22 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "io/IReader.hpp"
 #include "io/MeteredReader.hpp"
+#include "types/Converter.hpp"
 
 using io::IReader;
 using io::LimitExceeded;
 using io::MeteredReader;
+using types::Converter;
 
 namespace {
-
-// The bytes as text, a char for each.
-std::string as_text(const std::vector<std::byte>& bytes) {
-    std::string text;
-
-    text.reserve(bytes.size());
-    std::transform(bytes.begin(), bytes.end(), std::back_inserter(text), [](std::byte byte) {
-        return static_cast<char>(std::to_integer<unsigned char>(byte));
-    });
-    return text;
-}
 
 // A reader of the text it is given, as much as fits each read.
 class StringReader final : public IReader {
@@ -73,7 +62,7 @@ TEST(MeteredReaderTest, TracksBytesReadAndRemaining) {
     EXPECT_EQ(reader.bytes_read(), 0U);
     EXPECT_EQ(reader.remaining(), 6U);
 
-    EXPECT_EQ(as_text(reader.read_exact(4)), "abcd");
+    EXPECT_EQ(Converter::text_of(reader.read_exact(4)), "abcd");
     EXPECT_EQ(reader.bytes_read(), 4U);
     EXPECT_EQ(reader.remaining(), 2U);
 }
@@ -82,7 +71,7 @@ TEST(MeteredReaderTest, ThrowsLimitExceededWhenLimitIsCrossed) {
     constexpr auto byte_limit = 5;
     MeteredReader reader(std::make_unique<StringReader>("abcdefghij"), byte_limit);
 
-    EXPECT_EQ(as_text(reader.read_exact(3)), "abc");
+    EXPECT_EQ(Converter::text_of(reader.read_exact(3)), "abc");
     EXPECT_THROW((void)reader.read_line(IReader::EolAction::MayHaveEol), LimitExceeded);
 }
 
@@ -98,7 +87,7 @@ TEST(MeteredReaderTest, ResetRestoresBudgetAndClearsCount) {
     reader.reset(new_byte_limit);
     EXPECT_EQ(reader.bytes_read(), 0U);
     EXPECT_EQ(reader.remaining(), 12U);
-    EXPECT_EQ(as_text(reader.read_exact(new_byte_limit)), "body-payload");
+    EXPECT_EQ(Converter::text_of(reader.read_exact(new_byte_limit)), "body-payload");
 }
 
 // The end of the input, before the limit, is not counted against it.
