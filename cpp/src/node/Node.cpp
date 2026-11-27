@@ -797,10 +797,11 @@ Node::PartSettings Node::_settings_of(const SettingsFile& settings, const vector
     auto& search = parts.seeker.search;
     auto& evictor = parts.evictor;
     auto& recorder = parts.recorder;
-    const auto retry_after =
-        whole<size_t>(settings, retry_after_setting,
-                      static_cast<size_t>(Service::Settings{}.retry_after.count()), 0,
-                      static_cast<uintmax_t>(most_seconds));
+    // Whole seconds, as Retry-After carries them (HttpApi §5.2).
+    const auto retry_after = whole<std::chrono::seconds::rep>(
+        settings, retry_after_setting,
+        std::chrono::duration_cast<std::chrono::seconds>(service.retry_after).count(), 0,
+        static_cast<uintmax_t>(most_seconds));
 
     // The web server's.
     service.retry_after = std::chrono::seconds(retry_after);

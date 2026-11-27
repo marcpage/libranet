@@ -36,7 +36,7 @@ public:
 
     [[nodiscard]] std::string_view version() const noexcept;
     [[nodiscard]] const ResponseCode& code() const noexcept;
-    [[nodiscard]] int status_code() const noexcept;
+    [[nodiscard]] std::uint16_t status_code() const noexcept;
     [[nodiscard]] std::string_view reason_phrase() const noexcept;
 
     [[nodiscard]] const Headers& headers() const noexcept;
@@ -74,7 +74,7 @@ inline const ResponseCode& Response::code() const noexcept {
     return m_status;
 }
 
-inline int Response::status_code() const noexcept {
+inline std::uint16_t Response::status_code() const noexcept {
     return m_status.code();
 }
 

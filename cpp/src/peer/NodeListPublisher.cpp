@@ -70,14 +70,14 @@ bool post(PeerSession& session, const NodeList& list) {
 
     try {
         const auto answers = session.exchange({post_of(list)});
-        const auto status = answers.at(0).status_code();
+        const auto& answer = answers.at(0);
 
-        if (static_cast<int>(ResponseCode::Status::Accepted) == status) {
+        if (ResponseCode::Status::Accepted == answer.code()) {
             lDebug << "Posted a node list of" << told;
             return true;
         }
 
-        lWarn << "A node list of" << told << "was answered" << status;
+        lWarn << "A node list of" << told << "was answered" << answer.status_code();
     } catch (const exception& error) {
         lInfo << "Could not post a node list of" << told << ":" << error.what();
     }
