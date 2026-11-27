@@ -35,6 +35,7 @@
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
 #include "node/SettingsFile.hpp"
+#include "peer/Buckets.hpp"
 #include "peer/Connections.hpp"
 #include "peer/Fetch.hpp"
 #include "peer/HandOff.hpp"
@@ -61,6 +62,7 @@ using logger::Logger;
 using net::Address;
 using node::Node;
 using node::SettingsFile;
+using peer::Buckets;
 using peer::Connections;
 using peer::Fetch;
 using protocol::NodeList;
@@ -213,7 +215,7 @@ constexpr auto database_file_name = "libranet.sqlite3";
 constexpr size_t most_search_bits = 256;
 
 // The most bits a bucket's prefix may have, as the Python node allows.
-constexpr size_t most_prefix_bits = 16;
+constexpr size_t most_prefix_bits = Buckets::ExpectedSizes::max_prefix_bits;
 
 // The fewest bytes the lists served may be held to, as the Python node
 // allows, and the most, as the protocol allows (HttpApi §10.6, §10.7.1).

@@ -16,6 +16,9 @@ public:
         // One server node for each bucket of each set.
         static constexpr std::size_t default_connections = 16;
         static constexpr std::size_t default_prefix_bits = 4;
+        // The most bits that tell one set's buckets apart, as the Python node
+        // allows: 65,536 buckets.
+        static constexpr std::size_t max_prefix_bits = 16;
 
         std::size_t min_primary_connections = default_connections;
         std::size_t primary_prefix_bits = default_prefix_bits;
