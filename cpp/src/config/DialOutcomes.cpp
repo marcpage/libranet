@@ -65,7 +65,7 @@ void log_error(const string& text) {
 namespace config {
 
 DialOutcomes::DialOutcomes(const PeerConnection::Limits& limits, Milliseconds report_time)
-    : m_wait(limits.connect_timeout + (2 * limits.request_timeout) + report_time)
+    : m_wait_time(limits.connect_timeout + (2 * limits.request_timeout) + report_time)
     , m_channel(AddressDialed::name, [this](const IMessage::Ptr& message) { _take(message); },
                 log_error) {}
 
@@ -77,8 +77,8 @@ DialOutcomes::~DialOutcomes() {
     m_changed.wait(lock, [this] { return m_awaited.empty(); });
 }
 
-Milliseconds DialOutcomes::wait() const noexcept {
-    return m_wait;
+Milliseconds DialOutcomes::wait_time() const noexcept {
+    return m_wait_time;
 }
 
 optional<AddressDialed> DialOutcomes::await(const Ask& ask) {
@@ -130,7 +130,8 @@ optional<AddressDialed> DialOutcomes::_wait_for(const string& dial_id) {
     unique_lock lock(m_mutex);
     const auto& awaited = m_awaited.at(dial_id);
 
-    m_changed.wait_for(lock, m_wait, [this, &awaited] { return m_stopped || awaited.has_value(); });
+    m_changed.wait_for(lock, m_wait_time,
+                       [this, &awaited] { return m_stopped || awaited.has_value(); });
     return awaited;
 }
 

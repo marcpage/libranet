@@ -162,13 +162,13 @@ TEST_F(DialOutcomesTest, RequestWaitsAsLongAsOneDialMayTakeAndFiveSecondsMore) {
     const DialOutcomes outcomes(python_limits());
 
     EXPECT_EQ(DialOutcomes::default_report_time, 5s);
-    EXPECT_EQ(outcomes.wait(), 75s);
+    EXPECT_EQ(outcomes.wait_time(), 75s);
 }
 
 TEST_F(DialOutcomesTest, RequestWaitsAsLongAsTheTimeoutsGiven) {
     const DialOutcomes outcomes({3s, 7s, {}}, 1s);
 
-    EXPECT_EQ(outcomes.wait(), 18s);
+    EXPECT_EQ(outcomes.wait_time(), 18s);
 }
 
 TEST_F(DialOutcomesTest, OutcomeIsHandedToTheRequestWaitingForIt) {
@@ -251,7 +251,7 @@ TEST_F(DialOutcomesTest, NothingComingInTimeIsNothing) {
 
     EXPECT_TRUE(asked);
     EXPECT_FALSE(dialed.has_value());
-    EXPECT_GE(std::chrono::steady_clock::now() - started, outcomes.wait());
+    EXPECT_GE(std::chrono::steady_clock::now() - started, outcomes.wait_time());
 }
 
 // Outcomes are heard in the order posted, so the one no request waits for

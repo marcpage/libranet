@@ -35,7 +35,7 @@ public:
     ~DialOutcomes();
 
     // How long a request waits for what came of its dial.
-    [[nodiscard]] Milliseconds wait() const noexcept;
+    [[nodiscard]] Milliseconds wait_time() const noexcept;
 
     // What came of the dial ask asks for: nothing when nothing came in time,
     // or once stopped. Throws what ask throws.
@@ -52,7 +52,7 @@ public:
     DialOutcomes& operator=(DialOutcomes&&) = delete;
 
 private:
-    Milliseconds m_wait;
+    Milliseconds m_wait_time;
     std::mutex m_mutex;
     std::condition_variable m_changed;
     std::map<std::string, std::optional<AddressDialed>> m_awaited; // Guarded: by dial id
