@@ -296,6 +296,33 @@ string answer_to(const Address& address, string_view request) {
     return answer;
 }
 
+// Where /config is, as the main port of node says, sending a GET of /config/
+// there.
+Address config_address_of(const Node& node) {
+    const string location_field = "\r\nLocation: http://127.0.0.1:";
+    const auto moved = answer_to(node.local_address(),
+                                 "GET /config/ HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                                 "Connection: close\r\n\r\n");
+    const auto location = moved.find(location_field);
+
+    if (string::npos == location) {
+        throw std::runtime_error("The main port does not say where /config is: " + moved);
+    }
+
+    const auto port_start = location + location_field.size();
+    const auto port = moved.substr(port_start, moved.find('/', port_start) - port_start);
+
+    return {"127.0.0.1", static_cast<Address::Port>(std::stoul(port))};
+}
+
+// A GET of /config/api from a page of /config at host, as a Host header names
+// it, giving the credential admin:secret, on a connection the node closes
+// once it answers.
+string config_api_request(const string& host) {
+    return "GET /config/api HTTP/1.1\r\nHost: " + host + "\r\nReferer: http://" + host
+           + "/config/\r\nAuthorization: Basic YWRtaW46c2VjcmV0\r\nConnection: close\r\n\r\n";
+}
+
 // Runs a node with values until it is sent signal, which is sent before it
 // starts, and held back from this thread until the node takes it.
 void run_until(int signal, const Values& values) {
@@ -365,6 +392,7 @@ TEST_F(NodeTest, LogsItsSettings) {
     values["storage.max_storage_bytes"] = "5000000";
     values["storage.max_decompressed_list_bytes"] = "8388608";
     values["karma.mining"] = "false";
+    values["network.config_hosts"] = "[localhost, '*.example']";
 
     const auto node = node_of(settings_of(values));
 
@@ -372,6 +400,7 @@ TEST_F(NodeTest, LogsItsSettings) {
     EXPECT_TRUE(logged("network.listen_address = 127.0.0.1"));
     EXPECT_TRUE(logged("network.listen_port = 0"));
     EXPECT_TRUE(logged("network.config_port = 0"));
+    EXPECT_TRUE(logged("network.config_hosts = [localhost, *.example]"));
     EXPECT_TRUE(logged("/config is at http://127.0.0.1:"));
     EXPECT_TRUE(logged("logging.level = INFO"));
     EXPECT_TRUE(logged("storage.max_storage_bytes = 5000000"));
@@ -583,13 +612,35 @@ TEST_F(NodeTest, ServesConfigOnAPortOfItsOwn) {
         << moved;
     EXPECT_TRUE(logged("/config is at http://127.0.0.1:" + port + "/config/"));
 
-    const auto answer = answer_to(config,
-                                  "GET /config/api HTTP/1.1\r\nHost: 127.0.0.1\r\n"
-                                  "Authorization: Basic YWRtaW46c2VjcmV0\r\n"
-                                  "Connection: close\r\n\r\n");
+    const auto answer = answer_to(config, config_api_request("127.0.0.1:" + port));
 
     EXPECT_EQ(answer.rfind("HTTP/1.1 200 OK\r\n", 0), 0U) << answer;
     EXPECT_TRUE(std::filesystem::is_regular_file(data_dir() / "config-credential"));
+}
+
+// network.config_hosts names the hosts /config is served as, and by default
+// those a browser on this machine reaches it by (HTTP API §2.3.3).
+TEST_F(NodeTest, ServesConfigAsTheHostsTheSettingsName) {
+    auto values = loopback(data_dir() / "named");
+
+    values["network.config_hosts"] = "['*.example']";
+
+    const auto node = node_of(settings_of(loopback(data_dir())));
+    const auto named = node_of(settings_of(values));
+    const auto config = config_address_of(*node);
+    const auto named_config = config_address_of(*named);
+
+    for (const auto* const host : {"localhost", "127.0.0.1", "[::1]"}) {
+        const auto answer = answer_to(config, config_api_request(string(host) + ":8180"));
+
+        EXPECT_EQ(answer.rfind("HTTP/1.1 200 OK\r\n", 0), 0U) << host << answer;
+    }
+
+    const auto refused = answer_to(config, config_api_request("node.example:8180"));
+    const auto served = answer_to(named_config, config_api_request("node.example:8180"));
+
+    EXPECT_EQ(refused.rfind("HTTP/1.1 403 Forbidden\r\n", 0), 0U) << refused;
+    EXPECT_EQ(served.rfind("HTTP/1.1 200 OK\r\n", 0), 0U) << served;
 }
 
 // network.config_port may be neither the main port nor, when it is not set,
@@ -676,6 +727,8 @@ TEST_F(NodeTest, RefusesSettingsItCannotUse) {
         {"network.config_port", "x"},
         {"network.config_port", "65536"},
         {"network.config_port", "-1"},
+        {"network.config_hosts", "localhost"},
+        {"network.config_hosts", R"(["local\0host"])"},
         {"network.listen_address", "[a, b]"},
         {"logging.level", "LOUD"},
         {"logging.level", "info"},
