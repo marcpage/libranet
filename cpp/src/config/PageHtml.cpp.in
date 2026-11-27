@@ -1,0 +1,31 @@
+// Made by the build from applications/config/index.html, which is the file
+// to change.
+#include "config/Page.hpp"
+
+#include <initializer_list>
+#include <string>
+#include <string_view>
+
+namespace {
+
+// applications/config/index.html, a line at a time, each with its end, so
+// that no string is longer than every compiler takes.
+constexpr std::initializer_list<std::string_view> lines{
+    "@page_lines@",
+};
+
+} // namespace
+
+namespace config {
+
+std::string Page::_built_html() {
+    std::string html;
+
+    for (const auto line : lines) {
+        html.append(line);
+    }
+
+    return html;
+}
+
+} // namespace config

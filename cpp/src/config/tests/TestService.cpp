@@ -19,6 +19,7 @@
 #include "config/Service.hpp"
 #include "http/BasicCredentials.hpp"
 #include "identity/NodeIdentity.hpp"
+#include "io/FileReader.hpp"
 #include "logger/ILogOutput.hpp"
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
@@ -30,6 +31,7 @@ using config::NotOffered;
 using config::Service;
 using http::BasicCredentials;
 using identity::NodeIdentity;
+using io::FileReader;
 using logger::ILogOutput;
 using logger::Logger;
 using net::Address;
@@ -374,9 +376,35 @@ TEST_F(ConfigServiceTest, RefusesAnyOtherMethodOfItsEndpoints) {
     }
 }
 
-// The /config page, and the endpoints beneath /config/api, come later.
-TEST_F(ConfigServiceTest, ServesNothingElseBeneathConfig) {
-    for (const auto* const target : {"/config", "/config/", "/config/api/", "/config/api/node"}) {
+// A path beneath /config that is outside /config/api, as /config/apix is, is
+// the page.
+TEST_F(ConfigServiceTest, ServesThePage) {
+    const auto page = FileReader(LIBRANET_CONFIG_PAGE).read_all();
+
+    for (const auto* const target :
+         {"/config", "/config/", "/config/index.html", "/config/x?y=1", "/config/apix"}) {
+        const auto answer = answer_to(address(), get(target));
+
+        EXPECT_TRUE(has_status(answer, "200 OK")) << target;
+        EXPECT_TRUE(has_header(answer, "Content-Type", "text/html; charset=utf-8")) << target;
+        EXPECT_TRUE(is_signed_by_node(answer)) << target;
+        EXPECT_EQ(body_of(answer), page) << target;
+    }
+}
+
+TEST_F(ConfigServiceTest, RefusesAnyOtherMethodOfThePage) {
+    for (const auto* const method : {"POST", "PUT", "DELETE", "HEAD"}) {
+        const auto answer = answer_to(address(), request_of(method, "/config/"));
+
+        EXPECT_TRUE(has_status(answer, "405 Method Not Allowed")) << method << answer;
+        EXPECT_TRUE(has_header(answer, "Allow", "GET")) << method << answer;
+        EXPECT_TRUE(is_signed_by_node(answer)) << method << answer;
+    }
+}
+
+// The endpoints beneath /config/api come later.
+TEST_F(ConfigServiceTest, ServesNothingElseBeneathItsEndpoints) {
+    for (const auto* const target : {"/config/api/", "/config/api/node"}) {
         const auto answer = answer_to(address(), get(target));
 
         EXPECT_TRUE(has_status(answer, "404 Not Found")) << target << answer;
