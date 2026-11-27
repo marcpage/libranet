@@ -60,6 +60,9 @@ using std::thread;
 using std::to_string;
 using std::uint32_t;
 using std::vector;
+using types::config_api_path;
+using types::config_listen_host;
+using types::config_path;
 using types::Json;
 using types::json_content_type;
 using web::ConnectionInfo;
@@ -75,10 +78,6 @@ constexpr int backlog = 128;
 
 // The highest port there is.
 constexpr uint32_t highest_port = 65'535;
-
-// Where the page is, and the endpoints beneath it (HTTP API §2.3).
-constexpr string_view page_path = "/config";
-constexpr string_view config_api_path = "/config/api";
 
 // Where the handler of every path outside the others is registered: the
 // server's own answer to such a path is not behind the guard.
@@ -132,7 +131,7 @@ bool is_taken(const system_error& error) {
     return error.code() == errc::address_in_use || error.code() == errc::permission_denied;
 }
 
-// A server at Service::listen_host on the first of ports it can listen on.
+// A server at config_listen_host on the first of ports it can listen on.
 // Throws system_error when it can listen on none, or cannot listen for any
 // other reason than a port taken.
 Server first_free(const vector<Port>& ports) {
@@ -140,7 +139,7 @@ Server first_free(const vector<Port>& ports) {
 
     for (const auto port : ports) {
         try {
-            return Server(Address(Service::listen_host, port));
+            return Server(Address(config_listen_host, port));
         } catch (const system_error& error) {
             if (!is_taken(error)) {
                 throw;
@@ -154,7 +153,7 @@ Server first_free(const vector<Port>& ports) {
 
     throw system_error(last_error, "None of the " + to_string(ports.size())
                                        + " ports tried for /config at "
-                                       + string(Service::listen_host) + " can be listened on");
+                                       + string(config_listen_host) + " can be listened on");
 }
 
 // What GET /config/api answers: each endpoint, with its method and what it
@@ -250,7 +249,7 @@ Service::Service(const NodeIdentity& identity, const std::filesystem::path& data
                                       [](const Request&, Response& response, ConnectionInfo&) {
         answer_not_found(response);
     }));
-    m_server.register_handler(page_path, guarded(guard, signer, Page()));
+    m_server.register_handler(config_path, guarded(guard, signer, Page()));
     m_server.register_handler(config_api_path,
                               guarded(guard, signer,
                                       [index = index_of_endpoints()](const Request& request,
@@ -270,7 +269,7 @@ Service::Service(const NodeIdentity& identity, const std::filesystem::path& data
 
     m_server.set_on_every_answer(string(policy_header), string(Guard::policy));
 
-    lInfo << "/config is at http://" + string(listen_host) + ":"
+    lInfo << "/config is at http://" + string(config_listen_host) + ":"
                  + to_string(m_local_address.port()) + "/config/";
     m_server_thread = thread([this] {
         serve(m_server);

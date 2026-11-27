@@ -47,4 +47,11 @@ constexpr std::string_view search_relays_header = "X-Search-Relays";
 constexpr std::string_view nodes_path = "/data/nodes";
 constexpr std::string_view seek_path = "/data/seek";
 
+// Where /config is, and its endpoints beneath it, which are served on a port
+// of their own that the main port names (HTTP API §2.3); and the address
+// /config listens at, and nowhere else.
+constexpr std::string_view config_path = "/config";
+constexpr std::string_view config_api_path = "/config/api";
+constexpr std::string_view config_listen_host = "127.0.0.1";
+
 } // namespace types

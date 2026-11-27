@@ -68,6 +68,9 @@ using storage::HashPrefix;
 using storage::IDataSource;
 using storage::SearchAnswered;
 using storage::SearchAnswers;
+using types::config_api_path;
+using types::config_listen_host;
+using types::config_path;
 using types::Converter;
 using types::max_decompressed_content_size;
 using types::nodes_path;
@@ -95,15 +98,6 @@ constexpr int backlog = 128;
 // Where the data handler is registered with the server: it takes what is
 // beneath it that the other handlers do not.
 constexpr string_view data_path = "/data";
-
-// Where /config is, which is served on a port of its own, and its endpoints
-// beneath it (HTTP API §2.3).
-constexpr string_view config_path = "/config";
-constexpr string_view config_api_path = "/config/api";
-
-// Where /config is said to be served when a request's Host header names no
-// host: the address /config listens at.
-constexpr string_view config_listen_address = "127.0.0.1";
 
 // The answers to searches of what store holds, kept as settings says.
 // Throws invalid_argument for a ttl that is not more than zero.
@@ -170,12 +164,12 @@ string host_named_by(const Request& request) {
 }
 
 // Where request's target is on config_port, at the host its Host header
-// names, or at config_listen_address when it names none.
+// names, or at the address /config listens at when it names none.
 string config_location(const Request& request, uint16_t config_port) {
     auto host = host_named_by(request);
 
     if (host.empty()) {
-        host = config_listen_address;
+        host = config_listen_host;
     }
 
     if (string::npos != host.find(':')) {
