@@ -58,6 +58,13 @@ constexpr std::size_t read_size = 4096;
 // A main port for the tests that name /config's port, so that it is not used.
 constexpr Port main_port = 8080;
 
+// Where the main port listens: every interface.
+constexpr string_view main_host = "::";
+
+// The endpoint the node names itself at when it does not know the address it
+// is reached at (HTTP API §10.1).
+constexpr string_view own_endpoint = "http://localhost:8080";
+
 // The highest port there is.
 constexpr Port highest_port = 65'535;
 
@@ -68,6 +75,16 @@ constexpr string_view admin = "admin:secret";
 
 // What has a browser ask for a username and password (RFC 7617 §2, §2.1).
 constexpr string_view challenge = R"(Basic realm="Libranet /config", charset="UTF-8")";
+
+// Where the main port listens, on port.
+Address main_at(Port port) {
+    return {main_host, port};
+}
+
+// Those the node list names the node at.
+std::vector<string> own_endpoints() {
+    return {string(own_endpoint)};
+}
 
 // The hosts /config is served as by default, as network.config_hosts names
 // them.
@@ -236,8 +253,8 @@ protected:
         Logger::remove_all_outputs();
         Logger::add_output(std::make_unique<LockedOutput>(m_kept));
         Logger::reset_levels(Logger::Level::Info);
-        m_service =
-            std::make_unique<Service>(m_identity, data_dir(), main_port, any_port, default_hosts());
+        m_service = std::make_unique<Service>(m_identity, data_dir(), main_at(main_port),
+                                              own_endpoints(), any_port, default_hosts());
     }
 
     void TearDown() override {
@@ -316,7 +333,8 @@ TEST_F(ConfigServiceTest, LogsWhereConfigIs) {
 
 TEST_F(ConfigServiceTest, ListensOnThePortNamed) {
     const auto port = free_port();
-    const Service named(identity(), data_dir(), main_port, port, default_hosts());
+    const Service named(identity(), data_dir(), main_at(main_port), own_endpoints(), port,
+                        default_hosts());
 
     EXPECT_EQ(named.local_address().port(), port);
 }
@@ -325,7 +343,8 @@ TEST_F(ConfigServiceTest, ListensOnThePortNamed) {
 // it.
 TEST_F(ConfigServiceTest, TakesTheFirstPortAboveTheMainPortWhenNoneIsNamed) {
     const auto port = free_port();
-    const Service above(identity(), data_dir(), below(port), std::nullopt, default_hosts());
+    const Service above(identity(), data_dir(), main_at(below(port)), own_endpoints(),
+                        std::nullopt, default_hosts());
 
     EXPECT_EQ(above.local_address().port(), port);
 }
@@ -336,7 +355,8 @@ TEST_F(ConfigServiceTest, PassesOverAPortTaken) {
     const auto taken = listening_below_another();
     const auto taken_port = taken->local_address().port();
     const auto main = below(taken_port);
-    const Service above(identity(), data_dir(), main, std::nullopt, default_hosts());
+    const Service above(identity(), data_dir(), main_at(main), own_endpoints(), std::nullopt,
+                        default_hosts());
     const auto port = above.local_address().port();
 
     EXPECT_GT(port, taken_port);
@@ -351,16 +371,23 @@ TEST_F(ConfigServiceTest, PassesOverAPortTaken) {
 TEST_F(ConfigServiceTest, RefusesAPortNamedThatIsTaken) {
     const auto taken = listening();
 
-    EXPECT_THROW(const Service refused(identity(), data_dir(), main_port,
-                                       taken->local_address().port(), default_hosts()),
+    EXPECT_THROW(const Service refused(identity(), data_dir(), main_at(main_port),
+                                       own_endpoints(), taken->local_address().port(),
+                                       default_hosts()),
                  std::system_error);
 }
 
 TEST_F(ConfigServiceTest, RefusesAMainPortLeavingNoPortAboveIt) {
     constexpr Port above_the_highest_main = highest_port - Service::port_step + 1;
 
-    EXPECT_THROW(const Service refused(identity(), data_dir(), above_the_highest_main,
-                                       std::nullopt, default_hosts()),
+    EXPECT_THROW(const Service refused(identity(), data_dir(), main_at(above_the_highest_main),
+                                       own_endpoints(), std::nullopt, default_hosts()),
+                 std::invalid_argument);
+}
+
+TEST_F(ConfigServiceTest, RefusesANodeNamedAtNoEndpoint) {
+    EXPECT_THROW(const Service refused(identity(), data_dir(), main_at(main_port), {}, any_port,
+                                       default_hosts()),
                  std::invalid_argument);
 }
 
@@ -373,10 +400,13 @@ TEST_F(ConfigServiceTest, ListsItsEndpoints) {
 
     const auto endpoints = Json::parse(body_of(answer)).at("endpoints");
 
-    ASSERT_EQ(endpoints.size(), 1U) << answer;
+    ASSERT_EQ(endpoints.size(), 2U) << answer;
     EXPECT_EQ(endpoints.at(0).at("method").string(), "GET");
     EXPECT_EQ(endpoints.at(0).at("path").string(), "/config/api");
     EXPECT_FALSE(endpoints.at(0).at("description").string().empty());
+    EXPECT_EQ(endpoints.at(1).at("method").string(), "GET");
+    EXPECT_EQ(endpoints.at(1).at("path").string(), "/config/api/node");
+    EXPECT_FALSE(endpoints.at(1).at("description").string().empty());
 }
 
 TEST_F(ConfigServiceTest, ListsItsEndpointsWhateverTheQuery) {
@@ -393,6 +423,37 @@ TEST_F(ConfigServiceTest, RefusesAnyOtherMethodOfItsEndpoints) {
         EXPECT_TRUE(has_header(answer, "Allow", "GET")) << method << answer;
         EXPECT_TRUE(is_signed_by_node(answer)) << method << answer;
     }
+}
+
+TEST_F(ConfigServiceTest, SaysWhatTheNodeIs) {
+    const auto answer = answer_to(address(), get("/config/api/node"));
+
+    ASSERT_TRUE(has_status(answer, "200 OK")) << answer;
+    EXPECT_TRUE(has_header(answer, "Content-Type", "application/json")) << answer;
+    EXPECT_TRUE(is_signed_by_node(answer)) << answer;
+
+    const auto node = Json::parse(body_of(answer));
+
+    EXPECT_EQ(node.at("node_id").string(), identity().id().to_string());
+    EXPECT_EQ(node.at("listen_address").string(), main_host);
+    EXPECT_EQ(node.at("listen_port").integer(), main_port);
+    EXPECT_EQ(node.at("advertised_endpoint").string(), own_endpoint);
+}
+
+TEST_F(ConfigServiceTest, RefusesAnyOtherMethodOfTheNode) {
+    const auto answer = answer_to(address(), request_of("POST", "/config/api/node"));
+
+    EXPECT_TRUE(has_status(answer, "405 Method Not Allowed")) << answer;
+    EXPECT_TRUE(has_header(answer, "Allow", "GET")) << answer;
+    EXPECT_TRUE(is_signed_by_node(answer)) << answer;
+}
+
+TEST_F(ConfigServiceTest, ChallengesARequestForTheNodeWithoutTheCredential) {
+    const auto answer =
+        answer_to(address(), request_with("GET", "/config/api/node", from_config_page));
+
+    EXPECT_TRUE(has_status(answer, "401 Unauthorized")) << answer;
+    EXPECT_TRUE(has_header(answer, "WWW-Authenticate", challenge)) << answer;
 }
 
 // A path beneath /config that is outside /config/api, as /config/apix is, is
@@ -421,9 +482,9 @@ TEST_F(ConfigServiceTest, RefusesAnyOtherMethodOfThePage) {
     }
 }
 
-// The endpoints beneath /config/api come later.
+// The other endpoints beneath /config/api come later.
 TEST_F(ConfigServiceTest, ServesNothingElseBeneathItsEndpoints) {
-    for (const auto* const target : {"/config/api/", "/config/api/node"}) {
+    for (const auto* const target : {"/config/api/", "/config/api/node/", "/config/api/nodes"}) {
         const auto answer = answer_to(address(), get(target));
 
         EXPECT_TRUE(has_status(answer, "404 Not Found")) << target << answer;
@@ -596,7 +657,8 @@ TEST_F(ConfigServiceTest, ServesAPageAPageOfTheSameSiteOpensInAWindow) {
 }
 
 TEST_F(ConfigServiceTest, IsServedAsTheHostsItIsGiven) {
-    const Service named(identity(), data_dir(), main_port, any_port, {"node.example"});
+    const Service named(identity(), data_dir(), main_at(main_port), own_endpoints(), any_port,
+                        {"node.example"});
     const auto served = answer_to(named.local_address(),
                                   request_with("GET", "/config/api",
                                                "Host: node.example:8180\r\n"
