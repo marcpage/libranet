@@ -30,7 +30,7 @@ class DataDir : public IDataSource {
 public:
     using Data = std::vector<std::byte>;
 
-    static IDataSource::Ptr create(std::filesystem::path path);
+    [[nodiscard]] static IDataSource::Ptr create(std::filesystem::path path);
     explicit DataDir(std::filesystem::path path);
 
     [[nodiscard]] bool has(const Identifier& identifier) const override;
