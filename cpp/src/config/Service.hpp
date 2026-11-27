@@ -2,8 +2,10 @@
 
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <thread>
+#include <vector>
 
 #include "identity/NodeIdentity.hpp"
 #include "net/Address.hpp"
@@ -28,12 +30,14 @@ public:
     // Listens at listen_host on port, or, when none is named, on the first
     // port free of main_port + port_step, + 2 * port_step, and so on, logging
     // the port it took; port 0 has the system pick one. The credential is kept
-    // in data_dir. identity must outlive this. Throws std::invalid_argument
-    // when no port is named and main_port leaves none port_step above it, and
-    // std::system_error when it cannot listen on the port named, or on any it
-    // tries.
+    // in data_dir. /config is served as hosts, as network.config_hosts gives
+    // them (Guard). identity must outlive this. Throws std::invalid_argument
+    // when no port is named and main_port leaves none port_step above it, or
+    // for a host holding a NUL, and std::system_error when it cannot listen on
+    // the port named, or on any it tries.
     Service(const identity::NodeIdentity& identity, const std::filesystem::path& data_dir,
-            net::Address::Port main_port, std::optional<net::Address::Port> port);
+            net::Address::Port main_port, std::optional<net::Address::Port> port,
+            std::vector<std::string> hosts);
     // Ends every connection, and waits for its threads.
     ~Service();
 
