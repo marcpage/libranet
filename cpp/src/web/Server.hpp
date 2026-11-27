@@ -11,6 +11,8 @@
 #include <string_view>
 #include <thread>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "ConnectionInfo.hpp"
 #include "http/Request.hpp"
@@ -56,6 +58,11 @@ public:
     // Before start(). Handlers are called from the threads serving
     // connections, several at once.
     void register_handler(std::string_view path, RequestHandler handler);
+    // Before start(). Every answer carries the header name, with value, in
+    // place of any its handler gave: the server's own among them, to a
+    // request it refuses, to a path with no handler, and when a handler
+    // throws.
+    void set_on_every_answer(std::string name, std::string value);
     [[nodiscard]] net::Address local_address() const;
     // Serves until stop() is called, then ends every connection and waits for
     // the threads serving them. Returns at once if stop() was called before
@@ -89,6 +96,7 @@ private:
     bool m_listening{false};           // Guarded by m_lock
     std::list<Client> m_connections;   // Guarded by m_lock
     std::unordered_map<std::string, RequestHandler> m_handlers;
+    std::vector<std::pair<std::string, std::string>> m_every_answer; // Header names and values
 
     [[nodiscard]] bool _listen(int backlog);
     [[nodiscard]] bool _wait_for_room();

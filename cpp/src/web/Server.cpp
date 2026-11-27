@@ -50,6 +50,7 @@ using std::mutex;
 using std::nullopt;
 using std::optional;
 using std::out_of_range;
+using std::pair;
 using std::runtime_error;
 using std::scoped_lock;
 using std::size_t;
@@ -59,6 +60,7 @@ using std::system_error;
 using std::thread;
 using std::unique_lock;
 using std::unordered_map;
+using std::vector;
 using web::ConnectionInfo;
 using web::Server;
 using Status = http::ResponseCode::Status;
@@ -66,6 +68,8 @@ using Status = http::ResponseCode::Status;
 namespace {
 
 using Handlers = unordered_map<string, Server::RequestHandler>;
+// Header names, each with its value.
+using HeaderValues = vector<pair<string, string>>;
 
 // The header that names the request an answer answers.
 constexpr auto request_path_header = "X-Request-Path";
@@ -417,10 +421,11 @@ Server::RequestHandler handler_for(const Handlers& handlers, string_view uri) {
 }
 
 // Reads the next request on the connection, from the reader, within limits,
-// and answers it with the handler in handlers that has it. Returns whether
-// the connection stays open for another.
-bool answer_next(const Server::Limits& limits, const Handlers& handlers, ISocket& client,
-                 MeteredReader& reader, ConnectionInfo& connection) {
+// and answers it with the handler in handlers that has it, carrying each of
+// every_answer. Returns whether the connection stays open for another.
+bool answer_next(const Server::Limits& limits, const Handlers& handlers,
+                 const HeaderValues& every_answer, ISocket& client, MeteredReader& reader,
+                 ConnectionInfo& connection) {
     const auto received = read_request(reader, limits);
 
     if (!received.has_value()) {
@@ -436,6 +441,10 @@ bool answer_next(const Server::Limits& limits, const Handlers& handlers, ISocket
     } else {
         respond(handler_for(handlers, received->request.uri()), received->request, response,
                 connection);
+    }
+
+    for (const auto& [name, value] : every_answer) {
+        response.headers().set(name, value);
     }
 
     const auto closing = closes(*received, response, connection);
@@ -460,6 +469,10 @@ Server::Server(Address address, const Limits& limits)
 
 void Server::register_handler(string_view path, RequestHandler handler) {
     m_handlers[string(path)] = std::move(handler);
+}
+
+void Server::set_on_every_answer(string name, string value) {
+    m_every_answer.emplace_back(std::move(name), std::move(value));
 }
 
 Address Server::local_address() const {
@@ -616,7 +629,8 @@ void Server::_converse(Client& client) {
         auto buffered = std::make_unique<BufferedReader>(std::make_unique<SocketReader>(socket));
         MeteredReader reader(std::move(buffered), m_limits.head_bytes);
 
-        while (m_running && answer_next(m_limits, m_handlers, socket, reader, connection)) {
+        while (m_running
+               && answer_next(m_limits, m_handlers, m_every_answer, socket, reader, connection)) {
         }
         // The client may go, send nothing for too long, or its connection
         // fail. Only that connection ends; the server goes on.
