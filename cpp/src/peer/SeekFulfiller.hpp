@@ -36,13 +36,12 @@ public:
     struct Settings {
         // As the Python node's are.
         static constexpr Milliseconds default_refresh{30'000};
-        static constexpr std::size_t default_search_min_bits = 24;
         static constexpr std::size_t default_pipeline_depth = 8;
 
         Milliseconds refresh = default_refresh;
         // The fewest leading bits what is named shares with a prefix that has
         // as many.
-        std::size_t search_min_bits = default_search_min_bits;
+        std::size_t search_min_bits = storage::SearchAnswers::default_min_bits;
         // How many requests are sent at once, each put holding its content in
         // memory until it is answered.
         std::size_t pipeline_depth = default_pipeline_depth;
