@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <future>
 #include <iterator>
 #include <memory>
 #include <mutex>
@@ -22,8 +23,13 @@
 #include "io/FileReader.hpp"
 #include "logger/ILogOutput.hpp"
 #include "logger/Logger.hpp"
+#include "msg/Channel.hpp"
+#include "msg/Message.hpp"
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
+#include "peer/Connections.hpp"
+#include "peer/PeerConnection.hpp"
+#include "storage/Identifier.hpp"
 #include "storage/tests/Fixtures.hpp"
 #include "types/Json.hpp"
 
@@ -34,13 +40,23 @@ using identity::NodeIdentity;
 using io::FileReader;
 using logger::ILogOutput;
 using logger::Logger;
+using msg::Channel;
 using net::Address;
 using net::ISocket;
+using peer::PeerConnection;
 using std::optional;
 using std::string;
 using std::string_view;
 using std::vector;
+using storage::Identifier;
 using types::Json;
+using AddressDialed = peer::Connections::AddressDialed;
+using DialRequested = peer::Connections::DialRequested;
+
+// The tests take DialRequested, which the service posts from another file,
+// so nothing here would make its message's virtual to_string(), which
+// next<>() casts to.
+template class msg::Message<DialRequested>;
 
 namespace {
 
@@ -58,6 +74,13 @@ constexpr std::size_t read_size = 4096;
 // A main port for the tests that name /config's port, so that it is not used.
 constexpr Port main_port = 8080;
 
+// Where the main port listens: every interface.
+constexpr string_view main_host = "::";
+
+// The endpoint the node names itself at when it does not know the address it
+// is reached at (HTTP API §10.1).
+constexpr string_view own_endpoint = "http://localhost:8080";
+
 // The highest port there is.
 constexpr Port highest_port = 65'535;
 
@@ -66,8 +89,24 @@ constexpr optional<Port> any_port = 0;
 
 constexpr string_view admin = "admin:secret";
 
+// The Python node's, as peer::Connections is given them by default: a
+// request waits 75 seconds for what came of its dial.
+PeerConnection::Limits python_limits() {
+    return {};
+}
+
 // What has a browser ask for a username and password (RFC 7617 §2, §2.1).
 constexpr string_view challenge = R"(Basic realm="Libranet /config", charset="UTF-8")";
+
+// Where the main port listens, on port.
+Address main_at(Port port) {
+    return {main_host, port};
+}
+
+// Those the node list names the node at.
+std::vector<string> own_endpoints() {
+    return {string(own_endpoint)};
+}
 
 // The hosts /config is served as by default, as network.config_hosts names
 // them.
@@ -106,6 +145,22 @@ string request_of(string_view method, string_view target, string_view user_pass 
 
 string get(string_view target) {
     return request_of("GET", target);
+}
+
+// A POST asking for address to be dialed, carrying headers, each ending in
+// CRLF.
+string post_address_with(string_view address, string_view headers) {
+    const auto body = R"({"address": ")" + string(address) + R"("})";
+
+    return "POST /config/api/connections HTTP/1.1\r\n" + string(headers)
+           + "Content-Type: application/json\r\nConnection: close\r\nContent-Length: "
+           + std::to_string(body.size()) + "\r\n\r\n" + body;
+}
+
+// A POST asking for address to be dialed, from a page of /config, giving the
+// credential admin.
+string post_address(string_view address) {
+    return post_address_with(address, string(from_config_page) + authorization(admin));
 }
 
 // Whether answer carries the header name, with value.
@@ -236,8 +291,9 @@ protected:
         Logger::remove_all_outputs();
         Logger::add_output(std::make_unique<LockedOutput>(m_kept));
         Logger::reset_levels(Logger::Level::Info);
-        m_service =
-            std::make_unique<Service>(m_identity, data_dir(), main_port, any_port, default_hosts());
+        m_service = std::make_unique<Service>(m_identity, data_dir(), main_at(main_port),
+                                              own_endpoints(), any_port, default_hosts(),
+                                              python_limits());
     }
 
     void TearDown() override {
@@ -316,7 +372,8 @@ TEST_F(ConfigServiceTest, LogsWhereConfigIs) {
 
 TEST_F(ConfigServiceTest, ListensOnThePortNamed) {
     const auto port = free_port();
-    const Service named(identity(), data_dir(), main_port, port, default_hosts());
+    const Service named(identity(), data_dir(), main_at(main_port), own_endpoints(), port,
+                        default_hosts(), python_limits());
 
     EXPECT_EQ(named.local_address().port(), port);
 }
@@ -325,7 +382,8 @@ TEST_F(ConfigServiceTest, ListensOnThePortNamed) {
 // it.
 TEST_F(ConfigServiceTest, TakesTheFirstPortAboveTheMainPortWhenNoneIsNamed) {
     const auto port = free_port();
-    const Service above(identity(), data_dir(), below(port), std::nullopt, default_hosts());
+    const Service above(identity(), data_dir(), main_at(below(port)), own_endpoints(),
+                        std::nullopt, default_hosts(), python_limits());
 
     EXPECT_EQ(above.local_address().port(), port);
 }
@@ -336,7 +394,8 @@ TEST_F(ConfigServiceTest, PassesOverAPortTaken) {
     const auto taken = listening_below_another();
     const auto taken_port = taken->local_address().port();
     const auto main = below(taken_port);
-    const Service above(identity(), data_dir(), main, std::nullopt, default_hosts());
+    const Service above(identity(), data_dir(), main_at(main), own_endpoints(), std::nullopt,
+                        default_hosts(), python_limits());
     const auto port = above.local_address().port();
 
     EXPECT_GT(port, taken_port);
@@ -351,16 +410,24 @@ TEST_F(ConfigServiceTest, PassesOverAPortTaken) {
 TEST_F(ConfigServiceTest, RefusesAPortNamedThatIsTaken) {
     const auto taken = listening();
 
-    EXPECT_THROW(const Service refused(identity(), data_dir(), main_port,
-                                       taken->local_address().port(), default_hosts()),
+    EXPECT_THROW(const Service refused(identity(), data_dir(), main_at(main_port),
+                                       own_endpoints(), taken->local_address().port(),
+                                       default_hosts(), python_limits()),
                  std::system_error);
 }
 
 TEST_F(ConfigServiceTest, RefusesAMainPortLeavingNoPortAboveIt) {
     constexpr Port above_the_highest_main = highest_port - Service::port_step + 1;
 
-    EXPECT_THROW(const Service refused(identity(), data_dir(), above_the_highest_main,
-                                       std::nullopt, default_hosts()),
+    EXPECT_THROW(const Service refused(identity(), data_dir(), main_at(above_the_highest_main),
+                                       own_endpoints(), std::nullopt, default_hosts(),
+                                       python_limits()),
+                 std::invalid_argument);
+}
+
+TEST_F(ConfigServiceTest, RefusesANodeNamedAtNoEndpoint) {
+    EXPECT_THROW(const Service refused(identity(), data_dir(), main_at(main_port), {}, any_port,
+                                       default_hosts(), python_limits()),
                  std::invalid_argument);
 }
 
@@ -373,10 +440,16 @@ TEST_F(ConfigServiceTest, ListsItsEndpoints) {
 
     const auto endpoints = Json::parse(body_of(answer)).at("endpoints");
 
-    ASSERT_EQ(endpoints.size(), 1U) << answer;
+    ASSERT_EQ(endpoints.size(), 3U) << answer;
     EXPECT_EQ(endpoints.at(0).at("method").string(), "GET");
     EXPECT_EQ(endpoints.at(0).at("path").string(), "/config/api");
     EXPECT_FALSE(endpoints.at(0).at("description").string().empty());
+    EXPECT_EQ(endpoints.at(1).at("method").string(), "GET");
+    EXPECT_EQ(endpoints.at(1).at("path").string(), "/config/api/node");
+    EXPECT_FALSE(endpoints.at(1).at("description").string().empty());
+    EXPECT_EQ(endpoints.at(2).at("method").string(), "POST");
+    EXPECT_EQ(endpoints.at(2).at("path").string(), "/config/api/connections");
+    EXPECT_FALSE(endpoints.at(2).at("description").string().empty());
 }
 
 TEST_F(ConfigServiceTest, ListsItsEndpointsWhateverTheQuery) {
@@ -393,6 +466,37 @@ TEST_F(ConfigServiceTest, RefusesAnyOtherMethodOfItsEndpoints) {
         EXPECT_TRUE(has_header(answer, "Allow", "GET")) << method << answer;
         EXPECT_TRUE(is_signed_by_node(answer)) << method << answer;
     }
+}
+
+TEST_F(ConfigServiceTest, SaysWhatTheNodeIs) {
+    const auto answer = answer_to(address(), get("/config/api/node"));
+
+    ASSERT_TRUE(has_status(answer, "200 OK")) << answer;
+    EXPECT_TRUE(has_header(answer, "Content-Type", "application/json")) << answer;
+    EXPECT_TRUE(is_signed_by_node(answer)) << answer;
+
+    const auto node = Json::parse(body_of(answer));
+
+    EXPECT_EQ(node.at("node_id").string(), identity().id().to_string());
+    EXPECT_EQ(node.at("listen_address").string(), main_host);
+    EXPECT_EQ(node.at("listen_port").integer(), main_port);
+    EXPECT_EQ(node.at("advertised_endpoint").string(), own_endpoint);
+}
+
+TEST_F(ConfigServiceTest, RefusesAnyOtherMethodOfTheNode) {
+    const auto answer = answer_to(address(), request_of("POST", "/config/api/node"));
+
+    EXPECT_TRUE(has_status(answer, "405 Method Not Allowed")) << answer;
+    EXPECT_TRUE(has_header(answer, "Allow", "GET")) << answer;
+    EXPECT_TRUE(is_signed_by_node(answer)) << answer;
+}
+
+TEST_F(ConfigServiceTest, ChallengesARequestForTheNodeWithoutTheCredential) {
+    const auto answer =
+        answer_to(address(), request_with("GET", "/config/api/node", from_config_page));
+
+    EXPECT_TRUE(has_status(answer, "401 Unauthorized")) << answer;
+    EXPECT_TRUE(has_header(answer, "WWW-Authenticate", challenge)) << answer;
 }
 
 // A path beneath /config that is outside /config/api, as /config/apix is, is
@@ -421,14 +525,64 @@ TEST_F(ConfigServiceTest, RefusesAnyOtherMethodOfThePage) {
     }
 }
 
-// The endpoints beneath /config/api come later.
+// The other endpoints beneath /config/api come later.
 TEST_F(ConfigServiceTest, ServesNothingElseBeneathItsEndpoints) {
-    for (const auto* const target : {"/config/api/", "/config/api/node"}) {
+    for (const auto* const target : {"/config/api/", "/config/api/node/", "/config/api/nodes"}) {
         const auto answer = answer_to(address(), get(target));
 
         EXPECT_TRUE(has_status(answer, "404 Not Found")) << target << answer;
         EXPECT_TRUE(is_signed_by_node(answer)) << target << answer;
     }
+}
+
+// Answered as peer::Connections answers once its dial is over.
+TEST_F(ConfigServiceTest, ConnectsToANode) {
+    const auto node = Identifier::of({std::byte{'n'}, std::byte{'o'}, std::byte{'d'}});
+    Channel dials(DialRequested::name);
+    auto answer = std::async(std::launch::async, [this] {
+        return answer_to(address(), post_address("http://127.0.0.1:8080"));
+    });
+    const auto dial = dials.next<DialRequested>(wait_timeout).value_or(DialRequested{});
+
+    ASSERT_FALSE(dial.dial_id.empty());
+    EXPECT_EQ(dial.endpoint, "http://127.0.0.1:8080");
+    Channel::post(AddressDialed::name,
+                  AddressDialed{dial.dial_id, AddressDialed::Outcome::Connected, node, ""});
+
+    const auto answered = answer.get();
+
+    ASSERT_TRUE(has_status(answered, "200 OK")) << answered;
+    EXPECT_TRUE(has_header(answered, "Content-Type", "application/json")) << answered;
+    EXPECT_TRUE(is_signed_by_node(answered)) << answered;
+    EXPECT_EQ(Json::parse(body_of(answered)).at("node_id").string(), node.to_string());
+}
+
+TEST_F(ConfigServiceTest, ConnectingIsBehindTheGuard) {
+    Channel dials(DialRequested::name);
+    const auto answer =
+        answer_to(address(), post_address_with("http://127.0.0.1:8080", from_config_page));
+
+    EXPECT_TRUE(has_status(answer, "401 Unauthorized")) << answer;
+    EXPECT_TRUE(dials.empty());
+}
+
+// A request waits 75 seconds for what came of its dial with the Python
+// node's limits, but is let go at once.
+TEST_F(ConfigServiceTest, StopsWithinFiveSecondsWithARequestWaitingOnADial) {
+    constexpr auto most = std::chrono::seconds(5);
+    Channel dials(DialRequested::name);
+    const auto answer = std::async(std::launch::async, [this] {
+        return answer_to(address(), post_address("http://127.0.0.1:8080"));
+    });
+
+    ASSERT_TRUE(dials.next<DialRequested>(wait_timeout).has_value());
+
+    const auto stopping = std::chrono::steady_clock::now();
+
+    stop();
+
+    EXPECT_LT(std::chrono::steady_clock::now() - stopping, most);
+    answer.wait();
 }
 
 // Each section of the shared page that a later phase brings shows what the
@@ -596,7 +750,8 @@ TEST_F(ConfigServiceTest, ServesAPageAPageOfTheSameSiteOpensInAWindow) {
 }
 
 TEST_F(ConfigServiceTest, IsServedAsTheHostsItIsGiven) {
-    const Service named(identity(), data_dir(), main_port, any_port, {"node.example"});
+    const Service named(identity(), data_dir(), main_at(main_port), own_endpoints(), any_port,
+                        {"node.example"}, python_limits());
     const auto served = answer_to(named.local_address(),
                                   request_with("GET", "/config/api",
                                                "Host: node.example:8180\r\n"

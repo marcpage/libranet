@@ -618,6 +618,26 @@ TEST_F(NodeTest, ServesConfigOnAPortOfItsOwn) {
     EXPECT_TRUE(std::filesystem::is_regular_file(data_dir() / "config-credential"));
 }
 
+// /config says what the node is: the address its main port was set to listen
+// at, with the port it took, and the endpoint it advertises.
+TEST_F(NodeTest, SaysWhatItIsOnConfig) {
+    const auto node = node_of(settings_of(loopback(data_dir())));
+    const auto config = config_address_of(*node);
+    const auto host = "127.0.0.1:" + std::to_string(config.port());
+    const auto main_port = std::to_string(node->local_address().port());
+    const auto answer = answer_to(config, "GET /config/api/node HTTP/1.1\r\nHost: " + host
+                                              + "\r\nReferer: http://" + host
+                                              + "/config/\r\nAuthorization: Basic "
+                                                "YWRtaW46c2VjcmV0\r\nConnection: close\r\n\r\n");
+
+    EXPECT_EQ(answer.rfind("HTTP/1.1 200 OK\r\n", 0), 0U) << answer;
+    EXPECT_NE(answer.find(R"("listen_address":"127.0.0.1")"), string::npos) << answer;
+    EXPECT_NE(answer.find(R"("listen_port":)" + main_port + ","), string::npos) << answer;
+    EXPECT_NE(answer.find(R"("advertised_endpoint":"http://localhost:)" + main_port + "\""),
+              string::npos)
+        << answer;
+}
+
 // network.config_hosts names the hosts /config is served as, and by default
 // those a browser on this machine reaches it by (HTTP API §2.3.3).
 TEST_F(NodeTest, ServesConfigAsTheHostsTheSettingsName) {
