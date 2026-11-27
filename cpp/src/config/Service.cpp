@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "ConnectHandler.hpp"
 #include "Credential.hpp"
 #include "Guard.hpp"
 #include "NodeHandler.hpp"
@@ -26,11 +27,13 @@
 #include "identity/NodeIdentity.hpp"
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
+#include "peer/PeerConnection.hpp"
 #include "types/Constants.hpp"
 #include "types/Json.hpp"
 #include "web/ConnectionInfo.hpp"
 #include "web/Server.hpp"
 
+using config::ConnectHandler;
 using config::Credential;
 using config::Guard;
 using config::NodeHandler;
@@ -43,6 +46,7 @@ using http::Response;
 using identity::MessageSigner;
 using identity::NodeIdentity;
 using net::Address;
+using peer::PeerConnection;
 using std::errc;
 using std::error_code;
 using std::exception;
@@ -91,6 +95,7 @@ struct Endpoint {
 constexpr std::array endpoints{
     Endpoint{"GET", config_api_path, "The endpoints /config serves, and what each does"},
     Endpoint{"GET", NodeHandler::path, "What this node is and where it listens"},
+    Endpoint{"POST", ConnectHandler::path, "Connect to a node at an address"},
 };
 
 // The ports /config may listen on, in the order they are tried: port alone
@@ -229,8 +234,9 @@ namespace config {
 
 Service::Service(const NodeIdentity& identity, const std::filesystem::path& data_dir,
                  const Address& main_address, const vector<string>& own_endpoints,
-                 optional<Port> port, vector<string> hosts)
-    : m_server(first_free(ports_to_try(main_address.port(), port)))
+                 optional<Port> port, vector<string> hosts, const PeerConnection::Limits& limits)
+    : m_dial_outcomes(limits)
+    , m_server(first_free(ports_to_try(main_address.port(), port)))
     , m_local_address(m_server.local_address()) {
     const Guard guard{Credential(data_dir), std::move(hosts)};
     const MessageSigner signer(identity);
@@ -251,6 +257,8 @@ Service::Service(const NodeIdentity& identity, const std::filesystem::path& data
     m_server.register_handler(
         NodeHandler::path,
         guarded(guard, signer, NodeHandler(identity.id(), main_address, own_endpoints)));
+    m_server.register_handler(ConnectHandler::path,
+                              guarded(guard, signer, ConnectHandler(m_dial_outcomes)));
 
     for (const auto& feature : NotOffered::features) {
         m_server.register_handler(feature.path, guarded(guard, signer, NotOffered(feature)));
@@ -268,6 +276,9 @@ Service::~Service() {
     // nothing is safe but to end the program, as thread's destructor
     // would.
     try {
+        // A request waiting on a dial would keep its connection's thread as
+        // long as a dial may take, so each is let go first.
+        m_dial_outcomes.stop();
         m_server.stop();
         m_server_thread.join();
     } catch (const exception& error) {

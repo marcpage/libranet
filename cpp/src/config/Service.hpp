@@ -7,8 +7,10 @@
 #include <thread>
 #include <vector>
 
+#include "DialOutcomes.hpp"
 #include "identity/NodeIdentity.hpp"
 #include "net/Address.hpp"
+#include "peer/PeerConnection.hpp"
 #include "web/Server.hpp"
 
 namespace config {
@@ -20,7 +22,8 @@ namespace config {
 // /config/api, is the page. GET /config/api names each endpoint it serves,
 // GET /config/api/node says what the node is, and NotOffered answers each
 // path the shared page uses that a later phase brings. It serves from a
-// thread of its own.
+// thread of its own, and hears what came of the dials it asks
+// peer::Connections for on another.
 // cppcheck-suppress noConstructor
 class Service {
 public:
@@ -36,15 +39,18 @@ public:
     // is where the main port listens, and own_endpoints those its node list
     // names the node at, as api::Service gives them. The credential is kept
     // in data_dir. /config is served as hosts, as network.config_hosts gives
-    // them (Guard). identity must outlive this. Throws std::invalid_argument
-    // when no port is named and the main port leaves none port_step above it,
-    // when own_endpoints is empty, or for a host holding a NUL, and
-    // std::system_error when it cannot listen on the port named, or on any it
-    // tries.
+    // them (Guard). A request to connect to a node waits as long as a dial
+    // within limits, those peer::Connections dials with, may take. identity
+    // must outlive this. Throws std::invalid_argument when no port is named
+    // and the main port leaves none port_step above it, when own_endpoints is
+    // empty, or for a host holding a NUL, and std::system_error when it
+    // cannot listen on the port named, or on any it tries.
     Service(const identity::NodeIdentity& identity, const std::filesystem::path& data_dir,
             const net::Address& main_address, const std::vector<std::string>& own_endpoints,
-            std::optional<net::Address::Port> port, std::vector<std::string> hosts);
-    // Ends every connection, and waits for its threads.
+            std::optional<net::Address::Port> port, std::vector<std::string> hosts,
+            const peer::PeerConnection::Limits& limits);
+    // Lets each request waiting on a dial go, ends every connection, and
+    // waits for its threads.
     ~Service();
 
     // With the port it took.
@@ -57,6 +63,8 @@ public:
     Service& operator=(Service&&) = delete;
 
 private:
+    // Made first, and so let go of last, once no handler waits on it.
+    DialOutcomes m_dial_outcomes;
     web::Server m_server;
     // Mistaken: cppcheck loses the constructors in files `using` the class.
     // cppcheck-suppress uninitMemberVarNoCtor

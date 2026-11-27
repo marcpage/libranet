@@ -10,6 +10,7 @@ string(REGEX REPLACE "\",\n    \"$" "" page_lines "${page_lines}")
 configure_file(PageHtml.cpp.in PageHtml.cpp @ONLY)
 
 add_library(libranet_config STATIC
+    ConnectHandler.cpp
     Credential.cpp
     DialOutcomes.cpp
     Guard.cpp
@@ -30,6 +31,7 @@ target_link_libraries(libranet_config PUBLIC
     libranet::msg
     libranet::net
     libranet::peer
+    libranet::protocol
     libranet::storage
     libranet::types
     libranet::web
@@ -37,6 +39,7 @@ target_link_libraries(libranet_config PUBLIC
 
 if(BUILD_TESTING)
     add_executable(config_tests
+        tests/TestConnectHandler.cpp
         tests/TestCredential.cpp
         tests/TestDialOutcomes.cpp
         tests/TestGuard.cpp
