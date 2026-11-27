@@ -8,16 +8,14 @@
 
 namespace peer {
 
-// Given a list of server ids we are connected to, tells you which ids we still
-// need. Given a server id, tells you which bucket it fills.
+// Which bucket a node fills, and which the server nodes connected leave empty.
 class Buckets {
 public:
     struct ExpectedSizes {
         // One server node for each bucket of each set.
         static constexpr std::size_t default_connections = 16;
         static constexpr std::size_t default_prefix_bits = 4;
-        // The most bits that tell one set's buckets apart, as the Python node
-        // allows: 65,536 buckets.
+        // As the Python node allows: 65,536 buckets.
         static constexpr std::size_t max_prefix_bits = 16;
 
         std::size_t min_primary_connections = default_connections;
@@ -36,8 +34,8 @@ public:
         Missing secondary;
     };
 
-    // Throws std::invalid_argument, naming the setting, for sizes it cannot
-    // use, or for an own_id with no hash.
+    // Throws std::invalid_argument for sizes it cannot use, or an own_id with
+    // no hash.
     Buckets(const storage::Identifier& own_id, const ExpectedSizes& sizes);
 
     // Throws std::invalid_argument for a node_id with no hash.

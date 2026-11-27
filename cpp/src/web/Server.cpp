@@ -347,6 +347,23 @@ void make_ready(Response& response, const Received& received, bool closing) {
     }
 }
 
+// Logs the answer, ready to send, to the request received on connection: its
+// method and target, where its line was read, who asked, and the answer's
+// status and length.
+void log_answer(const Received& received, const Response& response,
+                const ConnectionInfo& connection) {
+    const auto from = connection.remote_address().to_string() + ":";
+    const auto status = std::to_string(response.status_code()) + ",";
+    const auto bytes = response.body().size();
+
+    if (received.line_read) {
+        lInfo << "Answered" << received.request.method() << received.request.uri() << "from"
+              << from << status << bytes << "bytes";
+    } else {
+        lInfo << "Answered a request from" << from << status << bytes << "bytes";
+    }
+}
+
 // Where to connect to the listener, to wake a thread waiting in accept():
 // the loopback address, for a listener bound to every address.
 Address wake_address(const ISocket::Ptr& listener) {
@@ -454,6 +471,7 @@ bool answer_next(const Server::Limits& limits, const Handlers& handlers,
     const auto closing = closes(*received, response, connection);
 
     make_ready(response, *received, closing);
+    log_answer(*received, response, connection);
     client.send_all(response.to_string());
     return !closing;
 }

@@ -23,6 +23,7 @@ namespace peer {
 // One outgoing HTTP/1.1 connection to a node, with requests sent one after
 // another without waiting for each answer (RFC 9112 §9.3.2). Anything that
 // leaves later answers in doubt closes it, failing every request waiting.
+// Each request sent is logged, at Info, once it is answered or fails.
 class PeerConnection {
 public:
     using Milliseconds = std::chrono::milliseconds;
@@ -44,9 +45,9 @@ public:
         http::Response::Limits answer;
     };
 
-    // Throws std::invalid_argument, naming the setting, for a timeout that is
-    // not positive; std::system_error when no connection is made in time, or
-    // is refused; and std::runtime_error when the host cannot be resolved.
+    // Throws std::invalid_argument for a timeout that is not positive;
+    // std::system_error when no connection is made in time, or is refused; and
+    // std::runtime_error when the host cannot be resolved.
     PeerConnection(net::Address address, const Limits& limits);
     ~PeerConnection();
 
@@ -72,6 +73,12 @@ public:
 private:
     using Clock = std::chrono::steady_clock;
 
+    // A request taken to send, and the promise of its answer.
+    struct Waiting {
+        std::string asked; // Its method and target, as logged
+        std::promise<http::Response> answer;
+    };
+
     // Mistaken: cppcheck loses the constructors in files `using` the class.
     // cppcheck-suppress uninitMemberVarPrivate
     net::Address m_address;
@@ -81,7 +88,7 @@ private:
     std::condition_variable m_sending; // A request was queued, or it closed
     std::deque<std::string> m_unsent;  // Guarded by m_mutex
     // Guarded by m_mutex: oldest first, sent or not.
-    std::deque<std::promise<http::Response>> m_waiting;
+    std::deque<Waiting> m_waiting;
     Clock::time_point m_last_progress; // Guarded by m_mutex
     bool m_closed{false};              // Guarded by m_mutex
     bool m_turned_away{false};         // Guarded by m_mutex
@@ -97,7 +104,7 @@ private:
     [[nodiscard]] std::optional<std::size_t> _receive(std::byte* data, std::size_t size);
     [[nodiscard]] Milliseconds _time_left() const;
     void _progressed();
-    [[nodiscard]] std::promise<http::Response> _take_oldest();
+    [[nodiscard]] Waiting _take_oldest();
     void _close_for(const std::exception_ptr& failure, bool turned_away = false);
     void _fail_waiting();
 };

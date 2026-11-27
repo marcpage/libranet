@@ -14,9 +14,8 @@
 
 namespace http {
 
-// Problem details (RFC 9457), the body of every answer that is an error (HTTP
-// API §17). One with no type is about:blank, titled with the status code's
-// reason phrase (RFC 9457 §4.2.1).
+// Problem details (RFC 9457), the body of every error answer (HTTP API §17).
+// One with no type is about:blank (RFC 9457 §4.2.1).
 // cppcheck-suppress noConstructor
 class Problem {
 public:
@@ -52,7 +51,6 @@ public:
     [[nodiscard]] const std::string& detail() const noexcept;
 
     [[nodiscard]] types::Json to_json() const;
-    // Leaves its other headers as they are.
     void answer(Response& response) const;
 
     // With 405, naming in Allow the methods the path does take, as "GET, PUT"

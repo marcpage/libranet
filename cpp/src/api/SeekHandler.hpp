@@ -12,8 +12,7 @@
 
 namespace api {
 
-// Answers GET and POST of /data/seek, the seek list (HttpApi §10.7). A POST is
-// logged, as nothing acts on it yet.
+// GET and POST of /data/seek (HttpApi §10.7). A POST is only logged, for now.
 class SeekHandler {
 public:
     // list_bytes is the most a list posted may decompress to, and the list
@@ -21,11 +20,9 @@ public:
     explicit SeekHandler(std::size_t list_bytes = types::max_decompressed_list_size,
                          std::size_t served_bytes = protocol::SeekList::max_size);
 
-    // Throws what protocol::SeekList::body() throws.
+    // Any thread may call it. Throws what protocol::SeekList::body() throws.
     void set_list(const protocol::SeekList& new_list);
 
-    // Called from the threads serving connections, several at once, while
-    // set_list() may be called from another.
     void operator()(const http::Request& request, http::Response& response,
                     const web::ConnectionInfo& connection) const;
 

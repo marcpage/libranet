@@ -5,8 +5,10 @@
 #include <exception>
 #include <functional>
 #include <future>
+#include <initializer_list>
 #include <iterator>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -18,12 +20,16 @@
 #include "http/Request.hpp"
 #include "http/Response.hpp"
 #include "io/MeteredReader.hpp"
+#include "logger/ILogOutput.hpp"
+#include "logger/Logger.hpp"
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
 #include "peer/PeerConnection.hpp"
 
 using http::Request;
 using http::Response;
+using logger::ILogOutput;
+using logger::Logger;
 using net::Address;
 using net::ISocket;
 using peer::PeerConnection;
@@ -223,6 +229,58 @@ PeerConnection::Limits waiting(PeerConnection::Milliseconds timeout) {
     limits.request_timeout = timeout;
     return limits;
 }
+
+// The lines the log writes, from any thread.
+struct KeptLines {
+    std::mutex lock;
+    std::vector<std::string> lines;
+};
+
+// Keeps each line it is given, behind a lock, as a connection logs from
+// threads of its own.
+class LockedOutput : public ILogOutput {
+public:
+    explicit LockedOutput(std::shared_ptr<KeptLines> kept)
+        : m_kept(std::move(kept)) {}
+
+    void log(std::string_view line) override {
+        const std::scoped_lock guard(m_kept->lock);
+
+        m_kept->lines.emplace_back(line);
+    }
+
+private:
+    std::shared_ptr<KeptLines> m_kept;
+};
+
+// Each test keeps what is logged at Info and above.
+class LoggedPeerConnectionTest : public testing::Test {
+protected:
+    void SetUp() override {
+        Logger::remove_all_outputs();
+        Logger::add_output(std::make_unique<LockedOutput>(m_kept));
+        Logger::reset_levels(Logger::Level::Info);
+    }
+
+    void TearDown() override {
+        Logger::remove_all_outputs();
+    }
+
+    // Whether a line logged has each of texts.
+    [[nodiscard]] bool logged(std::initializer_list<std::string> texts) const {
+        const std::scoped_lock guard(m_kept->lock);
+
+        return std::any_of(m_kept->lines.begin(), m_kept->lines.end(),
+                           [texts](const std::string& line) {
+            return std::all_of(texts.begin(), texts.end(), [&line](const std::string& text) {
+                return std::string::npos != line.find(text);
+            });
+        });
+    }
+
+private:
+    std::shared_ptr<KeptLines> m_kept = std::make_shared<KeptLines>();
+};
 
 } // namespace
 
@@ -447,4 +505,51 @@ TEST(PeerConnectionTest, ConnectTimesOut) {
         GTEST_SKIP() << "A connect past the full queue was answered, not left to time out: "
                      << failure.message();
     }
+}
+
+// Each request answered is logged, before its answer is given: the node, the
+// request's method and target, and the answer's status and length.
+TEST_F(LoggedPeerConnectionTest, AnswerIsLogged) {
+    const StandInNode node(reads_then_echoes(2));
+    PeerConnection connection(node.address(), {});
+    const auto where = node.address().to_string();
+
+    auto got = connection.send(request("GET", "/data?x=1"));
+    auto put = connection.send(request("PUT", "/data/a", "hello"));
+    const auto got_bytes = std::to_string(answer_of(got).body().size());
+    const auto put_bytes = std::to_string(answer_of(put).body().size());
+
+    EXPECT_TRUE(logged({"[NFO]", where + " answered GET /data?x=1: 200, " + got_bytes + " bytes"}));
+    EXPECT_TRUE(logged({where + " answered PUT /data/a: 200, " + put_bytes + " bytes"}));
+}
+
+// Each request waiting when the connection closes is logged, with why, before
+// it fails.
+TEST_F(LoggedPeerConnectionTest, RequestsNotAnsweredAreLogged) {
+    const StandInNode node(reads_then_closes(2));
+    PeerConnection connection(node.address(), {});
+    const auto where = node.address().to_string();
+
+    auto first = connection.send(request("GET", "/first"));
+    auto second = connection.send(request("POST", "/second"));
+
+    EXPECT_THROW((void)answer_of(first), PeerConnection::Closed);
+    EXPECT_THROW((void)answer_of(second), PeerConnection::Closed);
+    EXPECT_TRUE(
+        logged({where + " did not answer GET /first: " + where + " closed the connection"}));
+    EXPECT_TRUE(
+        logged({where + " did not answer POST /second: " + where + " closed the connection"}));
+}
+
+TEST_F(LoggedPeerConnectionTest, RequestsWaitingOnCloseAreLogged) {
+    const StandInNode node(reads_then_sends(1, ""));
+    PeerConnection connection(node.address(), {});
+    const auto where = node.address().to_string();
+    auto answer = connection.send(request("GET", "/never"));
+
+    connection.close();
+
+    EXPECT_THROW((void)answer_of(answer), PeerConnection::Closed);
+    EXPECT_TRUE(logged({where + " did not answer GET /never: The connection to " + where
+                        + " was closed"}));
 }

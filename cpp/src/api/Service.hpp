@@ -28,8 +28,7 @@
 namespace api {
 
 // The node's web server, and its handlers, each behind a SignatureGuard. It
-// serves from a thread of its own, and keeps the lists stats::Recorder posts
-// on another, so it is made before the recorder.
+// keeps the lists stats::Recorder posts, so it is made before the recorder.
 // cppcheck-suppress noConstructor
 class Service {
 public:
@@ -43,8 +42,7 @@ public:
         std::size_t search_min_bits = storage::SearchAnswers::default_min_bits;
         // storage.search_cache_ttl_seconds
         Milliseconds search_cache_ttl = default_search_cache_ttl;
-        // How long a client asking for content the node will look for is told
-        // to wait.
+        // Told to a client asking for content the node will look for.
         DataHandler::Seconds retry_after = DataHandler::default_retry_after;
         // With no function, the node always looks for content it does not
         // hold.
@@ -54,9 +52,9 @@ public:
             SignatureGuard::default_provisional_trust_attempts;
         // The most a list sent compressed may decompress to.
         std::size_t list_bytes = types::max_decompressed_list_size;
-        // The largest body a request may have, a PUT's content among them.
+        // The largest body a request may have.
         std::size_t object_bytes = DataHandler::max_body_bytes;
-        // The node list and seek list served are each sent in fewer bytes.
+        // The lists served are each sent in fewer bytes.
         std::size_t served_list_bytes = protocol::NodeList::max_size;
     };
 
@@ -73,12 +71,9 @@ public:
     // Those its node list names the node at until it is given another.
     [[nodiscard]] const std::vector<std::string>& own_endpoints() const noexcept;
 
-    // From now on, a GET on this port of a path beneath /config, outside
-    // /config/api, is sent to the same path on port, at the host its Host
-    // header names, and anything else beneath /config is 404, naming where
-    // /config is (HTTP API §2.3). Until then, nothing is served beneath
-    // /config. Any thread may call it. Throws std::invalid_argument for port
-    // 0.
+    // From now on, a GET of /config's page is redirected to port (HTTP API
+    // §2.3); until then, nothing is served beneath /config. Any thread may
+    // call it. Throws std::invalid_argument for port 0.
     void set_config_port(std::uint16_t port);
 
     // Its threads hold this object, so it is neither copied nor moved.
@@ -90,14 +85,12 @@ public:
 private:
     DataHandler m_data_handler;
     SeekHandler m_seek_handler;
-    std::shared_ptr<storage::SearchAnswers> m_answers; // What m_search_handler answers from
+    std::shared_ptr<storage::SearchAnswers> m_answers;
     SearchHandler m_search_handler;
-    SignatureGuard m_guard; // In front of each of m_server's handlers
-    // Signing what is answered beneath /config, which m_guard is not in
-    // front of.
+    SignatureGuard m_guard;
+    // For what is answered beneath /config, which m_guard is not in front of.
     identity::MessageSigner m_signer;
-    // The port /config is served on, 0 until the service is told.
-    std::atomic<std::uint16_t> m_config_port{0};
+    std::atomic<std::uint16_t> m_config_port{0}; // 0 until set_config_port()
     web::Server m_server;
     // Mistaken: cppcheck loses the constructors in files `using` the class.
     // cppcheck-suppress uninitMemberVarNoCtor

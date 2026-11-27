@@ -26,8 +26,7 @@ public:
         FormUrl,      // Query/Form: unreserved chars, spaces -> +
     };
 
-    // The characters RFC 3986 §2.3 leaves unreserved besides letters and
-    // digits, which are never percent-encoded.
+    // RFC 3986 §2.3, besides letters and digits.
     static constexpr std::string_view unreserved = "-_.~";
 
     [[nodiscard]] static std::optional<Url> parse(std::string_view url_string);

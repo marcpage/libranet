@@ -22,10 +22,8 @@
 
 namespace eviction {
 
-// Keeps the node within its storage limits (High-Level Design §4.5), from a
-// thread of its own, handing content off to peers before deleting it. It never
-// lets go of a key signatures are checked against, nor of what was stored
-// within the stored grace.
+// Keeps the node within its storage limits (High-Level Design §4.5), handing
+// content off to peers before deleting it.
 class Evictor {
 public:
     using Clock = std::chrono::steady_clock;
@@ -99,8 +97,8 @@ public:
     // when they cannot be read.
     [[nodiscard]] static FreeSpace free_space_in(std::filesystem::path directory);
 
-    // Throws std::invalid_argument, naming the setting, for one it cannot use,
-    // or for no store, or a function missing.
+    // Throws std::invalid_argument for a setting it cannot use, no store, or a
+    // function missing.
     Evictor(storage::Identifier own_id, storage::IDataSource::Ptr store, Peers peers,
             FreeSpace free_space, Settings settings, ClockFunction clock = &Clock::now);
     // Waits for each hand-off under way, which ends within the peers' request

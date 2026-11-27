@@ -76,7 +76,7 @@ public:
         NetworkAuthenticationRequired = 511,
     };
 
-    // Implicit conversion from Status enum, with optional custom reason phrase
+    // Implicit, so that a Status may stand for a ResponseCode.
     // cppcheck-suppress noExplicitConstructor
     // NOLINTNEXTLINE(*-explicit-constructor)
     ResponseCode(Status status, std::optional<std::string> custom_reason = std::nullopt);

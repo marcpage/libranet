@@ -21,11 +21,8 @@
 
 namespace crypto {
 
-// An Ed25519 key, built on OpenSSL. Its PEM forms are the standard ones,
-// which the Python node reads and writes too: SubjectPublicKeyInfo for the
-// public key, and PKCS #8 for the private key. A key that is one of the
-// points of small order is refused, since anyone can forge signatures that
-// OpenSSL finds verify under one (HTTP API §11.2).
+// An Ed25519 key, built on OpenSSL, in PEM as SubjectPublicKeyInfo and PKCS
+// #8. A key of small order is refused (HTTP API §11.2).
 class Ed25519OpenSsl : public ISignKey {
 public:
     using Key = OpenSslKey;
