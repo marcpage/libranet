@@ -158,11 +158,11 @@ private:
     VariantType m_data;
 
     static bool _is_digit(char character);
-    static void _serialize_array(const Array& the_array, std::ostringstream& out_stream,
+    static void _serialize_array(const Array& elements, std::ostringstream& out_stream,
                                  int indent, int current_indent);
-    static void _serialize_object(const Object& the_object, std::ostringstream& out_stream,
+    static void _serialize_object(const Object& members, std::ostringstream& out_stream,
                                   int indent, int current_indent);
-    static void _serialize(const Json& json_value, std::ostringstream& out_stream,
+    static void _serialize(const Json& json, std::ostringstream& out_stream,
                            int indent, int current_indent);
     static void _escape_string(const std::string& text, std::ostringstream& out_stream);
     static void _write_real(double value, std::ostringstream& out_stream);
@@ -237,33 +237,33 @@ inline Json::Json(std::initializer_list<Json> arguments) {
 
 inline Json::Type Json::type() const {
     return std::visit([](auto&& value) -> Type {
-        using T = std::decay_t<decltype(value)>;
+        using Kind = std::decay_t<decltype(value)>;
 
-        if constexpr (std::is_same_v<T, std::nullptr_t>) {
+        if constexpr (std::is_same_v<Kind, std::nullptr_t>) {
             return Type::Null;
         }
 
-        if constexpr (std::is_same_v<T, bool>) {
+        if constexpr (std::is_same_v<Kind, bool>) {
             return Type::Boolean;
         }
 
-        if constexpr (std::is_same_v<T, std::int64_t>) {
+        if constexpr (std::is_same_v<Kind, std::int64_t>) {
             return Type::Integer;
         }
 
-        if constexpr (std::is_same_v<T, double>) {
+        if constexpr (std::is_same_v<Kind, double>) {
             return Type::Real;
         }
 
-        if constexpr (std::is_same_v<T, std::string>) {
+        if constexpr (std::is_same_v<Kind, std::string>) {
             return Type::String;
         }
 
-        if constexpr (std::is_same_v<T, Array>) {
+        if constexpr (std::is_same_v<Kind, Array>) {
             return Type::Array;
         }
 
-        if constexpr (std::is_same_v<T, Object>) {
+        if constexpr (std::is_same_v<Kind, Object>) {
             return Type::Object;
         }
 
@@ -524,32 +524,32 @@ inline void Json::_escape_string(const std::string& text, std::ostringstream& ou
     out_stream << '"';
 }
 
-inline void Json::_serialize(const Json& json_value, std::ostringstream& out_stream,
+inline void Json::_serialize(const Json& json, std::ostringstream& out_stream,
                              int indent, int current_indent) {
     std::visit([&](auto&& value) {
-        using T = std::decay_t<decltype(value)>;
+        using Kind = std::decay_t<decltype(value)>;
 
-        if constexpr (std::is_same_v<T, std::nullptr_t>) {
+        if constexpr (std::is_same_v<Kind, std::nullptr_t>) {
             out_stream << "null";
-        } else if constexpr (std::is_same_v<T, bool>) {
+        } else if constexpr (std::is_same_v<Kind, bool>) {
             out_stream << (value ? "true" : "false");
-        } else if constexpr (std::is_same_v<T, std::int64_t>) {
+        } else if constexpr (std::is_same_v<Kind, std::int64_t>) {
             out_stream << value;
-        } else if constexpr (std::is_same_v<T, double>) {
+        } else if constexpr (std::is_same_v<Kind, double>) {
             if (!std::isfinite(value)) {
                 throw std::domain_error("Json: non-finite double values (NaN or Infinity)"
                                         " cannot be serialized to JSON");
             }
 
             _write_real(value, out_stream);
-        } else if constexpr (std::is_same_v<T, std::string>) {
+        } else if constexpr (std::is_same_v<Kind, std::string>) {
             _escape_string(value, out_stream);
-        } else if constexpr (std::is_same_v<T, Array>) {
+        } else if constexpr (std::is_same_v<Kind, Array>) {
             _serialize_array(value, out_stream, indent, current_indent);
-        } else if constexpr (std::is_same_v<T, Object>) {
+        } else if constexpr (std::is_same_v<Kind, Object>) {
             _serialize_object(value, out_stream, indent, current_indent);
         }
-    }, json_value.m_data);
+    }, json.m_data);
 }
 
 // The fewest digits that read back as the same double, with ".0" when they
@@ -581,9 +581,9 @@ inline bool Json::_is_digit(const char character) {
     return std::isdigit(static_cast<unsigned char>(character)) != 0;
 }
 
-inline void Json::_serialize_array(const Array& the_array, std::ostringstream& out_stream,
+inline void Json::_serialize_array(const Array& elements, std::ostringstream& out_stream,
                                    int indent, int current_indent) {
-    if (the_array.empty()) {
+    if (elements.empty()) {
         out_stream << "[]";
         return;
     }
@@ -597,11 +597,11 @@ inline void Json::_serialize_array(const Array& the_array, std::ostringstream& o
 
     out_stream << "[" << newline;
 
-    for (std::size_t index = 0; index < the_array.size(); ++index) {
+    for (std::size_t index = 0; index < elements.size(); ++index) {
         out_stream << next_indentation;
-        _serialize(the_array.at(index), out_stream, indent, current_indent + indent);
+        _serialize(elements.at(index), out_stream, indent, current_indent + indent);
 
-        if (index + 1 < the_array.size()) {
+        if (index + 1 < elements.size()) {
             out_stream << ",";
         }
 
@@ -611,9 +611,9 @@ inline void Json::_serialize_array(const Array& the_array, std::ostringstream& o
     out_stream << indentation << "]";
 }
 
-inline void Json::_serialize_object(const Object& the_object, std::ostringstream& out_stream,
+inline void Json::_serialize_object(const Object& members, std::ostringstream& out_stream,
                                     int indent, int current_indent) {
-    if (the_object.empty()) {
+    if (members.empty()) {
         out_stream << "{}";
         return;
     }
@@ -631,13 +631,13 @@ inline void Json::_serialize_object(const Object& the_object, std::ostringstream
 
     std::size_t index = 0;
 
-    for (const auto& [key, value] : the_object) {
+    for (const auto& [key, value] : members) {
         out_stream << next_indentation;
         _escape_string(key, out_stream);
         out_stream << ":" << space;
         _serialize(value, out_stream, indent, current_indent + indent);
 
-        if (++index < the_object.size()) {
+        if (++index < members.size()) {
             out_stream << ",";
         }
 
