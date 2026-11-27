@@ -11,8 +11,6 @@
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
-#include <fstream>
-#include <ios>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -32,6 +30,7 @@
 #include "identity/MessageVerifier.hpp"
 #include "identity/NodeIdentity.hpp"
 #include "io/Directories.hpp"
+#include "io/FileReader.hpp"
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
 #include "node/SettingsFile.hpp"
@@ -55,6 +54,7 @@ using http::Url;
 using identity::KnownKeys;
 using identity::MessageVerifier;
 using io::Directories;
+using io::FileReader;
 using logger::Logger;
 using net::Address;
 using node::Node;
@@ -72,6 +72,7 @@ using std::invalid_argument;
 using std::make_shared;
 using std::numeric_limits;
 using std::out_of_range;
+using std::runtime_error;
 using std::size_t;
 using std::stoul;
 using std::string;
@@ -386,14 +387,14 @@ Seed seed_of(const string& given) {
 // null for a node id that is not known.
 vector<Seed> seeds_in(const path& file) {
     const auto* const source = seed_file_setting;
-    std::ifstream stream(file, std::ios::binary);
+    string contents;
 
-    if (!stream) {
+    try {
+        contents = FileReader(file).read_all();
+    } catch (const runtime_error&) {
         throw invalid_argument(string(source) + ": cannot read " + file.string());
     }
 
-    const string contents((std::istreambuf_iterator<char>(stream)),
-                          std::istreambuf_iterator<char>());
     Json document;
 
     try {

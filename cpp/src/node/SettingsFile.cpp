@@ -4,15 +4,12 @@
 #include <array>
 #include <cstddef>
 #include <filesystem>
-#include <fstream>
-#include <ios>
 #include <iterator>
 #include <map>
 #include <set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -24,6 +21,8 @@
 #include <yaml-cpp/node/iterator.h>
 #include <yaml-cpp/node/node.h>
 #include <yaml-cpp/node/parse.h>
+
+#include "io/FileReader.hpp"
 
 namespace {
 
@@ -114,25 +113,13 @@ std::string text_of(const YAML::Node& scalar) {
     return scalar.Scalar();
 }
 
-// The text of the file at path. A directory opens as a file that reads as
-// empty, so it is turned down by file_size(), which has no size for one,
-// before it can read as a file with no settings.
+// The text of the file at path.
 std::string read_file(const std::filesystem::path& path) {
-    std::error_code error;
-    const auto size = std::filesystem::file_size(path, error);
-    std::ifstream file(path, std::ios::binary);
-
-    if (error || !file) {
-        throw std::runtime_error("Cannot open the settings file: " + path.string());
-    }
-
-    std::string text(size, '\0');
-
-    if (!file.read(text.data(), static_cast<std::streamsize>(size))) {
+    try {
+        return io::FileReader(path).read_all();
+    } catch (const std::runtime_error&) {
         throw std::runtime_error("Cannot read the settings file: " + path.string());
     }
-
-    return text;
 }
 
 // The one document text holds, or a null node if it holds none. Its type,
