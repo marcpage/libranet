@@ -38,7 +38,6 @@ public:
     // std::invalid_argument for a request that cannot be signed or sent.
     [[nodiscard]] std::vector<http::Response> exchange(std::vector<http::Request> requests);
 
-    // The node every answer must be signed by.
     [[nodiscard]] const storage::Identifier& node_id() const noexcept;
     [[nodiscard]] const net::Address& address() const noexcept;
     [[nodiscard]] bool is_open() const;

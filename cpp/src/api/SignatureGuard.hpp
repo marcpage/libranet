@@ -17,10 +17,9 @@
 
 namespace api {
 
-// Stands in front of the node's handlers: checks the signature on each request
-// before its handler sees it, and signs each answer as the node (HTTP API §11,
-// HandshakeProtocol §2.1, §3.2, §5.3). Safe to use from the threads serving
-// connections, several at once.
+// Stands in front of the node's handlers: checks the signature on each
+// request, and signs each answer as the node (HTTP API §11, HandshakeProtocol
+// §2.1, §3.2, §5.3).
 // cppcheck-suppress noConstructor
 class SignatureGuard {
 public:

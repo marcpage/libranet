@@ -28,9 +28,8 @@ public:
     [[nodiscard]] std::optional<protocol::NodeList>
     list_for(const protocol::NodeList& added, const storage::Identifier& node_id) const;
 
-    // Posts each open session its list, each on a thread of its own, and waits
-    // for every answer. A failure is logged. Gives how many nodes accepted
-    // theirs.
+    // Posts each open session its list, and waits for every answer. A failure
+    // is logged. Gives how many nodes accepted theirs.
     [[nodiscard]] std::size_t publish(const protocol::NodeList& added,
                                       const Sessions& sessions) const;
 

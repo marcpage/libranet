@@ -19,9 +19,8 @@
 
 namespace protocol {
 
-// What a node seeks and does not hold (HttpApi §10.7.1): content by
-// identifier, as "data", and hash prefixes, as "search", each in the order
-// given.
+// What a node seeks and does not hold (HttpApi §10.7.1): content, as "data",
+// and hash prefixes, as "search".
 class SeekList {
 public:
     using Data = std::vector<std::byte>;
@@ -29,9 +28,9 @@ public:
     // As it is sent, compressed or not (HttpApi §10.7.1).
     static constexpr std::size_t max_size = 1 * types::Megabyte;
 
-    // JSON, or one zlib stream of JSON of no more than decompressed_limit
-    // bytes. An entry that is not valid is left out, and logged. Throws
-    // std::invalid_argument for a body that is neither, or not a seek list.
+    // JSON, or zlib-compressed JSON of no more than decompressed_limit bytes.
+    // An entry that is not valid is left out. Throws std::invalid_argument for
+    // a body that is neither, or not a seek list.
     [[nodiscard]] static SeekList from_body(
         const Data& body, std::size_t decompressed_limit = types::max_decompressed_list_size);
 
@@ -40,9 +39,9 @@ public:
     [[nodiscard]] const std::vector<storage::Identifier>& data() const noexcept;
     [[nodiscard]] const std::vector<storage::HashPrefix>& search() const noexcept;
 
-    // Fewer than limit bytes, compressed only where the JSON would not fit,
-    // leaving out from the end alike of each kind what does not fit even then.
-    // Throws std::invalid_argument for a limit too small for an empty list.
+    // Fewer than limit bytes: compressed only when too large, and leaving out
+    // from the end of each kind what does not fit even then. Throws
+    // std::invalid_argument for a limit too small for an empty list.
     [[nodiscard]] Data body(std::size_t limit = max_size) const;
 
     SeekList() = default;
@@ -50,8 +49,8 @@ public:
 private:
     static constexpr std::string_view data_key = "data";
     static constexpr std::string_view search_key = "search";
-    // HttpApi §10.7.1 leaves it to the node. A list may be compressed many
-    // times to find how much fits, and is hardly smaller at a slower level.
+    // A list may be compressed many times to find how much fits, and is
+    // hardly smaller at a slower level.
     static constexpr int compression_level = storage::Zlib::balance_level;
 
     std::vector<storage::Identifier> m_data;

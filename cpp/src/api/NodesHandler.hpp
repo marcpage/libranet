@@ -14,9 +14,8 @@
 
 namespace api {
 
-// Answers GET and POST of /data/nodes, the node lists nodes exchange (HttpApi
-// §10.5). Until set_list(), the list served names the node's own endpoints
-// alone.
+// GET and POST of /data/nodes (HttpApi §10.5). Until set_list(), the list
+// served names only the node's own endpoints.
 class NodesHandler {
 public:
     // list_bytes is the most a list posted may decompress to, and the list
@@ -26,11 +25,10 @@ public:
                  std::size_t list_bytes = types::max_decompressed_list_size,
                  std::size_t served_bytes = protocol::NodeList::max_size);
 
-    // Called from any thread, while requests are answered.
+    // Any thread may call it.
     void set_list(const protocol::NodeList& new_list);
 
-    // Called from the threads serving connections, several at once. Throws
-    // std::bad_alloc if zlib runs out of memory.
+    // Throws std::bad_alloc if zlib runs out of memory.
     void operator()(const http::Request& request, http::Response& response,
                     const web::ConnectionInfo& connection) const;
 
@@ -46,7 +44,7 @@ private:
     std::size_t m_list_bytes;
     std::size_t m_served_bytes;
     mutable std::mutex m_mutex;
-    std::string m_body; // Guarded by m_mutex: the list served, as it is sent
+    std::string m_body; // Guarded by m_mutex
 };
 
 } // namespace api

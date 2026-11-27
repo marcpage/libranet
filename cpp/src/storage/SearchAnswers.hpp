@@ -26,8 +26,7 @@ public:
     using Held = std::function<std::vector<Identifier>(const HashPrefix&)>;
     using ClockFunction = std::function<Clock::time_point()>;
 
-    // So that what peers name cannot grow an answer without end. One sent
-    // names fewer, as it is less than 1 MiB even compressed (HttpApi §6.1).
+    // So that what peers name cannot grow an answer without end.
     static constexpr std::size_t max_identifiers = 65'536;
 
     // Throws std::invalid_argument for a ttl not more than zero, or a function

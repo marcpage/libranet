@@ -15,43 +15,27 @@
 
 namespace config {
 
-// /config's port (HTTP API §2.3): a web server at a loopback address alone,
-// apart from the main port, serving nothing outside /config. Every handler is
-// behind a Guard, and every answer is signed as the node, the guard's
-// refusals among them. Every answer carries Guard::policy, those the server
-// sends by itself among them. A GET of /config, or of a path beneath it
-// outside /config/api, is the page. GET /config/api names each endpoint it
-// serves, GET /config/api/node says what the node is, and NotOffered answers
-// each path the shared page uses that a later phase brings. It serves from a
-// thread of its own, and hears what came of the dials it asks
-// peer::Connections for on another.
+// /config's port (HTTP API §2.3): a web server at a loopback address, apart
+// from the main port, serving only /config, signing every answer as the node.
 // cppcheck-suppress noConstructor
 class Service {
 public:
-    // Where /config listens, and nowhere else.
     static constexpr std::string_view listen_host = "127.0.0.1";
-    // With no port named, /config takes the first port free of this many
-    // above the main port, twice as many, and so on, as the Python node does.
+    // With no port named, /config takes the first port free of the main port
+    // + port_step, + 2 * port_step, and so on, as the Python node does.
     static constexpr net::Address::Port port_step = 100;
 
-    // Listens at listen_host on port, or, when none is named, on the first
-    // port free of the main port + port_step, + 2 * port_step, and so on,
-    // logging the port it took; port 0 has the system pick one. main_address
-    // is where the main port listens, and own_endpoints those its node list
-    // names the node at, as api::Service gives them. The credential is kept
-    // in data_dir. /config is served as hosts, as network.config_hosts gives
-    // them (Guard). A request to connect to a node waits as long as a dial
-    // within limits, those peer::Connections dials with, may take. identity
-    // must outlive this. Throws std::invalid_argument when no port is named
-    // and the main port leaves none port_step above it, when own_endpoints is
-    // empty, or for a host holding a NUL, and std::system_error when it
-    // cannot listen on the port named, or on any it tries.
+    // Port 0 has the system pick one. own_endpoints are those the node list
+    // names the node at, hosts those /config is served as
+    // (network.config_hosts), and limits those peer::Connections dials with.
+    // identity must outlive this. Throws std::invalid_argument when no port is
+    // named and none is left above the main port, for no own_endpoints, or for
+    // a host holding a NUL, and std::system_error when it cannot listen.
     Service(const identity::NodeIdentity& identity, const std::filesystem::path& data_dir,
             const net::Address& main_address, const std::vector<std::string>& own_endpoints,
             std::optional<net::Address::Port> port, std::vector<std::string> hosts,
             const peer::PeerConnection::Limits& limits);
-    // Lets each request waiting on a dial go, ends every connection, and
-    // waits for its threads.
+    // Ends every connection, and waits for its threads.
     ~Service();
 
     // With the port it took.

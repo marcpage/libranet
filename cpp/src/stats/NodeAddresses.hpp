@@ -14,9 +14,8 @@
 
 namespace stats {
 
-// The addresses of nodes, what came of dialing them, and the node list and
-// candidates to dial that come from them (HttpApi §10.6), in a table of a
-// database that must outlive this. Used from the one thread that uses it.
+// The addresses of nodes, and what came of dialing them (HttpApi §10.6), in a
+// table of a database that must outlive this. Used from one thread.
 // cppcheck-suppress noConstructor
 class NodeAddresses {
 public:

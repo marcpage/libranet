@@ -20,9 +20,9 @@
 
 namespace peer {
 
-// The searches of the connected peers for content the node lacks (High-Level
-// Design §4.7), in passes. Each runs on the thread that asks for it, and any
-// number may run at once. Each must end before this goes.
+// Searches the connected peers for content the node lacks (High-Level Design
+// §4.7). Several threads may fetch at once, and each fetch must end before
+// this goes.
 class Fetch {
 public:
     using Clock = std::chrono::steady_clock;
@@ -55,8 +55,8 @@ public:
         std::size_t content_bytes = types::max_decompressed_content_size;
     };
 
-    // Throws std::invalid_argument, naming the setting, for one it cannot use,
-    // or for no store or a function missing.
+    // Throws std::invalid_argument for a setting it cannot use, no store, or a
+    // function missing.
     Fetch(storage::IDataSource::Ptr store, GetPeers get_peers, const Settings& settings,
           ClockFunction clock = &Clock::now);
 
