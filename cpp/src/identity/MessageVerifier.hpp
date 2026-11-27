@@ -19,17 +19,17 @@ class MessageVerifier {
 public:
     using Clock = std::chrono::system_clock;
     using ClockFunction = std::function<Clock::time_point()>;
-    using Duration = std::chrono::milliseconds;
+    using Milliseconds = std::chrono::milliseconds;
 
     // As the Python node's are (HandshakeProtocol §2).
-    static constexpr Duration default_max_age = std::chrono::seconds(5);
-    static constexpr Duration default_clock_skew = std::chrono::seconds(30);
+    static constexpr Milliseconds default_max_age = std::chrono::seconds(5);
+    static constexpr Milliseconds default_clock_skew = std::chrono::seconds(30);
 
     // A signature may be created no more than max_age before the node's clock,
     // nor ahead of it, each widened by clock_skew, as an expires time is.
     struct Window {
-        Duration max_age = default_max_age;
-        Duration clock_skew = default_clock_skew;
+        Milliseconds max_age = default_max_age;
+        Milliseconds clock_skew = default_clock_skew;
     };
 
     // By its keyid.

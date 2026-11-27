@@ -21,11 +21,13 @@ public:
     void push(const Type& item);
     void push(Type&& item);
 
-    [[nodiscard]] bool push_ms_timeout(const Type& item, Milliseconds timeout);
-    [[nodiscard]] bool push_ms_timeout(Type&& item, Milliseconds timeout);
+    // Whether there was room for item within timeout.
+    [[nodiscard]] bool push(const Type& item, Milliseconds timeout);
+    [[nodiscard]] bool push(Type&& item, Milliseconds timeout);
 
     Type pop();
-    [[nodiscard]] std::optional<Type> pop_ms_timeout(Milliseconds timeout);
+    // Nothing when no item comes within timeout.
+    [[nodiscard]] std::optional<Type> pop(Milliseconds timeout);
 
     [[nodiscard]] std::size_t size() const;
     [[nodiscard]] bool empty() const;
@@ -51,7 +53,7 @@ private:
     void _core_push(Item&& item);
 
     template<typename Item>
-    bool _core_push_ms_timeout(Item&& item, Milliseconds timeout);
+    bool _core_push(Item&& item, Milliseconds timeout);
 };
 
 template<typename Type>
@@ -84,7 +86,7 @@ void BlockingQueue<Type>::push(Type&& item) {
 
 template<typename Type>
 template<typename Item>
-bool BlockingQueue<Type>::_core_push_ms_timeout(Item&& item, Milliseconds timeout) {
+bool BlockingQueue<Type>::_core_push(Item&& item, Milliseconds timeout) {
     std::unique_lock lock(m_mutex);
 
     if (!m_not_full.wait_for(lock, timeout, [this] {
@@ -100,13 +102,13 @@ bool BlockingQueue<Type>::_core_push_ms_timeout(Item&& item, Milliseconds timeou
 }
 
 template<typename Type>
-bool BlockingQueue<Type>::push_ms_timeout(const Type& item, Milliseconds timeout) {
-    return _core_push_ms_timeout(item, timeout);
+bool BlockingQueue<Type>::push(const Type& item, Milliseconds timeout) {
+    return _core_push(item, timeout);
 }
 
 template<typename Type>
-bool BlockingQueue<Type>::push_ms_timeout(Type&& item, Milliseconds timeout) {
-    return _core_push_ms_timeout(std::move(item), timeout);
+bool BlockingQueue<Type>::push(Type&& item, Milliseconds timeout) {
+    return _core_push(std::move(item), timeout);
 }
 
 template<typename Type>
@@ -123,7 +125,7 @@ Type BlockingQueue<Type>::pop() {
 }
 
 template<typename Type>
-std::optional<Type> BlockingQueue<Type>::pop_ms_timeout(Milliseconds timeout) {
+std::optional<Type> BlockingQueue<Type>::pop(Milliseconds timeout) {
     std::unique_lock lock(m_mutex);
 
     if (!m_not_empty.wait_for(lock, timeout, [this] { return !m_queue.empty(); })) {

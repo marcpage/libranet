@@ -23,7 +23,7 @@ public:
 
     // Leaves out the \n and a \r before it. With MustHaveEol, returns nothing
     // if the input ends before the \n.
-    [[nodiscard]] virtual std::optional<std::string> read_line(EolAction eolAction);
+    [[nodiscard]] virtual std::optional<std::string> read_line(EolAction eol_action);
     // Or fewer where the input ends first.
     [[nodiscard]] virtual std::vector<std::byte> read_exact(std::size_t size);
     // Including the delimiter, or to the end of the input.
@@ -88,12 +88,12 @@ inline std::string IReader::read_until(char delimiter) {
     return result;
 }
 
-inline std::optional<std::string> IReader::read_line(EolAction eolAction) {
+inline std::optional<std::string> IReader::read_line(EolAction eol_action) {
     std::string raw = read_until('\n');
 
     if (!raw.empty() && '\n' == raw.back()) {
         raw.pop_back();
-    } else if (eolAction == EolAction::MustHaveEol) {
+    } else if (EolAction::MustHaveEol == eol_action) {
         return std::nullopt;
     }
 

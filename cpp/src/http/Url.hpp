@@ -44,8 +44,8 @@ public:
     [[nodiscard]] std::string username() const;
     [[nodiscard]] std::string password() const;
     [[nodiscard]] std::string_view host() const noexcept;
-    [[nodiscard]] std::optional<uint16_t> port() const noexcept;
-    [[nodiscard]] std::optional<uint16_t> effective_port() const;
+    [[nodiscard]] std::optional<std::uint16_t> port() const noexcept;
+    [[nodiscard]] std::optional<std::uint16_t> effective_port() const;
     [[nodiscard]] std::string path() const;
     [[nodiscard]] std::string fragment() const;
 
@@ -62,7 +62,7 @@ public:
     void set_username(std::string_view new_username);
     void set_password(std::string_view new_password);
     void set_host(std::string new_host);
-    void set_port(uint16_t new_port);
+    void set_port(std::uint16_t new_port);
     void set_path(std::string_view new_path);
     void set_query(Query new_query);
     void set_fragment(std::string_view new_fragment);
@@ -96,7 +96,7 @@ private:
     std::string m_username;
     std::string m_password;
     std::string m_host;
-    std::optional<uint16_t> m_port;
+    std::optional<std::uint16_t> m_port;
     std::string m_path = "/";
     Query m_query;
     std::string m_fragment;
@@ -106,9 +106,9 @@ private:
     static void _extract_scheme(std::string_view& url_string, std::string& scheme);
     static void _parse_authority(std::string_view authority, std::string& username,
                                  std::string& password, std::string& host,
-                                 std::optional<uint16_t>& port);
+                                 std::optional<std::uint16_t>& port);
     static std::string _to_lower_copy(std::string_view text);
-    static std::optional<uint16_t> _parse_port(std::string_view text);
+    static std::optional<std::uint16_t> _parse_port(std::string_view text);
     [[nodiscard]] static bool _is_hex_digit(char character) noexcept;
 };
 
@@ -206,16 +206,16 @@ inline std::optional<std::uint16_t> Url::port() const noexcept {
     return m_port;
 }
 
-inline std::optional<uint16_t> Url::effective_port() const {
+inline std::optional<std::uint16_t> Url::effective_port() const {
     const auto explicit_port = port();
 
     if (explicit_port.has_value()) {
         return explicit_port;
     }
 
-    constexpr uint16_t http_port = 80;
-    constexpr uint16_t https_port = 443;
-    constexpr uint16_t ftp_port = 21;
+    constexpr std::uint16_t http_port = 80;
+    constexpr std::uint16_t https_port = 443;
+    constexpr std::uint16_t ftp_port = 21;
     const std::string lower_scheme = _to_lower_copy(m_scheme);
 
     if ("http" == lower_scheme || "ws" == lower_scheme) {
@@ -304,7 +304,7 @@ inline void Url::set_host(std::string new_host) {
     m_host = std::move(new_host);
 }
 
-inline void Url::set_port(uint16_t new_port) {
+inline void Url::set_port(std::uint16_t new_port) {
     m_port = new_port;
 }
 
@@ -461,7 +461,7 @@ inline void Url::_extract_scheme(std::string_view& url_string, std::string& sche
 
 inline void Url::_parse_authority(std::string_view authority, std::string& username,
                                   std::string& password, std::string& host,
-                                  std::optional<uint16_t>& port) {
+                                  std::optional<std::uint16_t>& port) {
     if (authority.empty()) {
         return;
     }
@@ -628,8 +628,8 @@ inline bool operator<(const Url& left, const Url& right) {
     return left.m_fragment < right.m_fragment;
 }
 
-inline std::optional<uint16_t> Url::_parse_port(std::string_view text) {
-    constexpr auto max_port_number = std::numeric_limits<uint16_t>::max();
+inline std::optional<std::uint16_t> Url::_parse_port(std::string_view text) {
+    constexpr auto max_port_number = std::numeric_limits<std::uint16_t>::max();
 
     if (text.empty()) {
         return std::nullopt;
@@ -639,7 +639,7 @@ inline std::optional<uint16_t> Url::_parse_port(std::string_view text) {
         const auto port_number = std::stoul(std::string(text));
 
         if (port_number <= max_port_number) {
-            return static_cast<uint16_t>(port_number);
+            return static_cast<std::uint16_t>(port_number);
         }
     } catch (const std::invalid_argument&) {
         return std::nullopt; // not a number
