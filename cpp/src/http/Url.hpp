@@ -26,6 +26,10 @@ public:
         FormUrl,      // Query/Form: unreserved chars, spaces -> +
     };
 
+    // The characters RFC 3986 §2.3 leaves unreserved besides letters and
+    // digits, which are never percent-encoded.
+    static constexpr std::string_view unreserved = "-_.~";
+
     [[nodiscard]] static std::optional<Url> parse(std::string_view url_string);
 
     [[nodiscard]] static std::string encode(std::string_view value,
@@ -142,9 +146,6 @@ inline std::string Url::encode(std::string_view value, std::string_view allowed_
 }
 
 inline std::string Url::encode(std::string_view value, EncodeContext context) {
-    // RFC 3986 Section 2.3 Unreserved characters
-    constexpr std::string_view unreserved = "-_.~";
-
     const bool space_to_plus = (EncodeContext::FormUrl == context);
     return encode(value, unreserved, space_to_plus);
 }
