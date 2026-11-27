@@ -280,6 +280,24 @@ TEST(DataHandlerTest, ContentNotHeldIsRetriedAfterTheSettingsSay) {
     EXPECT_EQ(Json::parse(immediate.body()).at("retry_after").integer(), 0);
 }
 
+// Retry-After carries whole seconds, so a retry after with a fraction of
+// one is rounded up, and the client never asks sooner.
+TEST(DataHandlerTest, ContentNotHeldIsRetriedAfterWholeSeconds) {
+    const auto store = std::make_shared<MemoryStore>();
+
+    for (const auto& [retry_after, told] :
+         std::vector<std::pair<DataHandler::Milliseconds, std::string>>{
+             {1ms, "1"}, {1500ms, "2"}, {2000ms, "2"}}) {
+        const DataHandler handler(store, types::max_decompressed_content_size, retry_after);
+
+        const auto response = answer(handler, get(hello_path()));
+
+        EXPECT_EQ(response.headers().get("Retry-After"), told) << retry_after.count() << " ms";
+        EXPECT_EQ(std::to_string(Json::parse(response.body()).at("retry_after").integer()), told)
+            << retry_after.count() << " ms";
+    }
+}
+
 // While the search for content is held off, the node will not look for it,
 // so it is not found (HttpApi §5.3), and not posted as needed; but it is
 // posted as asked for.
