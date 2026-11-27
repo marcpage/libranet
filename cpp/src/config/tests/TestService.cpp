@@ -196,7 +196,7 @@ private:
 // Each test has a data directory, holding the node's key, whose public key
 // is in a store, and a service with a port the system picked. It keeps what
 // is logged.
-class ServiceTest : public testing::Test {
+class ConfigServiceTest : public testing::Test {
 protected:
     void SetUp() override {
         Logger::remove_all_outputs();
@@ -267,19 +267,19 @@ private:
 
 } // namespace
 
-TEST_F(ServiceTest, ListensAtTheLoopbackAddressAlone) {
+TEST_F(ConfigServiceTest, ListensAtTheLoopbackAddressAlone) {
     EXPECT_EQ(address().host(), "127.0.0.1");
     EXPECT_NE(address().port(), 0);
 }
 
-TEST_F(ServiceTest, LogsWhereConfigIs) {
+TEST_F(ConfigServiceTest, LogsWhereConfigIs) {
     const auto where = "/config is at http://127.0.0.1:" + std::to_string(address().port())
                        + "/config/";
 
     EXPECT_TRUE(logged(where)) << log_text();
 }
 
-TEST_F(ServiceTest, ListensOnThePortNamed) {
+TEST_F(ConfigServiceTest, ListensOnThePortNamed) {
     const auto port = free_port();
     const Service named(identity(), data_dir(), main_port, port);
 
@@ -288,7 +288,7 @@ TEST_F(ServiceTest, ListensOnThePortNamed) {
 
 // With no port named, it takes the main port's plus 100 when nothing has
 // it.
-TEST_F(ServiceTest, TakesTheFirstPortAboveTheMainPortWhenNoneIsNamed) {
+TEST_F(ConfigServiceTest, TakesTheFirstPortAboveTheMainPortWhenNoneIsNamed) {
     const auto port = free_port();
     const Service above(identity(), data_dir(), below(port), std::nullopt);
 
@@ -297,7 +297,7 @@ TEST_F(ServiceTest, TakesTheFirstPortAboveTheMainPortWhenNoneIsNamed) {
 
 // The port 100 above the main port is taken, so it takes one of 200 above,
 // 300 above, and so on.
-TEST_F(ServiceTest, PassesOverAPortTaken) {
+TEST_F(ConfigServiceTest, PassesOverAPortTaken) {
     const auto taken = listening_below_another();
     const auto taken_port = taken->local_address().port();
     const auto main = below(taken_port);
@@ -313,7 +313,7 @@ TEST_F(ServiceTest, PassesOverAPortTaken) {
 }
 
 // A port named is that port or none.
-TEST_F(ServiceTest, RefusesAPortNamedThatIsTaken) {
+TEST_F(ConfigServiceTest, RefusesAPortNamedThatIsTaken) {
     const auto taken = listening();
 
     EXPECT_THROW(const Service refused(identity(), data_dir(), main_port,
@@ -321,7 +321,7 @@ TEST_F(ServiceTest, RefusesAPortNamedThatIsTaken) {
                  std::system_error);
 }
 
-TEST_F(ServiceTest, RefusesAMainPortLeavingNoPortAboveIt) {
+TEST_F(ConfigServiceTest, RefusesAMainPortLeavingNoPortAboveIt) {
     constexpr Port above_the_highest_main = highest_port - Service::port_step + 1;
 
     EXPECT_THROW(const Service refused(identity(), data_dir(), above_the_highest_main,
@@ -329,7 +329,7 @@ TEST_F(ServiceTest, RefusesAMainPortLeavingNoPortAboveIt) {
                  std::invalid_argument);
 }
 
-TEST_F(ServiceTest, ListsItsEndpoints) {
+TEST_F(ConfigServiceTest, ListsItsEndpoints) {
     const auto answer = answer_to(address(), get("/config/api"));
 
     ASSERT_TRUE(has_status(answer, "200 OK")) << answer;
@@ -344,13 +344,13 @@ TEST_F(ServiceTest, ListsItsEndpoints) {
     EXPECT_FALSE(endpoints.at(0).at("description").string().empty());
 }
 
-TEST_F(ServiceTest, ListsItsEndpointsWhateverTheQuery) {
+TEST_F(ConfigServiceTest, ListsItsEndpointsWhateverTheQuery) {
     const auto answer = answer_to(address(), get("/config/api?x=1"));
 
     EXPECT_TRUE(has_status(answer, "200 OK")) << answer;
 }
 
-TEST_F(ServiceTest, RefusesAnyOtherMethodOfItsEndpoints) {
+TEST_F(ConfigServiceTest, RefusesAnyOtherMethodOfItsEndpoints) {
     for (const auto* const method : {"POST", "PUT", "DELETE", "HEAD"}) {
         const auto answer = answer_to(address(), request_of(method, "/config/api"));
 
@@ -361,7 +361,7 @@ TEST_F(ServiceTest, RefusesAnyOtherMethodOfItsEndpoints) {
 }
 
 // The /config page, and the endpoints beneath /config/api, come later.
-TEST_F(ServiceTest, ServesNothingElseBeneathConfig) {
+TEST_F(ConfigServiceTest, ServesNothingElseBeneathConfig) {
     for (const auto* const target : {"/config", "/config/", "/config/api/", "/config/api/node"}) {
         const auto answer = answer_to(address(), get(target));
 
@@ -370,7 +370,7 @@ TEST_F(ServiceTest, ServesNothingElseBeneathConfig) {
     }
 }
 
-TEST_F(ServiceTest, ServesNothingOutsideConfig) {
+TEST_F(ConfigServiceTest, ServesNothingOutsideConfig) {
     for (const auto* const target : {"/", "/data/nodes", "/data/seek", "/configuration"}) {
         const auto answer = answer_to(address(), get(target));
 
@@ -379,7 +379,7 @@ TEST_F(ServiceTest, ServesNothingOutsideConfig) {
     }
 }
 
-TEST_F(ServiceTest, CapturesTheFirstCredentialGiven) {
+TEST_F(ConfigServiceTest, CapturesTheFirstCredentialGiven) {
     EXPECT_FALSE(captured());
 
     const auto answer = answer_to(address(), get("/config/api"));
@@ -390,7 +390,7 @@ TEST_F(ServiceTest, CapturesTheFirstCredentialGiven) {
 
 // Every path is behind the guard, those outside /config among them, and its
 // challenge is signed as every answer is.
-TEST_F(ServiceTest, ChallengesARequestWithoutTheCredential) {
+TEST_F(ConfigServiceTest, ChallengesARequestWithoutTheCredential) {
     for (const auto* const target : {"/config/api", "/config/", "/data/nodes"}) {
         const auto answer = answer_to(address(), request_with("GET", target, ""));
 
@@ -402,7 +402,7 @@ TEST_F(ServiceTest, ChallengesARequestWithoutTheCredential) {
     EXPECT_FALSE(captured());
 }
 
-TEST_F(ServiceTest, ChallengesACredentialThatDoesNotMatch) {
+TEST_F(ConfigServiceTest, ChallengesACredentialThatDoesNotMatch) {
     (void)answer_to(address(), get("/config/api"));
 
     const auto answer = answer_to(address(),
@@ -413,7 +413,7 @@ TEST_F(ServiceTest, ChallengesACredentialThatDoesNotMatch) {
 }
 
 // With the credential removed, the next one given is taken (HTTP API §2.3.2).
-TEST_F(ServiceTest, CapturesANewCredentialOnceTheFileIsRemoved) {
+TEST_F(ConfigServiceTest, CapturesANewCredentialOnceTheFileIsRemoved) {
     (void)answer_to(address(), get("/config/api"));
     std::filesystem::remove(data_dir() / "config-credential");
 
@@ -423,7 +423,7 @@ TEST_F(ServiceTest, CapturesANewCredentialOnceTheFileIsRemoved) {
     EXPECT_TRUE(has_status(answer, "200 OK")) << answer;
 }
 
-TEST_F(ServiceTest, StopsWithinFiveSecondsWithAClientConnected) {
+TEST_F(ConfigServiceTest, StopsWithinFiveSecondsWithAClientConnected) {
     constexpr auto most = std::chrono::seconds(5);
     const auto client = connect_when_listening(address());
 
