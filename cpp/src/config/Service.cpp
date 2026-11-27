@@ -15,6 +15,7 @@
 
 #include "Credential.hpp"
 #include "Guard.hpp"
+#include "NodeHandler.hpp"
 #include "http/Problem.hpp"
 #include "http/Request.hpp"
 #include "http/Response.hpp"
@@ -30,6 +31,7 @@
 
 using config::Credential;
 using config::Guard;
+using config::NodeHandler;
 using config::Service;
 using http::Problem;
 using http::Request;
@@ -83,6 +85,7 @@ struct Endpoint {
 // Each endpoint /config serves.
 constexpr std::array endpoints{
     Endpoint{"GET", config_api_path, "The endpoints /config serves, and what each does"},
+    Endpoint{"GET", NodeHandler::path, "What this node is and where it listens"},
 };
 
 // The ports /config may listen on, in the order they are tried: port alone
@@ -220,8 +223,9 @@ void serve(Server& server) {
 namespace config {
 
 Service::Service(const NodeIdentity& identity, const std::filesystem::path& data_dir,
-                 Port main_port, optional<Port> port)
-    : m_server(first_free(ports_to_try(main_port, port)))
+                 const Address& main_address, const vector<string>& own_endpoints,
+                 optional<Port> port)
+    : m_server(first_free(ports_to_try(main_address.port(), port)))
     , m_local_address(m_server.local_address()) {
     const Guard guard{Credential(data_dir)};
     const MessageSigner signer(identity);
@@ -238,6 +242,9 @@ Service::Service(const NodeIdentity& identity, const std::filesystem::path& data
                                                                      ConnectionInfo&) {
         answer_index(index, request, response);
     }));
+    m_server.register_handler(
+        NodeHandler::path,
+        guarded(guard, signer, NodeHandler(identity.id(), main_address, own_endpoints)));
     lInfo << "/config is at http://" + string(listen_host) + ":"
                  + to_string(m_local_address.port()) + "/config/";
     m_server_thread = thread([this] {

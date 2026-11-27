@@ -2,8 +2,10 @@
 
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <thread>
+#include <vector>
 
 #include "identity/NodeIdentity.hpp"
 #include "net/Address.hpp"
@@ -14,8 +16,9 @@ namespace config {
 // /config's port (HTTP API §2.3): a web server at a loopback address alone,
 // apart from the main port, serving nothing outside /config. Every handler is
 // behind a Guard, and every answer is signed as the node, the guard's
-// refusals among them. GET /config/api names each endpoint it serves. It
-// serves from a thread of its own.
+// refusals among them. GET /config/api names each endpoint it serves, and
+// GET /config/api/node says what the node is. It serves from a thread of its
+// own.
 // cppcheck-suppress noConstructor
 class Service {
 public:
@@ -26,14 +29,17 @@ public:
     static constexpr net::Address::Port port_step = 100;
 
     // Listens at listen_host on port, or, when none is named, on the first
-    // port free of main_port + port_step, + 2 * port_step, and so on, logging
-    // the port it took; port 0 has the system pick one. The credential is kept
+    // port free of the main port + port_step, + 2 * port_step, and so on,
+    // logging the port it took; port 0 has the system pick one. main_address
+    // is where the main port listens, and own_endpoints those its node list
+    // names the node at, as api::Service gives them. The credential is kept
     // in data_dir. identity must outlive this. Throws std::invalid_argument
-    // when no port is named and main_port leaves none port_step above it, and
-    // std::system_error when it cannot listen on the port named, or on any it
-    // tries.
+    // when no port is named and the main port leaves none port_step above it,
+    // or when own_endpoints is empty, and std::system_error when it cannot
+    // listen on the port named, or on any it tries.
     Service(const identity::NodeIdentity& identity, const std::filesystem::path& data_dir,
-            net::Address::Port main_port, std::optional<net::Address::Port> port);
+            const net::Address& main_address, const std::vector<std::string>& own_endpoints,
+            std::optional<net::Address::Port> port);
     // Ends every connection, and waits for its threads.
     ~Service();
 
