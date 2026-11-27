@@ -3,8 +3,10 @@
 #include <chrono>
 #include <cstddef>
 #include <future>
+#include <initializer_list>
 #include <iterator>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -16,6 +18,8 @@
 #include "http/Request.hpp"
 #include "http/Response.hpp"
 #include "http/ResponseCode.hpp"
+#include "logger/ILogOutput.hpp"
+#include "logger/Logger.hpp"
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
 #include "storage/Identifier.hpp"
@@ -25,6 +29,8 @@
 using http::Request;
 using http::Response;
 using http::ResponseCode;
+using logger::ILogOutput;
+using logger::Logger;
 using net::Address;
 using net::ISocket;
 using storage::Identifier;
@@ -354,6 +360,59 @@ void ServerTest::stop() {
 void ServerTest::join() {
     m_thread.join();
 }
+
+// The lines the log writes, from any thread.
+struct KeptLines {
+    std::mutex lock;
+    std::vector<std::string> lines;
+};
+
+// Keeps each line it is given, behind a lock, as the server logs from the
+// threads serving its connections.
+class LockedOutput : public ILogOutput {
+public:
+    explicit LockedOutput(std::shared_ptr<KeptLines> kept)
+        : m_kept(std::move(kept)) {}
+
+    void log(std::string_view line) override {
+        const std::scoped_lock guard(m_kept->lock);
+
+        m_kept->lines.emplace_back(line);
+    }
+
+private:
+    std::shared_ptr<KeptLines> m_kept;
+};
+
+// A server, as ServerTest has, that keeps what is logged at Info and above.
+class LoggedServerTest : public ServerTest {
+protected:
+    void SetUp() override {
+        Logger::remove_all_outputs();
+        Logger::add_output(std::make_unique<LockedOutput>(m_kept));
+        Logger::reset_levels(Logger::Level::Info);
+    }
+
+    void TearDown() override {
+        ServerTest::TearDown();
+        Logger::remove_all_outputs();
+    }
+
+    // Whether a line logged has each of texts.
+    [[nodiscard]] bool logged(std::initializer_list<std::string_view> texts) const {
+        const std::scoped_lock guard(m_kept->lock);
+
+        return std::any_of(m_kept->lines.begin(), m_kept->lines.end(),
+                           [texts](const std::string& line) {
+            return std::all_of(texts.begin(), texts.end(), [&line](std::string_view text) {
+                return std::string::npos != line.find(text);
+            });
+        });
+    }
+
+private:
+    std::shared_ptr<KeptLines> m_kept = std::make_shared<KeptLines>();
+};
 
 } // namespace
 
@@ -929,4 +988,59 @@ TEST_F(ServerTest, NodeTheConnectionCarriesIsKnownToItsLaterRequests) {
     EXPECT_EQ(read_answer(*connection), answer("200 OK", "/sign", ""));
     EXPECT_EQ(read_answer(*connection), answer("200 OK", "/node", node_id));
     EXPECT_EQ(ask(address(), get("/node")), answer("200 OK", "/node", "none"));
+}
+
+// Each request answered is logged, before its answer is sent: its method and
+// target, who asked, and the answer's status and length.
+TEST_F(LoggedServerTest, AnswerIsLogged) {
+    server().register_handler("/hello", answer_with("Hello"));
+    start();
+
+    EXPECT_EQ(ask(address(), get("/hello?x=1")), answer("200 OK", "/hello?x=1", "Hello"));
+    EXPECT_TRUE(logged({"[NFO]", "Answered GET /hello?x=1 from 127.0.0.1:", ": 200, 5 bytes"}));
+}
+
+TEST_F(LoggedServerTest, AnswerToAPathWithNoHandlerIsLogged) {
+    start();
+
+    EXPECT_EQ(ask(address(), get("/missing")), problem("404 Not Found", "/missing", not_found));
+    EXPECT_TRUE(logged({"Answered GET /missing from 127.0.0.1:",
+                        ": 404, " + std::to_string(not_found.size()) + " bytes"}));
+}
+
+// The answer to a HEAD is logged with the length sent, which is none.
+TEST_F(LoggedServerTest, AnswerToAHeadIsLoggedWithNoBody) {
+    server().register_handler("/hello", answer_with("Hello"));
+    start();
+
+    const auto connection = connect_when_listening(address());
+
+    connection->send_all("HEAD /hello HTTP/1.1\r\n\r\n");
+    EXPECT_EQ(read_head(*connection),
+              "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nX-Request-Path: /hello\r\n\r\n");
+    EXPECT_TRUE(logged({"Answered HEAD /hello from 127.0.0.1:", ": 200, 0 bytes"}));
+}
+
+// A request whose line cannot be read names no method or target.
+TEST_F(LoggedServerTest, RefusalOfALineNotReadIsLogged) {
+    start();
+
+    EXPECT_EQ(ask_until_closed(address(), "\r\n"), refusal("400 Bad Request", "", bad_request));
+    EXPECT_TRUE(logged({"Answered a request from 127.0.0.1:",
+                        ": 400, " + std::to_string(bad_request.size()) + " bytes"}));
+}
+
+// Each of the requests on a connection is logged.
+TEST_F(LoggedServerTest, EachRequestOnAConnectionIsLogged) {
+    server().register_handler("/a", answer_with("a"));
+    server().register_handler("/b", answer_with("bb"));
+    start();
+
+    const auto connection = connect_when_listening(address());
+
+    connection->send_all(get("/a") + "POST /b HTTP/1.1\r\nContent-Length: 0\r\n\r\n");
+    EXPECT_EQ(read_answer(*connection), answer("200 OK", "/a", "a"));
+    EXPECT_EQ(read_answer(*connection), answer("200 OK", "/b", "bb"));
+    EXPECT_TRUE(logged({"Answered GET /a from 127.0.0.1:", ": 200, 1 bytes"}));
+    EXPECT_TRUE(logged({"Answered POST /b from 127.0.0.1:", ": 200, 2 bytes"}));
 }
