@@ -41,9 +41,8 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     // Far more than the fuzzer's inputs, of a few KiB, hold, but little
     // enough that a list read is never too long to be written whole.
     constexpr std::size_t decompressed_limit = 64UL * 1024UL;
-    SeekList::Data input(size);
-    std::transform(data, std::next(data, static_cast<std::ptrdiff_t>(size)), input.begin(),
-                   [](std::uint8_t byte) { return static_cast<std::byte>(byte); });
+    std::string input(size, '\0');
+    std::copy_n(data, size, input.begin());
     SeekList list;
 
     try {
@@ -53,10 +52,10 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     }
 
     const auto body = list.body();
-    const auto reread = SeekList::from_body(body, decompressed_limit);
+    const auto reread = SeekList::from_body(body.text, decompressed_limit);
 
-    if (!same(reread, list) || reread.body() != body) {
-        std::cerr << "SeekList did not read back what it wrote, of " << body.size()
+    if (!same(reread, list) || reread.body().text != body.text) {
+        std::cerr << "SeekList did not read back what it wrote, of " << body.text.size()
                   << " bytes\n";
         std::abort();
     }

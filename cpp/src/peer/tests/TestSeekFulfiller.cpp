@@ -183,7 +183,7 @@ private:
 StandInNode::StandInNode(std::optional<MessageSigner> signer)
     : m_listener(ISocket::bind(Address("127.0.0.1", 0)))
     , m_signer(std::move(signer))
-    , m_seek_answer(answer(Status::Ok, Converter::text_of(SeekList().body()))) {
+    , m_seek_answer(answer(Status::Ok, SeekList().body().text)) {
     m_listener->listen(1);
     m_thread = std::thread([this] {
         try {
@@ -215,11 +215,11 @@ Address StandInNode::address() const {
 void StandInNode::seeks(const SeekList& list) {
     const std::scoped_lock lock(m_mutex);
 
-    m_seek_answer = answer(Status::Ok, Converter::text_of(list.body()));
+    m_seek_answer = answer(Status::Ok, list.body().text);
 }
 
 void StandInNode::seeks_compressed(const SeekList& list) {
-    const auto compressed = Zlib::compress(list.body(), Zlib::max_level);
+    const auto compressed = Zlib::compress(Converter::bytes_of(list.body().text), Zlib::max_level);
     const std::scoped_lock lock(m_mutex);
 
     m_seek_answer = answer(Status::Ok, Converter::text_of(compressed));
