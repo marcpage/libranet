@@ -32,6 +32,9 @@ public:
     // another's.
     static constexpr std::string_view realm = "Libranet /config";
 
+    // What carries policy.
+    static constexpr std::string_view policy_header = "Content-Security-Policy";
+
     // The reference node's Content-Security-Policy (HTTP API §2.3.3): the
     // pages of /config load what they use only from its own origin, inline
     // scripts and styles aside, send their forms only to it, and are framed

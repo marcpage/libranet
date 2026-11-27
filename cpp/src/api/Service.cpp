@@ -36,6 +36,7 @@
 #include "types/Converter.hpp"
 #include "web/ConnectionInfo.hpp"
 #include "web/Server.hpp"
+#include "web/SiteChecks.hpp"
 
 using api::NodesHandler;
 using api::SeekHandler;
@@ -78,6 +79,7 @@ using types::search_path_prefix;
 using types::seek_path;
 using web::ConnectionInfo;
 using web::Server;
+using web::SiteChecks;
 
 // The thread keeping the lists takes these events, which stats::Recorder,
 // SearchHandler, and peer::PeerSearch post from other files, so nothing here
@@ -152,7 +154,8 @@ bool names_config_api(string_view uri) {
 // IPv6 address's brackets. It is empty when the header names none, as when it
 // is not there, or its brackets are not closed.
 string host_named_by(const Request& request) {
-    const auto authority = Converter::lower_case(Headers::trim_whitespace(request.headers().get("Host", "")));
+    const auto authority = Converter::lower_case(
+        Headers::trim_whitespace(request.headers().get(SiteChecks::host_header, "")));
 
     if (!authority.empty() && '[' == authority.front()) {
         const auto closing = authority.find(']');

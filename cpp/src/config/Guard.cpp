@@ -47,7 +47,6 @@ namespace {
 using Status = http::ResponseCode::Status;
 
 constexpr string_view referer_header = "Referer";
-constexpr string_view policy_header = "Content-Security-Policy";
 
 // What a browser sends with a page another page of the same site opens in a
 // window of its own (W3C Fetch Metadata Request Headers): a page of the same
@@ -229,7 +228,7 @@ void keep_to_own_origin(Response& response) {
         headers.remove(name);
     }
 
-    headers.set(string(policy_header), string(Guard::policy));
+    headers.set(string(Guard::policy_header), string(Guard::policy));
 }
 
 // Answers 403 for a request from a client elsewhere (HTTP API §2.3).

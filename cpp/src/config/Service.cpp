@@ -83,10 +83,6 @@ constexpr uint32_t highest_port = 65'535;
 // server's own answer to such a path is not behind the guard.
 constexpr string_view every_path = "/";
 
-// What carries Guard::policy on the answers the server sends by itself,
-// which the guard never sees.
-constexpr string_view policy_header = "Content-Security-Policy";
-
 // An endpoint /config serves, as GET /config/api names it.
 struct Endpoint {
     string_view method;
@@ -267,7 +263,9 @@ Service::Service(const NodeIdentity& identity, const std::filesystem::path& data
         m_server.register_handler(feature.path, guarded(guard, signer, NotOffered(feature)));
     }
 
-    m_server.set_on_every_answer(string(policy_header), string(Guard::policy));
+    // The answers the server sends by itself, which the guard never sees,
+    // carry the policy too.
+    m_server.set_on_every_answer(string(Guard::policy_header), string(Guard::policy));
 
     lInfo << "/config is at http://" + string(config_listen_host) + ":"
                  + to_string(m_local_address.port()) + "/config/";
