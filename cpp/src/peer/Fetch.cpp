@@ -52,6 +52,7 @@ using storage::IDataSource;
 using storage::Identifier;
 using types::Converter;
 using types::data_path_prefix;
+using types::decimal_digits;
 
 namespace {
 
@@ -132,19 +133,18 @@ void let_go(Until& until, Clock::time_point now) {
 // for none, or for the HTTP date RFC 9110 §10.2.3 also allows, as the
 // Python node reads it.
 optional<Milliseconds> retry_after_of(const Response& answer) {
-    constexpr string_view digits = "0123456789";
     constexpr std::uint64_t decimal_base = 10;
     const auto header = answer.headers().get("Retry-After");
     const auto text = header ? Headers::trim_whitespace(*header) : string_view();
 
-    if (text.empty() || string_view::npos != text.find_first_not_of(digits)) {
+    if (text.empty() || string_view::npos != text.find_first_not_of(decimal_digits)) {
         return nullopt;
     }
 
     std::uint64_t seconds = 0;
 
     for (const char digit : text) {
-        seconds = (seconds * decimal_base) + digits.find(digit);
+        seconds = (seconds * decimal_base) + decimal_digits.find(digit);
 
         if (seconds >= static_cast<std::uint64_t>(longest_retry_after.count())) {
             return longest_retry_after;

@@ -246,7 +246,8 @@ inline std::size_t Response::_body_length(const Limits& limits) const {
         return 0;
     }
 
-    if (value->empty() || std::string_view::npos != value->find_first_not_of("0123456789")) {
+    if (value->empty()
+        || std::string_view::npos != value->find_first_not_of(types::decimal_digits)) {
         throw std::invalid_argument("Content-Length is not a length: " + std::string(*value));
     }
 

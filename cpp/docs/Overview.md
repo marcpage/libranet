@@ -31,16 +31,18 @@ elsewhere:
 The authority remains the code: each class's header says what it is for, in
 its name and interface, and in the comment above it where those leave
 something out. Paths below are relative to `cpp/src/`, and are as of
-2026-11-25.
+2026-11-27.
 
 ## 2. The Node at a Glance
 
 `main.cpp` reads the command line: the YAML settings file `--config` names
-(`node::SettingsFile`), and the nodes to dial first, each named by a
-`--seed`. It runs a `node::Node` until the process is sent SIGINT or
-SIGTERM. The node reads every setting it uses, by the Python node's name and
-with its default, and refuses one it cannot use, naming it, before it makes
-anything. Then it:
+(`node::SettingsFile`), or else `libranet/libranet.yaml` in the user's
+configuration directory (`io::Directories::user_config()`), where the Python
+node looks for its own, if it is there; and the nodes to dial first, each
+named by a `--seed`. It runs a `node::Node` until the process is sent SIGINT
+or SIGTERM. The node reads every setting it uses, by the Python node's name
+and with its default, and refuses one it cannot use, naming it, before it
+makes anything. Then it:
 
 1. lays out its data directory: `cas/`, where content is stored, and
    `incoming/`, whose directories are read as content too, together as one
@@ -54,21 +56,27 @@ anything. Then it:
    last, as the lists it posts as it starts are for the others, and keeps
    `libranet.sqlite3` in the data directory. Each part starts the threads it
    needs as it is made, and stops and joins them as it goes, last made
-   first.
+   first;
+4. tells `api::Service` the port `config::Service` took, so that the main
+   port can say where `/config` is.
 
-A node has four parts, each a class, or a few, that run threads of their
+A node has five parts, each a class, or a few, that run threads of their
 own:
 
 | Part | Class | Job |
 | --- | --- | --- |
-| Web | `api::Service` | Runs `web::Server`, with a handler for each endpoint beneath `/data`, each behind an `api::SignatureGuard`; keeps the latest lists the stats derive, to serve, and what peers name for searches |
+| Web | `api::Service` | Runs `web::Server`, with a handler for each endpoint beneath `/data`, each behind an `api::SignatureGuard`; keeps the latest lists the stats derive, to serve, and what peers name for searches; sends a `GET` of a page of `/config` to `/config`'s port |
 | Stats | `stats::Recorder` | Records, in SQLite, the addresses of nodes and how content is used; derives the node list, the candidates to dial, and the seek list; ranks content for eviction |
-| Connections | `peer::Connections`, `peer::Seeker`, `peer::Pusher` | Owns the outgoing connections, and keeps up the mix of peers, dialing the seeds while it knows no other; makes first contact, and reads peers' seek lists again; with the classes beside it in `peer/`, fetches and searches for what the node lacks (`Seeker`), fulfills peers' seek lists, pushes new content (`Pusher`), and hands content off |
+| Connections | `peer::Connections`, `peer::Seeker`, `peer::Pusher` | Owns the outgoing connections, and keeps up the mix of peers, dialing the seeds while it knows no other, and an address `/config` asks for at once; makes first contact, and reads peers' seek lists again; with the classes beside it in `peer/`, fetches and searches for what the node lacks (`Seeker`), fulfills peers' seek lists, pushes new content (`Pusher`), and hands content off |
 | Eviction | `eviction::Evictor` | Keeps storage within its limits, handing content off to peers before deleting it |
+| Config | `config::Service` | Runs a second `web::Server`, at `127.0.0.1` on `/config`'s port, with the `/config` page and the endpoints beneath `/config/api`, each behind a `config::Guard`, which serves only clients on this machine that give the `/config` credential, and no other site's pages; has the connections dial the address a request names, and hears what came of it (`config::DialOutcomes`) |
 
 The node also makes a `peer::Fetch`, before the web server, which asks it
 whether a search for content is held off, and which the seeker runs; and a
-`peer::HandOff`, through which the evictor hands content off.
+`peer::HandOff`, through which the evictor hands content off. It makes
+`config::Service` after `api::Service`, whose port its own is placed above,
+and after `peer::Connections`, which dials for it, so that it stops before
+them.
 
 ```mermaid
 flowchart LR
@@ -79,9 +87,12 @@ flowchart LR
     Node --> Stats["Stats<br/>stats::Recorder"]
     Node --> Conn["Connections<br/>peer::Connections"]
     Node --> Evict["Eviction<br/>eviction::Evictor"]
+    Node --> Config["Config<br/>config::Service"]
     Clients(["Clients and peers"]) -- "HTTP" --> Web
     Conn -- "HTTP" --> Peers(["Peers"])
     Stats --- DB[("SQLite database<br/>libranet.sqlite3")]
+    Local(["Clients on this machine"]) -- "HTTP, at 127.0.0.1" --> Config
+    Config --- Credential[("The /config credential<br/>config-credential")]
 ```
 
 The parts do not call each other. Each posts what happened as a message on a
@@ -96,6 +107,7 @@ flowchart LR
     Stats["Stats<br/>stats::Recorder"]
     Conn["Connections<br/>peer::Connections<br/>peer::Seeker<br/>peer::Pusher"]
     Evict["Eviction<br/>eviction::Evictor"]
+    Config["Config<br/>config::Service"]
     Web -- "data.requested<br/>data.not_found<br/>data.search_requested<br/>data.stored<br/>nodes.received" --> Stats
     Stats -- "nodes.updated<br/>seek.updated" --> Web
     Conn -- "data.stored<br/>nodes.received<br/>connection.opened<br/>connection.failed" --> Stats
@@ -106,12 +118,40 @@ flowchart LR
     Conn -- "data.search_answered" --> Web
     Web -- "data.stored" --> Evict
     Conn -- "data.stored" --> Evict
+    Config -- "address.dial_requested" --> Conn
+    Conn -- "address.dialed" --> Config
 ```
 
 Left out above: `data.stored` from Connections to its own `peer::Pusher`;
 `data.search_answered` from the web server's `api::SearchHandler` to its
 `api::Service`; `peers.connected`, which no part takes yet; and the timers'
 ticks, which each part posts to itself.
+
+`/config` is served on a port of its own, apart from the main port
+([HTTP API §2.3](../../docs/specs/HttpApi.md#23-local-configuration-interface)).
+`config::Service` listens at `127.0.0.1` alone: on `network.config_port`
+when the settings name one, `0` having the system pick it, and otherwise on
+the first port free of the main port plus 100, plus 200, and so on. The node
+refuses a `network.config_port` that is the main port, and, when none is
+named, a main port that leaves no port 100 above it. As it starts, it logs
+where `/config` is, as `/config is at http://127.0.0.1:8180/config/`. On the
+main port, a `GET` of a page of `/config` is a `302` to the same path on
+`/config`'s port, and anything else beneath `/config` is `404`, naming where
+it is. `/config` is served as the hosts `network.config_hosts` names, as
+shell-style patterns, by default `localhost`, `127.0.0.1`, and `::1`, and as
+the name the machine gives itself.
+
+The first request that `config::Guard` lets as far as the credential
+captures it, from its `Authorization: Basic` header (§6.3).
+`config::Credential` keeps the whole `user:password` as one Argon2id hash,
+19 MiB and 2 passes, in `config-credential` in the data directory, which
+only its owner may read. The file is read again for each request, so a lost
+or forgotten credential is recovered by removing the file: the next
+credential given is captured in its place
+([§2.3.2](../../docs/specs/HttpApi.md#232-credential-storage)). The data
+directory is `storage.data_dir`, by default `libranet/` in
+`~/Library/Application Support` on macOS, and in `$XDG_DATA_HOME`, or
+`~/.local/share` when that is not set, on Linux.
 
 ## 3. Where to Find Things
 
@@ -148,6 +188,12 @@ What makes a thing easy to find:
   of the parts and of `node/`, and many of the rest, has a `.cpp` file of
   its own, whose anonymous namespace holds the steps of its methods, so that
   its header holds little more than the class.
+- **One source file is made by the build.** `config/CMakeLists.txt` writes
+  the shared `/config` page,
+  [`applications/config/index.html`](../../applications/config/index.html),
+  into `PageHtml.cpp`, in the build directory, from `config/PageHtml.cpp.in`,
+  so that `config::Page` is built with it. Git keeps no copy of the page in
+  `cpp/`.
 - **An interface is named `I…`**, as `storage::IDataSource` and
   `net::ISocket`, and makes its implementations with static factories, as
   `crypto::ISignKey::Ed25519()` and `net::ISocket::connect()`. An
@@ -167,30 +213,36 @@ From those every other library uses, to the node itself:
 
 | Library | Holds | Main classes |
 | --- | --- | --- |
-| [`types/`](../src/types/) | Values every library uses | `Json`, `Integer` (of any size), `BlockingQueue<Type>`, `Converter` (text, bytes, and hex), and `Constants.hpp`: sizes, as `Megabyte`; the bits of bytes and hex digits; the HTTP API's paths, `X-Search-Relays`, and media types; and the limits on what is decompressed |
+| [`types/`](../src/types/) | Values every library uses | `Json`, `Integer` (of any size), `BlockingQueue<Type>`, `Converter` (text, bytes, and hex; trimming text, and checking it is UTF-8), and `Constants.hpp`: sizes, as `Megabyte`; the bits of bytes and hex digits; the HTTP API's paths, `X-Search-Relays`, and media types; and the limits on what is decompressed |
 | [`net/`](../src/net/) | Addresses and sockets, on POSIX systems | `Address`, `IpAddress`, `ISocket`, `SocketPosix` |
 | [`crypto/`](../src/crypto/) | Hashing, signing, encrypting, and password hashing, with OpenSSL, and on macOS with Apple's frameworks where they serve | `IHasher`, `ISignKey`, `IEncryptKey`, `IMultiKey`, `IPasswordHasher`, and their implementations; `Base64`, `Pem`, `RsaDer` |
 | [`logger/`](../src/logger/) | The log: lines at levels, from any thread, to stderr, stdout, a file, or the system log | `Logger` and its macros, `lInfo`, `lWarn`, and so on; `ILogOutput`, `ILogFormatter` |
 | [`db/`](../src/db/) | A connection to an SQLite database | `Database`, `Database::Transaction`, `Statement`, `SqliteError` |
 | [`msg/`](../src/msg/) | Messages, the channels that carry them, and timers | `IMessage`, `Message<Type>`, `Channel`, `AsyncChannel`, `AsyncChannelOf<Type>`, `Timer` |
-| [`io/`](../src/io/) | Reading input with limits, and writing files whole | `IReader`, `BufferedReader`, `MeteredReader`, `SocketReader`, `SafeWriteFile`, `Directories` |
-| [`http/`](../src/http/) | Reading and writing HTTP | `Request`, `Response`, `Headers`, `ResponseCode`, `Url`, `Query`, `Problem`, `StructuredField` |
+| [`io/`](../src/io/) | Reading files, and input with limits; writing files whole; and where the user's data and settings are kept | `IReader`, `BufferedReader`, `MeteredReader`, `SocketReader`, `FileReader`, `SafeWriteFile`, `Directories` |
+| [`http/`](../src/http/) | Reading and writing HTTP, and the credentials of Basic authentication | `Request`, `Response`, `Headers`, `ResponseCode`, `Url`, `Query`, `Problem`, `StructuredField`, `BasicCredentials` |
 | [`storage/`](../src/storage/) | Content: its ids, the store, and searches by prefix; and the messages about content | `Identifier`, `HashPrefix`, `IDataSource`, `DataDir`, `Manager`, `SearchAnswers`, `Zlib`; `DataStored`, `DataRequested`, `DataNotFound`, `DataDeleted`, `SearchAnswered` |
 | [`identity/`](../src/identity/) | The node's identity, and the signatures on what nodes send each other (RFC 9421) | `NodeIdentity`, `KnownKeys`, `MessageSigner`, `MessageVerifier`, `SignatureBase`, `ContentDigest` |
-| [`protocol/`](../src/protocol/) | The bodies nodes send each other | `NodeList`, `SeekList`, `SearchResults` |
-| [`web/`](../src/web/) | An HTTP/1.1 server, a thread for each connection | `Server`, `ConnectionInfo` |
-| [`api/`](../src/api/) | What the web server serves, beneath `/data` | `Service`, `SignatureGuard`, `DataHandler`, `NodesHandler`, `SeekHandler`, `SearchHandler` |
+| [`protocol/`](../src/protocol/) | The bodies nodes send each other, and the address `/config` is asked to dial | `NodeList`, `SeekList`, `SearchResults`, `DialRequest` |
+| [`web/`](../src/web/) | An HTTP/1.1 server, a thread for each connection; and the checks that keep other sites' pages out of what only this machine is served | `Server`, `ConnectionInfo`, `SiteChecks` |
+| [`api/`](../src/api/) | What the web server serves, beneath `/data`, and where it says `/config` is | `Service`, `SignatureGuard`, `DataHandler`, `NodesHandler`, `SeekHandler`, `SearchHandler` |
 | [`eviction/`](../src/eviction/) | Keeping storage within its limits | `Evictor`, `Scorer` |
 | [`stats/`](../src/stats/) | What the node remembers of the network, in SQLite | `Recorder`, `NodeAddresses`, `ContentUses`, `Sought` |
 | [`peer/`](../src/peer/) | The node's outgoing connections, and all it does over them | `Connections`, `DialPlan`, `Buckets`, `FirstContact`, `NodeListPublisher`, `SeekFulfiller`, `PeerSession`, `PeerConnection`, `Seeker`, `Fetch`, `PeerSearch`, `Pusher`, `HandOff` |
+| [`config/`](../src/config/) | `/config`, on a port of its own: whom it serves, its page, and what it answers | `Service`, `Guard`, `Credential`, `Page`, `NodeHandler`, `NotOffered`, `ConnectHandler`, `DialOutcomes` |
 | [`node/`](../src/node/) | The node, which makes the rest, and its settings file | `Node`, `SettingsFile` |
 
 ### 3.3 Where to Look
 
 | To change | Look in |
 | --- | --- |
-| How the node starts, the settings it reads, and what it makes | `node/Node.cpp`, and `main.cpp` for the command line |
+| How the node starts, the settings it reads, and what it makes | `node/Node.cpp`, and `main.cpp` for the command line and where the settings file is looked for |
 | What an endpoint beneath `/data` answers | The handler in `api/`: `DataHandler`, `NodesHandler`, `SeekHandler`, or `SearchHandler`; where each is registered, in `api/Service.cpp` |
+| What `/config` serves, and on which port | `config/Service.cpp`; on the main port, `api/Service.cpp` |
+| Whom `/config` serves | `config/Guard`, with `web/SiteChecks` for other sites' pages, `config/Credential` for the credential, and `http/BasicCredentials` for reading it |
+| What an endpoint beneath `/config/api` answers | `config/NodeHandler`; `config/ConnectHandler`, with `config/DialOutcomes`; and `config/NotOffered`, for what the node does not offer yet |
+| The `/config` page | [`applications/config/index.html`](../../applications/config/index.html), which `config/CMakeLists.txt` builds into `config/Page` |
+| Dialing an address `/config` asks for | `peer/Connections`, and `protocol/DialRequest` for how the address is read |
 | How requests are read and connections kept open | `web/Server.cpp` |
 | Which requests must be signed, and how many may come before a signer's key is held | `api/SignatureGuard` |
 | How a message is signed, or a signature checked | `identity/MessageSigner`, `identity/MessageVerifier`, `identity/SignatureBase`, and `identity/ContentDigest`; for answers from peers, `peer/PeerSession` |
@@ -222,7 +274,9 @@ flowchart TD
     libranet(["libranet<br/>main.cpp"])
     libranet --> node
     node --> api
-    node --> peer
+    node --> config
+    config --> peer
+    config --> web
     api --> identity
     api --> stats
     api --> web
@@ -250,7 +304,7 @@ flowchart TD
     crypto --> types
 
     classDef part stroke-width:3px
-    class node,api,stats,eviction,peer part
+    class node,api,stats,eviction,peer,config part
 ```
 
 There are no cycles: no library uses one that uses it. The libraries fall
@@ -265,8 +319,8 @@ in three layers, each using only those in its own layer or below:
   its ids, signatures, and the bodies of the protocol. Each knows the
   network's rules, but runs nothing of its own, but for `web::Server`'s
   threads.
-- **Parts**: `api`, `stats`, `eviction`, and `peer`, those of §2, each with
-  threads of its own; and `node`, which makes them.
+- **Parts**: `api`, `stats`, `eviction`, `peer`, and `config`, those of §2,
+  each with threads of its own; and `node`, which makes them.
 
 ### 4.2 Every Library Each Uses
 
@@ -284,17 +338,18 @@ as `db` does SQLite, `storage` zlib, and `node` yaml-cpp.
 | `logger` | — | Threads; syslog |
 | `db` | — | SQLite |
 | `msg` | `types` | Threads |
-| `io` | `net`, `types` | — |
+| `io` | `net`, `types` | POSIX files |
 | `http` | `crypto`, `io`, `types` | — |
 | `storage` | `crypto`, `io`, `logger`, `types` | zlib |
-| `web` | `http`, `io`, `logger`, `net`, `storage`, `types` | Threads |
+| `web` | `http`, `io`, `logger`, `net`, `storage`, `types` | Threads; POSIX `gethostname()` and `fnmatch()` |
 | `identity` | `crypto`, `http`, `io`, `logger`, `storage`, `types` | — |
 | `protocol` | `http`, `logger`, `net`, `storage`, `types` | — |
 | `eviction` | `logger`, `msg`, `storage`, `types` | Threads |
 | `stats` | `db`, `eviction`, `logger`, `msg`, `protocol`, `storage` | — |
 | `api` | `http`, `identity`, `logger`, `msg`, `net`, `protocol`, `stats`, `storage`, `types`, `web` | — |
 | `peer` | `http`, `identity`, `io`, `logger`, `msg`, `net`, `protocol`, `stats`, `storage`, `types` | Threads |
-| `node` | `api`, `eviction`, `http`, `identity`, `io`, `logger`, `net`, `peer`, `protocol`, `stats`, `storage`, `types` | yaml-cpp; POSIX signals |
+| `config` | `crypto`, `http`, `identity`, `io`, `logger`, `msg`, `net`, `peer`, `protocol`, `storage`, `types`, `web` | `applications/config/index.html`, built in |
+| `node` | `api`, `config`, `eviction`, `http`, `identity`, `io`, `logger`, `net`, `peer`, `protocol`, `stats`, `storage`, `types` | yaml-cpp; POSIX signals |
 | `libranet` | `node` | — |
 
 The tests are built on GoogleTest, and the fuzzers on libFuzzer. Conan
@@ -326,6 +381,15 @@ Most arrows are what they seem. These are less plain:
   takes. `peer::DialPlan` also takes `stats::NodeAddresses::Candidate`s.
 - **`stats` uses `eviction`** to answer `eviction::Evictor`'s
   `CandidatesRequested`, ranking what is held with `eviction::Scorer`.
+- **`config` uses `peer`** for the messages `peer::Connections` takes and
+  posts, which are declared in `peer/Connections.hpp`:
+  `config::ConnectHandler` posts `address.dial_requested`, and
+  `config::DialOutcomes` takes `address.dialed`. It also takes
+  `peer::PeerConnection::Limits`, to know how long a dial may take.
+- **`config` uses `web`** for a `web::Server` of its own, on `/config`'s
+  port, and for `web::SiteChecks`; and **`crypto`** for
+  `crypto::IPasswordHasher`, with which `config::Credential` hashes the
+  credential.
 - **`node` uses every part's library**, as it makes each part, and binds
   the functions below.
 
@@ -345,6 +409,9 @@ a library above it, or beside it, is given a function in its place, which
   connections.
 - `storage::SearchAnswers::Held` gives what the store holds that begins with
   a prefix: `api::Service` binds it to the store's `starting_with()`.
+
+Nor does `api` use `config`: once `config::Service` has taken its port, the
+node tells `api::Service` which it is, with `set_config_port()`.
 
 ## 5. Class Diagrams
 
@@ -366,11 +433,14 @@ most nested types and every message but a few.
 ### 5.1 The Node and the Web Server
 
 `node`, `api`, and `web`. `node::Node` owns each part, and what they share.
-`api::Service` owns a `web::Server`, and registers each handler with it
-behind its `api::SignatureGuard`, which checks the signature on each request
-before the handler sees it, and signs each answer as the node. The server
-calls the handler on the thread serving the connection, with the
-`web::ConnectionInfo` it made for it.
+`api::Service` owns a `web::Server`, and registers each handler beneath
+`/data` with it behind its `api::SignatureGuard`, which checks the signature
+on each request before the handler sees it, and signs each answer as the
+node. What is beneath `/config` it answers itself, outside the guard,
+signing that too. The server calls the handler on the thread serving the
+connection, with the `web::ConnectionInfo` it made for it, which knows the
+address the connection came from and the address of this machine it
+reached.
 
 ```mermaid
 classDiagram
@@ -391,6 +461,7 @@ classDiagram
         class Service {
             +local_address() Address
             +own_endpoints() strings
+            +set_config_port(port)
         }
         class SignatureGuard {
             +in_front_of(Handler) Handler
@@ -403,11 +474,13 @@ classDiagram
     namespace web {
         class Server {
             +register_handler(path, RequestHandler)
+            +set_on_every_answer(name, value)
             +start(backlog)
             +stop()
         }
         class ConnectionInfo {
             +remote_address() Address
+            +local_address() Address
             +node() optional~Identifier~
             +set_node(Identifier)
             +close_after_answer()
@@ -448,6 +521,9 @@ classDiagram
     namespace stats {
         class Recorder
     }
+    namespace config {
+        class ConfigService["Service"]
+    }
 
     Node ..> SettingsFile : reads
     Node o-- Manager : makes, shares
@@ -455,6 +531,8 @@ classDiagram
     Node *-- Fetch
     Node *-- Service
     Node *-- Connections
+    Node *-- ConfigService : after Service and Connections
+    Node ..> Service : tells the port /config took
     Node *-- Seeker
     Node *-- Pusher
     Node *-- HandOff
@@ -479,7 +557,125 @@ classDiagram
     Server ..> ConnectionInfo : one per connection
 ```
 
-### 5.2 Content
+### 5.2 `/config`
+
+`config`. `config::Service` owns a `web::Server` of its own, at `127.0.0.1`
+on `/config`'s port, and registers each handler with it behind a
+`config::Guard`, signing every answer as the node, the guard's refusals
+among them. The guard looks at the connection's addresses, then at the
+headers `web::SiteChecks` reads and at the `Referer`, and last at the
+credential, which `http::BasicCredentials` reads, and `config::Credential`
+captures or checks (§6.3). Every answer carries `Guard::policy` as its
+`Content-Security-Policy`, and no header granting a cross-origin request;
+the server adds the policy to the answers it makes itself, as to a request
+it cannot read (`web::Server::set_on_every_answer()`).
+`config::ConnectHandler` has `peer::Connections` dial the address a request
+names, by message, and waits in `config::DialOutcomes`, which hears what
+came of each dial on a channel of its own (§6.4).
+
+```mermaid
+classDiagram
+    direction TB
+    namespace config {
+        class Service {
+            +local_address() Address
+        }
+        class Guard {
+            +in_front_of(Handler) Handler
+        }
+        class Credential {
+            +file() path
+            +authenticate(credentials) bool
+        }
+        class Page
+        class NodeHandler
+        class NotOffered
+        class ConnectHandler
+        class DialOutcomes {
+            +await(Ask) optional~AddressDialed~
+            +stop()
+        }
+    }
+    namespace web {
+        class Server
+        class SiteChecks {
+            +host_refusal(Request, ConnectionInfo) optional~Refusal~
+            +page_refusal(Request) optional~Refusal~
+        }
+    }
+    namespace http {
+        class BasicCredentials {
+            +parse(text)$ optional~BasicCredentials~
+            +user_pass() string
+        }
+    }
+    namespace crypto {
+        class IPasswordHasher {
+            <<interface>>
+        }
+    }
+    namespace io {
+        class FileReader
+        class SafeWriteFile
+    }
+    namespace identity {
+        class MessageSigner
+    }
+    namespace protocol {
+        class DialRequest {
+            +parse(text)$ DialRequest
+            +endpoint() string
+        }
+    }
+    namespace msg {
+        class AsyncChannel
+    }
+    namespace peer {
+        class Connections
+        class DialRequested {
+            <<message>>
+        }
+        class AddressDialed {
+            <<message>>
+        }
+    }
+
+    Service *-- Server : at 127.0.0.1
+    Service *-- DialOutcomes
+    Service ..> Guard : in front of each handler
+    Service ..> MessageSigner : signs every answer with
+    Service ..> Page
+    Service ..> NodeHandler
+    Service ..> NotOffered : one for each feature
+    Service ..> ConnectHandler
+    Guard *-- Credential
+    Guard *-- SiteChecks
+    Guard ..> BasicCredentials : reads the credential with
+    Credential ..> IPasswordHasher : Argon2id
+    Credential ..> FileReader : reads with
+    Credential ..> SafeWriteFile : captures with
+    ConnectHandler --> DialOutcomes : waits in
+    ConnectHandler ..> DialRequest : reads the body as
+    ConnectHandler ..> DialRequested : posts
+    Connections ..> DialRequested : takes
+    Connections ..> AddressDialed : posts
+    DialOutcomes ..> AddressDialed : takes
+    DialOutcomes *-- AsyncChannel
+```
+
+What each path on `/config`'s port is answered with, once the guard lets it
+through:
+
+| Path | Answered by |
+| --- | --- |
+| `/config`, and each path beneath it outside `/config/api` | `config::Page`: the page, to a `GET`, and `405` to any other method |
+| `/config/api` | The endpoints `/config` serves, with the method and purpose of each, to a `GET` |
+| `/config/api/node` | `config::NodeHandler`: the node's id, where its main port listens, and the first endpoint its node list names it at |
+| `/config/api/connections` | `config::ConnectHandler`: a `POST` naming an address to connect to |
+| `/config/api/metadata`, `trust`, `connecting`, `karma`, `applications`, `users`, `builds`, `exports`, `backups`, and `restores` | `config::NotOffered`: `404`, saying what the node does not offer yet, which a later phase brings |
+| Any other path | `404` |
+
+### 5.3 Content
 
 `storage` and `protocol`. Every part reads and writes content through
 `storage::IDataSource`, which the node makes as a `storage::Manager` over a
@@ -589,7 +785,7 @@ classDiagram
     SearchResults ..> Zlib
 ```
 
-### 5.3 Identity and Signatures
+### 5.4 Identity and Signatures
 
 `identity`. A node's id is the `storage::Identifier` of its public key, so
 `identity::KnownKeys` reads another node's key from the store, by its id.
@@ -662,13 +858,13 @@ classDiagram
     SignatureBase ..> StructuredField
 ```
 
-### 5.4 Cryptography
+### 5.5 Cryptography
 
 `crypto`. Each interface makes its implementations with a factory, defined in
 its `.cpp` file, which picks the one built for the platform. On macOS,
 SHA-256, AES, and RSA are built on Apple's frameworks; elsewhere, on OpenSSL.
-Ed25519, which node ids are made from, and Argon2id are built on OpenSSL
-everywhere.
+Ed25519, which node ids are made from, and Argon2id, which the `/config`
+credential is hashed with, are built on OpenSSL everywhere.
 
 ```mermaid
 classDiagram
@@ -744,14 +940,14 @@ library uses but `Base64`:
 
 | Helper | For |
 | --- | --- |
-| `Base64` | Base64 text, to and from bytes; `http::StructuredField` uses it too |
+| `Base64` | Base64 text, to and from bytes; `http::StructuredField` and `http::BasicCredentials` use it too |
 | `Pem` | PEM's armor: a label, and Base64 lines |
 | `RsaDer` | RSA keys in DER, between PKCS #1 and the forms that hold it |
 | `RsaPemOpenSsl`, `RsaPemMacos` | RSA keys to and from PEM, on each platform |
 | `OpenSsl.hpp` | `OpenSslBytes`, `OpenSslFree`, `OpenSslDer`, and `OpenSslError`: OpenSSL's bytes, objects, DER, and errors |
 | `CFObject`, `CFBytes` | Core Foundation's objects, released when they go, and its data |
 
-### 5.5 Peers
+### 5.6 Peers
 
 `peer`. `peer::Connections` dials the nodes `peer::DialPlan` names, to fill
 the `peer::Buckets` of node ids left empty, and makes first contact with each
@@ -762,6 +958,9 @@ without waiting for each answer. `Connections` takes its messages on an
 `msg::AsyncChannel`, with a `msg::Timer` for its checks, at each of which it
 has the `peer::SeekFulfiller` it shares with `FirstContact` read again the
 seek lists that are due; `FirstContact` and `SeekFulfiller` share the store.
+An address `/config` asks for (`address.dial_requested`) it dials at once,
+on a thread of its own, outside the peer mix and whatever the address's
+rest, and posts what came of it (`address.dialed`, §6.4).
 
 ```mermaid
 classDiagram
@@ -881,7 +1080,7 @@ classDiagram
     Pusher o-- IDataSource
 ```
 
-### 5.6 Stats and the Database
+### 5.7 Stats and the Database
 
 `stats` and `db`. `stats::Recorder` is the only class that opens the
 database. It keeps a table for each of `stats::NodeAddresses`,
@@ -952,7 +1151,7 @@ classDiagram
     Database ..> SqliteError : throws
 ```
 
-### 5.7 Eviction
+### 5.8 Eviction
 
 `eviction`. `eviction::Evictor` asks `stats::Recorder`, by message, what to
 let go of first, and the recorder ranks what is held with
@@ -1005,7 +1204,7 @@ classDiagram
     Peers ..> HandOff : bound to
 ```
 
-### 5.8 Messages and Threads
+### 5.9 Messages and Threads
 
 `msg`. A `msg::Channel` listens on names; `Channel::post()` wraps a value
 in a `msg::Message` and puts it in the queue of every channel listening on
@@ -1055,12 +1254,18 @@ classDiagram
     Timer ..> Tick : posts
 ```
 
-### 5.9 Input, Output, and Sockets
+### 5.10 Input, Output, and Sockets
 
 `io` and `net`. A `net::ISocket` is made by `bind()`, `connect()`, or
 `accept()`. Readers are stacked: `web::Server` and `peer::PeerConnection` each
 read through a `MeteredReader` over a `BufferedReader` over a
 `SocketReader`, so that no input from outside takes more than its limit.
+Each file the node reads itself, the database aside, it reads through an
+`io::FileReader`: the settings and the seeds, the node's key, the `/config`
+credential, and the store's content. The key, the content, and the
+credential it writes whole, through an `io::SafeWriteFile`, which renames
+what it wrote into place, or links it into place where no file must be
+there already, as when the `/config` credential is captured.
 
 ```mermaid
 classDiagram
@@ -1086,6 +1291,7 @@ classDiagram
         }
         class IpAddress {
             +parse(text)$ optional~IpAddress~
+            +is_loopback() bool
         }
     }
     namespace io {
@@ -1100,14 +1306,20 @@ classDiagram
             +reset(max_bytes)
         }
         class SocketReader
+        class FileReader {
+            +read_all() string
+        }
         class LimitExceeded
         class SafeWriteFile {
             +writable_path() path
             +write(contents)
             +commit()
+            +write_if_absent(contents) bool
+            +commit_if_absent() bool
         }
         class Directories {
             +user_app_data()$ optional~path~
+            +user_config()$ optional~path~
         }
     }
 
@@ -1116,19 +1328,22 @@ classDiagram
     IReader <|.. BufferedReader
     IReader <|.. MeteredReader
     IReader <|.. SocketReader
+    IReader <|.. FileReader
     BufferedReader *-- IReader : reads ahead from
     MeteredReader *-- IReader : counts what it reads from
     MeteredReader ..> LimitExceeded : throws
     SocketReader --> ISocket : reads from
 ```
 
-### 5.10 HTTP
+### 5.11 HTTP
 
 `http`. A `Request` and a `Response` are read from, and written to, a
 stream; `Response::read()` reads one through an `io::MeteredReader`, within
 limits. An error is answered with a `Problem` (RFC 9457).
 `StructuredField` reads and writes the dictionaries signatures and digests
-are sent in (RFC 9651).
+are sent in (RFC 9651). `BasicCredentials` reads the username and password
+of an `Authorization: Basic` header (RFC 7617), and wipes the password as it
+goes.
 
 ```mermaid
 classDiagram
@@ -1162,6 +1377,12 @@ classDiagram
             +parse(text)$ StructuredField
             +to_string() string
         }
+        class BasicCredentials {
+            +parse(text)$ optional~BasicCredentials~
+            +username() string
+            +password() string
+            +user_pass() string
+        }
     }
     namespace io {
         class MeteredReader
@@ -1178,9 +1399,10 @@ classDiagram
     Problem ..> Response : answers
     Problem ..> ResponseCode
     StructuredField ..> Base64
+    BasicCredentials ..> Base64
 ```
 
-### 5.11 The Log
+### 5.12 The Log
 
 `logger`. Each line is a `logger::Logger`, made by a macro, as
 `lWarn << "Cannot reach " << address;`, which writes itself to every output
@@ -1316,6 +1538,79 @@ each endpoint for `peers.retry_delay_seconds` whatever came of it.
 
 [Handshake Protocol §3](../../docs/specs/HandshakeProtocol.md) gives the
 steps of first contact; `peer/FirstContact.cpp` takes each.
+
+### 6.3 A Request to `/config`
+
+What `config::Guard` asks of each request on `/config`'s port, in order,
+before its handler sees it
+([HTTP API §2.3.3](../../docs/specs/HttpApi.md#233-requests-from-other-sites)).
+It looks at nothing but the connection's addresses and the request's
+headers until the credential is checked, so a request refused or challenged
+has its body read by nothing.
+
+```mermaid
+flowchart TD
+    request["A request on /config's port"] --> local{"From a loopback address,<br/>or the address of this machine<br/>its connection reached?"}
+    local -- no --> elsewhere["403"]
+    local -- yes --> host{"Host, if sent, names one of<br/>network.config_hosts, this machine's name,<br/>or the address reached?"}
+    host -- no --> refused["403, logged as a warning<br/>naming the header"]
+    host -- yes --> opened{"A GET outside /config/api,<br/>opened in a window of its own<br/>from a page of the same site?"}
+    opened -- yes --> credential
+    opened -- no --> site{"Sec-Fetch-Site, if sent, is same-origin or none;<br/>if not sent, Origin, if sent,<br/>names the host and port Host names?"}
+    site -- no --> refused
+    site -- yes --> api{"Beneath /config/api?"}
+    api -- no --> credential
+    api -- yes --> referer{"Referer names a page of /config,<br/>outside /config/api, at the host<br/>and port Host names?"}
+    referer -- no --> refused
+    referer -- yes --> credential{"Authorization: Basic that<br/>config::Credential captures,<br/>when none is kept, or matches?"}
+    credential -- no --> challenge["401, credential-required,<br/>with WWW-Authenticate: Basic"]
+    credential -- yes --> handler["The handler (§5.2)"]
+```
+
+Whatever the guard or the handler answers carries `Guard::policy` and no
+header granting a cross-origin request, and `config::Service` signs it as
+the node.
+A request carrying none of `Host`, `Sec-Fetch-Site`, and `Origin` is from no
+browser, and passes those checks.
+
+### 6.4 Connecting to a Node From `/config`
+
+What happens when the page asks the node to connect to another, with
+`POST /config/api/connections`, once the guard has let it through:
+
+```mermaid
+sequenceDiagram
+    participant Page as The /config page
+    participant Handler as config::ConnectHandler
+    participant Outcomes as config::DialOutcomes
+    participant Channel as msg::Channel
+    participant Conn as peer::Connections
+    participant Peer as The node at the address
+
+    Page->>Handler: POST /config/api/connections {"address": "http://…"}
+    Note over Handler: 415 unless its Content-Type is application/json,<br/>400 unless protocol::DialRequest reads it
+    Handler->>Outcomes: await(ask)
+    Outcomes->>Channel: post address.dial_requested, naming a new dial_id
+    Channel->>Conn: address.dial_requested
+    alt a node is connected at the endpoint
+        Conn->>Channel: post address.dialed: already_connected
+    else
+        Note over Conn: on a thread of its own, outside the peer mix
+        Conn->>Peer: first contact (§6.2), expecting no node in particular
+        Conn->>Channel: post address.dialed: connected, already_connected, this_node, or unreached
+    end
+    Channel->>Outcomes: address.dialed
+    Outcomes-->>Handler: what came of the dial, or nothing in time
+    Handler-->>Page: 200 naming the node, 409, 502, or 504
+```
+
+A node reached joins the peers, as any node dialed does, and its address is
+recorded as reaching it (`connection.opened`), so that it may be dialed as a
+candidate after a restart. An address where no node was reached is not
+remembered. A request waits as long as one dial may take,
+`peers.connect_timeout_seconds` and two `peers.request_timeout_seconds`,
+and 5 seconds more. As the node stops, `config::Service` lets each request
+waiting go first, and each is answered `504`.
 
 ## 7. Patterns Used Throughout
 

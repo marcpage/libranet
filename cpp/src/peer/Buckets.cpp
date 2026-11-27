@@ -32,21 +32,18 @@ using types::Converter;
 
 namespace {
 
-// The most bits that tell one set's buckets apart, as the Python node
-// allows: 65,536 buckets.
-constexpr size_t max_prefix_bits = 16;
-
 // How many buckets bits tell apart.
 size_t bucket_count(size_t bits) {
     return size_t{1} << bits;
 }
 
 // Throws invalid_argument, naming setting, for bits that are not 1 to
-// max_prefix_bits.
+// ExpectedSizes::max_prefix_bits.
 void check_prefix_bits(size_t bits, const string& setting) {
-    if (bits < 1 || bits > max_prefix_bits) {
-        throw invalid_argument(setting + " is not 1 to " + to_string(max_prefix_bits)
-                               + ": " + to_string(bits));
+    if (bits < 1 || bits > Buckets::ExpectedSizes::max_prefix_bits) {
+        throw invalid_argument(setting + " is not 1 to "
+                               + to_string(Buckets::ExpectedSizes::max_prefix_bits) + ": "
+                               + to_string(bits));
     }
 }
 

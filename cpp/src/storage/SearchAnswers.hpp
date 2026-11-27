@@ -28,6 +28,8 @@ public:
 
     // So that what peers name cannot grow an answer without end.
     static constexpr std::size_t max_identifiers = 65'536;
+    // As the Python node's storage.search_min_bits.
+    static constexpr std::size_t default_min_bits = 24;
 
     // Throws std::invalid_argument for a ttl not more than zero, or a function
     // missing.

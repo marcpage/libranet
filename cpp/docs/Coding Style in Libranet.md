@@ -85,12 +85,15 @@ line it is for (§2.1).
 
 - **Libraries (§3.1).** `types`, `net`, `crypto`, `logger`, `db`, `msg`,
   `io`, `http`, `storage`, `identity`, `protocol`, `web`, `api`, `eviction`,
-  `stats`, `peer`, and `node`, each in the namespace of its name, with the
-  target `libranet_<name>` and the alias `libranet::<name>`, a test program
-  `<name>_tests`, and fuzzers named `<parser>_fuzzer`, made by
+  `stats`, `peer`, `config`, and `node`, each in the namespace of its name,
+  with the target `libranet_<name>` and the alias `libranet::<name>`, a test
+  program `<name>_tests`, and fuzzers named `<parser>_fuzzer`, made by
   `libranet_add_fuzzer()` in the top `CMakeLists.txt`. `types` and `http`
   are `INTERFACE` libraries. The program, `libranet`, is `main.cpp`, linked
-  to `libranet::node`.
+  to `libranet::node`. One source file is made by the build:
+  `config/CMakeLists.txt` writes `applications/config/index.html` into
+  `PageHtml.cpp`, in the build directory, from `config/PageHtml.cpp.in`, a
+  line to a string, so that no string is longer than a compiler takes.
 - **Implementations (§6.2).** In `crypto/`, `*Macos` is built on Apple's
   CommonCrypto and Security frameworks, and `*OpenSsl` on OpenSSL. The
   factories `IHasher::Sha256()`, `IEncryptKey::Aes()`, and
@@ -114,7 +117,14 @@ line it is for (§2.1).
   a `Database::Transaction` rolls back what it was not told to commit.
   `db::Statement` finalizes the SQLite statement it prepared.
   `io::SafeWriteFile` removes what was written to it unless it was
-  committed; `storage::DataDir` and `identity::NodeIdentity` write with it.
+  committed, and with `Access::Owner` makes it at once, so that only its
+  owner may ever read it; `storage::DataDir`, `identity::NodeIdentity`, and
+  `config::Credential` write with it, the last with `write_if_absent()`.
+  `io::FileReader` closes the file it opened as it goes, and every file the
+  node reads itself, SQLite's aside, is read with it.
+  `http::BasicCredentials` wipes its password as it goes.
+  `config::DialOutcomes` lets each request waiting on it go as it goes, and
+  waits for each to leave.
   `peer::PeerConnection`'s destructor closes its connection, failing the
   requests still waiting, and joins its two threads, ending the program if
   closing throws. `StopSignals`, in `node/Node.cpp`, holds back SIGINT and
@@ -128,6 +138,8 @@ line it is for (§2.1).
   `query_socket_address()`, in `net/SocketPosix.cpp`, casts a
   `sockaddr_storage` for the socket calls. `Statement::text()`, in
   `db/Statement.cpp`, reads the `unsigned char` text SQLite gives as `char`.
+  `io::FileReader::read_some()` is where a file's `char`s become
+  `std::byte`s.
 - **Errors (§9.1).** `OpenSslError`, a `std::runtime_error`, adds the last
   error OpenSSL queued for the thread, and clears the queue. In
   `net/SocketPosix.cpp`, `assert_socket()` throws a `std::system_error`
@@ -153,6 +165,9 @@ line it is for (§2.1).
   `Zlib::decompress()` stops just past the limit it is given, making room
   64 KiB at a time, and a `StructuredField` holds no more members, inner
   list items, or parameters than RFC 9651 asks a parser to take.
+  `config::Credential` reads no more than 1 KiB of its file, and
+  `config::Guard` reads nothing of a request past its headers until the
+  credential is checked.
 - **Comments (§8).** What a class's comment leaves out is in the
   [Overview](Overview.md), for what each part does and how the parts fit
   together, and in [Messages](Messages.md), for what each posts and takes.
@@ -162,16 +177,19 @@ line it is for (§2.1).
   Python node. The `crypto/` tests of an interface are instantiated as
   `Factory`, and on macOS as `OpenSsl` too. `crypto_tests` is discovered
   with `NO_PRETTY_VALUES`, so that the addresses of the functions the tests
-  take are not in the tests' names.
+  take are not in the tests' names. `config_tests` is built with
+  `LIBRANET_CONFIG_PAGE`, the path of `applications/config/index.html`, so
+  that its tests check the page built in against the file.
 
 ## 4. Where the Code Departs
 
-These are in the code as of 2026-11-25. Paths are relative to `src/`. The
+These are in the code as of 2026-11-27. Paths are relative to `src/`. The
 checks `.clang-tidy` lists as not yet met are not repeated here.
 
 | Where | Departure |
 | --- | --- |
 | `types/Integer.hpp` `word_t`, `double_word_t` | A type alias in snake_case (§4) |
+| The tests `ConfigNotOffered`, in `config/tests/TestNotOffered.cpp`, and `ConnectionsAddressDialed`, in `peer/tests/TestConnections.cpp` | A test suite not named for its class and `Test` (§4) |
 | `http/Headers.hpp` `parse_header_line()`, `read_body()`; `http/Url.hpp` `_extract_fragment()`, `_extract_query()`, `_extract_scheme()`, `_parse_authority()`; `crypto/Argon2idOpenSsl.hpp` `PhcString::_read_number()`; `net/ISocket.hpp` `read_line(line, delimiter)`; `web/Server.cpp` `read_line()`, `body_length()` | A result written to a parameter (§6.5) |
-| `node/Node.cpp` `Node::_settings_of()`, with 92 lines of code; `http/ResponseCode.hpp` `default_reason_phrase(Status)`, with 56; the test `NodeTest.RefusesSettingsItCannotUse`, with 59 | A function over 50 lines of code (§6.8) |
-| `http/Url.hpp` `append()` (36) and `to_string()` (32); `stats/Recorder.cpp` `Recorder::_handle()` (35); `crypto/RsaPemMacos.hpp` `_create_sec_key_from_data()` (35); `web/Server.cpp` `read_request()` (34); `types/Json.hpp` `Parser::_parse_number()` (34); `http/Response.hpp` `read()` (32); `node/Node.cpp` `seeds_in()` (32); `crypto/AesOpenSsl.hpp` `_process()` (31); tests: `IntegerTest.BitwiseNegativeOperands` (45), `UrlTest.PortValidationAndEffectivePorts` (40), `BlockingQueueTest.MultipleProducersConsumers` (39), `AsyncChannelTest.CallbackExceptionDoesNotStopProcessing` (33), `JsonTest.ConstructorsAndTypes` (32), and `BlockingQueueTest.ProducerConsumer` (31) | A function over 30 lines of code, the most it should generally have (§6.8) |
+| `node/Node.cpp` `Node::_settings_of()`, with 92 lines of code; `http/ResponseCode.hpp` `default_reason_phrase(Status)`, with 56; the test `NodeTest.RefusesSettingsItCannotUse`, with 64 | A function over 50 lines of code (§6.8) |
+| `http/Url.hpp` `append()` (36) and `to_string()` (32); `stats/Recorder.cpp` `Recorder::_handle()` (35); `crypto/RsaPemMacos.hpp` `_create_sec_key_from_data()` (35); `web/Server.cpp` `read_request()` (34); `types/Json.hpp` `Parser::_parse_number()` (34); `http/Response.hpp` `read()` (32); `node/Node.cpp` `seeds_in()` (32); `peer/Connections.cpp` `Connections::_admit()` (31); `crypto/AesOpenSsl.hpp` `_process()` (31); tests: `IntegerTest.BitwiseNegativeOperands` (45), `UrlTest.PortValidationAndEffectivePorts` (40), `BlockingQueueTest.MultipleProducersConsumers` (39), `AsyncChannelTest.CallbackExceptionDoesNotStopProcessing` (33), `ConfigServiceTest.SaysWhatTheNodeDoesNotOfferYet` (33), `ConfigNotOffered.HasEachFeatureThePageUsesThatALaterPhaseBrings` (33), `JsonTest.ConstructorsAndTypes` (32), `GuardTest.RefusesTheApiToWhatIsNoPageOfConfig` (32), and `BlockingQueueTest.ProducerConsumer` (31) | A function over 30 lines of code, the most it should generally have (§6.8) |

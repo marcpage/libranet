@@ -573,10 +573,10 @@ browser made.
 
 ### `/config` Credential
 
-The username and password a node captures from the first request to `/config`,
-and requires on every one after. It is local to the node, and is stored only in
-a form the password cannot be recovered from, preferably by a deliberately
-costly key derivation.
+The username and password a node captures from the first request to `/config`
+that carries them, and requires on every one after. It is local to the node,
+and is stored only in a form the password cannot be recovered from, preferably
+by a deliberately costly key derivation.
 
 - **Sources:** [HTTP API §2.3.1](HttpApi.md#231-credential-capture),
   [§2.3.2](HttpApi.md#232-credential-storage).
@@ -716,9 +716,10 @@ A validation block must also be covered for the runner-up stakes it would take.
 ### Credential Capture
 
 How a node with no `/config` credential gets one: it adopts the username and
-password of the first `/config` request's `Authorization: Basic` header,
-atomically, and checks every later request against it. A request refused for
-its source address, or as another site's, never triggers capture.
+password of the first `/config` request's `Authorization: Basic` header that
+it can read, atomically, and checks every later request against it. A request
+refused for its source address, or as another site's, never triggers capture,
+nor does one carrying no credentials it can read, which is challenged.
 
 - **Sources:** [HTTP API §2.3.1](HttpApi.md#231-credential-capture).
 - **See also:** [Basic Authentication](#basic-authentication),

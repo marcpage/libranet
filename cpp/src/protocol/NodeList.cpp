@@ -48,15 +48,13 @@ constexpr string_view localhost = "localhost";
 // address, which the endpoint names in brackets, or a name or IPv4 address,
 // of the characters RFC 3986 §2.3 leaves unreserved.
 bool is_host(string_view host) {
-    constexpr string_view unreserved = "-._~";
-
     if (host.find(':') != string_view::npos) {
         return IpAddress::parse(host).has_value();
     }
 
-    return !host.empty() && all_of(host.begin(), host.end(), [unreserved](char character) {
+    return !host.empty() && all_of(host.begin(), host.end(), [](char character) {
         return isalnum(static_cast<unsigned char>(character)) != 0
-               || unreserved.find(character) != string_view::npos;
+               || Url::unreserved.find(character) != string_view::npos;
     });
 }
 

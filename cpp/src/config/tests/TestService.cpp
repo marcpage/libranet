@@ -31,6 +31,7 @@
 #include "peer/PeerConnection.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/tests/Fixtures.hpp"
+#include "types/Constants.hpp"
 #include "types/Json.hpp"
 
 using config::NotOffered;
@@ -49,6 +50,7 @@ using std::string;
 using std::string_view;
 using std::vector;
 using storage::Identifier;
+using types::config_listen_host;
 using types::Json;
 using AddressDialed = peer::Connections::AddressDialed;
 using DialRequested = peer::Connections::DialRequested;
@@ -231,7 +233,7 @@ bool is_not_found_saying(const string& answer, string_view detail) {
 
 // A socket listening at the loopback address, on a port the system picks.
 ISocket::Ptr listening() {
-    auto socket = ISocket::bind({Service::listen_host, 0});
+    auto socket = ISocket::bind({config_listen_host, 0});
 
     socket->listen(1);
     return socket;
