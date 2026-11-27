@@ -931,7 +931,7 @@ TEST_F(ConnectionsTest, AddressAskedForThatIsNotHttpIsUnreached) {
     EXPECT_EQ(outcome->detail, "ftp://example is not an http endpoint");
 }
 
-TEST(ConnectionsAddressDialed, OutcomesAreNamedAsThePythonNodeNamesThem) {
+TEST(AddressDialedTest, OutcomesAreNamedAsThePythonNodeNamesThem) {
     AddressDialed dialed;
 
     EXPECT_EQ(dialed.outcome_name(), "unreached");
@@ -943,7 +943,7 @@ TEST(ConnectionsAddressDialed, OutcomesAreNamedAsThePythonNodeNamesThem) {
     EXPECT_EQ(dialed.outcome_name(), "this_node");
 }
 
-TEST(ConnectionsAddressDialed, TextNamesTheDialItsOutcomeAndWhy) {
+TEST(AddressDialedTest, TextNamesTheDialItsOutcomeAndWhy) {
     const AddressDialed dialed{"id", Outcome::Unreached, std::nullopt, "refused"};
 
     EXPECT_EQ(std::string(dialed), "dial id unreached: refused");

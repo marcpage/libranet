@@ -89,13 +89,13 @@ testing::AssertionResult is_not_found(const Response& response, string_view deta
 
 } // namespace
 
-TEST(ConfigNotOffered, SaysWhatTheNodeDoesNotOfferYet) {
+TEST(NotOfferedTest, SaysWhatTheNodeDoesNotOfferYet) {
     const auto response = answer_of(backups, "GET", "/config/api/backups");
 
     EXPECT_TRUE(is_not_found(response, "This node does not offer backups yet."));
 }
 
-TEST(ConfigNotOffered, SaysSoWhateverTheMethod) {
+TEST(NotOfferedTest, SaysSoWhateverTheMethod) {
     for (const auto* const method : {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}) {
         const auto response = answer_of(metadata, method, "/config/api/metadata");
 
@@ -103,13 +103,13 @@ TEST(ConfigNotOffered, SaysSoWhateverTheMethod) {
     }
 }
 
-TEST(ConfigNotOffered, SaysSoWhateverTheQuery) {
+TEST(NotOfferedTest, SaysSoWhateverTheQuery) {
     const auto response = answer_of(metadata, "GET", "/config/api/metadata?fields=name");
 
     EXPECT_TRUE(is_not_found(response, "This node does not offer metadata yet."));
 }
 
-TEST(ConfigNotOffered, SaysSoBeneathAFeatureWhosePathsBeneathAreIt) {
+TEST(NotOfferedTest, SaysSoBeneathAFeatureWhosePathsBeneathAreIt) {
     for (const auto* const uri : {
              "/config/api/backups/",
              "/config/api/backups/job",
@@ -121,7 +121,7 @@ TEST(ConfigNotOffered, SaysSoBeneathAFeatureWhosePathsBeneathAreIt) {
     }
 }
 
-TEST(ConfigNotOffered, HasNothingBeneathAFeatureWhosePathsBeneathAreNot) {
+TEST(NotOfferedTest, HasNothingBeneathAFeatureWhosePathsBeneathAreNot) {
     for (const auto* const uri : {"/config/api/metadata/", "/config/api/metadata/name"}) {
         const auto response = answer_of(metadata, "GET", uri);
 
@@ -129,7 +129,7 @@ TEST(ConfigNotOffered, HasNothingBeneathAFeatureWhosePathsBeneathAreNot) {
     }
 }
 
-TEST(ConfigNotOffered, HasNothingAtAnotherPath) {
+TEST(NotOfferedTest, HasNothingAtAnotherPath) {
     for (const auto* const uri : {"/config/api", "/config/api/backupsx", "/config/api/back"}) {
         const auto response = answer_of(backups, "GET", uri);
 
@@ -139,7 +139,7 @@ TEST(ConfigNotOffered, HasNothingAtAnotherPath) {
 
 // Each path the shared /config page asks for that a later phase brings, and
 // whether each path beneath it is the same feature.
-TEST(ConfigNotOffered, HasEachFeatureThePageUsesThatALaterPhaseBrings) {
+TEST(NotOfferedTest, HasEachFeatureThePageUsesThatALaterPhaseBrings) {
     struct Expected {
         string_view path;
         string_view detail;
