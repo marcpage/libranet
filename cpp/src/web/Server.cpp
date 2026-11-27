@@ -421,8 +421,8 @@ Server::Limits checked(const Server::Limits& limits) {
 // else the one at the longest path uri is under; file_not_found when none has
 // it.
 Server::RequestHandler handler_for(const Handlers& handlers, string_view uri) {
-    const string uri_str(uri);
-    const auto found_handler = handlers.find(uri_str);
+    const string uri_text(uri);
+    const auto found_handler = handlers.find(uri_text);
 
     if (found_handler != handlers.end()) {
         return found_handler->second;
@@ -432,7 +432,7 @@ Server::RequestHandler handler_for(const Handlers& handlers, string_view uri) {
     Server::RequestHandler best_handler = file_not_found;
 
     for (const auto& [prefix, handler] : handlers) {
-        if (is_under(uri_str, prefix) && prefix.size() > best_prefix.size()) {
+        if (is_under(uri_text, prefix) && prefix.size() > best_prefix.size()) {
             best_prefix = prefix;
             best_handler = handler;
         }

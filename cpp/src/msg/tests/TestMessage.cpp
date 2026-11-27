@@ -72,19 +72,19 @@ TEST(MessageTest, ToStringDispatch) {
 
 TEST(MessageTest, Polymorphism) {
     constexpr auto int_value = 42;
-    std::unique_ptr<IMessage> msg1 = std::make_unique<Message<int>>(int_value);
-    EXPECT_EQ(msg1->to_string(), "42");
+    std::unique_ptr<IMessage> int_message = std::make_unique<Message<int>>(int_value);
+    EXPECT_EQ(int_message->to_string(), "42");
 
-    std::unique_ptr<IMessage> msg2 = std::make_unique<Message<std::string>>("polymorphic");
-    EXPECT_EQ(msg2->to_string(), "polymorphic");
+    std::unique_ptr<IMessage> text_message = std::make_unique<Message<std::string>>("polymorphic");
+    EXPECT_EQ(text_message->to_string(), "polymorphic");
 
     constexpr auto long_value = -100L;
     // NOLINTNEXTLINE(google-runtime-int)
-    std::unique_ptr<IMessage> msg3 = std::make_unique<Message<long>>(long_value);
-    EXPECT_EQ(msg3->to_string(), "-100");
+    std::unique_ptr<IMessage> long_message = std::make_unique<Message<long>>(long_value);
+    EXPECT_EQ(long_message->to_string(), "-100");
 
     // Value access still requires the concrete type
-    const auto* concrete = dynamic_cast<const Message<int>*>(msg1.get());
+    const auto* concrete = dynamic_cast<const Message<int>*>(int_message.get());
     ASSERT_NE(concrete, nullptr);
     EXPECT_EQ(concrete->value(), int_value);
 }
@@ -107,7 +107,7 @@ TEST(MessageTest, EdgeCases) {
     EXPECT_EQ(big.to_string(), "9223372036854775807");
 
     // Negative zero-ish (for floating point)
-    const Message<double> neg_zero(-0.0);
+    const Message<double> negative_zero(-0.0);
     // std::to_string(-0.0) is typically "-0.000000"
-    EXPECT_NE(neg_zero.to_string().find('0'), std::string::npos);
+    EXPECT_NE(negative_zero.to_string().find('0'), std::string::npos);
 }
