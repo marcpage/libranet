@@ -13,6 +13,7 @@ add_library(libranet_config STATIC
     Credential.cpp
     DialOutcomes.cpp
     Guard.cpp
+    NotOffered.cpp
     Page.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/PageHtml.cpp
     Service.cpp
@@ -37,6 +38,7 @@ if(BUILD_TESTING)
         tests/TestCredential.cpp
         tests/TestDialOutcomes.cpp
         tests/TestGuard.cpp
+        tests/TestNotOffered.cpp
         tests/TestPage.cpp
         tests/TestService.cpp
     )
