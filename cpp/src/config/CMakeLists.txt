@@ -2,6 +2,7 @@ add_library(libranet_config STATIC
     Credential.cpp
     DialOutcomes.cpp
     Guard.cpp
+    NotOffered.cpp
     Service.cpp
 )
 add_library(libranet::config ALIAS libranet_config)
@@ -24,6 +25,7 @@ if(BUILD_TESTING)
         tests/TestCredential.cpp
         tests/TestDialOutcomes.cpp
         tests/TestGuard.cpp
+        tests/TestNotOffered.cpp
         tests/TestService.cpp
     )
     target_link_libraries(config_tests PRIVATE libranet::config GTest::gtest_main)
