@@ -21,11 +21,6 @@ namespace {
 
 using Status = http::ResponseCode::Status;
 
-// The path uri names, without its query.
-string_view path_of(string_view uri) {
-    return uri.substr(0, uri.find('?'));
-}
-
 // Whether path is beneath parent.
 bool is_beneath(string_view path, string_view parent) {
     return path.size() > parent.size() && path.substr(0, parent.size()) == parent
@@ -46,7 +41,7 @@ NotOffered::NotOffered(const Feature& feature) noexcept
 
 void NotOffered::operator()(const Request& request, Response& response,
                             [[maybe_unused]] const ConnectionInfo& connection) const {
-    if (!has(m_feature, path_of(request.uri()))) {
+    if (!has(m_feature, request.path())) {
         Problem::answer_not_found(response);
         return;
     }

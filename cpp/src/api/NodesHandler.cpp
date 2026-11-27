@@ -167,9 +167,7 @@ void NodesHandler::set_list(const NodeList& new_list) {
 
 void NodesHandler::operator()(const Request& request, Response& response,
                               const ConnectionInfo& connection) const {
-    const auto uri = request.uri();
-
-    if (uri.substr(0, uri.find('?')) != nodes_path) {
+    if (request.path() != nodes_path) {
         Problem::answer_not_found(response);
         return;
     }

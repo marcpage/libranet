@@ -16,6 +16,8 @@ class Request {
 public:
     [[nodiscard]] std::string_view method() const noexcept;
     [[nodiscard]] std::string_view uri() const noexcept;
+    // What uri() names, without its query, as sent: not percent-decoded.
+    [[nodiscard]] std::string_view path() const;
     [[nodiscard]] std::string_view version() const noexcept;
 
     [[nodiscard]] const Headers& headers() const noexcept;
@@ -49,6 +51,10 @@ inline std::string_view Request::method() const noexcept {
 
 inline std::string_view Request::uri() const noexcept {
     return m_uri;
+}
+
+inline std::string_view Request::path() const {
+    return uri().substr(0, m_uri.find('?'));
 }
 
 inline std::string_view Request::version() const noexcept {

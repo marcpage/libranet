@@ -131,14 +131,9 @@ void register_guarded(Server& server, api::SignatureGuard& guard, string_view pa
     server.register_handler(path, guard.in_front_of(handler));
 }
 
-// The path uri names, percent-decoded, without its query.
-string path_of(string_view uri) {
-    return Url::decode(uri.substr(0, uri.find('?')), Url::EncodeContext::UriComponent);
-}
-
-// Whether uri names /config/api, or what is beneath it.
-bool names_config_api(string_view uri) {
-    const auto path = path_of(uri);
+// Whether request names /config/api, or what is beneath it.
+bool names_config_api(const Request& request) {
+    const auto path = Url::decode(request.path(), Url::EncodeContext::UriComponent);
     const string api(config_api_path);
 
     return path == api || 0 == path.rfind(api + '/', 0);
@@ -190,7 +185,7 @@ void answer_moved_config(Address::Port config_port, const Request& request, Resp
 
     const auto location = config_location(request, config_port);
 
-    if ("GET" == request.method() && !names_config_api(request.uri())) {
+    if ("GET" == request.method() && !names_config_api(request)) {
         response.set_status_code(Status::Found);
         response.headers().set("Location", location);
         return;

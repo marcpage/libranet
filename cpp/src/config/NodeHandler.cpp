@@ -66,9 +66,7 @@ NodeHandler::NodeHandler(const Identifier& own_id, const Address& main_address,
 
 void NodeHandler::operator()(const Request& request, Response& response,
                              [[maybe_unused]] const ConnectionInfo& connection) const {
-    const auto uri = request.uri();
-
-    if (uri.substr(0, uri.find('?')) != path) {
+    if (request.path() != path) {
         Problem::answer_not_found(response);
         return;
     }

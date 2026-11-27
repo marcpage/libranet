@@ -89,11 +89,11 @@ constexpr std::array endpoint_names{
     "zip"sv,
 };
 
-// What uri names, when its path, less any query, is
-// /data/{algorithm}/{hash}, each part not empty, and the algorithm is not
-// another endpoint's name; nothing otherwise.
-optional<DataPath> data_path(string_view uri) {
-    const auto path = uri.substr(0, uri.find('?'));
+// What request names, when its path is /data/{algorithm}/{hash}, each part
+// not empty, and the algorithm is not another endpoint's name; nothing
+// otherwise.
+optional<DataPath> data_path(const Request& request) {
+    const auto path = request.path();
 
     if (path.substr(0, data_path_prefix.size()) != data_path_prefix) {
         return nullopt;
@@ -258,7 +258,7 @@ DataHandler::DataHandler(IDataSource::Ptr store, size_t content_bytes, Milliseco
 
 void DataHandler::operator()(const Request& request, Response& response,
                              const ConnectionInfo& connection) const {
-    auto path = data_path(request.uri());
+    auto path = data_path(request);
 
     if (!path) {
         Problem::answer_not_found(response);

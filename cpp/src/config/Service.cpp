@@ -167,9 +167,7 @@ string index_of_endpoints() {
 // Answers request, for /config/api or a path beneath it, with index, the
 // endpoints /config serves, for a GET of /config/api itself.
 void answer_index(const string& index, const Request& request, Response& response) {
-    const auto uri = request.uri();
-
-    if (uri.substr(0, uri.find('?')) != config_api_path) {
+    if (request.path() != config_api_path) {
         Problem::answer_not_found(response);
         return;
     }

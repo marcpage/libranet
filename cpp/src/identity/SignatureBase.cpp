@@ -119,12 +119,14 @@ string field_value(const Headers& headers, string_view name) {
 
 // RFC 9421 §2.2.6: the path of a target in origin form, as sent, without
 // its query.
-string path_of(string_view target) {
+string path_of(const Request& request) {
+    const auto target = request.uri();
+
     if (target.empty() || '/' != target.front()) {
         throw invalid_argument("A request's target has no path: " + string(target));
     }
 
-    return string(target.substr(0, target.find('?')));
+    return string(request.path());
 }
 
 // RFC 9421 §2.2.3: the host the request is for, in lower case. A port is
@@ -154,7 +156,7 @@ string value_of(const Request& request, string_view name) {
     }
 
     if (SignatureBase::path_component == name) {
-        return path_of(request.uri());
+        return path_of(request);
     }
 
     if (authority_component == name) {

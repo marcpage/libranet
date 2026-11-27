@@ -55,10 +55,10 @@ using SearchRequested = stats::Recorder::SearchRequested;
 // The methods /data/search/{prefix} takes, as Allow names them.
 constexpr string_view allowed_methods = "GET, POST";
 
-// The prefix uri names, not yet checked, when its path, less any query, is
+// The prefix request names, not yet checked, when its path is
 // /data/search/{prefix}, the prefix not empty; nothing otherwise.
-optional<string_view> search_path(string_view uri) {
-    const auto path = uri.substr(0, uri.find('?'));
+optional<string_view> search_path(const Request& request) {
+    const auto path = request.path();
 
     if (path.substr(0, search_path_prefix.size()) != search_path_prefix) {
         return nullopt;
@@ -188,7 +188,7 @@ SearchHandler::SearchHandler(shared_ptr<SearchAnswers> answers, size_t decompres
 
 void SearchHandler::operator()(const Request& request, Response& response,
                                const ConnectionInfo& connection) const {
-    const auto path = search_path(request.uri());
+    const auto path = search_path(request);
 
     if (!path) {
         Problem::answer_not_found(response);
