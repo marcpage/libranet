@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
-#include <iterator>
 #include <stdexcept>
 #include <string>
 
@@ -24,9 +23,9 @@ namespace {
 // endpoints, which need not be the order of one resolved.
 void check_reads_back(const NodeList& list) {
     const auto text = list.to_string();
-    const auto read = NodeList::parse(text).to_string();
+    const auto read = NodeList::from_body(text).to_string();
 
-    if (read.size() != text.size() || NodeList::from_body(list.body()).to_string() != read) {
+    if (read.size() != text.size() || NodeList::from_body(list.body().text).to_string() != read) {
         std::cerr << "NodeList did not read back what it wrote: " << text << '\n';
         std::abort();
     }
@@ -35,9 +34,8 @@ void check_reads_back(const NodeList& list) {
 } // namespace
 
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
-    NodeList::Data input(size);
-    std::transform(data, std::next(data, static_cast<std::ptrdiff_t>(size)), input.begin(),
-                   [](std::uint8_t byte) { return static_cast<std::byte>(byte); });
+    std::string input(size, '\0');
+    std::copy_n(data, size, input.begin());
     NodeList list;
 
     try {

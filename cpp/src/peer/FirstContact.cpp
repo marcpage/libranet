@@ -156,15 +156,15 @@ MessageVerifier::Signer signer_of(const Response& answer, string_view asked,
 
 // The body of answer, the list asked asks for, from address: nothing when
 // answer is not 200 OK, and so carries no list.
-optional<Converter::Bytes> list_body(const Response& answer, string_view asked,
-                                     const Address& address) {
+optional<string_view> list_body(const Response& answer, string_view asked,
+                                const Address& address) {
     if (answer.code() != Status::Ok) {
         lDebug << address.to_string() << "sent no list for" << asked << "but answered"
                << answer.status_code();
         return nullopt;
     }
 
-    return Converter::bytes_of(answer.body());
+    return answer.body();
 }
 
 // The seek list answer carries, from address, decompressed to no more than
@@ -436,8 +436,7 @@ FirstContact::Contact FirstContact::make(unique_ptr<PeerConnection> connection,
     // Steps 3 to 5. The peer's answer to the list posted tells nothing that
     // first contact needs.
     const auto answers = session.exchange({
-        request_of("POST", string(nodes_path), Converter::text_of(own_list.body()),
-                   json_content_type),
+        request_of("POST", string(nodes_path), own_list.body().text, json_content_type),
         request_of("GET", string(seek_path)),
         request_of("GET", string(nodes_path)),
     });

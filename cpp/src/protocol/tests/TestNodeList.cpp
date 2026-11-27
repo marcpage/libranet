@@ -45,28 +45,42 @@ constexpr std::string_view python_list_compressed =
     "078330074a1c6b8a24e6f51b08d88245642b9485e19fc9f37c01bf95399c";
 
 // The bytes of text, a byte for each char.
-NodeList::Data bytes_of(std::string_view text) {
-    NodeList::Data bytes(text.size());
+std::vector<std::byte> bytes_of(std::string_view text) {
+    std::vector<std::byte> bytes(text.size());
 
     std::transform(text.begin(), text.end(), bytes.begin(),
                    [](char character) { return static_cast<std::byte>(character); });
     return bytes;
 }
 
-// The bytes that lowercase hex names.
-NodeList::Data bytes_of_hex(std::string_view hex) {
+// The text of bytes, a char for each byte.
+std::string text_of(const std::vector<std::byte>& bytes) {
+    std::string text(bytes.size(), '\0');
+
+    std::transform(bytes.begin(), bytes.end(), text.begin(),
+                   [](std::byte byte) { return static_cast<char>(byte); });
+    return text;
+}
+
+// The text that lowercase hex names, a char for each byte.
+std::string text_of_hex(std::string_view hex) {
     constexpr std::string_view digits = "0123456789abcdef";
     constexpr auto nibble_bits = 4U;
-    NodeList::Data bytes;
+    std::string text;
 
     for (std::size_t index = 0; index + 1 < hex.size(); index += 2) {
         const auto high = digits.find(hex.at(index));
         const auto low = digits.find(hex.at(index + 1));
 
-        bytes.push_back(static_cast<std::byte>((high << nibble_bits) | low));
+        text.push_back(static_cast<char>((high << nibble_bits) | low));
     }
 
-    return bytes;
+    return text;
+}
+
+// text as one zlib stream.
+std::string compressed(std::string_view text) {
+    return text_of(Zlib::compress(bytes_of(text), Zlib::max_level));
 }
 
 // A node's id of its own for each number.
@@ -98,7 +112,7 @@ std::vector<std::string> resolved(const std::vector<std::string>& endpoints,
 
 // Whether NodeList::from_body() turns down body as no node list, reading no
 // more than decompressed_limit of it.
-bool refused(const NodeList::Data& body,
+bool refused(std::string_view body,
              std::size_t decompressed_limit = types::max_decompressed_list_size) {
     try {
         (void)NodeList::from_body(body, decompressed_limit);
@@ -107,10 +121,6 @@ bool refused(const NodeList::Data& body,
     }
 
     return false;
-}
-
-bool refused(std::string_view text) {
-    return refused(bytes_of(text));
 }
 
 // Whether a list takes endpoint as one.
@@ -149,7 +159,7 @@ std::string list_of(const std::vector<std::string>& entries) {
 
 // The endpoints a node list of entries names, as read.
 std::vector<std::string> endpoints_read(const std::vector<std::string>& entries) {
-    return endpoints_of(NodeList::parse(list_of(entries)));
+    return endpoints_of(NodeList::from_body(list_of(entries)));
 }
 
 // Keeps each line it is given, where a test can read them while the Logger
@@ -200,7 +210,7 @@ private:
 // MARK: Reading
 
 TEST(NodeListTest, ReadsEachEntry) {
-    const auto list = NodeList::parse(python_list);
+    const auto list = NodeList::from_body(python_list);
 
     ASSERT_EQ(list.entries().size(), 2U);
     EXPECT_EQ(list.entries().at(0).endpoint, "http://203.0.113.42:4300");
@@ -210,12 +220,12 @@ TEST(NodeListTest, ReadsEachEntry) {
 }
 
 TEST(NodeListTest, ReadsBodyAsItIsOrCompressed) {
-    const auto plain = NodeList::from_body(bytes_of(python_list));
-    const auto compressed = NodeList::from_body(bytes_of_hex(python_list_compressed));
+    const auto plain = NodeList::from_body(python_list);
+    const auto unpacked = NodeList::from_body(text_of_hex(python_list_compressed));
 
     EXPECT_EQ(endpoints_of(plain),
               (std::vector<std::string>{"http://203.0.113.42:4300", "http://localhost:8080"}));
-    EXPECT_EQ(compressed.to_string(), plain.to_string());
+    EXPECT_EQ(unpacked.to_string(), plain.to_string());
 }
 
 // A node id may be in upper case, and is kept in lower case (HttpApi §5.4).
@@ -223,7 +233,7 @@ TEST(NodeListTest, NodeIdIsKeptInLowerCase) {
     const std::string upper = "2CF24DBA5FB0A30E26E83B2AC5B9E29E1B161E5C1FA7425E73043362938B9824";
     const auto upper_id = json_string("sha256/" + upper);
 
-    const auto list = NodeList::parse(list_of({entry("http://localhost:8080", upper_id)}));
+    const auto list = NodeList::from_body(list_of({entry("http://localhost:8080", upper_id)}));
 
     ASSERT_EQ(list.entries().size(), 1U);
     EXPECT_EQ(list.entries().at(0).node_id.to_string(), hello_id);
@@ -231,7 +241,7 @@ TEST(NodeListTest, NodeIdIsKeptInLowerCase) {
 
 // What else the list holds, beside "nodes", is no matter.
 TEST(NodeListTest, OtherMembersAreIgnored) {
-    const auto list = NodeList::parse(R"({"version":1,"nodes":{}})");
+    const auto list = NodeList::from_body(R"({"version":1,"nodes":{}})");
 
     EXPECT_TRUE(list.entries().empty());
 }
@@ -249,20 +259,19 @@ TEST(NodeListTest, NotANodeListIsRefused) {
 }
 
 TEST(NodeListTest, CompressedBodyThatIsNotANodeListIsRefused) {
-    const auto compressed = bytes_of_hex(python_list_compressed);
-    const NodeList::Data truncated(compressed.begin(), std::prev(compressed.end()));
+    const auto stream = text_of_hex(python_list_compressed);
 
-    EXPECT_TRUE(refused(Zlib::compress(bytes_of("not JSON"), Zlib::max_level)));
-    EXPECT_TRUE(refused(Zlib::compress(bytes_of("[]"), Zlib::max_level)));
-    EXPECT_TRUE(refused(truncated));
+    EXPECT_TRUE(refused(compressed("not JSON")));
+    EXPECT_TRUE(refused(compressed("[]")));
+    EXPECT_TRUE(refused(std::string_view(stream).substr(0, stream.size() - 1)));
 }
 
 // The protocol sets no limit on a list once decompressed, so the node does.
 TEST(NodeListTest, CompressedBodyOverTheLimitIsRefused) {
-    const auto compressed = bytes_of_hex(python_list_compressed);
+    const auto stream = text_of_hex(python_list_compressed);
 
-    EXPECT_FALSE(refused(compressed, python_list.size()));
-    EXPECT_TRUE(refused(compressed, python_list.size() - 1));
+    EXPECT_FALSE(refused(stream, python_list.size()));
+    EXPECT_TRUE(refused(stream, python_list.size() - 1));
 }
 
 // An entry that cannot be used costs its sender only that entry.
@@ -394,9 +403,9 @@ TEST(NodeListTest, ReadsWhatItWrites) {
     list.add("https://[2001:db8::1]:443", node(1));
     list.add("HTTP://Example.COM", node(2));
 
-    const auto read = NodeList::parse(list.to_string());
+    const auto read = NodeList::from_body(list.to_string());
 
-    EXPECT_EQ(NodeList::parse(read.to_string()).to_string(), read.to_string());
+    EXPECT_EQ(NodeList::from_body(read.to_string()).to_string(), read.to_string());
     EXPECT_EQ(read.entries().size(), 3U);
 }
 
@@ -420,7 +429,10 @@ TEST(NodeListTest, OwnEndpointThatIsNotOneIsRefused) {
 TEST(NodeListTest, SmallListIsSentAsJson) {
     const NodeList list(node(0), {"http://localhost:8080"});
 
-    EXPECT_EQ(list.body(), bytes_of(list.to_string()));
+    const auto body = list.body();
+
+    EXPECT_EQ(body.text, list.to_string());
+    EXPECT_FALSE(body.compressed);
 }
 
 // A list is sent in less than 1 MiB, compressed when it would not fit
@@ -435,11 +447,12 @@ TEST(NodeListTest, ListOverOneMibIsSentCompressed) {
 
     const auto body = list.body();
 
-    ASSERT_FALSE(body.empty());
+    ASSERT_FALSE(body.text.empty());
+    EXPECT_TRUE(body.compressed);
     EXPECT_GE(list.to_string().size(), NodeList::max_size);
-    EXPECT_LT(body.size(), NodeList::max_size);
-    EXPECT_EQ(body.front(), std::byte{0x78}); // A zlib stream's first byte
-    EXPECT_EQ(NodeList::from_body(body).entries().size(), entry_count);
+    EXPECT_LT(body.text.size(), NodeList::max_size);
+    EXPECT_EQ(body.text.front(), '\x78'); // A zlib stream's first byte
+    EXPECT_EQ(NodeList::from_body(body.text).entries().size(), entry_count);
 }
 
 // What does not fit even compressed is left out from the end, where the
@@ -454,14 +467,14 @@ TEST(NodeListTest, WhatDoesNotFitIsLeftOutFromTheEnd) {
     }
 
     const auto body = list.body(limit);
-    auto sent = endpoints_of(NodeList::from_body(body));
+    auto sent = endpoints_of(NodeList::from_body(body.text));
     auto first = endpoints_of(list);
 
     first.resize(sent.size());
     std::sort(sent.begin(), sent.end());
     std::sort(first.begin(), first.end());
 
-    EXPECT_LT(body.size(), limit);
+    EXPECT_LT(body.text.size(), limit);
     EXPECT_GT(sent.size(), 2U);
     EXPECT_LT(sent.size(), entry_count);
     EXPECT_EQ(sent, first);
@@ -473,7 +486,7 @@ TEST(NodeListTest, LimitThatHoldsNoListIsRefused) {
     constexpr std::size_t empty_size = 12;
     const NodeList list(node(0), {"http://localhost:8080"});
 
-    EXPECT_EQ(list.body(empty_size + 1), bytes_of(R"({"nodes":{}})"));
+    EXPECT_EQ(list.body(empty_size + 1).text, R"({"nodes":{}})");
     EXPECT_THROW((void)list.body(empty_size), std::invalid_argument);
 }
 

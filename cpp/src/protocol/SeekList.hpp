@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "Body.hpp"
 #include "logger/Logger.hpp"
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
@@ -23,8 +24,6 @@ namespace protocol {
 // and hash prefixes, as "search".
 class SeekList {
 public:
-    using Data = std::vector<std::byte>;
-
     // As it is sent, compressed or not (HttpApi §10.7.1).
     static constexpr std::size_t max_size = 1 * types::Megabyte;
 
@@ -32,7 +31,7 @@ public:
     // An entry that is not valid is left out. Throws std::invalid_argument for
     // a body that is neither, or not a seek list.
     [[nodiscard]] static SeekList from_body(
-        const Data& body, std::size_t decompressed_limit = types::max_decompressed_list_size);
+        std::string_view body, std::size_t decompressed_limit = types::max_decompressed_list_size);
 
     SeekList(std::vector<storage::Identifier> data, std::vector<storage::HashPrefix> search);
 
@@ -42,7 +41,7 @@ public:
     // Fewer than limit bytes: compressed only when too large, and leaving out
     // from the end of each kind what does not fit even then. Throws
     // std::invalid_argument for a limit too small for an empty list.
-    [[nodiscard]] Data body(std::size_t limit = max_size) const;
+    [[nodiscard]] Body body(std::size_t limit = max_size) const;
 
     SeekList() = default;
 
@@ -56,7 +55,7 @@ private:
     std::vector<storage::Identifier> m_data;
     std::vector<storage::HashPrefix> m_search;
 
-    [[nodiscard]] static types::Json _decode(const Data& body, std::size_t decompressed_limit);
+    [[nodiscard]] static types::Json _decode(std::string_view body, std::size_t decompressed_limit);
     [[nodiscard]] static std::optional<types::Json> _parsed(std::string_view text);
     template<typename Entry, typename Parse>
     [[nodiscard]] static std::vector<Entry> _entries(const types::Json& list,
@@ -64,17 +63,17 @@ private:
     template<typename Entry, typename Parse>
     [[nodiscard]] static std::optional<Entry> _entry(const types::Json& value, Parse parse);
     [[nodiscard]] static storage::Identifier _identifier(std::string_view text);
-    [[nodiscard]] Data _longest_within(std::size_t too_many, std::size_t limit) const;
-    [[nodiscard]] Data _body(std::size_t count, std::size_t limit) const;
+    [[nodiscard]] Body _longest_within(std::size_t too_many, std::size_t limit) const;
+    [[nodiscard]] Body _body(std::size_t count, std::size_t limit) const;
     [[nodiscard]] types::Json _json(std::size_t count) const;
     template<typename Entry>
     [[nodiscard]] static types::Json::Array _texts(const std::vector<Entry>& entries,
                                                    std::size_t count);
-    [[nodiscard]] static Data _bytes(std::string_view text);
-    [[nodiscard]] static std::string _text(const Data& body);
+    [[nodiscard]] static storage::Zlib::Data _bytes(std::string_view text);
+    [[nodiscard]] static std::string _text(const storage::Zlib::Data& bytes);
 };
 
-inline SeekList SeekList::from_body(const Data& body, std::size_t decompressed_limit) {
+inline SeekList SeekList::from_body(std::string_view body, std::size_t decompressed_limit) {
     const auto list = _decode(body, decompressed_limit);
 
     if (!list.is_object()) {
@@ -101,11 +100,11 @@ inline const std::vector<storage::HashPrefix>& SeekList::search() const noexcept
     return m_search;
 }
 
-inline SeekList::Data SeekList::body(std::size_t limit) const {
+inline Body SeekList::body(std::size_t limit) const {
     const auto all = std::max(m_data.size(), m_search.size());
     auto whole = _body(all, limit);
 
-    if (whole.size() < limit) {
+    if (whole.text.size() < limit) {
         return whole;
     }
 
@@ -115,12 +114,12 @@ inline SeekList::Data SeekList::body(std::size_t limit) const {
 // The JSON body holds, as it is or zlib-compressed. Throws
 // std::invalid_argument for a body that is neither JSON nor one zlib stream
 // of JSON within decompressed_limit.
-inline types::Json SeekList::_decode(const Data& body, std::size_t decompressed_limit) {
-    if (auto json = _parsed(_text(body))) {
+inline types::Json SeekList::_decode(std::string_view body, std::size_t decompressed_limit) {
+    if (auto json = _parsed(body)) {
         return std::move(*json);
     }
 
-    const auto decompressed = storage::Zlib::decompress(body, decompressed_limit);
+    const auto decompressed = storage::Zlib::decompress(_bytes(body), decompressed_limit);
 
     if (!decompressed) {
         throw std::invalid_argument(
@@ -206,11 +205,11 @@ inline storage::Identifier SeekList::_identifier(std::string_view text) {
 // The body of as many of each kind as fit in fewer than limit bytes, fewer
 // than too_many, which do not fit. The range between as many as fit and as
 // many as do not is halved until they are one apart.
-inline SeekList::Data SeekList::_longest_within(std::size_t too_many, std::size_t limit) const {
+inline Body SeekList::_longest_within(std::size_t too_many, std::size_t limit) const {
     std::size_t fitting = 0;
     auto longest = _body(fitting, limit);
 
-    if (longest.size() >= limit) {
+    if (longest.text.size() >= limit) {
         throw std::invalid_argument("A seek list cannot be written in fewer than "
                                     + std::to_string(limit) + " bytes");
     }
@@ -219,7 +218,7 @@ inline SeekList::Data SeekList::_longest_within(std::size_t too_many, std::size_
         const auto count = fitting + ((too_many - fitting) / 2);
         auto candidate = _body(count, limit);
 
-        if (candidate.size() < limit) {
+        if (candidate.text.size() < limit) {
             fitting = count;
             longest = std::move(candidate);
         } else {
@@ -232,14 +231,14 @@ inline SeekList::Data SeekList::_longest_within(std::size_t too_many, std::size_
 
 // The first count of each kind, as compact JSON, or zlib-compressed where the
 // JSON is not fewer than limit bytes.
-inline SeekList::Data SeekList::_body(std::size_t count, std::size_t limit) const {
-    auto json = _bytes(_json(count).dump());
+inline Body SeekList::_body(std::size_t count, std::size_t limit) const {
+    auto json = _json(count).dump();
 
     if (json.size() < limit) {
-        return json;
+        return {std::move(json), false};
     }
 
-    return storage::Zlib::compress(json, compression_level);
+    return {_text(storage::Zlib::compress(_bytes(json), compression_level)), true};
 }
 
 // The first count of each kind, as HttpApi §10.7.1 lists them.
@@ -264,19 +263,19 @@ inline types::Json::Array SeekList::_texts(const std::vector<Entry>& entries,
 }
 
 // The bytes of text, a byte for each char.
-inline SeekList::Data SeekList::_bytes(std::string_view text) {
-    Data bytes(text.size());
+inline storage::Zlib::Data SeekList::_bytes(std::string_view text) {
+    storage::Zlib::Data bytes(text.size());
 
     std::transform(text.begin(), text.end(), bytes.begin(),
                    [](char character) { return static_cast<std::byte>(character); });
     return bytes;
 }
 
-// The text of body, a char for each byte.
-inline std::string SeekList::_text(const Data& body) {
-    std::string text(body.size(), '\0');
+// The text of bytes, a char for each byte.
+inline std::string SeekList::_text(const storage::Zlib::Data& bytes) {
+    std::string text(bytes.size(), '\0');
 
-    std::transform(body.begin(), body.end(), text.begin(),
+    std::transform(bytes.begin(), bytes.end(), text.begin(),
                    [](std::byte byte) { return static_cast<char>(byte); });
     return text;
 }
