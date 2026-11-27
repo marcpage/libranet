@@ -35,13 +35,15 @@ public:
     // logging the port it took; port 0 has the system pick one. main_address
     // is where the main port listens, and own_endpoints those its node list
     // names the node at, as api::Service gives them. The credential is kept
-    // in data_dir. identity must outlive this. Throws std::invalid_argument
+    // in data_dir. /config is served as hosts, as network.config_hosts gives
+    // them (Guard). identity must outlive this. Throws std::invalid_argument
     // when no port is named and the main port leaves none port_step above it,
-    // or when own_endpoints is empty, and std::system_error when it cannot
-    // listen on the port named, or on any it tries.
+    // when own_endpoints is empty, or for a host holding a NUL, and
+    // std::system_error when it cannot listen on the port named, or on any it
+    // tries.
     Service(const identity::NodeIdentity& identity, const std::filesystem::path& data_dir,
             const net::Address& main_address, const std::vector<std::string>& own_endpoints,
-            std::optional<net::Address::Port> port);
+            std::optional<net::Address::Port> port, std::vector<std::string> hosts);
     // Ends every connection, and waits for its threads.
     ~Service();
 

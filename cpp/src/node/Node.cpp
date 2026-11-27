@@ -64,6 +64,7 @@ using peer::Connections;
 using peer::Fetch;
 using protocol::NodeList;
 using protocol::SeekList;
+using std::any_of;
 using std::array;
 using std::domain_error;
 using std::exception;
@@ -100,6 +101,7 @@ constexpr auto data_dir_setting = "storage.data_dir";
 constexpr auto listen_address_setting = "network.listen_address";
 constexpr auto listen_port_setting = "network.listen_port";
 constexpr auto config_port_setting = "network.config_port";
+constexpr auto config_hosts_setting = "network.config_hosts";
 constexpr auto log_level_setting = "logging.level";
 constexpr auto retry_after_setting = "network.retry_after_seconds";
 constexpr auto min_outgoing_setting = "peers.min_outgoing_connections";
@@ -141,6 +143,7 @@ constexpr array used_settings{
     listen_address_setting,
     listen_port_setting,
     config_port_setting,
+    config_hosts_setting,
     log_level_setting,
     retry_after_setting,
     min_outgoing_setting,
@@ -193,6 +196,11 @@ constexpr auto default_listen_address = "::";
 constexpr auto default_listen_port = "8080";
 constexpr auto default_log_level = "INFO";
 
+// The hosts /config is served as when the settings name none, as the Python
+// node's: those a browser on this machine reaches it by. It is served as the
+// name this machine gives itself too, whatever they name (web::SiteChecks).
+constexpr array default_config_hosts{"localhost", "127.0.0.1", "::1"};
+
 // The files in the data directory that hold the node's key, and what the
 // recorder remembers.
 constexpr auto key_file_name = "node-key.pem";
@@ -234,6 +242,22 @@ string text(const SettingsFile& settings, const string& name, const string& fall
         return settings.value(name);
     } catch (const domain_error&) {
         throw invalid_argument(name + ": must be one value, not a list");
+    }
+}
+
+// The setting name, which the settings give, as they give it: one value, or
+// a list of them, as YAML writes one on a line.
+string as_given(const SettingsFile& settings, const string& name) {
+    try {
+        return settings.value(name);
+    } catch (const domain_error&) {
+        string listed;
+
+        for (const auto& value : settings.list(name)) {
+            listed += (listed.empty() ? "" : ", ") + value;
+        }
+
+        return "[" + listed + "]";
     }
 }
 
@@ -591,6 +615,33 @@ optional<Address::Port> config_port(const SettingsFile& settings, Address::Port 
     return port;
 }
 
+// The hosts /config is served as, as shell-style patterns: the list the
+// settings give, which may be empty, or the Python node's when they give
+// none.
+vector<string> config_hosts(const SettingsFile& settings) {
+    if (!settings.has(config_hosts_setting)) {
+        return {default_config_hosts.begin(), default_config_hosts.end()};
+    }
+
+    vector<string> hosts;
+
+    try {
+        hosts = settings.list(config_hosts_setting);
+    } catch (const domain_error&) {
+        throw invalid_argument(string(config_hosts_setting) + ": must be a list, not one value");
+    }
+
+    const auto holds_nul = [](const string& host) { return string::npos != host.find('\0'); };
+
+    // Turned down here, as config::Guard would only once the node's other
+    // parts are made.
+    if (any_of(hosts.begin(), hosts.end(), holds_nul)) {
+        throw invalid_argument(string(config_hosts_setting) + ": a host must not hold a NUL");
+    }
+
+    return hosts;
+}
+
 // The data directory's cas/, where content is stored, and incoming/, made if
 // they are not there, with each directory in incoming/ read too.
 Manager::Ptr lay_out(const path& directory) {
@@ -614,7 +665,7 @@ void log_given(const SettingsFile& settings) {
             lWarn << "Setting not used:" << name;
         } else if (find(always_logged.begin(), always_logged.end(), name)
                    == always_logged.end()) {
-            lInfo << name << "=" << settings.value(name);
+            lInfo << name << "=" << as_given(settings, name);
         }
     }
 }
@@ -687,6 +738,7 @@ Node::Node(const SettingsFile& settings, const vector<string>& seeds)
     , m_data_dir(data_dir(settings))
     , m_listen_address(listen_address(settings))
     , m_config_port(config_port(settings, m_listen_address.port()))
+    , m_config_hosts(config_hosts(settings))
     , m_settings(_settings_of(settings, seeds))
     , m_store(lay_out(m_data_dir))
     , m_identity(m_data_dir / key_file_name, *m_store)
@@ -697,7 +749,7 @@ Node::Node(const SettingsFile& settings, const vector<string>& seeds)
                     m_settings.connections)
     , m_config(m_identity, m_data_dir,
                Address(m_listen_address.host(), m_service.local_address().port()),
-               m_service.own_endpoints(), m_config_port)
+               m_service.own_endpoints(), m_config_port, m_config_hosts)
     , m_seeker(m_fetch, sessions_of(m_connections), m_settings.seeker)
     , m_pusher(m_store, sessions_of(m_connections),
                m_settings.connections.fulfiller.pipeline_depth)

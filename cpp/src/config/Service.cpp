@@ -229,10 +229,10 @@ namespace config {
 
 Service::Service(const NodeIdentity& identity, const std::filesystem::path& data_dir,
                  const Address& main_address, const vector<string>& own_endpoints,
-                 optional<Port> port)
+                 optional<Port> port, vector<string> hosts)
     : m_server(first_free(ports_to_try(main_address.port(), port)))
     , m_local_address(m_server.local_address()) {
-    const Guard guard{Credential(data_dir)};
+    const Guard guard{Credential(data_dir), std::move(hosts)};
     const MessageSigner signer(identity);
 
     m_server.register_handler(every_path,
