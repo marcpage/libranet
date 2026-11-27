@@ -11,6 +11,9 @@ constexpr auto Gigabyte = 1024UL * Megabyte;
 
 constexpr std::size_t bits_per_byte = 8;
 
+// The digits of a whole number, as it is written in text.
+constexpr std::string_view decimal_digits = "0123456789";
+
 // The digits of hex, in the lower case a node writes them in, and in either
 // case, as a node reads them. Each is four bits, which the mask keeps.
 constexpr std::string_view hex_digits = "0123456789abcdef";

@@ -132,7 +132,6 @@ private:
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz*",
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&'*+-.^_`|~:/",
     };
-    static constexpr std::string_view digits = "0123456789";
     // RFC 9651 §3.3.5: base64's alphabet, with its padding.
     static constexpr std::string_view base64_characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                                                           "abcdefghijklmnopqrstuvwxyz0123456789+/=";
@@ -658,7 +657,7 @@ inline StructuredField::Parameters StructuredField::Parser::_parse_parameters() 
 inline StructuredField::Value StructuredField::Parser::_parse_bare_item() {
     const auto character = _peek();
 
-    if ('-' == character || _is_one_of(digits, character)) {
+    if ('-' == character || _is_one_of(types::decimal_digits, character)) {
         return _parse_integer();
     }
 
@@ -685,7 +684,7 @@ inline StructuredField::Value StructuredField::Parser::_parse_bare_item() {
 // RFC 9651 §4.2.4, for an integer.
 inline std::int64_t StructuredField::Parser::_parse_integer() {
     const bool is_negative = _consume('-');
-    const auto number = _take_while(digits);
+    const auto number = _take_while(types::decimal_digits);
 
     if (number.empty() || number.size() > max_integer_digits) {
         throw std::invalid_argument("A structured field integer has 1 to 15 digits: "

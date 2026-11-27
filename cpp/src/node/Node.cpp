@@ -45,6 +45,7 @@
 #include "stats/Recorder.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Manager.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 #include "types/Json.hpp"
 
@@ -89,6 +90,7 @@ using std::filesystem::path;
 using storage::Identifier;
 using storage::Manager;
 using types::Converter;
+using types::decimal_digits;
 using types::Json;
 
 namespace {
@@ -271,7 +273,7 @@ uintmax_t whole_given(const SettingsFile& settings, const string& name, uintmax_
                                 + " to " + to_string(most) + ", not '" + value + "'");
     };
 
-    if (value.empty() || string::npos != value.find_first_not_of("0123456789")) {
+    if (value.empty() || string::npos != value.find_first_not_of(decimal_digits)) {
         throw refused();
     }
 
@@ -562,7 +564,7 @@ Address::Port listen_port(const SettingsFile& settings) {
     const auto port = text(settings, listen_port_setting, default_listen_port);
 
     if (port.empty() || port.size() > most_digits
-        || string::npos != port.find_first_not_of("0123456789")) {
+        || string::npos != port.find_first_not_of(decimal_digits)) {
         throw invalid_argument(string(listen_port_setting)
                                + ": must be a positive whole number, not '" + port + "'");
     }

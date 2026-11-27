@@ -5,13 +5,13 @@
 #include <optional>
 #include <random>
 #include <string>
-#include <string_view>
 
 #include "logger/Logger.hpp"
 #include "msg/IMessage.hpp"
 #include "msg/Message.hpp"
 #include "peer/Connections.hpp"
 #include "peer/PeerConnection.hpp"
+#include "types/Constants.hpp"
 
 using config::DialOutcomes;
 using msg::IMessage;
@@ -23,9 +23,9 @@ using std::random_device;
 using std::scoped_lock;
 using std::size_t;
 using std::string;
-using std::string_view;
 using std::uniform_int_distribution;
 using std::unique_lock;
+using types::hex_digits;
 using AddressDialed = DialOutcomes::AddressDialed;
 using Milliseconds = DialOutcomes::Milliseconds;
 
@@ -42,7 +42,6 @@ constexpr size_t dial_id_digits = 32;
 
 // A new dial's id, in hex.
 string new_dial_id() {
-    constexpr string_view hex_digits = "0123456789abcdef";
     random_device random;
     uniform_int_distribution<size_t> digit(0, hex_digits.size() - 1);
     string dial_id;
