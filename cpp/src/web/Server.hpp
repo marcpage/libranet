@@ -28,8 +28,8 @@ namespace web {
 // answers, its path and query, in X-Request-Path.
 class Server {
 public:
-    using RequestHandler = std::function<void(const http::Request& req, http::Response& res,
-                                              ConnectionInfo& connection)>;
+    using RequestHandler = std::function<void(
+        const http::Request& request, http::Response& response, ConnectionInfo& connection)>;
 
     // Four times the 32 connections a Python node keeps to its peers; longer
     // than a peer waits between reads of the seek list (30 seconds); as many
@@ -75,8 +75,8 @@ public:
     ~Server() = default;
 
     Server() = delete;
-    Server(Server&) = delete;
-    Server& operator=(Server&) = delete;
+    Server(const Server&) = delete;
+    Server& operator=(const Server&) = delete;
     Server(Server&&) = delete;
     Server& operator=(Server&&) = delete;
 
@@ -91,10 +91,10 @@ private:
     net::ISocket::Ptr m_listener;
     net::Address m_wake_address;       // Where stop() connects, to wake accept()
     std::atomic<bool> m_running{true}; // False once stop() is called
-    std::mutex m_lock;                 // Orders stop() with start()
+    std::mutex m_mutex;                // Orders stop() with start()
     std::condition_variable m_changed; // A connection closed, or stop() was called
-    bool m_listening{false};           // Guarded by m_lock
-    std::list<Client> m_connections;   // Guarded by m_lock
+    bool m_listening{false};           // Guarded by m_mutex
+    std::list<Client> m_connections;   // Guarded by m_mutex
     std::unordered_map<std::string, RequestHandler> m_handlers;
     std::vector<std::pair<std::string, std::string>> m_every_answer; // Header names and values
 
