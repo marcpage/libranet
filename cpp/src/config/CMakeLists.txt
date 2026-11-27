@@ -14,6 +14,7 @@ add_library(libranet_config STATIC
     DialOutcomes.cpp
     Guard.cpp
     NodeHandler.cpp
+    NotOffered.cpp
     Page.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/PageHtml.cpp
     Service.cpp
@@ -40,6 +41,7 @@ if(BUILD_TESTING)
         tests/TestDialOutcomes.cpp
         tests/TestGuard.cpp
         tests/TestNodeHandler.cpp
+        tests/TestNotOffered.cpp
         tests/TestPage.cpp
         tests/TestService.cpp
     )

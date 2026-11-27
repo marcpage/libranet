@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "config/NotOffered.hpp"
 #include "config/Service.hpp"
 #include "http/BasicCredentials.hpp"
 #include "identity/NodeIdentity.hpp"
@@ -26,6 +27,7 @@
 #include "storage/tests/Fixtures.hpp"
 #include "types/Json.hpp"
 
+using config::NotOffered;
 using config::Service;
 using http::BasicCredentials;
 using identity::NodeIdentity;
@@ -157,6 +159,18 @@ string body_of(const string& answer) {
 // Whether answer's status line is HTTP/1.1 and status.
 bool has_status(const string& answer, string_view status) {
     return 0 == answer.rfind("HTTP/1.1 " + string(status) + "\r\n", 0);
+}
+
+// Whether answer is 404, about:blank, with detail.
+bool is_not_found_saying(const string& answer, string_view detail) {
+    if (!has_status(answer, "404 Not Found")
+        || !has_header(answer, "Content-Type", "application/problem+json")) {
+        return false;
+    }
+
+    const auto problem = Json::parse(body_of(answer));
+
+    return problem.at("type").string() == "about:blank" && problem.at("detail").string() == detail;
 }
 
 // A socket listening at the loopback address, on a port the system picks.
@@ -455,6 +469,72 @@ TEST_F(ConfigServiceTest, ServesNothingElseBeneathItsEndpoints) {
     }
 }
 
+// Each section of the shared page that a later phase brings shows what the
+// node answers.
+TEST_F(ConfigServiceTest, SaysWhatTheNodeDoesNotOfferYet) {
+    struct Asked {
+        string_view method;
+        string_view target;
+        string_view detail;
+    };
+
+    for (const auto& asked : {
+             Asked{"GET", "/config/api/metadata", "This node does not offer metadata yet."},
+             Asked{
+                 "DELETE",
+                 "/config/api/trust/sha256/abc",
+                 "This node does not offer trust lists yet.",
+             },
+             Asked{
+                 "PUT",
+                 "/config/api/connecting",
+                 "This node does not offer connecting only to the nodes it trusts yet.",
+             },
+             Asked{"POST", "/config/api/karma/payments", "This node does not offer Karma yet."},
+             Asked{
+                 "PATCH",
+                 "/config/api/applications/notes",
+                 "This node does not offer applications yet.",
+             },
+             Asked{"POST", "/config/api/users", "This node does not offer users yet."},
+             Asked{"POST", "/config/api/builds", "This node does not offer builds yet."},
+             Asked{"POST", "/config/api/exports", "This node does not offer exports yet."},
+             Asked{"POST", "/config/api/backups/job/run", "This node does not offer backups yet."},
+             Asked{"GET", "/config/api/restores?x=1", "This node does not offer restores yet."},
+         }) {
+        const auto answer = answer_to(address(), request_of(asked.method, asked.target));
+
+        EXPECT_TRUE(is_not_found_saying(answer, asked.detail)) << asked.target << answer;
+        EXPECT_TRUE(is_signed_by_node(answer)) << asked.target << answer;
+    }
+}
+
+// Only the paths beneath those the page uses beneath them are what the node
+// does not offer yet.
+TEST_F(ConfigServiceTest, ServesNothingBeneathAPathNotOfferedThatThePageUsesAlone) {
+    for (const auto* const target : {"/config/api/metadata/x", "/config/api/usersx"}) {
+        const auto answer = answer_to(address(), get(target));
+
+        EXPECT_TRUE(is_not_found_saying(answer, "No resource exists at this path."))
+            << target << answer;
+    }
+}
+
+TEST_F(ConfigServiceTest, DoesNotListWhatTheNodeDoesNotOfferYet) {
+    const auto answer = answer_to(address(), get("/config/api"));
+    const auto endpoints = Json::parse(body_of(answer)).at("endpoints");
+
+    ASSERT_TRUE(has_status(answer, "200 OK")) << answer;
+
+    for (const auto& endpoint : endpoints.array()) {
+        const auto& path = endpoint.at("path").string();
+
+        for (const auto& feature : NotOffered::features) {
+            EXPECT_NE(path, feature.path) << answer;
+        }
+    }
+}
+
 TEST_F(ConfigServiceTest, ServesNothingOutsideConfig) {
     for (const auto* const target : {"/", "/data/nodes", "/data/seek", "/configuration"}) {
         const auto answer = answer_to(address(), get(target));
@@ -476,7 +556,8 @@ TEST_F(ConfigServiceTest, CapturesTheFirstCredentialGiven) {
 // Every path is behind the guard, those outside /config among them, and its
 // challenge is signed as every answer is.
 TEST_F(ConfigServiceTest, ChallengesARequestWithoutTheCredential) {
-    for (const auto* const target : {"/config/api", "/config/", "/data/nodes"}) {
+    for (const auto* const target :
+         {"/config/api", "/config/", "/config/api/backups", "/data/nodes"}) {
         const auto answer = answer_to(address(), request_with("GET", target, ""));
 
         EXPECT_TRUE(has_status(answer, "401 Unauthorized")) << target << answer;
