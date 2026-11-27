@@ -24,6 +24,7 @@
 
 #include "api/DataHandler.hpp"
 #include "api/Service.hpp"
+#include "config/Service.hpp"
 #include "eviction/Evictor.hpp"
 #include "http/Url.hpp"
 #include "identity/KnownKeys.hpp"
@@ -71,6 +72,7 @@ using std::generic_category;
 using std::invalid_argument;
 using std::make_shared;
 using std::numeric_limits;
+using std::optional;
 using std::out_of_range;
 using std::runtime_error;
 using std::size_t;
@@ -97,6 +99,7 @@ using Seed = Connections::Seed;
 constexpr auto data_dir_setting = "storage.data_dir";
 constexpr auto listen_address_setting = "network.listen_address";
 constexpr auto listen_port_setting = "network.listen_port";
+constexpr auto config_port_setting = "network.config_port";
 constexpr auto log_level_setting = "logging.level";
 constexpr auto retry_after_setting = "network.retry_after_seconds";
 constexpr auto min_outgoing_setting = "peers.min_outgoing_connections";
@@ -137,6 +140,7 @@ constexpr array used_settings{
     data_dir_setting,
     listen_address_setting,
     listen_port_setting,
+    config_port_setting,
     log_level_setting,
     retry_after_setting,
     min_outgoing_setting,
@@ -557,6 +561,36 @@ Address listen_address(const SettingsFile& settings) {
             listen_port(settings)};
 }
 
+// The port /config listens on, from 0, for a port the system picks, to
+// 65535, but never main_port itself; or none, for /config to take the first
+// port free above main_port, which must then leave one, as the Python node
+// asks.
+optional<Address::Port> config_port(const SettingsFile& settings, Address::Port main_port) {
+    constexpr auto step = config::Service::port_step;
+    const auto max_port = numeric_limits<Address::Port>::max();
+
+    if (!settings.has(config_port_setting)) {
+        if (main_port > max_port - step) {
+            throw invalid_argument(string(config_port_setting) + ": must be set, as "
+                                   + listen_port_setting + ", " + to_string(main_port)
+                                   + ", leaves no port " + to_string(step)
+                                   + " above it for /config");
+        }
+
+        return std::nullopt;
+    }
+
+    const auto port =
+        static_cast<Address::Port>(whole_given(settings, config_port_setting, 0, max_port));
+
+    if (0 != port && main_port == port) {
+        throw invalid_argument(string(config_port_setting) + ": must not be "
+                               + listen_port_setting + ", " + to_string(port));
+    }
+
+    return port;
+}
+
 // The data directory's cas/, where content is stored, and incoming/, made if
 // they are not there, with each directory in incoming/ read too.
 Manager::Ptr lay_out(const path& directory) {
@@ -652,6 +686,7 @@ Node::Node(const SettingsFile& settings, const vector<string>& seeds)
     : m_log_level(applied_log_level(settings))
     , m_data_dir(data_dir(settings))
     , m_listen_address(listen_address(settings))
+    , m_config_port(config_port(settings, m_listen_address.port()))
     , m_settings(_settings_of(settings, seeds))
     , m_store(lay_out(m_data_dir))
     , m_identity(m_data_dir / key_file_name, *m_store)
@@ -660,6 +695,7 @@ Node::Node(const SettingsFile& settings, const vector<string>& seeds)
     , m_connections(m_identity, m_service.own_endpoints(), m_store,
                     MessageVerifier(make_shared<KnownKeys>(m_store), m_settings.service.window),
                     m_settings.connections)
+    , m_config(m_identity, m_data_dir, m_service.local_address().port(), m_config_port)
     , m_seeker(m_fetch, sessions_of(m_connections), m_settings.seeker)
     , m_pusher(m_store, sessions_of(m_connections),
                m_settings.connections.fulfiller.pipeline_depth)
@@ -674,6 +710,7 @@ Node::Node(const SettingsFile& settings, const vector<string>& seeds)
                 Evictor::free_space_in(m_data_dir), m_settings.evictor)
     , m_recorder(m_data_dir / database_file_name, m_identity.id(), m_service.own_endpoints(),
                  m_settings.recorder) {
+    m_service.set_config_port(m_config.local_address().port());
     lInfo << data_dir_setting << "=" << m_data_dir.string();
     lInfo << listen_address_setting << "=" << m_listen_address.host();
     lInfo << listen_port_setting << "=" << m_listen_address.port();
