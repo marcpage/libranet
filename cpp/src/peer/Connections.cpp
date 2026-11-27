@@ -170,7 +170,7 @@ Connections::Connections(const NodeIdentity& identity, const vector<string>& own
     : m_check_interval(checked_interval(settings.check_interval))
     , m_own_id(identity.id())
     , m_fulfiller(make_shared<SeekFulfiller>(store, settings.fulfiller))
-    , m_first_contact(identity, store, std::move(verifier), m_fulfiller)
+    , m_first_contact(identity, store, std::move(verifier), m_fulfiller, settings.content_bytes)
     , m_publisher(m_own_id, own_endpoints)
     , m_limits(settings.limits)
     , m_seeds(std::move(settings.seeds))

@@ -391,6 +391,7 @@ TEST_F(NodeTest, LogsItsSettings) {
 
     values["storage.max_storage_bytes"] = "5000000";
     values["storage.max_decompressed_list_bytes"] = "8388608";
+    values["storage.max_decompressed_bundle_bytes"] = "33554432";
     values["karma.mining"] = "false";
     values["network.config_hosts"] = "[localhost, '*.example']";
 
@@ -405,6 +406,7 @@ TEST_F(NodeTest, LogsItsSettings) {
     EXPECT_TRUE(logged("logging.level = INFO"));
     EXPECT_TRUE(logged("storage.max_storage_bytes = 5000000"));
     EXPECT_TRUE(logged("storage.max_decompressed_list_bytes = 8388608"));
+    EXPECT_TRUE(logged("storage.max_decompressed_bundle_bytes = 33554432"));
     EXPECT_TRUE(logged("Seeds: 0"));
     EXPECT_TRUE(logged("Listening on " + node->local_address().to_string()));
     EXPECT_TRUE(logged("Setting not used: karma.mining"));
@@ -781,6 +783,7 @@ TEST_F(NodeTest, RefusesSettingsItCannotUse) {
         {"storage.search_cache_ttl_seconds", "0"},
         {"storage.search_min_bits", "257"},
         {"storage.max_decompressed_list_bytes", "0"},
+        {"storage.max_decompressed_bundle_bytes", "0"},
         {"storage.max_object_bytes", "0"},
         {"storage.max_object_bytes", "1048577"},
         {"identity.provisional_trust_attempts", "1"},
