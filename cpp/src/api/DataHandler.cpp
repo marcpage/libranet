@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <optional>
 #include <stdexcept>
@@ -50,7 +51,7 @@ using namespace std::string_view_literals;
 namespace {
 
 using IsHeldOff = api::DataHandler::IsHeldOff;
-using Seconds = api::DataHandler::Seconds;
+using Milliseconds = api::DataHandler::Milliseconds;
 using Status = ResponseCode::Status;
 
 // The algorithm and hash a path names, not yet checked.
@@ -133,8 +134,8 @@ optional<Identifier> identifier_of(DataPath path, const Request& request, Respon
 }
 
 // retry_after, once checked, as the Python node checks it.
-Seconds checked(Seconds retry_after) {
-    if (retry_after < Seconds::zero()) {
+Milliseconds checked(Milliseconds retry_after) {
+    if (retry_after < Milliseconds::zero()) {
         throw invalid_argument("network.retry_after_seconds is less than zero");
     }
 
@@ -156,12 +157,13 @@ size_t checked_body_bytes(size_t body_bytes) {
 // the client to ask again after retry_after (HttpApi §5.2), and that the
 // answer is not to be kept, as a retry is meant to find the content
 // (HttpApi §20). The problem's retry_after repeats Retry-After (HttpApi
-// §17.2).
-void answer_unavailable(Seconds retry_after, Response& response) {
+// §17.2). Each carries whole seconds, so retry_after is rounded up to the
+// second.
+void answer_unavailable(Milliseconds retry_after, Response& response) {
     const Problem problem(Problem::Type::ContentUnavailable, Status::ServiceUnavailable,
                           "The content is not stored here yet; it is being looked for.");
     auto body = problem.to_json();
-    const auto seconds = retry_after.count();
+    const auto seconds = std::chrono::ceil<std::chrono::seconds>(retry_after).count();
 
     body["retry_after"] = seconds;
     problem.answer(response);
@@ -191,8 +193,8 @@ void answer_not_content(const Identifier& identifier, size_t limit, Response& re
 // The body stored, as it was put; or 503, telling the node's other parts
 // that the content was needed, so that they look for it; or 404, while a
 // search for it is held off. Either way, tells them it was asked for.
-void answer_get(const IDataSource& store, const IsHeldOff& is_held_off, Seconds retry_after,
-                const Identifier& identifier, Response& response) {
+void answer_get(const IDataSource& store, const IsHeldOff& is_held_off,
+                Milliseconds retry_after, const Identifier& identifier, Response& response) {
     const auto body = store.get(identifier);
 
     Channel::post(DataRequested::name, DataRequested{identifier});
@@ -246,7 +248,7 @@ void answer_put(const IDataSource& store, size_t content_bytes, size_t body_byte
 
 namespace api {
 
-DataHandler::DataHandler(IDataSource::Ptr store, size_t content_bytes, Seconds retry_after,
+DataHandler::DataHandler(IDataSource::Ptr store, size_t content_bytes, Milliseconds retry_after,
                          IsHeldOff is_held_off, size_t body_bytes)
     : m_store(std::move(store))
     , m_content_bytes(content_bytes)
