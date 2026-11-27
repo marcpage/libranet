@@ -230,11 +230,12 @@ void serve(Server& server) {
 namespace config {
 
 Service::Service(const NodeIdentity& identity, const std::filesystem::path& data_dir,
-                 Port main_port, optional<Port> port, const PeerConnection::Limits& limits)
+                 Port main_port, optional<Port> port, vector<string> hosts,
+                 const PeerConnection::Limits& limits)
     : m_dial_outcomes(limits)
     , m_server(first_free(ports_to_try(main_port, port)))
     , m_local_address(m_server.local_address()) {
-    const Guard guard{Credential(data_dir)};
+    const Guard guard{Credential(data_dir), std::move(hosts)};
     const MessageSigner signer(identity);
 
     m_server.register_handler(every_path,

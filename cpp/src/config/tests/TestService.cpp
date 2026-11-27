@@ -47,6 +47,7 @@ using peer::PeerConnection;
 using std::optional;
 using std::string;
 using std::string_view;
+using std::vector;
 using storage::Identifier;
 using types::Json;
 using AddressDialed = peer::Connections::AddressDialed;
@@ -90,6 +91,22 @@ PeerConnection::Limits python_limits() {
 // What has a browser ask for a username and password (RFC 7617 §2, §2.1).
 constexpr string_view challenge = R"(Basic realm="Libranet /config", charset="UTF-8")";
 
+// The hosts /config is served as by default, as network.config_hosts names
+// them.
+vector<string> default_hosts() {
+    return {"localhost", "127.0.0.1", "::1"};
+}
+
+// The headers of a request from a page of /config, each ending in CRLF. The
+// port Host names is not compared with the one the service listens on.
+constexpr string_view from_config_page =
+    "Host: 127.0.0.1:8180\r\nReferer: http://127.0.0.1:8180/config/\r\n";
+
+// The reference node's Content-Security-Policy (HTTP API §2.3.3).
+constexpr string_view policy =
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+    "base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+
 // The Authorization header giving user_pass, ending in CRLF.
 string authorization(string_view user_pass) {
     return string(BasicCredentials::field_name) + ": "
@@ -103,22 +120,30 @@ string request_with(string_view method, string_view target, string_view headers)
            + "Connection: close\r\nContent-Length: 0\r\n\r\n";
 }
 
-// A request for target, by method, giving the credential admin.
-string request_of(string_view method, string_view target) {
-    return request_with(method, target, authorization(admin));
+// A request for target, by method, from a page of /config, giving the
+// credential user_pass.
+string request_of(string_view method, string_view target, string_view user_pass = admin) {
+    return request_with(method, target, string(from_config_page) + authorization(user_pass));
 }
 
 string get(string_view target) {
     return request_of("GET", target);
 }
 
-// A POST asking for address to be dialed, giving the credential admin.
-string post_address(string_view address) {
+// A POST asking for address to be dialed, carrying headers, each ending in
+// CRLF.
+string post_address_with(string_view address, string_view headers) {
     const auto body = R"({"address": ")" + string(address) + R"("})";
 
-    return "POST /config/api/connections HTTP/1.1\r\n" + authorization(admin)
+    return "POST /config/api/connections HTTP/1.1\r\n" + string(headers)
            + "Content-Type: application/json\r\nConnection: close\r\nContent-Length: "
            + std::to_string(body.size()) + "\r\n\r\n" + body;
+}
+
+// A POST asking for address to be dialed, from a page of /config, giving the
+// credential admin.
+string post_address(string_view address) {
+    return post_address_with(address, string(from_config_page) + authorization(admin));
 }
 
 // Whether answer carries the header name, with value.
@@ -249,8 +274,8 @@ protected:
         Logger::remove_all_outputs();
         Logger::add_output(std::make_unique<LockedOutput>(m_kept));
         Logger::reset_levels(Logger::Level::Info);
-        m_service =
-            std::make_unique<Service>(m_identity, data_dir(), main_port, any_port, python_limits());
+        m_service = std::make_unique<Service>(m_identity, data_dir(), main_port, any_port,
+                                              default_hosts(), python_limits());
     }
 
     void TearDown() override {
@@ -329,7 +354,8 @@ TEST_F(ConfigServiceTest, LogsWhereConfigIs) {
 
 TEST_F(ConfigServiceTest, ListensOnThePortNamed) {
     const auto port = free_port();
-    const Service named(identity(), data_dir(), main_port, port, python_limits());
+    const Service named(identity(), data_dir(), main_port, port, default_hosts(),
+                        python_limits());
 
     EXPECT_EQ(named.local_address().port(), port);
 }
@@ -338,7 +364,8 @@ TEST_F(ConfigServiceTest, ListensOnThePortNamed) {
 // it.
 TEST_F(ConfigServiceTest, TakesTheFirstPortAboveTheMainPortWhenNoneIsNamed) {
     const auto port = free_port();
-    const Service above(identity(), data_dir(), below(port), std::nullopt, python_limits());
+    const Service above(identity(), data_dir(), below(port), std::nullopt, default_hosts(),
+                        python_limits());
 
     EXPECT_EQ(above.local_address().port(), port);
 }
@@ -349,7 +376,8 @@ TEST_F(ConfigServiceTest, PassesOverAPortTaken) {
     const auto taken = listening_below_another();
     const auto taken_port = taken->local_address().port();
     const auto main = below(taken_port);
-    const Service above(identity(), data_dir(), main, std::nullopt, python_limits());
+    const Service above(identity(), data_dir(), main, std::nullopt, default_hosts(),
+                        python_limits());
     const auto port = above.local_address().port();
 
     EXPECT_GT(port, taken_port);
@@ -365,7 +393,8 @@ TEST_F(ConfigServiceTest, RefusesAPortNamedThatIsTaken) {
     const auto taken = listening();
 
     EXPECT_THROW(const Service refused(identity(), data_dir(), main_port,
-                                       taken->local_address().port(), python_limits()),
+                                       taken->local_address().port(), default_hosts(),
+                                       python_limits()),
                  std::system_error);
 }
 
@@ -373,7 +402,7 @@ TEST_F(ConfigServiceTest, RefusesAMainPortLeavingNoPortAboveIt) {
     constexpr Port above_the_highest_main = highest_port - Service::port_step + 1;
 
     EXPECT_THROW(const Service refused(identity(), data_dir(), above_the_highest_main,
-                                       std::nullopt, python_limits()),
+                                       std::nullopt, default_hosts(), python_limits()),
                  std::invalid_argument);
 }
 
@@ -471,11 +500,8 @@ TEST_F(ConfigServiceTest, ConnectsToANode) {
 
 TEST_F(ConfigServiceTest, ConnectingIsBehindTheGuard) {
     Channel dials(DialRequested::name);
-    const auto body = string(R"({"address": "http://127.0.0.1:8080"})");
-    const auto answer = answer_to(
-        address(), "POST /config/api/connections HTTP/1.1\r\nContent-Type: application/json\r\n"
-                   "Connection: close\r\nContent-Length: "
-                       + std::to_string(body.size()) + "\r\n\r\n" + body);
+    const auto answer =
+        answer_to(address(), post_address_with("http://127.0.0.1:8080", from_config_page));
 
     EXPECT_TRUE(has_status(answer, "401 Unauthorized")) << answer;
     EXPECT_TRUE(dials.empty());
@@ -589,7 +615,7 @@ TEST_F(ConfigServiceTest, CapturesTheFirstCredentialGiven) {
 TEST_F(ConfigServiceTest, ChallengesARequestWithoutTheCredential) {
     for (const auto* const target :
          {"/config/api", "/config/", "/config/api/backups", "/data/nodes"}) {
-        const auto answer = answer_to(address(), request_with("GET", target, ""));
+        const auto answer = answer_to(address(), request_with("GET", target, from_config_page));
 
         EXPECT_TRUE(has_status(answer, "401 Unauthorized")) << target << answer;
         EXPECT_TRUE(has_header(answer, "WWW-Authenticate", challenge)) << target << answer;
@@ -602,8 +628,7 @@ TEST_F(ConfigServiceTest, ChallengesARequestWithoutTheCredential) {
 TEST_F(ConfigServiceTest, ChallengesACredentialThatDoesNotMatch) {
     (void)answer_to(address(), get("/config/api"));
 
-    const auto answer = answer_to(address(),
-                                  request_with("GET", "/config/api", authorization("admin:other")));
+    const auto answer = answer_to(address(), request_of("GET", "/config/api", "admin:other"));
 
     EXPECT_TRUE(has_status(answer, "401 Unauthorized")) << answer;
     EXPECT_TRUE(has_header(answer, "WWW-Authenticate", challenge)) << answer;
@@ -614,8 +639,7 @@ TEST_F(ConfigServiceTest, CapturesANewCredentialOnceTheFileIsRemoved) {
     (void)answer_to(address(), get("/config/api"));
     std::filesystem::remove(data_dir() / "config-credential");
 
-    const auto answer = answer_to(address(),
-                                  request_with("GET", "/config/api", authorization("admin:other")));
+    const auto answer = answer_to(address(), request_of("GET", "/config/api", "admin:other"));
 
     EXPECT_TRUE(has_status(answer, "200 OK")) << answer;
 }
@@ -631,4 +655,73 @@ TEST_F(ConfigServiceTest, StopsWithinFiveSecondsWithAClientConnected) {
     stop();
 
     EXPECT_LT(std::chrono::steady_clock::now() - stopping, most);
+}
+
+// Before the credential is looked at, so that none is captured, and signed
+// as every answer is (HTTP API §2.3.3).
+TEST_F(ConfigServiceTest, RefusesAnotherSitesPage) {
+    const vector<string> refused{
+        "Host: attacker.example:8180\r\nReferer: http://attacker.example:8180/config/\r\n",
+        string(from_config_page) + "Sec-Fetch-Site: cross-site\r\n",
+        string(from_config_page) + "Origin: http://127.0.0.1:8080\r\n",
+        "Host: 127.0.0.1:8180\r\n",
+        "Host: 127.0.0.1:8180\r\nReferer: http://127.0.0.1:8080/\r\n",
+    };
+
+    for (const auto& headers : refused) {
+        const auto request = request_with("GET", "/config/api", headers + authorization(admin));
+        const auto answer = answer_to(address(), request);
+
+        EXPECT_TRUE(has_status(answer, "403 Forbidden")) << headers << answer;
+        EXPECT_TRUE(is_signed_by_node(answer)) << headers << answer;
+    }
+
+    EXPECT_FALSE(captured());
+}
+
+// The root application's link to /config/ from the main port.
+TEST_F(ConfigServiceTest, ServesAPageAPageOfTheSameSiteOpensInAWindow) {
+    const string opened = "Host: 127.0.0.1:8180\r\nSec-Fetch-Site: same-site\r\n"
+                          "Sec-Fetch-Mode: navigate\r\nSec-Fetch-Dest: document\r\n";
+    const auto answer =
+        answer_to(address(), request_with("GET", "/config/", opened + authorization(admin)));
+
+    EXPECT_TRUE(has_status(answer, "200 OK")) << answer;
+    EXPECT_TRUE(captured());
+}
+
+TEST_F(ConfigServiceTest, IsServedAsTheHostsItIsGiven) {
+    const Service named(identity(), data_dir(), main_port, any_port, {"node.example"},
+                        python_limits());
+    const auto served = answer_to(named.local_address(),
+                                  request_with("GET", "/config/api",
+                                               "Host: node.example:8180\r\n"
+                                               "Referer: http://node.example:8180/config/\r\n"
+                                                   + authorization(admin)));
+    const auto refused = answer_to(named.local_address(),
+                                   request_with("GET", "/config/api",
+                                                "Host: other.example:8180\r\n"
+                                                "Referer: http://other.example:8180/config/\r\n"
+                                                    + authorization(admin)));
+
+    EXPECT_TRUE(has_status(served, "200 OK")) << served;
+    EXPECT_TRUE(has_status(refused, "403 Forbidden")) << refused;
+}
+
+// HTTP API §2.3.3.
+TEST_F(ConfigServiceTest, EveryAnswerCarriesThePolicyAndGrantsNoOtherOrigin) {
+    const vector<string> requests{
+        get("/config/api"),
+        request_of("GET", "/config/api", "admin:other"),
+        request_of("POST", "/config/api"),
+        get("/data/nodes"),
+        request_with("GET", "/config/api", "Host: attacker.example\r\n"),
+    };
+
+    for (const auto& request : requests) {
+        const auto answer = answer_to(address(), request);
+
+        EXPECT_TRUE(has_header(answer, "Content-Security-Policy", policy)) << request << answer;
+        EXPECT_EQ(answer.find("Access-Control-"), string::npos) << request << answer;
+    }
 }

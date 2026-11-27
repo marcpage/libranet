@@ -2,8 +2,10 @@
 
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <thread>
+#include <vector>
 
 #include "DialOutcomes.hpp"
 #include "identity/NodeIdentity.hpp"
@@ -33,14 +35,16 @@ public:
     // Listens at listen_host on port, or, when none is named, on the first
     // port free of main_port + port_step, + 2 * port_step, and so on, logging
     // the port it took; port 0 has the system pick one. The credential is kept
-    // in data_dir. A request to connect to a node waits as long as a dial
+    // in data_dir. /config is served as hosts, as network.config_hosts gives
+    // them (Guard). A request to connect to a node waits as long as a dial
     // within limits, those peer::Connections dials with, may take. identity
     // must outlive this. Throws std::invalid_argument when no port is named
-    // and main_port leaves none port_step above it, and std::system_error
-    // when it cannot listen on the port named, or on any it tries.
+    // and main_port leaves none port_step above it, or for a host holding a
+    // NUL, and std::system_error when it cannot listen on the port named, or
+    // on any it tries.
     Service(const identity::NodeIdentity& identity, const std::filesystem::path& data_dir,
             net::Address::Port main_port, std::optional<net::Address::Port> port,
-            const peer::PeerConnection::Limits& limits);
+            std::vector<std::string> hosts, const peer::PeerConnection::Limits& limits);
     // Lets each request waiting on a dial go, ends every connection, and
     // waits for its threads.
     ~Service();

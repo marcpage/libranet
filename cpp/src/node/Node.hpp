@@ -63,6 +63,8 @@ private:
     net::Address m_listen_address;
     // Unset, /config takes the first port free above the main port.
     std::optional<net::Address::Port> m_config_port;
+    // Those /config is served as.
+    std::vector<std::string> m_config_hosts;
     PartSettings m_settings;
 
     // What the parts share. The fetch asks the connections for the peers,
