@@ -13,9 +13,9 @@ public:
     using Ptr = std::unique_ptr<IPasswordHasher>;
 
     [[nodiscard]] static Ptr Argon2id(
-        uint32_t memory_cost_kib,
-        uint32_t iterations,
-        uint32_t parallelism,
+        std::uint32_t memory_cost_kib,
+        std::uint32_t iterations,
+        std::uint32_t parallelism,
         std::size_t salt_length,
         std::size_t hash_length);
 

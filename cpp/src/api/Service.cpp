@@ -1,6 +1,5 @@
 #include "Service.hpp"
 
-#include <cstdint>
 #include <exception>
 #include <memory>
 #include <stdexcept>
@@ -63,7 +62,6 @@ using std::string_view;
 using std::terminate;
 using std::thread;
 using std::to_string;
-using std::uint16_t;
 using std::vector;
 using storage::HashPrefix;
 using storage::IDataSource;
@@ -165,7 +163,7 @@ string host_named_by(const Request& request) {
 
 // Where request's target is on config_port, at the host its Host header
 // names, or at the address /config listens at when it names none.
-string config_location(const Request& request, uint16_t config_port) {
+string config_location(const Request& request, Address::Port config_port) {
     auto host = host_named_by(request);
 
     if (host.empty()) {
@@ -185,7 +183,7 @@ string config_location(const Request& request, uint16_t config_port) {
 // anything else is told where it is. With config_port 0, nothing is served
 // there. No credential is asked for or looked at: a browser that sent one to
 // this port would send it with every request to it (HTTP API §2.3).
-void answer_moved_config(uint16_t config_port, const Request& request, Response& response) {
+void answer_moved_config(Address::Port config_port, const Request& request, Response& response) {
     if (0 == config_port) {
         Problem(Status::NotFound, "No resource exists at this path.").answer(response);
         return;
@@ -322,12 +320,12 @@ const vector<string>& Service::own_endpoints() const noexcept {
     return m_own_endpoints;
 }
 
-void Service::set_config_port(uint16_t port) {
-    if (0 == port) {
+void Service::set_config_port(Address::Port new_config_port) {
+    if (0 == new_config_port) {
         throw invalid_argument("/config's port must not be 0");
     }
 
-    m_config_port = port;
+    m_config_port = new_config_port;
 }
 
 } // namespace api

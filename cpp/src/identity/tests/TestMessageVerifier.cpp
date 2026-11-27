@@ -621,7 +621,7 @@ TEST(MessageVerifierTest, CreatedTimeWithinAWindowSetIsVerified) {
     const auto store = std::make_shared<MemorySource>();
     const TestNode node(*store);
     const auto verifier = verifier_of(
-        store, {std::chrono::seconds(max_age_seconds), MessageVerifier::Duration::zero()});
+        store, {std::chrono::seconds(max_age_seconds), MessageVerifier::Milliseconds::zero()});
     const auto request = request_of("GET", "/data/seek");
     const auto signed_at = [&](std::int64_t created) {
         return node.sign(request, node.params(request_components, created));
@@ -690,8 +690,8 @@ TEST(MessageVerifierTest, WhatItCannotWorkWithIsRefused) {
     const auto keys = std::make_shared<KnownKeys>(std::make_shared<MemorySource>());
     const auto max_age = MessageVerifier::default_max_age;
     const auto clock_skew = MessageVerifier::default_clock_skew;
-    const auto zero = MessageVerifier::Duration::zero();
-    const auto less_than_zero = MessageVerifier::Duration(-1);
+    const auto zero = MessageVerifier::Milliseconds::zero();
+    const auto less_than_zero = MessageVerifier::Milliseconds(-1);
 
     EXPECT_THROW((void)MessageVerifier(nullptr, {}), std::invalid_argument);
     EXPECT_THROW((void)MessageVerifier(keys, {zero, clock_skew}), std::invalid_argument);

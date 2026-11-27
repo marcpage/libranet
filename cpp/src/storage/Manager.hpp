@@ -17,7 +17,7 @@ namespace storage {
 class Manager : public IDataSource {
 public:
     using Ptr = std::shared_ptr<Manager>;
-    static Ptr create();
+    [[nodiscard]] static Ptr create();
 
     void add(std::filesystem::path directory);
     void add(IDataSource::Ptr source);

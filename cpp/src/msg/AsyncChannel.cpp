@@ -25,15 +25,15 @@ void noop(const string& /*unused*/) {}
 
 namespace msg {
 
-AsyncChannel::AsyncChannel(const string& name, const Callback& callback, const Logger& logger)
-    : AsyncChannel(vector<string>{name}, callback, logger) {}
+AsyncChannel::AsyncChannel(const string& name, Callback callback, Logger logger)
+    : AsyncChannel(vector<string>{name}, std::move(callback), std::move(logger)) {}
 
-AsyncChannel::AsyncChannel(vector<string> names, const Callback& callback, const Logger& logger)
+AsyncChannel::AsyncChannel(vector<string> names, Callback callback, Logger logger)
     : Channel(std::move(names))
-    , m_logger(nullptr == logger ? noop : logger)
+    , m_logger(nullptr == logger ? noop : std::move(logger))
     , m_running(true)
-    , m_callback(callback) {
-    if (nullptr == callback) {
+    , m_callback(std::move(callback)) {
+    if (nullptr == m_callback) {
         throw invalid_argument("You must pass a callback");
     }
 

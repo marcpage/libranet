@@ -522,7 +522,7 @@ void Server::stop() {
     bool listening = false;
 
     {
-        const scoped_lock lock(m_lock);
+        const scoped_lock lock(m_mutex);
 
         m_running = false;
         listening = m_listening;
@@ -552,9 +552,9 @@ void Server::stop() {
 }
 
 // Listens, unless stop() has been called. stop() wakes accept() only once
-// the listener listens, so the two are ordered by m_lock.
+// the listener listens, so the two are ordered by m_mutex.
 bool Server::_listen(int backlog) {
-    const scoped_lock lock(m_lock);
+    const scoped_lock lock(m_mutex);
 
     if (!m_running) {
         m_listener->close();
@@ -574,7 +574,7 @@ bool Server::_wait_for_room() {
     bool running = false;
 
     {
-        unique_lock<mutex> lock(m_lock);
+        unique_lock<mutex> lock(m_mutex);
 
         m_changed.wait(lock, [this] {
             const auto open = std::count_if(m_connections.begin(), m_connections.end(),
@@ -619,7 +619,7 @@ void Server::_serve(ISocket::Ptr client) {
         return;
     }
 
-    const scoped_lock lock(m_lock);
+    const scoped_lock lock(m_mutex);
 
     if (!m_running) {
         return;
@@ -661,7 +661,7 @@ void Server::_converse(Client& client) {
         lDebug << "Stopped serving a connection:" << error.what();
     }
 
-    const scoped_lock lock(m_lock);
+    const scoped_lock lock(m_mutex);
 
     client.socket.reset();
     m_changed.notify_all();
@@ -673,7 +673,7 @@ void Server::_end_all() {
     list<Client> connections;
 
     {
-        const scoped_lock lock(m_lock);
+        const scoped_lock lock(m_mutex);
 
         m_listening = false;
 

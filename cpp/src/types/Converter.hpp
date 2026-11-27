@@ -18,15 +18,22 @@ namespace types {
 class Converter {
 public:
     using Bytes = std::vector<std::byte>;
-    static std::string lower_case(std::string_view text);
-    static Bytes bytes_of(std::string_view text);
-    static std::string text_of(const Converter::Bytes& bytes);
-    static std::uint64_t hex_digit_value(char hex_digit);
-    static std::uint64_t parse_hex(std::string_view hex_text);
+    [[nodiscard]] static std::string lower_case(std::string_view text);
+    [[nodiscard]] static Bytes bytes_of(std::string_view text);
+    [[nodiscard]] static std::string text_of(const Bytes& bytes);
+    [[nodiscard]] static std::uint64_t hex_digit_value(char hex_digit);
+    [[nodiscard]] static std::uint64_t parse_hex(std::string_view hex_text);
     // text without the whitespace around it.
     [[nodiscard]] static std::string_view trimmed(std::string_view text);
     // Whether text is in UTF-8 (RFC 3629).
     [[nodiscard]] static bool is_utf8(std::string_view text);
+
+    Converter() = delete;
+    ~Converter() = delete;
+    Converter(const Converter&) = delete;
+    Converter& operator=(const Converter&) = delete;
+    Converter(Converter&&) = delete;
+    Converter& operator=(Converter&&) = delete;
 
 private:
     // The bytes a character in UTF-8 may start with, first_low to first_high;

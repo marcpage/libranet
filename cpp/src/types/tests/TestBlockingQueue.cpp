@@ -54,11 +54,11 @@ TEST(BlockingQueueTest, MoveSemantics) {
     EXPECT_TRUE(first_text.empty()); // moved-from
 
     std::string second_text = "world";
-    EXPECT_TRUE(queue.push_ms_timeout(std::move(second_text), timeout));
+    EXPECT_TRUE(queue.push(std::move(second_text), timeout));
     // cppcheck-suppress accessMoved
     EXPECT_TRUE(second_text.empty());
 
-    auto popped = queue.pop_ms_timeout(timeout);
+    auto popped = queue.pop(timeout);
     ASSERT_TRUE(popped.has_value());
     EXPECT_EQ(*popped, "hello");
 
@@ -72,7 +72,7 @@ TEST(BlockingQueueTest, PushWithTimeoutCopiesNamedValue) {
     BlockingQueue<std::string> queue;
     const std::string text = "kept";
 
-    EXPECT_TRUE(queue.push_ms_timeout(text, timeout));
+    EXPECT_TRUE(queue.push(text, timeout));
 
     EXPECT_EQ(text, "kept");
     EXPECT_EQ(queue.pop(), "kept");
@@ -84,21 +84,21 @@ TEST(BlockingQueueTest, CapacityAndTimeouts) {
     constexpr auto empty_pop_timeout = 25ms;
     BlockingQueue<int> queue(2); // capacity 2
 
-    EXPECT_TRUE(queue.push_ms_timeout(1, timeout));
-    EXPECT_TRUE(queue.push_ms_timeout(2, timeout));
+    EXPECT_TRUE(queue.push(1, timeout));
+    EXPECT_TRUE(queue.push(2, timeout));
 
     // Queue is full → timed push must fail
-    EXPECT_FALSE(queue.push_ms_timeout(3, full_push_timeout));
+    EXPECT_FALSE(queue.push(3, full_push_timeout));
     EXPECT_EQ(queue.size(), 2U);
 
     // Timed pop succeeds
-    auto item = queue.pop_ms_timeout(timeout);
+    auto item = queue.pop(timeout);
     ASSERT_TRUE(item.has_value());
     EXPECT_EQ(*item, 1);
     EXPECT_EQ(queue.size(), 1U);
 
     // Now there is room again
-    EXPECT_TRUE(queue.push_ms_timeout(3, timeout));
+    EXPECT_TRUE(queue.push(3, timeout));
     EXPECT_EQ(queue.size(), 2U);
 
     // Empty the queue
@@ -107,7 +107,7 @@ TEST(BlockingQueueTest, CapacityAndTimeouts) {
     EXPECT_TRUE(queue.empty());
 
     // Timed pop on empty queue must time out
-    const auto empty = queue.pop_ms_timeout(empty_pop_timeout);
+    const auto empty = queue.pop(empty_pop_timeout);
     EXPECT_FALSE(empty.has_value());
 }
 
@@ -170,7 +170,7 @@ TEST(BlockingQueueTest, ProducerConsumer) {
     // Two consumers
     const auto consume = [&] {
         while (consumed.load(std::memory_order_relaxed) < item_count) {
-            auto item = queue.pop_ms_timeout(pop_timeout);
+            auto item = queue.pop(pop_timeout);
 
             if (item) {
                 sum.fetch_add(*item, std::memory_order_relaxed);
@@ -226,7 +226,7 @@ TEST(BlockingQueueTest, MultipleProducersConsumers) {
     for (int consumer_index = 0; consumer_index < consumer_count; ++consumer_index) {
         consumers.emplace_back([&] {
             while (consumed.load(std::memory_order_relaxed) < total) {
-                if (auto item = queue.pop_ms_timeout(pop_timeout)) {
+                if (auto item = queue.pop(pop_timeout)) {
                     checksum.fetch_add(*item, std::memory_order_relaxed);
                     consumed.fetch_add(1, std::memory_order_relaxed);
                 }

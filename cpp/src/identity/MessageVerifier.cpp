@@ -48,7 +48,7 @@ using Window = MessageVerifier::Window;
 // A time, to the millisecond, which holds any time a structured field's
 // integer gives in seconds (RFC 9651 §3.3.1), so that one far from now
 // cannot overflow.
-using Moment = std::chrono::time_point<MessageVerifier::Clock, MessageVerifier::Duration>;
+using Moment = std::chrono::time_point<MessageVerifier::Clock, MessageVerifier::Milliseconds>;
 
 // A parameter a libranet signature may have besides its own (HTTP API
 // §11.2), and the one algorithm a node's key signs with, which alg may name,
@@ -342,11 +342,11 @@ MessageVerifier::MessageVerifier(std::shared_ptr<KnownKeys> keys, Window window,
                                "and none were given");
     }
 
-    if (m_window.max_age <= Duration::zero()) {
+    if (m_window.max_age <= Milliseconds::zero()) {
         throw invalid_argument("identity.signature_max_age_seconds must be more than 0");
     }
 
-    if (m_window.clock_skew < Duration::zero()) {
+    if (m_window.clock_skew < Milliseconds::zero()) {
         throw invalid_argument("identity.signature_clock_skew_seconds cannot be negative");
     }
 
@@ -357,12 +357,12 @@ MessageVerifier::MessageVerifier(std::shared_ptr<KnownKeys> keys, Window window,
 
 optional<MessageVerifier::Signer> MessageVerifier::verify(const Request& request) const {
     return signer_of(request, {SignatureBase::method_component, SignatureBase::path_component},
-                     *m_keys, m_window, std::chrono::time_point_cast<Duration>(m_clock()));
+                     *m_keys, m_window, std::chrono::time_point_cast<Milliseconds>(m_clock()));
 }
 
 optional<MessageVerifier::Signer> MessageVerifier::verify(const Response& response) const {
     return signer_of(response, {SignatureBase::status_component}, *m_keys, m_window,
-                     std::chrono::time_point_cast<Duration>(m_clock()));
+                     std::chrono::time_point_cast<Milliseconds>(m_clock()));
 }
 
 } // namespace identity

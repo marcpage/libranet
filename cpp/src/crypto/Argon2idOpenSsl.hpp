@@ -29,9 +29,9 @@ namespace crypto {
 class Argon2idOpenSsl : public IPasswordHasher {
 public:
     Argon2idOpenSsl(
-        uint32_t memory_cost_kib,
-        uint32_t iterations,
-        uint32_t parallelism,
+        std::uint32_t memory_cost_kib,
+        std::uint32_t iterations,
+        std::uint32_t parallelism,
         std::size_t salt_length,
         std::size_t hash_length);
 
@@ -51,9 +51,9 @@ private:
 
     // What a hash is made with, besides the password.
     struct Parameters {
-        uint32_t memory_cost_kib = 0;
-        uint32_t iterations = 0;
-        uint32_t parallelism = 0;
+        std::uint32_t memory_cost_kib = 0;
+        std::uint32_t iterations = 0;
+        std::uint32_t parallelism = 0;
         Data salt;
     };
 
@@ -76,14 +76,14 @@ private:
         Data m_hash;
 
         [[nodiscard]] static bool _skip(std::string_view& text, std::string_view expected);
-        [[nodiscard]] static bool _read_number(std::string_view& text, uint32_t& number);
+        [[nodiscard]] static bool _read_number(std::string_view& text, std::uint32_t& number);
         [[nodiscard]] static std::optional<Data> _read_base64(std::string_view text);
         [[nodiscard]] static std::string _base64(const Data& data);
     };
 
-    uint32_t m_memory_cost_kib;
-    uint32_t m_iterations;
-    uint32_t m_parallelism;
+    std::uint32_t m_memory_cost_kib;
+    std::uint32_t m_iterations;
+    std::uint32_t m_parallelism;
     std::size_t m_salt_length;
     std::size_t m_hash_length;
 
@@ -92,9 +92,9 @@ private:
 };
 
 inline Argon2idOpenSsl::Argon2idOpenSsl(
-    uint32_t memory_cost_kib,
-    uint32_t iterations,
-    uint32_t parallelism,
+    std::uint32_t memory_cost_kib,
+    std::uint32_t iterations,
+    std::uint32_t parallelism,
     std::size_t salt_length,
     std::size_t hash_length)
     : m_memory_cost_kib(memory_cost_kib)
@@ -232,9 +232,10 @@ inline bool Argon2idOpenSsl::PhcString::_skip(std::string_view& text, std::strin
 
 // Reads the decimal digits at the start of text, and moves past them. There
 // must be at least one, and the number they make must fit in 32 bits.
-inline bool Argon2idOpenSsl::PhcString::_read_number(std::string_view& text, uint32_t& number) {
-    constexpr uint64_t base = 10;
-    uint64_t value = 0;
+inline bool Argon2idOpenSsl::PhcString::_read_number(std::string_view& text,
+                                                     std::uint32_t& number) {
+    constexpr std::uint64_t base = 10;
+    std::uint64_t value = 0;
     std::size_t digits = 0;
 
     for (const char character : text) {
@@ -242,9 +243,9 @@ inline bool Argon2idOpenSsl::PhcString::_read_number(std::string_view& text, uin
             break;
         }
 
-        value = (value * base) + static_cast<uint64_t>(character - '0');
+        value = (value * base) + static_cast<std::uint64_t>(character - '0');
 
-        if (value > std::numeric_limits<uint32_t>::max()) {
+        if (value > std::numeric_limits<std::uint32_t>::max()) {
             return false;
         }
 
@@ -255,7 +256,7 @@ inline bool Argon2idOpenSsl::PhcString::_read_number(std::string_view& text, uin
         return false;
     }
 
-    number = static_cast<uint32_t>(value);
+    number = static_cast<std::uint32_t>(value);
     text.remove_prefix(digits);
     return true;
 }
