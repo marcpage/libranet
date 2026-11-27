@@ -10,6 +10,7 @@ target_link_libraries(libranet_config PUBLIC
     libranet::logger
     libranet::msg
     libranet::peer
+    libranet::types
 )
 
 if(BUILD_TESTING)

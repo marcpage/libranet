@@ -3,28 +3,32 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
-#include <ios>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "crypto/IPasswordHasher.hpp"
+#include "io/FileReader.hpp"
 #include "io/SafeWriteFile.hpp"
 #include "logger/Logger.hpp"
+#include "types/Converter.hpp"
 
 using crypto::IPasswordHasher;
+using io::FileReader;
 using io::SafeWriteFile;
+using std::byte;
 using std::nullopt;
 using std::optional;
 using std::runtime_error;
 using std::size_t;
-using std::streamsize;
 using std::string;
 using std::string_view;
 using std::uint32_t;
+using std::vector;
 using std::filesystem::path;
+using types::Converter;
 
 namespace {
 
@@ -57,32 +61,25 @@ optional<string> read_hash(const path& file) {
         return nullopt;
     }
 
-    std::ifstream stream(file, std::ios::binary);
+    vector<byte> hash;
 
-    // Removed since it was looked for.
-    if (!stream.is_open() && !std::filesystem::exists(file)) {
-        return nullopt;
+    try {
+        hash = FileReader(file).read_exact(most_file_size + 1);
+    } catch (const runtime_error&) {
+        // Removed since it was looked for.
+        if (!std::filesystem::exists(file)) {
+            return nullopt;
+        }
+
+        throw;
     }
 
-    if (!stream.is_open()) {
-        throw runtime_error("Cannot open the /config credential: " + file.string());
-    }
-
-    string hash(most_file_size + 1, '\0');
-
-    stream.read(hash.data(), static_cast<streamsize>(hash.size()));
-
-    if (stream.bad()) {
-        throw runtime_error("Cannot read the /config credential: " + file.string());
-    }
-
-    if (static_cast<size_t>(stream.gcount()) > most_file_size) {
+    if (hash.size() > most_file_size) {
         throw runtime_error("The /config credential holds far more than a hash: "
                             + file.string());
     }
 
-    hash.resize(static_cast<size_t>(stream.gcount()));
-    return hash;
+    return Converter::text_of(hash);
 }
 
 // Keeps the hash of credentials in file, unless a file is there already.

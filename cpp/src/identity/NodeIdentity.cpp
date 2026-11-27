@@ -1,10 +1,7 @@
 #include "NodeIdentity.hpp"
 
-#include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
-#include <ios>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -15,6 +12,7 @@
 #include <unistd.h>
 
 #include "crypto/ISignKey.hpp"
+#include "io/FileReader.hpp"
 #include "io/SafeWriteFile.hpp"
 #include "logger/Logger.hpp"
 #include "storage/IDataSource.hpp"
@@ -24,13 +22,11 @@
 
 using crypto::ISignKey;
 using identity::NodeIdentity;
+using io::FileReader;
 using io::SafeWriteFile;
 using std::invalid_argument;
 using std::nullopt;
 using std::optional;
-using std::runtime_error;
-using std::size_t;
-using std::streamsize;
 using std::string;
 using std::string_view;
 using std::uintmax_t;
@@ -66,14 +62,7 @@ optional<string> read_key_file(const path& key_file) {
                                + key_file.string());
     }
 
-    string text(static_cast<size_t>(size), '\0');
-    std::ifstream file(key_file, std::ios::binary);
-
-    if (!file.read(text.data(), static_cast<streamsize>(size))) {
-        throw runtime_error("Cannot read the node's key file: " + key_file.string());
-    }
-
-    return text;
+    return FileReader(key_file).read_all();
 }
 
 enum class Report : uint8_t {
