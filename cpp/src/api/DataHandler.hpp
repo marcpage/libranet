@@ -16,21 +16,22 @@ namespace api {
 // GET and PUT of /data/{algorithm}/{hash} (HttpApi §5, §7).
 class DataHandler {
 public:
-    using Seconds = std::chrono::seconds;
+    using Milliseconds = std::chrono::milliseconds;
     // As peer::Fetch::is_held_off(). Called from several threads at once.
     using IsHeldOff = std::function<bool(const storage::Identifier& identifier)>;
 
     // As sent (HttpApi §7.1).
     static constexpr std::size_t max_body_bytes = 1 * types::Megabyte;
     // As the Python node's is.
-    static constexpr Seconds default_retry_after = std::chrono::seconds(5);
+    static constexpr Milliseconds default_retry_after = std::chrono::seconds(5);
 
-    // With no is_held_off, no search is held off. Throws
+    // With no is_held_off, no search is held off. Retry-After carries whole
+    // seconds, so a client is told retry_after rounded up to the second. Throws
     // std::invalid_argument for a negative retry_after, or body_bytes of zero
     // or more than max_body_bytes.
     explicit DataHandler(storage::IDataSource::Ptr store,
                          std::size_t content_bytes = types::max_decompressed_content_size,
-                         Seconds retry_after = default_retry_after,
+                         Milliseconds retry_after = default_retry_after,
                          IsHeldOff is_held_off = nullptr, std::size_t body_bytes = max_body_bytes);
 
     // Throws what the store throws, and std::bad_alloc if zlib runs out of
@@ -49,7 +50,7 @@ public:
 private:
     storage::IDataSource::Ptr m_store;
     std::size_t m_content_bytes;
-    Seconds m_retry_after;
+    Milliseconds m_retry_after;
     IsHeldOff m_is_held_off;
     std::size_t m_body_bytes;
 };

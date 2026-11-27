@@ -166,7 +166,7 @@ Request post_of(const string& prefix, const vector<Identifier>& identifiers) {
 // to no more than list_bytes: nothing when it carries none that can be read,
 // as when it is not 200 OK.
 optional<SeekList> seek_list_in(const Response& answer, const string& from, size_t list_bytes) {
-    if (static_cast<int>(Status::Ok) != answer.status_code()) {
+    if (answer.code() != Status::Ok) {
         lDebug << from << "sent no seek list but answered" << answer.status_code();
         return nullopt;
     }
@@ -181,10 +181,7 @@ optional<SeekList> seek_list_in(const Response& answer, const string& from, size
 
 // Whether answer says a put was taken: the content was stored, or was held.
 bool is_taken(const Response& answer) {
-    const auto status = answer.status_code();
-
-    return static_cast<int>(Status::Ok) <= status
-           && status < static_cast<int>(Status::MultipleChoices);
+    return answer.code().is_success();
 }
 
 // What a search of each of searches finds in found, best first, less what
@@ -407,7 +404,7 @@ void SeekFulfiller::_name(PeerSession& session, const vector<HashPrefix>& search
         const auto answers = session.exchange(std::move(posts));
 
         for (size_t index = 0; index < answers.size(); ++index) {
-            if (static_cast<int>(Status::Accepted) != answers.at(index).status_code()) {
+            if (answers.at(index).code() != Status::Accepted) {
                 lDebug << described(session) << "took no identifiers for" << run.at(index)
                        << "but answered" << answers.at(index).status_code();
             }

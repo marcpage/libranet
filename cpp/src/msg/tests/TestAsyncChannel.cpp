@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -40,6 +42,30 @@ bool wait_until(Predicate predicate, std::chrono::milliseconds timeout = handlin
 
     return predicate();
 }
+
+// A callback and logger that counts the times it is copied. Its padding makes
+// it too large for std::function to hold in place, so moving the
+// std::function that holds it does not copy it.
+class CopyCounter {
+public:
+    explicit CopyCounter(int& copies) : m_copies(&copies) {}
+    CopyCounter(const CopyCounter& other) : m_copies(other.m_copies), m_padding(other.m_padding) {
+        ++*m_copies;
+    }
+    CopyCounter(CopyCounter&&) noexcept = default;
+    CopyCounter& operator=(const CopyCounter&) = delete;
+    CopyCounter& operator=(CopyCounter&&) = delete;
+    ~CopyCounter() = default;
+
+    void operator()(const IMessage::Ptr& /*unused*/) const {}
+    void operator()(const std::string& /*unused*/) const {}
+
+private:
+    static constexpr std::size_t padding_size = 64;
+
+    int* m_copies;
+    std::array<char, padding_size> m_padding{};
+};
 
 } // namespace
 
@@ -223,4 +249,14 @@ TEST(AsyncChannelTest, DestructorStopsWorker) {
 TEST(AsyncChannelTest, NullCallbackRejected) {
     // cppcheck-suppress unusedScopedObject
     EXPECT_THROW(AsyncChannel("test.async.null", nullptr), std::invalid_argument);
+}
+
+TEST(AsyncChannelTest, CallbacksMovedNotCopied) {
+    int copies = 0;
+
+    {
+        const AsyncChannel channel("test.async.moved", CopyCounter(copies), CopyCounter(copies));
+    }
+
+    EXPECT_EQ(copies, 0);
 }

@@ -159,7 +159,7 @@ MessageVerifier::Signer signer_of(const Response& answer, string_view asked,
 // answer is not 200 OK, and so carries no list.
 optional<string_view> list_body(const Response& answer, string_view asked,
                                 const Address& address) {
-    if (static_cast<int>(Status::Ok) != answer.status_code()) {
+    if (answer.code() != Status::Ok) {
         lDebug << address.to_string() << "sent no list for" << asked << "but answered"
                << answer.status_code();
         return nullopt;
@@ -263,7 +263,7 @@ Recorder::NodesReceived received_from(const NodeList& sent, const Identifier& pe
 // not kept is logged.
 void keep(const Identifier& identifier, const Response& answer, const Identifier& node_id,
           const IDataSource& store) {
-    if (static_cast<int>(Status::Ok) != answer.status_code()) {
+    if (answer.code() != Status::Ok) {
         lDebug << node_id.to_string() << "did not send" << identifier.to_string()
                << "but answered" << answer.status_code();
         return;
@@ -348,7 +348,7 @@ void hold_key(const IDataSource& store, const MessageSigner& signer,
     const auto answer = answer_to(connection, signer, std::move(get));
     const auto key = Converter::bytes_of(answer.body());
 
-    if (static_cast<int>(Status::Ok) != answer.status_code()
+    if (answer.code() != Status::Ok
         || !node_id.content_of(key, KnownKeys::max_key_size)) {
         throw unauthenticated(asked, address, "It did not send the key of " + node_id.to_string());
     }

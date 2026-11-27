@@ -42,7 +42,7 @@ public:
         // storage.search_cache_ttl_seconds
         Milliseconds search_cache_ttl = default_search_cache_ttl;
         // Told to a client asking for content the node will look for.
-        DataHandler::Seconds retry_after = DataHandler::default_retry_after;
+        Milliseconds retry_after = DataHandler::default_retry_after;
         // With no function, the node always looks for content it does not
         // hold.
         DataHandler::IsHeldOff is_held_off = nullptr;
