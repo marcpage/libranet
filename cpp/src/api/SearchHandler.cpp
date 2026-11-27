@@ -73,12 +73,15 @@ optional<string_view> search_path(string_view uri) {
     return prefix;
 }
 
-// The prefix text names, or nothing when it names none, having answered
-// 400 saying why.
-optional<HashPrefix> prefix_of(string_view text, Response& response) {
+// The prefix text, from the path of request on connection, names, or
+// nothing when it names none, having answered 400 saying why.
+optional<HashPrefix> prefix_of(string_view text, const Request& request, Response& response,
+                               const ConnectionInfo& connection) {
     try {
         return HashPrefix::parse(text);
     } catch (const invalid_argument& error) {
+        lDebug << "Refused" << request.method() << request.uri() << "from"
+               << connection.remote_address().to_string() + ":" << error.what();
         Problem(Problem::Type::InvalidSearchPrefix, Status::BadRequest, error.what())
             .answer(response);
         return nullopt;
@@ -199,7 +202,7 @@ void SearchHandler::operator()(const Request& request, Response& response,
         return;
     }
 
-    const auto prefix = prefix_of(*path, response);
+    const auto prefix = prefix_of(*path, request, response, connection);
 
     if (!prefix) {
         return;

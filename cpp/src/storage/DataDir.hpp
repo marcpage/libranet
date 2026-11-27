@@ -84,10 +84,10 @@ inline bool DataDir::has(const Identifier& identifier) const {
 
 inline std::optional<DataDir::Data> DataDir::get(const Identifier& identifier) const {
     const auto path = _path(identifier);
-    std::error_code error;
-    const auto length = std::filesystem::file_size(path, error);
+    std::error_code unsized;
+    const auto length = std::filesystem::file_size(path, unsized);
 
-    if (error) {
+    if (unsized) {
         return std::nullopt;
     }
 
@@ -100,7 +100,14 @@ inline std::optional<DataDir::Data> DataDir::get(const Identifier& identifier) c
         }
 
         return buffer;
-    } catch (const std::runtime_error&) {
+    } catch (const std::runtime_error& error) {
+        std::error_code gone;
+
+        // Removed since its size was looked at, unless it is still there.
+        if (std::filesystem::exists(path, gone)) {
+            lWarn << "Cannot read a body the store holds:" << error.what();
+        }
+
         return std::nullopt;
     }
 }
