@@ -11,10 +11,12 @@
 #include <string_view>
 #include <system_error>
 
+#include "http/Url.hpp"
 #include "net/IpAddress.hpp"
 #include "types/Converter.hpp"
 #include "types/Json.hpp"
 
+using http::Url;
 using net::IpAddress;
 using std::all_of;
 using std::errc;
@@ -36,10 +38,13 @@ namespace {
 constexpr string_view http_scheme = "http://";
 constexpr uint16_t http_port = 80;
 
-struct HostAndPort {
-    string_view host; // With its brackets, for an IPv6 address
-    string_view port; // Empty when none is named
-};
+// Why address is refused when it names its host by neither a name nor an IP
+// address.
+invalid_argument not_a_host(string_view address) {
+    return invalid_argument("An address must name its host by a name or an IP address, "
+                            "an IPv6 one in brackets: "
+                            + string(address));
+}
 
 // text without the whitespace around it, as an address pasted often has.
 string_view trimmed(string_view text) {
@@ -78,17 +83,18 @@ string_view authority_of(string_view address) {
     return authority;
 }
 
-// The host and port authority names. A colon in brackets is part of an IPv6
-// address, not the start of a port (RFC 3986 §3.2.2).
-HostAndPort host_and_port(string_view authority) {
-    const auto colon = authority.rfind(':');
-    const auto bracket = authority.rfind(']');
+// The host and port authority names, as a URL of no scheme, as Url reads
+// them: no host when it is empty. Throws invalid_argument, naming address, for
+// one naming a host with a bracket in it other than those around an IPv6
+// address, from which Url reads no URL.
+Url host_url_of(string_view authority, string_view address) {
+    const auto url = Url::parse(authority);
 
-    if (string_view::npos == colon || (bracket != string_view::npos && colon < bracket)) {
-        return {authority, {}};
+    if (!url && !authority.empty()) {
+        throw not_a_host(address);
     }
 
-    return {authority.substr(0, colon), authority.substr(colon + 1)};
+    return url.value_or(Url());
 }
 
 // Whether host is a name or an IPv4 address, of the characters RFC 3986
@@ -102,20 +108,13 @@ bool is_host_name(string_view host) {
     });
 }
 
-// Whether host is an IPv6 address in brackets. An IPv4 address is never in
-// them (RFC 3986 §3.2.2).
-bool is_bracketed_ipv6(string_view host) {
-    if (host.size() < 2 || '[' != host.front() || ']' != host.back()) {
-        return false;
-    }
-
-    const auto address = host.substr(1, host.size() - 2);
-
-    return address.find(':') != string_view::npos && IpAddress::parse(address).has_value();
+// Whether host, as Url reads it, out of its brackets, is an IPv6 address.
+bool is_ipv6(string_view host) {
+    return host.find(':') != string_view::npos && IpAddress::parse(host).has_value();
 }
 
-// host, as an address names it, as it is dialed: in lower case. Throws
-// invalid_argument, naming address, for a host that is not one.
+// host, as Url reads it from an address, as it is dialed: in lower case.
+// Throws invalid_argument, naming address, for a host that is not one.
 string host_of(string_view host, string_view address) {
     auto lower = Converter::lower_case(host);
 
@@ -123,13 +122,38 @@ string host_of(string_view host, string_view address) {
         throw invalid_argument("An address must name a host: " + string(address));
     }
 
-    if (!is_host_name(lower) && !is_bracketed_ipv6(lower)) {
-        throw invalid_argument("An address must name its host by a name or an IP address, "
-                               "an IPv6 one in brackets: "
-                               + string(address));
+    if (!is_host_name(lower) && !is_ipv6(lower)) {
+        throw not_a_host(address);
     }
 
     return lower;
+}
+
+// The text of the port authority names after host, less the colon before it:
+// empty when it names none. Url reads an IPv6 address out of brackets as if
+// it were in them, and a name or an IPv4 address in them as if it were not,
+// but only an IPv6 address is ever in them (RFC 3986 §3.2.2), so authority
+// must name host as Url writes it. Throws invalid_argument, naming address,
+// for an authority that does not.
+string_view port_text_of(string_view authority, const string& host, string_view address) {
+    Url host_only;
+
+    host_only.set_host(host);
+    host_only.set_path("");
+
+    const auto written_host = host_only.to_string();
+
+    if (Converter::lower_case(authority.substr(0, written_host.size())) != written_host) {
+        throw not_a_host(address);
+    }
+
+    auto port = authority.substr(written_host.size());
+
+    if (!port.empty()) {
+        port.remove_prefix(1);
+    }
+
+    return port;
 }
 
 // The port text names, or http's when it is empty, as a URL's may be (RFC
@@ -154,12 +178,18 @@ uint16_t port_of(string_view text, string_view address) {
 }
 
 // address, an http URL naming a host, as it is dialed. Throws
-// invalid_argument, saying why, for one that is not.
+// invalid_argument, saying why, for one that is not. Url gives a URL with no
+// path the path "/".
 string written(string_view address) {
-    const auto [host, port] = host_and_port(authority_of(address));
+    const auto authority = authority_of(address);
+    const auto host = host_of(host_url_of(authority, address).host(), address);
+    Url endpoint;
 
-    return string(http_scheme) + host_of(host, address) + ':'
-           + std::to_string(port_of(port, address));
+    endpoint.set_host(host);
+    endpoint.set_port(port_of(port_text_of(authority, host, address), address));
+    endpoint.set_path("");
+
+    return string(http_scheme) + endpoint.to_string();
 }
 
 } // namespace
