@@ -170,6 +170,20 @@ TEST(SiteChecksTest, HostWhoseBracketsAreNotClosedIsRefused) {
     EXPECT_FALSE(checks.serves_as(":8180"));
 }
 
+// A Host header names only a host and a port (RFC 9110 §7.2).
+TEST(SiteChecksTest, HostNamingMoreThanAHostAndPortIsRefused) {
+    const SiteChecks checks({"*"}, "/config");
+
+    EXPECT_TRUE(checks.serves_as("localhost:8180"));
+    EXPECT_FALSE(checks.serves_as("attacker.example@localhost"));
+    EXPECT_FALSE(checks.serves_as("user:password@localhost:8180"));
+    EXPECT_FALSE(checks.serves_as("http://localhost:8180"));
+    EXPECT_FALSE(checks.serves_as("localhost:8180/config"));
+    EXPECT_FALSE(checks.serves_as("localhost?query"));
+    EXPECT_FALSE(checks.serves_as("localhost#fragment"));
+    EXPECT_FALSE(checks.serves_as("[::1]x:8180"));
+}
+
 TEST(SiteChecksTest, ThisMachinesOwnNameIsServedAs) {
     const auto name = machine_name();
     const SiteChecks checks({}, "/config");
@@ -261,6 +275,21 @@ TEST(SiteChecksTest, OriginOfAnotherHostOrPortIsRefused) {
     EXPECT_EQ(refused_for({{"Host", "localhost:8180"}, {"Origin", "localhost:8180"}}),
               "Origin");
     EXPECT_EQ(refused_for({{"Origin", "http://localhost:8180"}}), "Origin");
+}
+
+// An origin is a scheme, a host, and a port (RFC 6454 §7).
+TEST(SiteChecksTest, OriginNamingMoreThanAnOriginIsRefused) {
+    const auto checks = default_checks();
+    const auto origin_refused = [&checks](std::string_view origin) {
+        return header_of(checks.page_refusal(
+            with_headers({{"Host", "localhost:8180"}, {"Origin", std::string(origin)}})));
+    };
+
+    EXPECT_EQ(origin_refused("HTTPS://LocalHost:8180"), "");
+    EXPECT_EQ(origin_refused("http://user@localhost:8180"), "Origin");
+    EXPECT_EQ(origin_refused("http://localhost:8180/config"), "Origin");
+    EXPECT_EQ(origin_refused("http://localhost:8180?query"), "Origin");
+    EXPECT_EQ(origin_refused("http://"), "Origin");
 }
 
 // "null" names no origin, so it is the same as none.

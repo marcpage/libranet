@@ -1,7 +1,5 @@
 #include "Service.hpp"
 
-#include <algorithm>
-#include <cctype>
 #include <cstdint>
 #include <exception>
 #include <memory>
@@ -35,6 +33,7 @@
 #include "storage/SearchAnswered.hpp"
 #include "storage/SearchAnswers.hpp"
 #include "types/Constants.hpp"
+#include "types/Converter.hpp"
 #include "web/ConnectionInfo.hpp"
 #include "web/Server.hpp"
 
@@ -69,6 +68,7 @@ using storage::HashPrefix;
 using storage::IDataSource;
 using storage::SearchAnswered;
 using storage::SearchAnswers;
+using types::Converter;
 using types::max_decompressed_content_size;
 using types::nodes_path;
 using types::search_path_prefix;
@@ -158,11 +158,7 @@ bool names_config_api(string_view uri) {
 // IPv6 address's brackets. It is empty when the header names none, as when it
 // is not there, or its brackets are not closed.
 string host_named_by(const Request& request) {
-    string authority(Headers::trim_whitespace(request.headers().get("Host", "")));
-
-    std::transform(authority.begin(), authority.end(), authority.begin(), [](char character) {
-        return static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
-    });
+    const auto authority = Converter::lower_case(Headers::trim_whitespace(request.headers().get("Host", "")));
 
     if (!authority.empty() && '[' == authority.front()) {
         const auto closing = authority.find(']');

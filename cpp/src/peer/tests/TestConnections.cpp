@@ -49,11 +49,14 @@ using stats::Recorder;
 using storage::Identifier;
 using types::Converter;
 using namespace std::chrono_literals;
+using AddressDialed = Connections::AddressDialed;
 using Candidate = stats::NodeAddresses::Candidate;
 using CandidatesUpdated = Recorder::CandidatesUpdated;
 using ConnectionFailed = Recorder::ConnectionFailed;
 using ConnectionOpened = Recorder::ConnectionOpened;
+using DialRequested = Connections::DialRequested;
 using NodesUpdated = Recorder::NodesUpdated;
+using Outcome = AddressDialed::Outcome;
 using PeersConnected = Connections::PeersConnected;
 using Seed = Connections::Seed;
 using Status = http::ResponseCode::Status;
@@ -61,6 +64,7 @@ using Status = http::ResponseCode::Status;
 // The tests take these, which connections post from another file, so nothing
 // here would make their messages' virtual to_string(), which next<>() casts
 // to.
+template class msg::Message<AddressDialed>;
 template class msg::Message<ConnectionFailed>;
 template class msg::Message<ConnectionOpened>;
 template class msg::Message<PeersConnected>;
@@ -436,6 +440,11 @@ void post_candidates(std::vector<Candidate> candidates) {
     Channel::post(CandidatesUpdated::name, CandidatesUpdated{std::move(candidates)});
 }
 
+// Asks for endpoint to be dialed, as config::ConnectHandler does.
+void request_dial(const std::string& dial_id, const std::string& endpoint) {
+    Channel::post(DialRequested::name, DialRequested{dial_id, endpoint});
+}
+
 // The node list posted in each POST /data/nodes node was sent, in order.
 std::vector<NodeList> lists_posted(const StandInNode& node) {
     std::vector<NodeList> lists;
@@ -764,6 +773,182 @@ TEST_F(ConnectionsTest, StoppingClosesTheConnections) {
     ASSERT_EQ(sessions.size(), 1U);
     made.reset();
     EXPECT_FALSE(sessions.front()->is_open());
+}
+
+// The page asks for it before the plan would dial anything.
+TEST_F(ConnectionsTest, AddressAskedForIsDialedBeforeTheCandidatesCome) {
+    const StandInNode node(peer());
+    Channel dialed(AddressDialed::name);
+    Channel opened(ConnectionOpened::name);
+    Channel connected(PeersConnected::name);
+    const auto made = connections();
+
+    request_dial("first", node.endpoint());
+
+    const auto outcome = dialed.next<AddressDialed>(patience);
+    const auto reached = opened.next<ConnectionOpened>(patience);
+
+    ASSERT_TRUE(outcome.has_value());
+    EXPECT_EQ(outcome->dial_id, "first");
+    EXPECT_EQ(outcome->outcome, Outcome::Connected);
+    ASSERT_TRUE(outcome->node_id.has_value());
+    EXPECT_EQ(outcome->node_id->to_string(), peer().id().to_string());
+    EXPECT_TRUE(outcome->detail.empty());
+    ASSERT_TRUE(reached.has_value());
+    EXPECT_EQ(reached->node_id.to_string(), peer().id().to_string());
+    EXPECT_EQ(reached->endpoint, node.endpoint());
+    EXPECT_EQ(texts_of(made->connected_ids()), std::vector<std::string>{peer().id().to_string()});
+    EXPECT_EQ(node.asked(), (std::vector<std::string>{put_line(), key_line(peer()),
+                                                      "POST /data/nodes", "GET /data/seek",
+                                                      "GET /data/nodes"}));
+}
+
+TEST_F(ConnectionsTest, AddressAskedForIsDialedWhileItsNodeRests) {
+    StandInNode node(peer());
+    Channel dialed(AddressDialed::name);
+    Channel connected(PeersConnected::name);
+    const auto made = connections();
+
+    post_candidates({{peer().id(), {node.endpoint()}}});
+    ASSERT_TRUE(connected.next<PeersConnected>(patience).has_value());
+    ASSERT_TRUE(connected.next<PeersConnected>(patience).has_value());
+
+    node.hang_up();
+
+    const auto left = connected.next<PeersConnected>(patience);
+
+    ASSERT_TRUE(left.has_value());
+    EXPECT_TRUE(left->node_ids.empty());
+
+    request_dial("again", node.endpoint());
+
+    const auto outcome = dialed.next<AddressDialed>(patience);
+
+    ASSERT_TRUE(outcome.has_value());
+    EXPECT_EQ(outcome->dial_id, "again");
+    EXPECT_EQ(outcome->outcome, Outcome::Connected);
+    EXPECT_EQ(node.accepted(), 2U);
+}
+
+TEST_F(ConnectionsTest, AddressOfAPeerIsAnsweredAtOnce) {
+    const StandInNode node(peer());
+    Channel dialed(AddressDialed::name);
+    Channel connected(PeersConnected::name);
+    const auto made = connections();
+
+    post_candidates({{peer().id(), {node.endpoint()}}});
+    ASSERT_TRUE(connected.next<PeersConnected>(patience).has_value());
+    ASSERT_TRUE(connected.next<PeersConnected>(patience).has_value());
+
+    request_dial("known", node.endpoint());
+
+    const auto outcome = dialed.next<AddressDialed>(patience);
+
+    ASSERT_TRUE(outcome.has_value());
+    EXPECT_EQ(outcome->dial_id, "known");
+    EXPECT_EQ(outcome->outcome, Outcome::AlreadyConnected);
+    ASSERT_TRUE(outcome->node_id.has_value());
+    EXPECT_EQ(outcome->node_id->to_string(), peer().id().to_string());
+    std::this_thread::sleep_for(quiet);
+    EXPECT_EQ(node.accepted(), 1U);
+}
+
+// The node is connected at another endpoint, which this one was found to
+// reach.
+TEST_F(ConnectionsTest, PeerReachedAtAnotherAddressIsAlreadyConnected) {
+    const StandInNode node(peer());
+    const StandInNode same(peer());
+    Channel dialed(AddressDialed::name);
+    Channel connected(PeersConnected::name);
+    const auto made = connections();
+
+    post_candidates({{peer().id(), {node.endpoint()}}});
+    ASSERT_TRUE(connected.next<PeersConnected>(patience).has_value());
+    ASSERT_TRUE(connected.next<PeersConnected>(patience).has_value());
+
+    request_dial("other route", same.endpoint());
+
+    const auto outcome = dialed.next<AddressDialed>(patience);
+
+    ASSERT_TRUE(outcome.has_value());
+    EXPECT_EQ(outcome->outcome, Outcome::AlreadyConnected);
+    ASSERT_TRUE(outcome->node_id.has_value());
+    EXPECT_EQ(outcome->node_id->to_string(), peer().id().to_string());
+    EXPECT_EQ(same.accepted(), 1U);
+    EXPECT_EQ(texts_of(made->connected_ids()), std::vector<std::string>{peer().id().to_string()});
+}
+
+TEST_F(ConnectionsTest, OwnAddressAskedForIsThisNode) {
+    const StandInNode node(this_node());
+    Channel dialed(AddressDialed::name);
+    Channel opened(ConnectionOpened::name);
+    const auto made = connections();
+
+    request_dial("own", node.endpoint());
+
+    const auto outcome = dialed.next<AddressDialed>(patience);
+
+    ASSERT_TRUE(outcome.has_value());
+    EXPECT_EQ(outcome->dial_id, "own");
+    EXPECT_EQ(outcome->outcome, Outcome::ThisNode);
+    ASSERT_TRUE(outcome->node_id.has_value());
+    EXPECT_EQ(outcome->node_id->to_string(), this_node().id().to_string());
+    EXPECT_FALSE(opened.next<ConnectionOpened>(quiet).has_value());
+    EXPECT_TRUE(made->connected_ids().empty());
+}
+
+// Nothing is remembered of an address where no node was reached.
+TEST_F(ConnectionsTest, AddressAskedForWhereNothingAnswersIsUnreached) {
+    const auto refused = refusing();
+    const auto unanswered = endpoint_of(refused->local_address());
+    Channel dialed(AddressDialed::name);
+    Channel failed(ConnectionFailed::name);
+    const auto made = connections();
+
+    request_dial("nothing", unanswered);
+
+    const auto outcome = dialed.next<AddressDialed>(patience);
+
+    ASSERT_TRUE(outcome.has_value());
+    EXPECT_EQ(outcome->dial_id, "nothing");
+    EXPECT_EQ(outcome->outcome, Outcome::Unreached);
+    EXPECT_FALSE(outcome->node_id.has_value());
+    EXPECT_FALSE(outcome->detail.empty());
+    EXPECT_FALSE(failed.next<ConnectionFailed>(quiet).has_value());
+}
+
+TEST_F(ConnectionsTest, AddressAskedForThatIsNotHttpIsUnreached) {
+    Channel dialed(AddressDialed::name);
+    const auto made = connections();
+
+    request_dial("ftp", "ftp://example");
+
+    const auto outcome = dialed.next<AddressDialed>(patience);
+
+    ASSERT_TRUE(outcome.has_value());
+    EXPECT_EQ(outcome->outcome, Outcome::Unreached);
+    EXPECT_FALSE(outcome->node_id.has_value());
+    EXPECT_EQ(outcome->detail, "ftp://example is not an http endpoint");
+}
+
+TEST(ConnectionsAddressDialed, OutcomesAreNamedAsThePythonNodeNamesThem) {
+    AddressDialed dialed;
+
+    EXPECT_EQ(dialed.outcome_name(), "unreached");
+    dialed.outcome = Outcome::Connected;
+    EXPECT_EQ(dialed.outcome_name(), "connected");
+    dialed.outcome = Outcome::AlreadyConnected;
+    EXPECT_EQ(dialed.outcome_name(), "already_connected");
+    dialed.outcome = Outcome::ThisNode;
+    EXPECT_EQ(dialed.outcome_name(), "this_node");
+}
+
+TEST(ConnectionsAddressDialed, TextNamesTheDialItsOutcomeAndWhy) {
+    const AddressDialed dialed{"id", Outcome::Unreached, std::nullopt, "refused"};
+
+    EXPECT_EQ(std::string(dialed), "dial id unreached: refused");
+    EXPECT_EQ(std::string(DialRequested{"id", other_endpoint}),
+              std::string("dial id of ") + other_endpoint);
 }
 
 // NOLINTEND(bugprone-unchecked-optional-access)

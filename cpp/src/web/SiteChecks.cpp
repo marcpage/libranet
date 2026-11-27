@@ -18,11 +18,13 @@
 #include "ConnectionInfo.hpp"
 #include "http/Headers.hpp"
 #include "http/Request.hpp"
+#include "http/Url.hpp"
 #include "net/IpAddress.hpp"
 #include "types/Converter.hpp"
 
 using http::Headers;
 using http::Request;
+using http::Url;
 using net::IpAddress;
 using std::any_of;
 using std::array;
@@ -50,9 +52,6 @@ constexpr size_t machine_name_size = 256;
 constexpr string_view same_origin = "same-origin";
 constexpr string_view user_initiated = "none";
 
-// What an origin's scheme ends with, before its host and port (RFC 6454 §7).
-constexpr string_view scheme_end = "://";
-
 // The name this machine gives itself, in lower case.
 string machine_name() {
     // One more than is asked for, so that a name cut short still ends in NUL.
@@ -79,19 +78,19 @@ vector<string> checked_hosts(vector<string> hosts) {
     return hosts;
 }
 
-// The host authority names, in lower case, without its port or an IPv6
-// address's brackets. Empty if its brackets are not closed, which names no
-// host.
-string host_name(string_view authority) {
-    const auto text = Converter::lower_case(Headers::trim_whitespace(authority));
+// The host and port authority, as a Host header gives it, names (RFC 9110
+// §7.2), as a URL of no scheme. Nothing when it names no host, or more than a
+// host and port. Url gives a URL with no path the path "/".
+optional<Url> host_url(string_view authority) {
+    auto url = Url::parse(Headers::trim_whitespace(authority));
 
-    if (!text.empty() && '[' == text.front()) {
-        const auto closing = text.find(']');
-
-        return string::npos == closing ? string() : text.substr(1, closing - 1);
+    if (!url || url->host().empty() || !url->scheme().empty() || !url->username().empty()
+        || !url->password().empty() || "/" != url->path() || !url->query().empty()
+        || !url->fragment().empty()) {
+        return nullopt;
     }
 
-    return text.substr(0, text.find(':'));
+    return url;
 }
 
 // As Python's fnmatch does, a backslash in pattern matches itself rather than
@@ -103,27 +102,26 @@ bool matches(const string& pattern, const string& name) {
 // Whether authority names the IP address address, whatever its port. An
 // IPv4-mapped address names the IPv4 address it maps.
 bool names_address(string_view authority, string_view address) {
-    const auto named = IpAddress::parse(host_name(authority));
-    const auto reached = IpAddress::parse(address);
+    const auto url = host_url(authority);
+    const auto named = url ? IpAddress::parse(url->host()) : nullopt;
 
-    return named.has_value() && reached.has_value()
-           && named->to_string() == reached->to_string();
+    return named.has_value() && named == IpAddress::parse(address);
 }
 
 // Whether origin, as an Origin header gives it, names the host and port host
 // does. "null" names neither, so it never does.
 bool same_authority(string_view origin, string_view host) {
-    const auto scheme = origin.find(scheme_end);
+    const auto origin_url = Url::parse(Headers::trim_whitespace(origin));
+    auto host_named = host_url(host);
 
-    if (string_view::npos == scheme) {
+    if (!origin_url || !host_named || origin_url->scheme().empty()) {
         return false;
     }
 
-    const auto authority = Converter::lower_case(
-        Headers::trim_whitespace(origin.substr(scheme + scheme_end.size())));
-
-    return !authority.empty()
-           && authority == Converter::lower_case(Headers::trim_whitespace(host));
+    // An origin is a scheme, a host, and a port (RFC 6454 §7), and a Host
+    // header names the last two.
+    host_named->set_scheme(string(origin_url->scheme()));
+    return *origin_url == *host_named;
 }
 
 string quoted(string_view text) {
@@ -208,11 +206,17 @@ optional<SiteChecks::Refusal> SiteChecks::page_refusal(const Request& request) c
 }
 
 bool SiteChecks::serves_as(string_view authority) const {
-    const auto name = host_name(authority);
+    const auto url = host_url(authority);
+
+    if (!url) {
+        return false;
+    }
+
+    const auto name = Converter::lower_case(url->host());
 
     // fnmatch() would read name only up to a NUL, and let what follows it
     // through unread.
-    if (name.empty() || string::npos != name.find('\0')) {
+    if (string::npos != name.find('\0')) {
         return false;
     }
 
