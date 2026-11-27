@@ -32,6 +32,7 @@
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
 #include "types/Constants.hpp"
+#include "types/Converter.hpp"
 
 using http::Headers;
 using http::Problem;
@@ -62,6 +63,7 @@ using std::thread;
 using std::unique_lock;
 using std::unordered_map;
 using std::vector;
+using types::Converter;
 using types::decimal_digits;
 using web::ConnectionInfo;
 using web::Server;
@@ -273,8 +275,7 @@ optional<Received> read_request(MeteredReader& reader, const Server::Limits& lim
         return nullopt;
     }
 
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-    received.request.set_body(string(reinterpret_cast<const char*>(body.data()), body.size()));
+    received.request.set_body(Converter::text_of(body));
     return received;
 }
 

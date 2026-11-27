@@ -15,6 +15,7 @@
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
 #include "types/Constants.hpp"
+#include "types/Converter.hpp"
 #include "types/Json.hpp"
 
 namespace protocol {
@@ -70,8 +71,6 @@ private:
     template<typename Entry>
     [[nodiscard]] static types::Json::Array _texts(const std::vector<Entry>& entries,
                                                    std::size_t count);
-    [[nodiscard]] static Data _bytes(std::string_view text);
-    [[nodiscard]] static std::string _text(const Data& body);
 };
 
 inline SeekList SeekList::from_body(const Data& body, std::size_t decompressed_limit) {
@@ -116,7 +115,7 @@ inline SeekList::Data SeekList::body(std::size_t limit) const {
 // std::invalid_argument for a body that is neither JSON nor one zlib stream
 // of JSON within decompressed_limit.
 inline types::Json SeekList::_decode(const Data& body, std::size_t decompressed_limit) {
-    if (auto json = _parsed(_text(body))) {
+    if (auto json = _parsed(types::Converter::text_of(body))) {
         return std::move(*json);
     }
 
@@ -128,7 +127,7 @@ inline types::Json SeekList::_decode(const Data& body, std::size_t decompressed_
             + std::to_string(decompressed_limit) + " bytes");
     }
 
-    return types::Json::parse(_text(*decompressed));
+    return types::Json::parse(types::Converter::text_of(*decompressed));
 }
 
 // The JSON text is, or nothing when it is not JSON, as a compressed list is
@@ -233,7 +232,7 @@ inline SeekList::Data SeekList::_longest_within(std::size_t too_many, std::size_
 // The first count of each kind, as compact JSON, or zlib-compressed where the
 // JSON is not fewer than limit bytes.
 inline SeekList::Data SeekList::_body(std::size_t count, std::size_t limit) const {
-    auto json = _bytes(_json(count).dump());
+    auto json = types::Converter::bytes_of(_json(count).dump());
 
     if (json.size() < limit) {
         return json;
@@ -261,24 +260,6 @@ inline types::Json::Array SeekList::_texts(const std::vector<Entry>& entries,
     std::transform(entries.begin(), kept, std::back_inserter(texts),
                    [](const Entry& entry) { return types::Json(entry.to_string()); });
     return texts;
-}
-
-// The bytes of text, a byte for each char.
-inline SeekList::Data SeekList::_bytes(std::string_view text) {
-    Data bytes(text.size());
-
-    std::transform(text.begin(), text.end(), bytes.begin(),
-                   [](char character) { return static_cast<std::byte>(character); });
-    return bytes;
-}
-
-// The text of body, a char for each byte.
-inline std::string SeekList::_text(const Data& body) {
-    std::string text(body.size(), '\0');
-
-    std::transform(body.begin(), body.end(), text.begin(),
-                   [](std::byte byte) { return static_cast<char>(byte); });
-    return text;
 }
 
 } // namespace protocol

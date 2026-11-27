@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "Base64.hpp"
+#include "types/Converter.hpp"
 
 namespace crypto {
 
@@ -68,11 +69,7 @@ inline std::string Pem::wrap(std::string_view label, const std::vector<std::byte
 }
 
 inline std::string Pem::wrap(std::string_view label, std::string_view der_string) {
-    std::vector<std::byte> bytes(der_string.size());
-
-    std::transform(der_string.begin(), der_string.end(), bytes.begin(),
-                   [](char character) { return static_cast<std::byte>(character); });
-    return wrap(label, bytes);
+    return wrap(label, types::Converter::bytes_of(der_string));
 }
 
 inline Pem::Unwrapped Pem::unwrap(std::string_view pem_string) {

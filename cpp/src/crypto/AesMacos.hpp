@@ -2,7 +2,6 @@
 
 #if __APPLE__
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -16,6 +15,7 @@
 #include <CommonCrypto/CommonCryptor.h>
 
 #include "IEncryptKey.hpp"
+#include "types/Converter.hpp"
 
 namespace crypto {
 
@@ -86,16 +86,9 @@ inline IEncryptKey::Data AesMacos::encrypt(std::string_view plaintext,
 
 inline std::string AesMacos::decrypt(const Data& ciphertext,
                                      const InitializationVector& vector) const {
-    const auto as_char = [](std::byte byte) { return static_cast<char>(byte); };
-    std::string input(ciphertext.size(), '\0');
+    const auto input = types::Converter::text_of(ciphertext);
 
-    std::transform(ciphertext.begin(), ciphertext.end(), input.begin(), as_char);
-
-    const auto output = _process(kCCDecrypt, input, vector);
-    std::string text(output.size(), '\0');
-
-    std::transform(output.begin(), output.end(), text.begin(), as_char);
-    return text;
+    return types::Converter::text_of(_process(kCCDecrypt, input, vector));
 }
 
 inline IEncryptKey::Data AesMacos::_process(CCOperation operation, std::string_view input,

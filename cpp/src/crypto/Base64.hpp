@@ -1,6 +1,5 @@
 #pragma once
 
-#include <algorithm>
 #include <cstddef>
 #include <stdexcept>
 #include <string>
@@ -8,6 +7,7 @@
 #include <vector>
 
 #include "types/Constants.hpp"
+#include "types/Converter.hpp"
 
 namespace crypto {
 
@@ -76,11 +76,7 @@ inline std::string Base64::encode(const std::vector<std::byte>& data) {
 }
 
 inline std::string Base64::encode(std::string_view data) {
-    std::vector<std::byte> bytes(data.size());
-
-    std::transform(data.begin(), data.end(), bytes.begin(),
-                   [](char character) { return static_cast<std::byte>(character); });
-    return encode(bytes);
+    return encode(types::Converter::bytes_of(data));
 }
 
 inline int Base64::_character_value(char character) {
