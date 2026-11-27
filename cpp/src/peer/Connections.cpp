@@ -309,7 +309,7 @@ void Connections::_refresh_seek_lists() {
     }
 
     m_refreshing = true;
-    _start([this, open = _open()] {
+    _start([this, open = _open_sessions()] {
         try {
             (void)m_fulfiller->refresh(open);
         } catch (const exception& error) {
@@ -594,7 +594,7 @@ Outcome Connections::_admit(const shared_ptr<PeerSession>& session, const string
 vector<shared_ptr<PeerSession>> Connections::open_sessions() const {
     const scoped_lock lock(m_mutex);
 
-    return _open();
+    return _open_sessions();
 }
 
 vector<Identifier> Connections::connected_ids() const {
@@ -612,7 +612,7 @@ vector<Identifier> Connections::connected_ids() const {
 
 // The sessions of the nodes connected whose connections are open. Called
 // holding m_mutex.
-vector<shared_ptr<PeerSession>> Connections::_open() const {
+vector<shared_ptr<PeerSession>> Connections::_open_sessions() const {
     vector<shared_ptr<PeerSession>> open;
 
     open.reserve(m_peers.size());
