@@ -73,9 +73,6 @@ namespace {
 using Port = Address::Port;
 using Status = http::ResponseCode::Status;
 
-// How many connections may wait to be accepted.
-constexpr int backlog = 128;
-
 // The highest port there is.
 constexpr uint32_t highest_port = 65'535;
 
@@ -221,7 +218,7 @@ Server::RequestHandler guarded(const Guard& guard, const MessageSigner& signer,
 // Has server serve until it is stopped, logging why when it stops before.
 void serve(Server& server) {
     try {
-        server.start(backlog);
+        server.start(Server::default_backlog);
     } catch (const exception& error) {
         lErr << "The /config web server stopped:" << error;
     }

@@ -94,9 +94,6 @@ using NodesUpdated = stats::Recorder::NodesUpdated;
 using SeekUpdated = stats::Recorder::SeekUpdated;
 using Status = http::ResponseCode::Status;
 
-// How many connections may wait to be accepted.
-constexpr int backlog = 128;
-
 // Where the data handler is registered with the server: it takes what is
 // beneath it that the other handlers do not.
 constexpr string_view data_path = "/data";
@@ -240,7 +237,7 @@ void keep(NodesHandler& nodes_handler, SeekHandler& seek_handler, SearchAnswers&
 // Has server serve until it is stopped, logging why when it stops before.
 void serve(Server& server) {
     try {
-        server.start(backlog);
+        server.start(Server::default_backlog);
     } catch (const exception& error) {
         lErr << "The web server stopped:" << error;
     }
