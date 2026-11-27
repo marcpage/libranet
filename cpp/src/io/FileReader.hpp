@@ -14,7 +14,7 @@ namespace io {
 class FileReader final : public IReader {
 public:
     // Throws std::runtime_error when file cannot be opened, or is a
-    // directory, which some systems open as a file that reads as empty.
+    // directory.
     explicit FileReader(std::filesystem::path file);
 
     // All that is left of the file. Throws std::runtime_error when it cannot

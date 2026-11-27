@@ -11,9 +11,9 @@
 
 namespace peer {
 
-// The hand-off of an object the node means to let go of (High-Level Design
-// §4.5), to the best outgoing connection that takes it (§4.6). It does not
-// delete the object. Any number may run at once, from any threads.
+// Hands an object the node means to let go of to the best outgoing connection
+// that takes it (High-Level Design §4.5, §4.6), without deleting it. Any
+// thread may use it.
 class HandOff {
 public:
     using Session = std::shared_ptr<PeerSession>;

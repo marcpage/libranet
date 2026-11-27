@@ -20,9 +20,8 @@
 
 namespace peer {
 
-// Fulfills what the nodes this node is connected to seek (High-Level Design
-// §4.8), reading each node's seek list (HttpApi §10.7.1) at first contact and
-// every refresh while the connection lasts. Any thread may use it.
+// Fulfills the seek lists of the nodes connected (High-Level Design §4.8,
+// HttpApi §10.7.1). Any thread may use it.
 //
 // Mistaken: cppcheck loses the constructors in files `using` the class.
 // cppcheck-suppress noConstructor
@@ -43,26 +42,24 @@ public:
         // The fewest leading bits what is named shares with a prefix that has
         // as many.
         std::size_t search_min_bits = default_search_min_bits;
-        // How many requests are sent at once, each put holding its content in
-        // memory until it is answered.
+        // How many requests are sent at once, each holding its content until
+        // it is answered.
         std::size_t pipeline_depth = default_pipeline_depth;
         // The most a list sent compressed may decompress to.
         std::size_t list_bytes = types::max_decompressed_list_size;
     };
 
-    // Throws std::invalid_argument, naming the setting, for one it cannot use,
-    // or for no store or no clock.
+    // Throws std::invalid_argument for a setting it cannot use, no store, or
+    // no clock.
     SeekFulfiller(storage::IDataSource::Ptr store, const Settings& settings,
                   ClockFunction clock = &Clock::now);
 
-    // Step 6 of first contact (Handshake Protocol §3), on a new connection:
-    // fulfills seek, the list the node has just sent. Throws what
+    // Step 6 of first contact (Handshake Protocol §3). Throws what
     // PeerSession::exchange() throws.
     void fulfill(PeerSession& session, const protocol::SeekList& seek);
 
-    // Reads again and fulfills each open session's list that is due, each on a
-    // thread of its own, and waits for each. A failure is logged. Gives how
-    // many lists were read.
+    // Reads again and fulfills each open session's list that is due. A
+    // failure is logged. Gives how many lists were read.
     [[nodiscard]] std::size_t refresh(const Sessions& sessions);
 
     [[nodiscard]] std::size_t pipeline_depth() const noexcept;

@@ -14,10 +14,7 @@
 namespace crypto {
 
 // Core Foundation's data, made from and read as the bytes and text this
-// library keeps. Core Foundation takes and gives bytes as UInt8, an unsigned
-// char, and this library keeps them as std::byte or char. Each of the three
-// may be read as any other, so a pointer to one is passed as a pointer to
-// another.
+// library keeps.
 class CFBytes {
 public:
     // New data holding a copy of bytes or text; empty if Core Foundation
@@ -39,8 +36,8 @@ private:
     [[nodiscard]] static CFObject<CFDataRef> _copy(const UInt8* start, std::size_t size);
 };
 
-// The casts, and the pointer arithmetic over what Core Foundation holds, are
-// the ones the class comment describes.
+// Core Foundation keeps bytes as UInt8, and this library as std::byte or char,
+// each of which may be read as any other.
 // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
 // NOLINTBEGIN(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 inline CFObject<CFDataRef> CFBytes::of(const std::vector<std::byte>& bytes) {

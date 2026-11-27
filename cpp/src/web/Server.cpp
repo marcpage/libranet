@@ -174,10 +174,12 @@ bool read_headers(MeteredReader& reader, Received& received) {
 
         try {
             last_key = Headers::process_header_line(line, last_key, received.request.headers());
-        } catch (const runtime_error&) {
+        } catch (const runtime_error& error) {
+            lDebug << "Refused a request whose headers cannot be read:" << error.what();
             received.refusal = unreadable();
             return true;
-        } catch (const invalid_argument&) {
+        } catch (const invalid_argument& error) {
+            lDebug << "Refused a request whose headers cannot be read:" << error.what();
             received.refusal = unreadable();
             return true;
         }
@@ -343,6 +345,23 @@ void make_ready(Response& response, const Received& received, bool closing) {
     }
 }
 
+// Logs the answer, ready to send, to the request received on connection: its
+// method and target, where its line was read, who asked, and the answer's
+// status and length.
+void log_answer(const Received& received, const Response& response,
+                const ConnectionInfo& connection) {
+    const auto from = connection.remote_address().to_string() + ":";
+    const auto status = std::to_string(response.status_code()) + ",";
+    const auto bytes = response.body().size();
+
+    if (received.line_read) {
+        lInfo << "Answered" << received.request.method() << received.request.uri() << "from"
+              << from << status << bytes << "bytes";
+    } else {
+        lInfo << "Answered a request from" << from << status << bytes << "bytes";
+    }
+}
+
 // Where to connect to the listener, to wake a thread waiting in accept():
 // the loopback address, for a listener bound to every address.
 Address wake_address(const ISocket::Ptr& listener) {
@@ -450,6 +469,7 @@ bool answer_next(const Server::Limits& limits, const Handlers& handlers,
     const auto closing = closes(*received, response, connection);
 
     make_ready(response, *received, closing);
+    log_answer(*received, response, connection);
     client.send_all(response.to_string());
     return !closing;
 }
@@ -522,10 +542,10 @@ void Server::stop() {
         // accept() returns this connection, and start() then sees that it
         // is to stop.
         (void)ISocket::connect(m_wake_address);
+    } catch (const exception& error) {
         // start() may have stopped listening since, which leaves nothing to
         // wake.
-        // NOLINTNEXTLINE(bugprone-empty-catch)
-    } catch (const exception&) {
+        lDebug << "Could not wake the server so that it stops:" << error.what();
     }
 }
 
@@ -591,8 +611,9 @@ void Server::_serve(ISocket::Ptr client) {
 
     try {
         client->set_timeout(m_limits.idle);
+    } catch (const system_error& error) {
         // The client may have gone already.
-    } catch (const system_error&) {
+        lDebug << "Not serving a connection whose timeout cannot be set:" << error.what();
         return;
     }
 

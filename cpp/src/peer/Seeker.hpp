@@ -22,9 +22,7 @@
 
 namespace peer {
 
-// Seeks from the peers what the node lacks (High-Level Design §4.7), from a
-// thread of its own: it fetches the content of each storage::DataNotFound, and
-// searches the peers for each stats::Recorder::SearchRequested.
+// Seeks from the peers what the node lacks (High-Level Design §4.7).
 class Seeker {
 public:
     using Clock = PeerSearch::Clock;
@@ -46,8 +44,8 @@ public:
         Milliseconds check_interval = default_check_interval;
     };
 
-    // fetch must outlive this. Throws std::invalid_argument, naming the
-    // setting, for one it cannot use, or for a function missing.
+    // fetch must outlive this. Throws std::invalid_argument for a setting it
+    // cannot use, or a function missing.
     Seeker(Fetch& fetch, GetPeers get_peers, const Settings& settings,
            const ClockFunction& clock = &Clock::now);
     // Stops fetch, then waits for the fetches and passes under way, which end

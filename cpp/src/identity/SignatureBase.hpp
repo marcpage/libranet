@@ -27,8 +27,7 @@ public:
     };
 
     // The label a libranet signature has (HTTP API §11.2), and the fields
-    // that give it: Signature-Input its parameters, under the label, and
-    // Signature the signature (RFC 9421 §4).
+    // that carry it (RFC 9421 §4).
     static constexpr std::string_view label = "libranet";
     static constexpr std::string_view signature_input_field = "Signature-Input";
     static constexpr std::string_view signature_field = "Signature";

@@ -9,22 +9,17 @@
 
 namespace config {
 
-// Answers a path beneath /config/api that the shared /config page uses, and
-// that a later phase brings, whatever the method: 404, about:blank, with a
-// detail naming what the node does not offer yet, such as "This node does not
-// offer backups yet.", which the page shows in that section. GET /config/api
-// lists none of them, and each phase that brings one takes it off features.
-// Safe to use from the threads serving connections, several at once.
+// 404 for a path the /config page uses that a later phase brings, naming
+// what the node does not offer yet.
 class NotOffered {
 public:
-    // What the node does not offer yet, and where the page asks for it.
     struct Feature {
-        std::string_view path; // Where the page asks for it
-        std::string_view name; // As it is named in the detail, such as "backups"
+        std::string_view path;
+        std::string_view name; // As the detail names it: "backups"
         bool beneath = false;  // Whether each path beneath path is it too
     };
 
-    // Each the page asks for that a later phase brings.
+    // Each phase that brings one takes it off.
     static constexpr std::array features{
         Feature{"/config/api/metadata", "metadata", false},
         Feature{"/config/api/trust", "trust lists", true},
@@ -38,12 +33,8 @@ public:
         Feature{"/config/api/restores", "restores", false},
     };
 
-    // To be registered with the server at feature's path.
     explicit NotOffered(const Feature& feature) noexcept;
 
-    // Answers a request for the feature's path, whatever its query, or for a
-    // path beneath it when that is the feature's too. Any other path is no
-    // resource.
     void operator()(const http::Request& request, http::Response& response,
                     const web::ConnectionInfo& connection) const;
 

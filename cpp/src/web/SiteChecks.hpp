@@ -11,8 +11,7 @@
 namespace web {
 
 // The checks that keep other sites' pages out of what only this machine is
-// served (HTTP API §2.3.3, §2.4). A request carrying none of the headers
-// they read comes from no browser, and passes.
+// served (HTTP API §2.3.3, §2.4). A request from no browser passes.
 class SiteChecks {
 public:
     // The header a request is refused for, one of those below, and why.
@@ -25,11 +24,11 @@ public:
     static constexpr std::string_view site_header = "Sec-Fetch-Site";
     static constexpr std::string_view origin_header = "Origin";
 
-    // hosts are shell-style patterns, as network.config_hosts gives them,
-    // matched whatever their case, an IPv6 address without its brackets.
-    // served is what a refusal calls what is checked, as "/config". Throws
-    // std::invalid_argument for a host holding a NUL, and std::system_error
-    // if the name this machine gives itself cannot be read.
+    // hosts are shell-style patterns (network.config_hosts), matched whatever
+    // their case, an IPv6 address without brackets. served names what is
+    // checked in a refusal, as "/config". Throws std::invalid_argument for a
+    // host holding a NUL, and std::system_error if this machine's name cannot
+    // be read.
     SiteChecks(std::vector<std::string> hosts, std::string served);
 
     // host_refusal(), or else page_refusal().

@@ -22,8 +22,7 @@
 
 namespace node {
 
-// A Libranet node: it lays out its data directory and makes its parts, each
-// with threads of its own, with the Python node's settings and defaults.
+// A Libranet node, with the Python node's settings and defaults.
 class Node {
 public:
     // Runs a node until the process is sent SIGINT or SIGTERM, which are held
@@ -31,10 +30,10 @@ public:
     static void run(const SettingsFile& settings, const std::vector<std::string>& seeds = {});
 
     // Each of seeds is as --seed gives it: URL[=ID]. Throws
-    // std::invalid_argument, naming the setting or --seed, for one it cannot
-    // use, before it makes anything; std::system_error or std::runtime_error
-    // when it cannot lay out its data directory, keep its key, or listen; and
-    // db::SqliteError when it cannot open its database.
+    // std::invalid_argument for a setting or seed it cannot use, before it
+    // makes anything; std::system_error or std::runtime_error when it cannot
+    // lay out its data directory, keep its key, or listen; and db::SqliteError
+    // when it cannot open its database.
     explicit Node(const SettingsFile& settings, const std::vector<std::string>& seeds = {});
 
     // With the port the system picked when the settings left that to it.
@@ -63,7 +62,6 @@ private:
     net::Address m_listen_address;
     // Unset, /config takes the first port free above the main port.
     std::optional<net::Address::Port> m_config_port;
-    // Those /config is served as.
     std::vector<std::string> m_config_hosts;
     PartSettings m_settings;
 

@@ -24,9 +24,8 @@
 
 namespace crypto {
 
-// Argon2id password hashing, built on OpenSSL, kept in the PHC string format
-// that libargon2 and Python's cryptography package write, which names the
-// costs a hash is checked with.
+// Argon2id password hashing, built on OpenSSL, in the PHC string format that
+// libargon2 and Python's cryptography package write.
 class Argon2idOpenSsl : public IPasswordHasher {
 public:
     Argon2idOpenSsl(

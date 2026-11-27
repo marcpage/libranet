@@ -18,11 +18,10 @@
 
 namespace http {
 
-// A structured field value (RFC 9651) that is a dictionary, as
-// Signature-Input, Signature, and Content-Digest are. Decimals, dates, and
-// display strings are not read or written, as those fields cannot hold them
-// (§2.4). It holds no more members, inner list items, and parameters than RFC
-// 9651 asks a parser to take (§3.1.1, §3.1.2, §3.2).
+// A structured field dictionary (RFC 9651), as Signature-Input, Signature, and
+// Content-Digest are, without decimals, dates, or display strings. It holds no
+// more members, inner list items, and parameters than RFC 9651 asks a parser
+// to take.
 class StructuredField {
 public:
     // Text written bare, where a string is quoted (RFC 9651 §3.3.4).

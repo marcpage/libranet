@@ -12,10 +12,9 @@
 
 namespace identity {
 
-// Checks the signature on a request or an answer (HTTP API §11, §11.2,
-// HandshakeProtocol §2), telling a signer whose key is not held yet from a
-// signature that fails (§3.2). Safe to use from any thread, so long as clock
-// is.
+// Checks the signature on a request or an answer (HTTP API §11,
+// HandshakeProtocol §2). Any thread may use it, if clock may be called from
+// any.
 class MessageVerifier {
 public:
     using Clock = std::chrono::system_clock;

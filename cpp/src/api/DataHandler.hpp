@@ -13,14 +13,11 @@
 
 namespace api {
 
-// Answers GET and PUT of /data/{algorithm}/{hash}, the content the node stores
-// (HttpApi §5, §7). A GET of content not held is 503 while the node looks for
-// it (§5.2), or 404 while that search is held off (§5.3).
+// GET and PUT of /data/{algorithm}/{hash} (HttpApi §5, §7).
 class DataHandler {
 public:
     using Seconds = std::chrono::seconds;
-    // As peer::Fetch::is_held_off() says. Called from the threads serving
-    // connections, several at once.
+    // As peer::Fetch::is_held_off(). Called from several threads at once.
     using IsHeldOff = std::function<bool(const storage::Identifier& identifier)>;
 
     // As sent (HttpApi §7.1).
@@ -28,17 +25,16 @@ public:
     // As the Python node's is.
     static constexpr Seconds default_retry_after = std::chrono::seconds(5);
 
-    // With no is_held_off, no search is held off. A larger body than
-    // body_bytes is refused. Throws std::invalid_argument, naming the
-    // setting, for a retry after less than zero, or body bytes of zero or
-    // more than max_body_bytes.
+    // With no is_held_off, no search is held off. Throws
+    // std::invalid_argument for a negative retry_after, or body_bytes of zero
+    // or more than max_body_bytes.
     explicit DataHandler(storage::IDataSource::Ptr store,
                          std::size_t content_bytes = types::max_decompressed_content_size,
                          Seconds retry_after = default_retry_after,
                          IsHeldOff is_held_off = nullptr, std::size_t body_bytes = max_body_bytes);
 
-    // Called from the threads serving connections, several at once. Throws
-    // what the store throws, and std::bad_alloc if zlib runs out of memory.
+    // Throws what the store throws, and std::bad_alloc if zlib runs out of
+    // memory.
     void operator()(const http::Request& request, http::Response& response,
                     const web::ConnectionInfo& connection) const;
 

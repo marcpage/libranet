@@ -23,9 +23,8 @@
 
 namespace web {
 
-// An HTTP/1.1 server, serving each connection on a thread of its own and
-// keeping it open for the next request. Each answer names the request it
-// answers, its path and query, in X-Request-Path.
+// An HTTP/1.1 server, with a thread for each connection. Each answer names the
+// path and query it answers in X-Request-Path, and is logged at Info.
 class Server {
 public:
     using RequestHandler = std::function<void(
@@ -58,18 +57,14 @@ public:
     // Before start(). Handlers are called from the threads serving
     // connections, several at once.
     void register_handler(std::string_view path, RequestHandler handler);
-    // Before start(). Every answer carries the header name, with value, in
-    // place of any its handler gave: the server's own among them, to a
-    // request it refuses, to a path with no handler, and when a handler
-    // throws.
+    // Before start(). Every answer carries the header, in place of any its
+    // handler gave, the server's own among them.
     void set_on_every_answer(std::string name, std::string value);
     [[nodiscard]] net::Address local_address() const;
-    // Serves until stop() is called, then ends every connection and waits for
-    // the threads serving them. Returns at once if stop() was called before
-    // it.
+    // Serves until stop(), then ends every connection and waits for its
+    // threads; at once if stop() was called before.
     void start(int backlog);
-    // May be called from any thread while start() runs, a handler's among
-    // them.
+    // Any thread may call it, a handler's among them.
     void stop();
 
     ~Server() = default;

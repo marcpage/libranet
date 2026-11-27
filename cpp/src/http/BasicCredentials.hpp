@@ -15,12 +15,10 @@
 
 namespace http {
 
-// The username and password an Authorization field gives in the Basic scheme
-// (RFC 7617 §2), in UTF-8, the one charset it may name (§2.1). The password
-// is wiped from memory as it goes.
+// The username and password of the Basic scheme (RFC 7617 §2), in UTF-8. The
+// password is wiped from memory as it goes.
 class BasicCredentials {
 public:
-    // The field that carries them (RFC 9110 §11.6.2).
     static constexpr std::string_view field_name = "Authorization";
 
     // The credentials an Authorization field's value gives, whatever the case
@@ -28,16 +26,13 @@ public:
     // is not base64, not UTF-8, or holds no ':'.
     [[nodiscard]] static std::optional<BasicCredentials> parse(std::string_view text);
 
-    // From the username and password joined by a ':', as RFC 7617 §2 joins
-    // them. Throws std::invalid_argument for user_pass with no ':', or not in
-    // UTF-8.
+    // Throws std::invalid_argument for user_pass with no ':', or not in UTF-8.
     explicit BasicCredentials(std::string_view user_pass);
     ~BasicCredentials();
 
     // Up to the first ':', which a username cannot hold (RFC 7617 §2).
     [[nodiscard]] const std::string& username() const noexcept;
     [[nodiscard]] const std::string& password() const noexcept;
-    // The username and password joined by a ':'.
     [[nodiscard]] std::string user_pass() const;
     // As an Authorization field's value.
     [[nodiscard]] std::string to_string() const;

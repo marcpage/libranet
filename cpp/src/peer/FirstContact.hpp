@@ -14,9 +14,8 @@
 
 namespace peer {
 
-// The first-contact exchange, as the client (Handshake Protocol §3). Nothing
-// changes once it is made, so any thread may use it, each with a connection of
-// its own.
+// The first-contact exchange, as the client (Handshake Protocol §3). Any
+// thread may use it.
 class FirstContact {
 public:
     // seek is nothing when the node sent no seek list that could be read.
@@ -31,9 +30,8 @@ public:
     FirstContact(const identity::NodeIdentity& identity, storage::IDataSource::Ptr store,
                  identity::MessageVerifier verifier, std::shared_ptr<SeekFulfiller> fulfiller);
 
-    // Gives the session with the node that proved its identity over
-    // connection, whichever node it is. Throws PeerSession::Unauthenticated
-    // when the peer did not prove which node it is; what
+    // With whichever node proves its identity over connection. Throws
+    // PeerSession::Unauthenticated when none does; what
     // PeerSession::exchange() and PeerConnection::send() throw; and
     // std::invalid_argument for no connection.
     [[nodiscard]] Contact make(std::unique_ptr<PeerConnection> connection,

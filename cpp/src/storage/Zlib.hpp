@@ -21,8 +21,7 @@ public:
     [[nodiscard]] static Data compress(const Data& data, int level);
 
     // Nothing when data is not exactly one zlib stream, or holds more than
-    // limit bytes, which bounds the memory it takes. Throws std::bad_alloc if
-    // zlib runs out of memory.
+    // limit bytes. Throws std::bad_alloc if zlib runs out of memory.
     [[nodiscard]] static std::optional<Data> decompress(const Data& data, std::size_t limit);
 
     Zlib() = delete;

@@ -17,8 +17,7 @@ public:
     enum class Access : std::uint8_t {
         // Whoever the umask lets.
         Umask,
-        // Only its owner. writable_path() is made at once, empty, so that
-        // nothing written to it is ever where another may read it.
+        // Only its owner, from the first byte written.
         Owner,
     };
 
@@ -31,8 +30,7 @@ public:
     // Or one a crash left behind.
     [[nodiscard]] static bool is_partial(const std::filesystem::path& file);
 
-    // Beside the file, so that the rename does not cross filesystems, and
-    // named at random, so that two writes of the same file do not collide.
+    // Beside the file, named at random.
     [[nodiscard]] const std::filesystem::path& writable_path() const noexcept;
 
     // And commit()s it.
@@ -46,10 +44,9 @@ public:
     // std::runtime_error when it cannot be renamed.
     void commit();
 
-    // Whether it is now the file, which it is not when one is there already,
-    // which is left as it is: so of two writes of the file at once, whichever
-    // commits first wins. Throws std::logic_error when it is already
-    // committed, and std::runtime_error when it cannot be linked.
+    // Whether it is now the file: not when one is there already, which is left
+    // as it is. Throws std::logic_error when it is already committed, and
+    // std::runtime_error when it cannot be linked.
     [[nodiscard]] bool commit_if_absent();
 
     // Each would leave two to remove the one file written.

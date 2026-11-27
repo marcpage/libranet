@@ -22,10 +22,8 @@
 
 namespace stats {
 
-// What the node remembers of the network and of how content is used, kept in
-// its database, which only this opens. From a thread of its own, it derives
-// the node list, the candidates to dial, and the seek list, and ranks content
-// for eviction.
+// What the node remembers of the network and of how content is used, in a
+// database only this opens.
 class Recorder {
 public:
     using Clock = NodeAddresses::Clock;
