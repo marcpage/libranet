@@ -12,7 +12,7 @@
 namespace stats {
 
 // What the node seeks and does not hold (HttpApi §10.7), in a table of a
-// database that must outlive this. Used from the one thread that uses it.
+// database that must outlive this. Used from one thread.
 // cppcheck-suppress noConstructor
 class Sought {
 public:

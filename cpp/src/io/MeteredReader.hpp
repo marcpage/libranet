@@ -14,10 +14,9 @@ public:
     using std::runtime_error::runtime_error;
 };
 
-// Reads from another reader no more than a limit, so that input from outside
-// takes no more than it is allowed. A read asking for more than remains throws
-// LimitExceeded before reading anything, so one goes over a BufferedReader
-// rather than under it.
+// Reads from another reader no more than a limit. A read asking for more than
+// remains throws LimitExceeded before reading anything, so one goes over a
+// BufferedReader rather than under it.
 class MeteredReader final : public IReader {
 public:
     MeteredReader(IReader::Ptr upstream, std::size_t max_bytes);

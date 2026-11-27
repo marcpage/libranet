@@ -11,9 +11,8 @@
 
 namespace protocol {
 
-// A node list (HttpApi §10.6): the nodes a node knows, each by an endpoint it
-// was reached at, in the order they were added, best first. An endpoint named
-// again keeps its first entry.
+// A node list (HttpApi §10.6), best first. An endpoint named again keeps its
+// first entry.
 class NodeList {
 public:
     using Data = std::vector<std::byte>;
@@ -28,12 +27,11 @@ public:
     // As it is sent, compressed or not (HttpApi §10.6).
     static constexpr std::size_t max_size = 1 * types::Megabyte;
 
-    // An entry that is not valid is left out, rather than costing the sender
-    // the rest of its list. Throws std::invalid_argument for text that is not
-    // JSON, or not an object holding a "nodes" object.
+    // An entry that is not valid is left out. Throws std::invalid_argument
+    // for text that is not a JSON object holding a "nodes" object.
     [[nodiscard]] static NodeList parse(std::string_view text);
-    // JSON, or a zlib stream of JSON of no more than decompressed_limit bytes.
-    // Throws std::invalid_argument as parse() does, or for a body that is
+    // JSON, or zlib-compressed JSON of no more than decompressed_limit bytes.
+    // Throws as parse() does, or std::invalid_argument for a body that is
     // neither.
     [[nodiscard]] static NodeList from_body(
         const Data& body, std::size_t decompressed_limit = types::max_decompressed_list_size);
@@ -52,7 +50,7 @@ public:
     // sender's machine resolved to it (HttpApi §10.2).
     [[nodiscard]] NodeList resolved(std::string_view source_address) const;
 
-    // As JSON, with every entry, in order.
+    // As JSON, with every entry.
     [[nodiscard]] std::string to_string() const;
     // Less than limit bytes: compressed only when too large, and leaving out
     // the entries at its end that do not fit even then. Throws

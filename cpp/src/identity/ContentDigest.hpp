@@ -14,12 +14,9 @@
 
 namespace identity {
 
-// A Content-Digest field (RFC 9530 §2). A node sends the sha-256 of a body,
-// and of a field it receives, checks every algorithm it knows and passes over
-// the rest (HTTP API §11.2).
+// A Content-Digest field (RFC 9530 §2, HTTP API §11.2).
 class ContentDigest {
 public:
-    // The name of the field (RFC 9530 §2).
     static constexpr std::string_view field_name = "Content-Digest";
 
     // Its sha-256.

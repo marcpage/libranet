@@ -31,8 +31,8 @@ public:
         Milliseconds turned_away_rest = default_turned_away_rest;
     };
 
-    // Throws std::invalid_argument, naming the setting, for one it cannot use,
-    // or for an own_id with no hash, or no clock.
+    // Throws std::invalid_argument for a setting it cannot use, an own_id with
+    // no hash, or no clock.
     DialPlan(const storage::Identifier& own_id, const Buckets::ExpectedSizes& sizes,
              const Rests& rests, ClockFunction clock = &Clock::now);
 

@@ -8,8 +8,7 @@
 
 namespace peer {
 
-// Given a list of server ids we are connected to, tells you which ids we still
-// need. Given a server id, tells you which bucket it fills.
+// Which bucket a node fills, and which the server nodes connected leave empty.
 class Buckets {
 public:
     struct ExpectedSizes {
@@ -33,8 +32,8 @@ public:
         Missing secondary;
     };
 
-    // Throws std::invalid_argument, naming the setting, for sizes it cannot
-    // use, or for an own_id with no hash.
+    // Throws std::invalid_argument for sizes it cannot use, or an own_id with
+    // no hash.
     Buckets(const storage::Identifier& own_id, const ExpectedSizes& sizes);
 
     // Throws std::invalid_argument for a node_id with no hash.

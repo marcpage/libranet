@@ -13,9 +13,8 @@
 
 namespace io {
 
-// Reads from another reader a buffer at a time, so that reading a line a byte
-// at a time does not read the other a byte at a time. What it reads ahead is
-// kept for its next read.
+// Reads from another reader a buffer at a time, keeping what it reads ahead
+// for its next read.
 class BufferedReader final : public IReader {
 public:
     // Most requests' line and headers come in one read.

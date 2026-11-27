@@ -13,9 +13,8 @@
 
 namespace stats {
 
-// How content is used: a row for each object stored or asked for, held or not,
-// in a table of a database that must outlive this. Used from the one thread
-// that uses it.
+// How each object stored or asked for is used, in a table of a database that
+// must outlive this. Used from one thread.
 class ContentUses {
 public:
     using Clock = std::chrono::system_clock;

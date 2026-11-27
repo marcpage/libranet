@@ -34,9 +34,7 @@
 namespace peer {
 
 // Owns the outgoing connections, and keeps up the peer mix (High-Level Design
-// §4.6), dialing as the DialPlan says, each dial on a thread of its own. It
-// dials nothing until the first candidates come, but for an address asked
-// for, which it dials at once, outside the peer mix.
+// §4.6). An address asked for is dialed at once, outside the peer mix.
 class Connections {
 public:
     using Candidate = DialPlan::Candidate;
@@ -95,8 +93,7 @@ public:
         std::optional<storage::Identifier> node_id = std::nullopt;
     };
 
-    // How often, when nothing else happens, it looks for connections that have
-    // closed and nodes whose rest is over.
+    // How often it looks for closed connections, and nodes whose rest is over.
     static constexpr Milliseconds default_check_interval{1'000};
 
     struct Settings {
@@ -119,10 +116,8 @@ public:
     // timeouts, and closes every connection.
     ~Connections();
 
-    // Those open now. Safe to call from any thread.
+    // Any thread may call these.
     [[nodiscard]] std::vector<std::shared_ptr<PeerSession>> open_sessions() const;
-
-    // Safe to call from any thread.
     [[nodiscard]] std::vector<storage::Identifier> connected_ids() const;
 
     // Its threads hold this object, so it is neither copied nor moved.

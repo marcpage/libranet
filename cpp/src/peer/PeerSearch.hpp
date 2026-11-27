@@ -17,9 +17,9 @@
 
 namespace peer {
 
-// The searches of the peers for prefixes of hashes, so that what they answer
-// is listed by a later search of this node (HTTP API §6, High-Level Design
-// §4.7). Safe to use from any thread.
+// Searches the peers for hash prefixes, so that a later search of this node
+// lists what they answer (HTTP API §6, High-Level Design §4.7). Any thread may
+// use it.
 class PeerSearch {
 public:
     using Clock = std::chrono::steady_clock;
@@ -42,7 +42,6 @@ public:
 
         std::size_t passes = default_passes;
         std::size_t relays = default_relays;
-        // How long after one pass the next is made.
         Milliseconds pass_interval = default_pass_interval;
         // How long after a search ends another for its prefix starts none.
         Milliseconds hold = default_hold;
@@ -50,8 +49,8 @@ public:
         std::size_t list_bytes = types::max_decompressed_list_size;
     };
 
-    // Throws std::invalid_argument, naming the setting, for one the Python
-    // node refuses, or for no clock.
+    // Throws std::invalid_argument for a setting the Python node refuses, or
+    // no clock.
     explicit PeerSearch(const Settings& settings, ClockFunction clock = &Clock::now);
 
     // Whether it started: none does while one for prefix is under way or held

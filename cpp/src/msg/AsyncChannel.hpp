@@ -34,9 +34,9 @@ protected:
     Logger m_logger;
 
 private:
-    std::thread m_thread;        // Thread for processing messages
-    std::atomic<bool> m_running; // Flag to control thread execution
-    Callback m_callback;         // Callback for messages
+    std::thread m_thread;
+    std::atomic<bool> m_running;
+    Callback m_callback;
 };
 
 } // namespace msg

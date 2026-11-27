@@ -44,9 +44,9 @@ public:
         http::Response::Limits answer;
     };
 
-    // Throws std::invalid_argument, naming the setting, for a timeout that is
-    // not positive; std::system_error when no connection is made in time, or
-    // is refused; and std::runtime_error when the host cannot be resolved.
+    // Throws std::invalid_argument for a timeout that is not positive;
+    // std::system_error when no connection is made in time, or is refused; and
+    // std::runtime_error when the host cannot be resolved.
     PeerConnection(net::Address address, const Limits& limits);
     ~PeerConnection();
 

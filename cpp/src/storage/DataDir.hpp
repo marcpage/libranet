@@ -23,9 +23,8 @@
 namespace storage {
 
 // Each body is kept as it was put, in a file named by its hash, in directories
-// named by the algorithm and the hash's first digits. A body is written beside
-// where it goes and renamed into place, so that no reader sees one half
-// written.
+// named by the algorithm and the hash's first digits. No reader sees a body
+// half written.
 class DataDir : public IDataSource {
 public:
     using Data = std::vector<std::byte>;

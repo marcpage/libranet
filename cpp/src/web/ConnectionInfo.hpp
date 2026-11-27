@@ -15,11 +15,9 @@ class ConnectionInfo {
 public:
     ConnectionInfo(net::Address remote_address, net::Address local_address);
 
-    // Which resolving localhost needs (HTTP API §10.2).
     [[nodiscard]] const net::Address& remote_address() const noexcept;
-    // The address of this machine the connection reached. A client on this
-    // machine that connects to one of its network addresses comes from that
-    // same address (HTTP API §2.3, §2.4).
+    // The address of this machine the connection reached (HTTP API §2.3,
+    // §2.4).
     [[nodiscard]] const net::Address& local_address() const noexcept;
 
     // The one being answered included.

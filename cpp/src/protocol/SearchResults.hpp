@@ -20,16 +20,14 @@
 
 namespace protocol {
 
-// A search's answer (HttpApi §6.1, §10.7.2): what was found, best match first,
-// sent in less than 1 MiB, naming as many as fit.
+// A search's answer (HttpApi §6.1, §10.7.2), best match first.
 class SearchResults {
 public:
     using Identifiers = std::vector<storage::Identifier>;
 
     struct Body {
         std::string text;
-        // And so sent with Content-Encoding: deflate.
-        bool compressed = false;
+        bool compressed = false; // Sent with Content-Encoding: deflate
     };
 
     // As sent, compressed or not (HttpApi §6.1).
@@ -42,14 +40,12 @@ public:
     [[nodiscard]] static SearchResults from_body(
         std::string_view body, std::size_t decompressed_limit = types::max_decompressed_list_size);
 
-    // Best match first.
     explicit SearchResults(Identifiers results);
 
     [[nodiscard]] const Identifiers& results() const noexcept;
-    // Naming as many of the results, from the first, as fit.
+    // Naming as many of the results, from the first, as fit in max_size.
     [[nodiscard]] Body body() const;
-    // Sets the response's Content-Type, Content-Encoding, and body, and leaves
-    // the rest as it is.
+    // Sets the response's Content-Type, Content-Encoding, and body.
     void answer(http::Response& response) const;
 
 private:
