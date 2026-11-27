@@ -59,9 +59,6 @@ private:
     std::filesystem::path m_file;
     std::filesystem::path m_partial;
     bool m_committed{false};
-
-    // Throws std::runtime_error when it cannot.
-    void _write_partial(std::string_view contents) const;
 };
 
 } // namespace io

@@ -40,8 +40,6 @@ public:
 
 private:
     Feature m_feature;
-
-    [[nodiscard]] bool _has(std::string_view path) const;
 };
 
 } // namespace config
