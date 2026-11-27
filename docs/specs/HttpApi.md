@@ -178,7 +178,12 @@ would hold it for the main port's origin, and would send it with the
 applications' requests. A node MAY answer a `GET` or `HEAD` there for a
 path under `/config`, outside `/config/api`, with a redirect to the same
 path on `/config`'s port, so that an address typed or bookmarked before
-`/config` had a port of its own still reaches it.
+`/config` had a port of its own still reaches it. The root application
+links to `/config` on the main port, and its link reaches `/config` only
+by that redirect. The reference node redirects a `GET` with `302 Found`,
+to `/config`'s port at the host the request's `Host` header names, or at
+`127.0.0.1` if it names none. It answers anything else under `/config`
+there with `404 Not Found`, naming where `/config` is served.
 
 A node SHOULD listen on `/config`'s port only at a loopback address.
 Wherever it listens, a node MUST serve `/config` only to requests whose
@@ -205,9 +210,10 @@ leaving HTTP Basic Authentication as the only remaining protection.
 
 A node has no `/config` credential configured until first access:
 
-- On the first request made to `/config`, the node captures the
-  username and password supplied in the request's `Authorization: Basic`
-  header and adopts it as the node's `/config` credential.
+- On the first request made to `/config` that carries credentials it can
+  read, the node captures the username and password supplied in the
+  request's `Authorization: Basic` header and adopts it as the node's
+  `/config` credential.
 - If multiple requests race to capture the credential before one has
   been stored, the node MUST treat capture as atomic: whichever request's
   credentials are persisted first wins, and all other concurrent
@@ -218,6 +224,19 @@ A node has no `/config` credential configured until first access:
   `Authorization` header MUST receive `401 Unauthorized` with a
   `WWW-Authenticate: Basic` challenge, per standard HTTP Basic
   Authentication semantics.
+- A request carrying no credentials the node can read MUST receive the
+  same `401`, whether or not a credential has been captured, and MUST NOT
+  trigger capture. A browser sends none until it is challenged, so this is
+  how it comes to ask for the first. A node cannot read a header of
+  another scheme, one that is not base64, or one whose `user:password` is
+  not UTF-8 or has no `:`, so a malformed header never captures the
+  credential.
+
+The `401` carries the problem type `credential-required` (§17.2). The
+reference node challenges with
+`WWW-Authenticate: Basic realm="Libranet /config", charset="UTF-8"`, and
+reads the `user:password` as UTF-8, the only charset it offers
+([RFC 7617 §2.1](https://www.rfc-editor.org/rfc/rfc7617.html#section-2.1)).
 
 #### 2.3.2 Credential Storage
 
@@ -240,14 +259,18 @@ node's own key material, the `/config` credential is chosen by a person
 rather than generated, and people reuse passwords, so one recovered from a
 stored artifact may open accounts that have nothing to do with Libranet. A
 node pays the derivation once per `/config` request, which is imperceptible
-for local administration, and an attacker pays it once per guess.
+for local administration, and an attacker pays it once per guess. A
+browser loading the `/config` application sends several requests at once,
+so a derivation costly in memory holds that memory several times over for
+a moment: the reference node's scrypt takes 16 MiB for each.
 
 If a `/config` credential is lost or forgotten, recovery requires
 removing the stored entry from the node's local configuration or
 keystore, after which the node reverts to the pre-capture state and the
 next request to `/config` re-triggers capture (§2.3.1). Each
 implementation SHOULD document where and how to do this for its
-platform.
+platform. The reference node reads the stored entry on every request, so
+removing it takes effect at once, without a restart.
 
 #### 2.3.3 Requests From Other Sites
 
@@ -277,7 +300,10 @@ credentials are looked at. A request that fails one MUST be refused with
   requests to be same-origin, so neither check below catches them. A site
   can point a name at the machine, but not an address. An operator who
   reaches `/config` under another name, through a reverse proxy for
-  example, adds that name to the list.
+  example, adds that name to the list. The reference node's list is
+  `network.config_hosts`, of shell-style patterns matched whatever their
+  case, an IPv6 address written without its brackets, and it serves
+  `/config` as the machine's own name whatever the list holds.
 - **`Sec-Fetch-Site`.** A request carrying this header with any value
   other than `same-origin` or `none` MUST be refused, but for the one
   exception below. That includes `same-site`: another port on the same
