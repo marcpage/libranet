@@ -153,6 +153,10 @@ private:
 
 } // namespace
 
+// The tests read optionals after ASSERT_TRUE(x.has_value()), which this
+// check does not follow.
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
+
 // The Python node's: 10 seconds to connect, two requests of 30, and 5 more.
 TEST_F(DialOutcomesTest, RequestWaitsAsLongAsOneDialMayTakeAndFiveSecondsMore) {
     const DialOutcomes outcomes(python_limits());
@@ -355,3 +359,5 @@ TEST_F(DialOutcomesTest, WhatAskingThrowsIsPassedOn) {
 
     outcomes.reset();
 }
+
+// NOLINTEND(bugprone-unchecked-optional-access)
