@@ -202,7 +202,7 @@ TEST(NodesHandlerTest, ServesALargeListCompressed) {
     handler.set_list(nodes);
 
     const auto response = answer(handler, get());
-    const auto served = NodeList::from_body(Converter::bytes_of(response.body()));
+    const auto served = NodeList::from_body(response.body());
 
     ASSERT_GE(nodes.to_string().size(), NodeList::max_size);
     EXPECT_EQ(response.status_code(), 200);
@@ -221,7 +221,7 @@ TEST(NodesHandlerTest, ServesTheListWithinTheBytesItIsGiven) {
     handler.set_list(nodes);
 
     const auto response = answer(handler, get());
-    const auto served = NodeList::from_body(Converter::bytes_of(response.body()));
+    const auto served = NodeList::from_body(response.body());
 
     EXPECT_EQ(response.status_code(), 200);
     EXPECT_LT(response.body().size(), served_bytes);

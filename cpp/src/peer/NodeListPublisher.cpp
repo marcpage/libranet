@@ -16,7 +16,6 @@
 #include "protocol/NodeList.hpp"
 #include "storage/Identifier.hpp"
 #include "types/Constants.hpp"
-#include "types/Converter.hpp"
 
 using http::Request;
 using http::ResponseCode;
@@ -33,7 +32,6 @@ using std::string;
 using std::to_string;
 using std::vector;
 using storage::Identifier;
-using types::Converter;
 using types::json_content_type;
 using types::nodes_path;
 
@@ -58,7 +56,7 @@ Request post_of(const NodeList& list) {
     request.set_method("POST");
     request.set_uri(string(nodes_path));
     request.headers().set("Content-Type", string(json_content_type));
-    request.set_body(Converter::text_of(list.body()));
+    request.set_body(list.body().text);
     return request;
 }
 

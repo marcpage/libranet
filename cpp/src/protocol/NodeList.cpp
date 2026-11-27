@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "Body.hpp"
 #include "http/Url.hpp"
 #include "logger/Logger.hpp"
 #include "net/IpAddress.hpp"
@@ -20,6 +21,7 @@
 
 using http::Url;
 using net::IpAddress;
+using protocol::Body;
 using std::all_of;
 using std::invalid_argument;
 using std::isalnum;
@@ -37,7 +39,6 @@ using types::Json;
 
 namespace {
 
-using Data = protocol::NodeList::Data;
 using Entries = protocol::NodeList::Entries;
 
 // The host a node names itself by when it does not know the address it is
@@ -238,13 +239,13 @@ optional<Json> json_in(string_view text) {
 
 // The JSON body holds, as it is or once decompressed. Throws
 // invalid_argument when it holds none either way.
-Json json_in_body(const Data& body, size_t decompressed_limit) {
-    if (auto json = json_in(Converter::text_of(body))) {
+Json json_in_body(string_view body, size_t decompressed_limit) {
+    if (auto json = json_in(body)) {
         return std::move(*json);
     }
 
     // Not JSON as it is, so it can only be compressed.
-    const auto content = Zlib::decompress(body, decompressed_limit);
+    const auto content = Zlib::decompress(Converter::bytes_of(body), decompressed_limit);
 
     if (!content) {
         throw invalid_argument("A node list must be JSON, or a zlib stream of no more than "
@@ -277,17 +278,18 @@ string json_of(const Entries& entries, size_t count) {
 // The first count of entries as a node list is sent: their JSON, or when that
 // is limit bytes or more, their JSON as a zlib stream; nothing when that is
 // too.
-optional<Data> encoded(const Entries& entries, size_t count, size_t limit) {
-    auto json = Converter::bytes_of(json_of(entries, count));
+optional<Body> encoded(const Entries& entries, size_t count, size_t limit) {
+    auto json = json_of(entries, count);
 
     if (json.size() < limit) {
-        return json;
+        return Body{std::move(json), false};
     }
 
-    auto compressed = Zlib::compress(json, Zlib::max_level);
+    auto compressed = Converter::text_of(Zlib::compress(Converter::bytes_of(json),
+                                                        Zlib::max_level));
 
     if (compressed.size() < limit) {
-        return compressed;
+        return Body{std::move(compressed), true};
     }
 
     return nullopt;
@@ -297,7 +299,7 @@ optional<Data> encoded(const Entries& entries, size_t count, size_t limit) {
 // bytes, found by halving the counts between one that fits and one that does
 // not. The whole list is known not to fit. Throws invalid_argument when
 // not even a list that names no node fits.
-Data longest_encoded(const Entries& entries, size_t limit) {
+Body longest_encoded(const Entries& entries, size_t limit) {
     auto fitting = encoded(entries, 0, limit);
     size_t fits = 0;
     auto too_many = entries.size();
@@ -327,11 +329,7 @@ Data longest_encoded(const Entries& entries, size_t limit) {
 
 namespace protocol {
 
-NodeList NodeList::parse(string_view text) {
-    return from_json(Json::parse(text));
-}
-
-NodeList NodeList::from_body(const Data& body, size_t decompressed_limit) {
+NodeList NodeList::from_body(string_view body, size_t decompressed_limit) {
     return from_json(json_in_body(body, decompressed_limit));
 }
 
@@ -389,7 +387,7 @@ string NodeList::to_string() const {
     return json_of(m_entries, m_entries.size());
 }
 
-NodeList::Data NodeList::body(size_t limit) const {
+Body NodeList::body(size_t limit) const {
     if (auto whole = encoded(m_entries, m_entries.size(), limit)) {
         return std::move(*whole);
     }

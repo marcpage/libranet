@@ -496,7 +496,7 @@ TEST_F(FirstContactTest, ThisNodesListIsPosted) {
 
     ASSERT_TRUE(posted.has_value());
     EXPECT_EQ(posted->headers().get("Content-Type"), "application/json");
-    EXPECT_EQ(NodeList::parse(posted->body()).to_string(), own_list().to_string());
+    EXPECT_EQ(NodeList::from_body(posted->body()).to_string(), own_list().to_string());
 }
 
 TEST_F(FirstContactTest, PeersSeekListIsGiven) {
