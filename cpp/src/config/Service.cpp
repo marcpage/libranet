@@ -15,6 +15,8 @@
 
 #include "Credential.hpp"
 #include "Guard.hpp"
+#include "NotOffered.hpp"
+#include "Page.hpp"
 #include "http/Problem.hpp"
 #include "http/Request.hpp"
 #include "http/Response.hpp"
@@ -30,6 +32,8 @@
 
 using config::Credential;
 using config::Guard;
+using config::NotOffered;
+using config::Page;
 using config::Service;
 using http::Problem;
 using http::Request;
@@ -66,7 +70,8 @@ constexpr int backlog = 128;
 // The highest port there is.
 constexpr uint32_t highest_port = 65'535;
 
-// Where the endpoints are, beneath /config (HTTP API §2.3).
+// Where the page is, and the endpoints beneath it (HTTP API §2.3).
+constexpr string_view page_path = "/config";
 constexpr string_view config_api_path = "/config/api";
 
 // Where the handler of every path outside the others is registered: the
@@ -231,6 +236,7 @@ Service::Service(const NodeIdentity& identity, const std::filesystem::path& data
                                       [](const Request&, Response& response, ConnectionInfo&) {
         answer_not_found(response);
     }));
+    m_server.register_handler(page_path, guarded(guard, signer, Page()));
     m_server.register_handler(config_api_path,
                               guarded(guard, signer,
                                       [index = index_of_endpoints()](const Request& request,
@@ -238,6 +244,11 @@ Service::Service(const NodeIdentity& identity, const std::filesystem::path& data
                                                                      ConnectionInfo&) {
         answer_index(index, request, response);
     }));
+
+    for (const auto& feature : NotOffered::features) {
+        m_server.register_handler(feature.path, guarded(guard, signer, NotOffered(feature)));
+    }
+
     lInfo << "/config is at http://" + string(listen_host) + ":"
                  + to_string(m_local_address.port()) + "/config/";
     m_server_thread = thread([this] {

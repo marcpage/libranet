@@ -16,8 +16,10 @@ namespace config {
 // /config's port (HTTP API §2.3): a web server at a loopback address alone,
 // apart from the main port, serving nothing outside /config. Every handler is
 // behind a Guard, and every answer is signed as the node, the guard's
-// refusals among them. GET /config/api names each endpoint it serves. It
-// serves from a thread of its own.
+// refusals among them. A GET of /config, or of a path beneath it outside
+// /config/api, is the page. GET /config/api names each endpoint it serves,
+// and NotOffered answers each path the shared page uses that a later phase
+// brings. It serves from a thread of its own.
 // cppcheck-suppress noConstructor
 class Service {
 public:
