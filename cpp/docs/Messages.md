@@ -28,7 +28,7 @@ relative to `src/`:
 - Each class posts its messages from its `.cpp` file, with
   `Channel::post()`.
 
-These are in the code as of 2026-11-25.
+These are in the code as of 2026-11-27.
 
 ## 2. Conventions
 
@@ -73,6 +73,7 @@ Work a part does every so often is cued by a `msg::Timer`, which posts a
 | Stats | `stats::Recorder` | `stats/` |
 | Connections | `peer::Connections`, which takes, and posts from its threads; `FirstContact`, `Fetch`, and `PeerSearch`, which post from the threads using them; `Seeker`, which takes on a channel of its own, and runs `Fetch` and `PeerSearch` on threads of its own; `Pusher`, which takes on a channel of its own | `peer/` |
 | Eviction | `eviction::Evictor` | `eviction/` |
+| Config | `config::Service`, which serves `/config`'s port; `ConnectHandler`, which posts from the threads serving connections; `DialOutcomes`, which takes on a channel of its own | `config/` |
 
 `node::Node` makes every part (`node/Node.cpp`), each after those it uses.
 
@@ -90,6 +91,8 @@ Work a part does every so often is cued by a `msg::Timer`, which posts a
 | `connection.opened` | `stats::Recorder::ConnectionOpened` | Connections | Stats | A node proved its id at an endpoint dialed |
 | `connection.failed` | `stats::Recorder::ConnectionFailed` | Connections | Stats | An endpoint did not reach the node expected |
 | `peers.connected` | `peer::Connections::PeersConnected` | Connections | (none yet) | The nodes this node dialed and is connected to |
+| `address.dial_requested` | `peer::Connections::DialRequested` | Config | Connections | The operator asked to dial an address |
+| `address.dialed` | `peer::Connections::AddressDialed` | Connections | Config | What came of that dial |
 | `nodes.updated` | `stats::Recorder::NodesUpdated` | Stats | Web, Connections | The node list changed |
 | `candidates.updated` | `stats::Recorder::CandidatesUpdated` | Stats | Connections | The candidates to dial changed |
 | `seek.updated` | `stats::Recorder::SeekUpdated` | Stats | Web, Connections | The seek list changed |
@@ -246,7 +249,8 @@ and what each does with it.
 - **Payload:** `node_id`, `endpoint`.
 - **Posted by:** `peer::Connections`, for an endpoint it dialed where a node
   other than this one proved its identity at first contact, even when it
-  then closes the connection, as when the node is connected already.
+  then closes the connection, as when the node is connected already. An
+  address the operator asked for (`address.dial_requested`) is among them.
 - **Taken by:** `stats::Recorder`, which records the address as reaching the
   node.
 - **Purpose:** address quality.
@@ -258,7 +262,8 @@ and what each does with it.
 - **Posted by:** `peer::Connections`, for an endpoint it dialed that did not
   reach the node expected there: first contact failed, as when nothing
   answered, or a node other than the one expected answered. It posts none
-  for a seed whose node id is not known, as there is no node to fail.
+  for a seed whose node id is not known, nor for an address the operator
+  asked for, as there is no node to fail.
 - **Taken by:** `stats::Recorder`, which counts the failure against the
   address.
 - **Purpose:** address quality.
@@ -274,6 +279,43 @@ and what each does with it.
   connected when it needs them, through `Evictor::Peers::connected`, which
   `node::Node` binds to `peer::Connections::connected_ids()`.
 - **Purpose:** name the peers connected now.
+
+#### `address.dial_requested`
+
+- **Type:** `peer::Connections::DialRequested` (`peer/Connections.hpp`).
+- **Payload:** `dial_id`, which names the dial, and `endpoint`, the address
+  to dial, written as `protocol::DialRequest` writes it.
+- **Posted by:** `config::ConnectHandler`, for a
+  `POST /config/api/connections` whose body names an address it can dial,
+  from the thread serving the connection. Its `dial_id` is one
+  `config::DialOutcomes` gives it, 32 random hex digits, and it waits for the
+  `address.dialed` that names it.
+- **Taken by:** `peer::Connections`, which answers with `address.dialed` at
+  once when a node is connected at the endpoint, or when it is stopping. Any
+  other endpoint it dials at once, on a thread of its own, outside the peer
+  mix and whatever the endpoint's rest, expecting no node in particular. A
+  node reached joins the peers and has first contact, as any node dialed
+  does.
+- **Purpose:** let the operator connect to a node by hand.
+
+#### `address.dialed`
+
+- **Type:** `peer::Connections::AddressDialed` (`peer/Connections.hpp`).
+- **Payload:** `dial_id`, the dial's; `outcome`, which is `connected`,
+  `already_connected`, `this_node`, or `unreached` (`AddressDialed::Outcome`);
+  `node_id`, the node reached, if one was; and `detail`, why none was.
+- **Posted by:** `peer::Connections`, once for each
+  `address.dial_requested`: from its own thread when it answers at once, as
+  `already_connected` or, when it is stopping, `unreached`; and otherwise
+  from the thread it dialed on, once first contact is made or has failed.
+- **Taken by:** `config::DialOutcomes`, which hands it to the request
+  waiting on `dial_id`, and drops it when none waits any longer.
+  `config::ConnectHandler` answers that request `200` for `connected` or
+  `already_connected`, naming the node, `409` for `this_node`, and `502` for
+  `unreached`. A request waits as long as one dial may take,
+  `peers.connect_timeout_seconds` and two `peers.request_timeout_seconds`,
+  and 5 seconds more, and is answered `504` when nothing comes by then.
+- **Purpose:** tell the operator what came of the dial.
 
 ### 4.4 The Lists Stats Derives
 
@@ -421,8 +463,9 @@ class's channel listens on it. The tick's `count` counts from 1.
 | --- | --- | --- |
 | Web | `data.requested`, `data.not_found`, `data.search_requested`, `data.search_answered`, `data.stored`, `nodes.received` | `nodes.updated`, `seek.updated`, `data.search_answered` |
 | Stats | `nodes.updated`, `candidates.updated`, `seek.updated`, `eviction.candidates`, `stats.derive_due` | `data.requested`, `data.not_found`, `data.search_requested`, `data.stored`, `data.deleted`, `nodes.received`, `connection.opened`, `connection.failed`, `eviction.candidates_requested`, `stats.derive_due` |
-| Connections | `data.search_answered`, `data.stored`, `nodes.received`, `connection.opened`, `connection.failed`, `peers.connected`, `peers.check_due`, `peers.search_pass_due` | `data.stored` (`Pusher`), `data.not_found` and `data.search_requested` (`Seeker`), `nodes.updated`, `candidates.updated`, `seek.updated`, `peers.check_due`, `peers.search_pass_due` (`Seeker`) |
+| Connections | `data.search_answered`, `data.stored`, `nodes.received`, `connection.opened`, `connection.failed`, `peers.connected`, `address.dialed`, `peers.check_due`, `peers.search_pass_due` | `data.stored` (`Pusher`), `data.not_found` and `data.search_requested` (`Seeker`), `nodes.updated`, `candidates.updated`, `seek.updated`, `address.dial_requested`, `peers.check_due`, `peers.search_pass_due` (`Seeker`) |
 | Eviction | `data.deleted`, `eviction.candidates_requested`, `eviction.handed_off` | `data.stored`, `eviction.candidates`, `eviction.handed_off` |
+| Config | `address.dial_requested` (`ConnectHandler`) | `address.dialed` (`DialOutcomes`) |
 
 ## 6. Where It Differs from the Python Node
 
@@ -448,6 +491,10 @@ class's channel listens on it. The tick's `count` counts from 1.
   its own, which posts `eviction.handed_off` to the evictor.
 - **`peers.connected` names one direction.** It names the nodes this node
   dialed, with no `direction`.
+- **`/config` is a part of its own.** The Python node's web server posts
+  `address.dial_requested` and takes `address.dialed`. Here
+  `config::Service`, which serves `/config`'s port apart from the main port,
+  does.
 - **Fewer messages.** The Python node's other messages, such as
-  `connection.closed`, `fetch.requested`, and those of `/config`, backup,
-  and Karma, have no counterpart here.
+  `address.verified`, `connection.closed`, `fetch.requested`, and those of
+  the rest of `/config`, backup, and Karma, have no counterpart here.
