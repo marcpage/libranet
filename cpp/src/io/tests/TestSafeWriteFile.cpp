@@ -19,6 +19,10 @@ using io::SafeWriteFile;
 
 namespace {
 
+// What only its owner may do with a file made for Access::Owner.
+constexpr auto owner_only = std::filesystem::perms::owner_read
+                            | std::filesystem::perms::owner_write;
+
 // A directory of the running test's own, made under the system's directory
 // for temporary files, and removed with all it holds when this is destroyed.
 // Its name holds the test's and a random number, so that two runs of the
@@ -332,4 +336,138 @@ TEST(SafeWriteFileTest, IsPartialTellsAPartialFileByItsName) {
     EXPECT_FALSE(SafeWriteFile::is_partial(".partial"));
     EXPECT_FALSE(SafeWriteFile::is_partial(".file.1.partial.old"));
     EXPECT_FALSE(SafeWriteFile::is_partial(std::filesystem::path(".file.1.partial") / "file"));
+}
+
+// Made at once, so that nothing written to it is where another may read it.
+TEST(SafeWriteFileTest, OwnerAccessMakesAWritablePathOnlyItsOwnerMayUse) {
+    const ScratchDirectory directory;
+    const SafeWriteFile file(directory.path() / "file", SafeWriteFile::Access::Owner);
+
+    ASSERT_TRUE(std::filesystem::exists(file.writable_path()));
+    EXPECT_EQ(std::filesystem::status(file.writable_path()).permissions(), owner_only);
+    EXPECT_EQ(read_file(file.writable_path()), "");
+}
+
+TEST(SafeWriteFileTest, OwnerAccessKeepsTheFileItsOwnersOnly) {
+    const ScratchDirectory directory;
+    const auto path = directory.path() / "file";
+    SafeWriteFile file(path, SafeWriteFile::Access::Owner);
+
+    file.write("hello");
+
+    EXPECT_EQ(names_in(directory.path()), std::vector<std::string>{"file"});
+    EXPECT_EQ(read_file(path), "hello");
+    EXPECT_EQ(std::filesystem::status(path).permissions(), owner_only);
+}
+
+TEST(SafeWriteFileTest, OwnerAccessWithNothingWrittenAndNotCommittedLeavesNothing) {
+    const ScratchDirectory directory;
+
+    {
+        const SafeWriteFile file(directory.path() / "file", SafeWriteFile::Access::Owner);
+    }
+
+    EXPECT_TRUE(names_in(directory.path()).empty());
+}
+
+// A name as long as a file's may be leaves no room for what writable_path()
+// adds to it.
+TEST(SafeWriteFileTest, OwnerAccessWhereNoWritablePathCanBeMadeIsRefused) {
+    constexpr std::size_t longest_name = 250;
+    const ScratchDirectory directory;
+    const auto path = directory.path() / std::string(longest_name, 'f');
+
+    EXPECT_THROW(SafeWriteFile(path, SafeWriteFile::Access::Owner), std::runtime_error);
+    EXPECT_TRUE(names_in(directory.path()).empty());
+}
+
+TEST(SafeWriteFileTest, CommitIfAbsentLinksWhatWasWrittenIntoPlace) {
+    const ScratchDirectory directory;
+    const auto path = directory.path() / "file";
+
+    {
+        SafeWriteFile file(path);
+
+        write_file(file.writable_path(), "hello");
+
+        EXPECT_TRUE(file.commit_if_absent());
+        EXPECT_EQ(names_in(directory.path()), std::vector<std::string>{"file"});
+    }
+
+    EXPECT_EQ(names_in(directory.path()), std::vector<std::string>{"file"});
+    EXPECT_EQ(read_file(path), "hello");
+}
+
+// What was there before is left as it was, and what was written is removed.
+TEST(SafeWriteFileTest, CommitIfAbsentLeavesTheFileThereBefore) {
+    const ScratchDirectory directory;
+    const auto path = directory.path() / "file";
+
+    write_file(path, "before");
+
+    {
+        SafeWriteFile file(path);
+
+        write_file(file.writable_path(), "after");
+
+        EXPECT_FALSE(file.commit_if_absent());
+    }
+
+    EXPECT_EQ(names_in(directory.path()), std::vector<std::string>{"file"});
+    EXPECT_EQ(read_file(path), "before");
+}
+
+// Of two writes of the file at once, whichever commits first wins.
+TEST(SafeWriteFileTest, OfTwoWritesIfAbsentTheFirstToCommitWins) {
+    const ScratchDirectory directory;
+    const auto path = directory.path() / "file";
+    SafeWriteFile first(path);
+    SafeWriteFile second(path);
+
+    write_file(first.writable_path(), "first");
+    write_file(second.writable_path(), "second");
+
+    EXPECT_TRUE(second.commit_if_absent());
+    EXPECT_FALSE(first.commit_if_absent());
+    EXPECT_EQ(read_file(path), "second");
+}
+
+TEST(SafeWriteFileTest, CommitIfAbsentWithNothingWrittenIsRefused) {
+    const ScratchDirectory directory;
+    SafeWriteFile file(directory.path() / "file");
+
+    EXPECT_THROW((void)file.commit_if_absent(), std::runtime_error);
+    EXPECT_TRUE(names_in(directory.path()).empty());
+}
+
+TEST(SafeWriteFileTest, CommittingIfAbsentOnceCommittedIsRefused) {
+    const ScratchDirectory directory;
+    const auto path = directory.path() / "file";
+    SafeWriteFile linked(path);
+    SafeWriteFile renamed(directory.path() / "renamed");
+
+    write_file(linked.writable_path(), "hello");
+    write_file(renamed.writable_path(), "hello");
+    ASSERT_TRUE(linked.commit_if_absent());
+    renamed.commit();
+
+    EXPECT_THROW((void)linked.commit_if_absent(), std::logic_error);
+    EXPECT_THROW(linked.commit(), std::logic_error);
+    EXPECT_THROW((void)renamed.commit_if_absent(), std::logic_error);
+    EXPECT_EQ(read_file(path), "hello");
+}
+
+TEST(SafeWriteFileTest, WriteIfAbsentCommitsWhatItWritesIfAbsent) {
+    const ScratchDirectory directory;
+    const auto path = directory.path() / "file";
+    const auto there = directory.path() / "there";
+    SafeWriteFile file(path);
+    SafeWriteFile refused(there);
+
+    write_file(there, "before");
+
+    EXPECT_TRUE(file.write_if_absent("hello"));
+    EXPECT_FALSE(refused.write_if_absent("after"));
+    EXPECT_EQ(read_file(path), "hello");
+    EXPECT_EQ(read_file(there), "before");
 }
