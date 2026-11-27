@@ -784,3 +784,27 @@ TEST_F(ConfigServiceTest, EveryAnswerCarriesThePolicyAndGrantsNoOtherOrigin) {
         EXPECT_EQ(answer.find("Access-Control-"), string::npos) << request << answer;
     }
 }
+
+// The answers the server sends by itself, which the guard never sees, carry
+// the policy too: to a request it cannot read, to a body it does not take,
+// and when the guard throws, here for a credential file far larger than a
+// hash.
+TEST_F(ConfigServiceTest, TheServersOwnAnswersCarryThePolicy) {
+    constexpr std::size_t large = 64UL * 1024UL;
+
+    fixtures::write_file(data_dir() / "config-credential", string(large, '$'));
+
+    const vector<string> requests{
+        "\r\n",
+        "GET /config/ HTTP/1.1\r\nNo colon here\r\n",
+        "POST /config/api HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n",
+        get("/config/"),
+    };
+
+    for (const auto& request : requests) {
+        const auto answer = answer_to(address(), request);
+
+        EXPECT_FALSE(has_status(answer, "200 OK")) << request << answer;
+        EXPECT_TRUE(has_header(answer, "Content-Security-Policy", policy)) << request << answer;
+    }
+}

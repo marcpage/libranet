@@ -807,6 +807,33 @@ TEST_F(ServerTest, HeaderWithoutColonIsBadRequest) {
     EXPECT_EQ(ask(address(), get("/hello")), answer("200 OK", "/hello", "Hello"));
 }
 
+// A header set on every answer is carried by a handler's, in place of the one
+// it gave, and by the server's own: for a path with no handler, when a
+// handler throws, and to a request it refuses.
+TEST_F(ServerTest, EveryAnswerCarriesTheHeaderSetOnIt) {
+    server().register_handler("/hello", [](const Request& /*request*/, Response& response,
+                                           ConnectionInfo& /*connection*/) {
+        response.headers().set("X-Every", "the handler's");
+        response.set_body("Hello");
+    });
+    server().register_handler("/data", throw_invalid_identifier);
+    server().set_on_every_answer("X-Every", "the server's");
+    start();
+
+    const std::vector<std::string> answers{
+        ask(address(), get("/hello")),
+        ask(address(), get("/missing")),
+        ask(address(), get("/data/x")),
+        ask_until_closed(address(), "\r\n"),
+        ask_until_closed(address(), "POST /x HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n"),
+    };
+
+    for (const auto& answered : answers) {
+        EXPECT_NE(answered.find("\r\nX-Every: the server's\r\n"), std::string::npos) << answered;
+        EXPECT_EQ(answered.find("the handler's"), std::string::npos) << answered;
+    }
+}
+
 // A client that leaves before its answer is sent ends only its own
 // connection, and the server goes on to answer the next request.
 TEST_F(ServerTest, ClientThatLeavesBeforeItsAnswerDoesNotStopTheServer) {
