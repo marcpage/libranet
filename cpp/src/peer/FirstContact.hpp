@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <memory>
 
 #include "PeerConnection.hpp"
@@ -11,6 +12,7 @@
 #include "protocol/NodeList.hpp"
 #include "protocol/SeekList.hpp"
 #include "storage/IDataSource.hpp"
+#include "types/Constants.hpp"
 
 namespace peer {
 
@@ -25,10 +27,12 @@ public:
     };
 
     // identity must outlive it. A peer's key that is not held is put in store,
-    // which must be the one verifier reads keys from. Throws
+    // which must be the one verifier reads keys from. Content a peer sends is
+    // kept only if it decompresses to no more than content_bytes. Throws
     // std::invalid_argument for no store or no fulfiller.
     FirstContact(const identity::NodeIdentity& identity, storage::IDataSource::Ptr store,
-                 identity::MessageVerifier verifier, std::shared_ptr<SeekFulfiller> fulfiller);
+                 identity::MessageVerifier verifier, std::shared_ptr<SeekFulfiller> fulfiller,
+                 std::size_t content_bytes = types::max_decompressed_content_size);
 
     // With whichever node proves its identity over connection. Throws
     // PeerSession::Unauthenticated when none does; what
@@ -44,6 +48,7 @@ private:
     identity::MessageSigner m_signer;
     identity::MessageVerifier m_verifier;
     std::shared_ptr<SeekFulfiller> m_fulfiller;
+    std::size_t m_content_bytes = 0;
 };
 
 } // namespace peer

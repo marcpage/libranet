@@ -133,6 +133,7 @@ constexpr auto stored_grace_setting = "storage.stored_grace_seconds";
 constexpr auto search_ttl_setting = "storage.search_cache_ttl_seconds";
 constexpr auto search_min_bits_setting = "storage.search_min_bits";
 constexpr auto list_bytes_setting = "storage.max_decompressed_list_bytes";
+constexpr auto content_bytes_setting = "storage.max_decompressed_bundle_bytes";
 constexpr auto object_bytes_setting = "storage.max_object_bytes";
 constexpr auto trust_attempts_setting = "identity.provisional_trust_attempts";
 constexpr auto max_age_setting = "identity.signature_max_age_seconds";
@@ -175,6 +176,7 @@ constexpr array used_settings{
     search_ttl_setting,
     search_min_bits_setting,
     list_bytes_setting,
+    content_bytes_setting,
     object_bytes_setting,
     trust_attempts_setting,
     max_age_setting,
@@ -812,6 +814,9 @@ Node::PartSettings Node::_settings_of(const SettingsFile& settings, const vector
     service.provisional_trust_attempts =
         whole(settings, trust_attempts_setting, service.provisional_trust_attempts, 2);
     service.list_bytes = whole(settings, list_bytes_setting, service.list_bytes, 1);
+    // The Python node's limit on a bundle once decompressed: this node holds
+    // all the content it is sent to it.
+    service.content_bytes = whole(settings, content_bytes_setting, service.content_bytes, 1);
     service.object_bytes = whole(settings, object_bytes_setting, service.object_bytes, 1,
                                  DataHandler::max_body_bytes);
     service.served_list_bytes = whole(settings, max_list_setting, service.served_list_bytes,
@@ -821,6 +826,7 @@ Node::PartSettings Node::_settings_of(const SettingsFile& settings, const vector
     fetch.retry_after = service.retry_after;
     fetch.passes = whole(settings, search_passes_setting, fetch.passes, 2);
     fetch.failed_search_hold = seconds(settings, failed_hold_setting, fetch.failed_search_hold);
+    fetch.content_bytes = service.content_bytes;
     search.passes = fetch.passes;
     search.pass_interval = fetch.retry_after;
     search.relays = whole(settings, search_relays_setting, search.relays, 0);
@@ -849,6 +855,7 @@ Node::PartSettings Node::_settings_of(const SettingsFile& settings, const vector
     connections.limits.request_timeout =
         seconds(settings, request_timeout_setting, connections.limits.request_timeout);
     connections.limits.answer.body_bytes = service.object_bytes;
+    connections.content_bytes = service.content_bytes;
     connections.rests.retry_delay =
         seconds(settings, retry_delay_setting, connections.rests.retry_delay);
     connections.rests.turned_away_rest =

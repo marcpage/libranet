@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <future>
@@ -30,6 +31,7 @@
 #include "protocol/SeekList.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 
 namespace peer {
 
@@ -103,6 +105,8 @@ public:
         std::vector<Seed> seeds;
         Milliseconds check_interval = default_check_interval;
         SeekFulfiller::Settings fulfiller;
+        // The most content a peer sends compressed may decompress to.
+        std::size_t content_bytes = types::max_decompressed_content_size;
     };
 
     // identity must outlive it. A peer's key that is not held is put in store,

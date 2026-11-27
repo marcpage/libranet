@@ -68,7 +68,6 @@ using storage::Identifier;
 using types::Converter;
 using types::data_path_prefix;
 using types::json_content_type;
-using types::max_decompressed_content_size;
 using types::nodes_path;
 using types::octet_stream_content_type;
 using types::seek_path;
@@ -259,10 +258,10 @@ Recorder::NodesReceived received_from(const NodeList& sent, const Identifier& pe
 
 // Keeps in store what the node node_id sent in answer to a request for
 // identifier, as it was sent, and posts it as data.stored, from that node,
-// once it is shown to be the content, unless store holds it already. What is
-// not kept is logged.
+// once it is shown to be the content, decompressing to no more than
+// content_bytes, unless store holds it already. What is not kept is logged.
 void keep(const Identifier& identifier, const Response& answer, const Identifier& node_id,
-          const IDataSource& store) {
+          const IDataSource& store, size_t content_bytes) {
     if (answer.code() != Status::Ok) {
         lDebug << node_id.to_string() << "did not send" << identifier.to_string()
                << "but answered" << answer.status_code();
@@ -271,7 +270,7 @@ void keep(const Identifier& identifier, const Response& answer, const Identifier
 
     const auto body = Converter::bytes_of(answer.body());
 
-    if (!identifier.content_of(body, max_decompressed_content_size)) {
+    if (!identifier.content_of(body, content_bytes)) {
         lInfo << node_id.to_string() << "sent what is not" << identifier.to_string();
         return;
     }
@@ -285,9 +284,10 @@ void keep(const Identifier& identifier, const Response& answer, const Identifier
 }
 
 // Step 7: asks the node of session for each of sought that store does not
-// hold, in runs of depth, and keeps what it sends that is the content.
+// hold, in runs of depth, and keeps what it sends that is the content, no
+// more than content_bytes once decompressed.
 void ask_for(PeerSession& session, const vector<Identifier>& sought, const IDataSource& store,
-             size_t depth) {
+             size_t depth, size_t content_bytes) {
     vector<Identifier> lacked;
 
     std::copy_if(sought.begin(), sought.end(), std::back_inserter(lacked),
@@ -307,7 +307,8 @@ void ask_for(PeerSession& session, const vector<Identifier>& sought, const IData
         const auto answers = session.exchange(std::move(gets));
 
         for (size_t index = 0; index < answers.size(); ++index) {
-            keep(lacked.at(start + index), answers.at(index), session.node_id(), store);
+            keep(lacked.at(start + index), answers.at(index), session.node_id(), store,
+                 content_bytes);
         }
     }
 }
@@ -315,17 +316,18 @@ void ask_for(PeerSession& session, const vector<Identifier>& sought, const IData
 // Steps 6 and 7, unless the node of session has turned this node away, as
 // it may in any answer, and so takes no more requests: fulfills seek, the
 // list it sent, with fulfiller, then asks it for what own_seek names by
-// identifier. Throws what PeerSession::exchange() throws, but for the
-// connection having closed as the node turned this node away.
+// identifier, keeping what decompresses to no more than content_bytes.
+// Throws what PeerSession::exchange() throws, but for the connection having
+// closed as the node turned this node away.
 void trade(PeerSession& session, const SeekList& seek, const SeekList& own_seek,
-           SeekFulfiller& fulfiller, const IDataSource& store) {
+           SeekFulfiller& fulfiller, const IDataSource& store, size_t content_bytes) {
     try {
         if (session.is_open()) {
             fulfiller.fulfill(session, seek);
         }
 
         if (session.is_open()) {
-            ask_for(session, own_seek.data(), store, fulfiller.pipeline_depth());
+            ask_for(session, own_seek.data(), store, fulfiller.pipeline_depth(), content_bytes);
         }
     } catch (const PeerConnection::Closed&) {
         if (!session.was_turned_away()) {
@@ -404,12 +406,14 @@ Identifier identify(const NodeIdentity& identity, const IDataSource& store,
 namespace peer {
 
 FirstContact::FirstContact(const NodeIdentity& identity, IDataSource::Ptr store,
-                           MessageVerifier verifier, shared_ptr<SeekFulfiller> fulfiller)
+                           MessageVerifier verifier, shared_ptr<SeekFulfiller> fulfiller,
+                           size_t content_bytes)
     : m_identity(&identity)
     , m_store(std::move(store))
     , m_signer(identity)
     , m_verifier(std::move(verifier))
-    , m_fulfiller(std::move(fulfiller)) {
+    , m_fulfiller(std::move(fulfiller))
+    , m_content_bytes(content_bytes) {
     if (!m_store) {
         throw invalid_argument("First contact needs a store to keep peers' keys in");
     }
@@ -451,7 +455,7 @@ FirstContact::Contact FirstContact::make(unique_ptr<PeerConnection> connection,
 
     auto seek = seek_list_in(answers.at(1), session.address(), list_bytes);
 
-    trade(session, seek, own_seek, *m_fulfiller, *m_store);
+    trade(session, seek, own_seek, *m_fulfiller, *m_store, m_content_bytes);
     return {std::move(session), std::move(seek)};
 }
 

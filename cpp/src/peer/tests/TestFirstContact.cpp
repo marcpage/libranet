@@ -625,6 +625,38 @@ TEST_F(FirstContactTest, ContentNotSentIsNotKept) {
     EXPECT_TRUE(contact.session.is_open());
 }
 
+// Content sent compressed is kept only if it decompresses to no more than
+// first contact takes.
+TEST_F(FirstContactTest, ContentTooLargeOnceDecompressedIsNotKept) {
+    hold_peer_key();
+
+    const auto world = fixtures::bytes_of("world");
+    const auto identifier = Identifier::of(world);
+    const auto compressed = Converter::text_of(Zlib::compress(world, Zlib::max_level));
+    auto answers = peer_answers();
+
+    answers["GET " + data_path(identifier)] =
+        signed_by(peer_signer(), answer(Status::Ok, compressed));
+
+    const auto contact_taking = [this, &answers, &identifier](std::size_t content_bytes) {
+        const StandInNode node(answers);
+        const FirstContact first_contact(this_node(), store(), verifier(), fulfiller(),
+                                         content_bytes);
+        const auto contact = first_contact.make(
+            std::make_unique<PeerConnection>(node.address(), PeerConnection::Limits{}),
+            own_list(), SeekList({identifier}, {}));
+
+        EXPECT_EQ(node.asked().back(), "GET " + data_path(identifier));
+        EXPECT_TRUE(contact.session.is_open());
+    };
+
+    contact_taking(world.size() - 1);
+    EXPECT_FALSE(store()->has(identifier));
+
+    contact_taking(world.size());
+    EXPECT_EQ(store()->get(identifier), Zlib::compress(world, Zlib::max_level));
+}
+
 // A peer may turn this node away in any answer, here the first of two
 // puts. It is asked for nothing more, and the one dialing it is told.
 TEST_F(FirstContactTest, PeerTurningThisNodeAwayWhileFulfilledIsTold) {
