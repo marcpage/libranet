@@ -23,6 +23,8 @@ public:
 
     static constexpr std::string_view realm = "Libranet /config";
 
+    static constexpr std::string_view policy_header = "Content-Security-Policy";
+
     // The reference node's Content-Security-Policy (HTTP API §2.3.3).
     static constexpr std::string_view policy =
         "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' "

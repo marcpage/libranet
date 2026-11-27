@@ -3,7 +3,6 @@
 #include <filesystem>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -20,7 +19,6 @@ namespace config {
 // cppcheck-suppress noConstructor
 class Service {
 public:
-    static constexpr std::string_view listen_host = "127.0.0.1";
     // With no port named, /config takes the first port free of the main port
     // + port_step, + 2 * port_step, and so on, as the Python node does.
     static constexpr net::Address::Port port_step = 100;

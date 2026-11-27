@@ -36,6 +36,7 @@
 #include "types/Converter.hpp"
 #include "web/ConnectionInfo.hpp"
 #include "web/Server.hpp"
+#include "web/SiteChecks.hpp"
 
 using api::NodesHandler;
 using api::SeekHandler;
@@ -68,6 +69,9 @@ using storage::HashPrefix;
 using storage::IDataSource;
 using storage::SearchAnswered;
 using storage::SearchAnswers;
+using types::config_api_path;
+using types::config_listen_host;
+using types::config_path;
 using types::Converter;
 using types::max_decompressed_content_size;
 using types::nodes_path;
@@ -75,6 +79,7 @@ using types::search_path_prefix;
 using types::seek_path;
 using web::ConnectionInfo;
 using web::Server;
+using web::SiteChecks;
 
 // The thread keeping the lists takes these events, which stats::Recorder,
 // SearchHandler, and peer::PeerSearch post from other files, so nothing here
@@ -89,21 +94,9 @@ using NodesUpdated = stats::Recorder::NodesUpdated;
 using SeekUpdated = stats::Recorder::SeekUpdated;
 using Status = http::ResponseCode::Status;
 
-// How many connections may wait to be accepted.
-constexpr int backlog = 128;
-
 // Where the data handler is registered with the server: it takes what is
 // beneath it that the other handlers do not.
 constexpr string_view data_path = "/data";
-
-// Where /config is, which is served on a port of its own, and its endpoints
-// beneath it (HTTP API §2.3).
-constexpr string_view config_path = "/config";
-constexpr string_view config_api_path = "/config/api";
-
-// Where /config is said to be served when a request's Host header names no
-// host: the address /config listens at.
-constexpr string_view config_listen_address = "127.0.0.1";
 
 // The answers to searches of what store holds, kept as settings says.
 // Throws invalid_argument for a ttl that is not more than zero.
@@ -158,7 +151,8 @@ bool names_config_api(string_view uri) {
 // IPv6 address's brackets. It is empty when the header names none, as when it
 // is not there, or its brackets are not closed.
 string host_named_by(const Request& request) {
-    const auto authority = Converter::lower_case(Headers::trim_whitespace(request.headers().get("Host", "")));
+    const auto authority = Converter::lower_case(
+        Headers::trim_whitespace(request.headers().get(SiteChecks::host_header, "")));
 
     if (!authority.empty() && '[' == authority.front()) {
         const auto closing = authority.find(']');
@@ -170,12 +164,12 @@ string host_named_by(const Request& request) {
 }
 
 // Where request's target is on config_port, at the host its Host header
-// names, or at config_listen_address when it names none.
+// names, or at the address /config listens at when it names none.
 string config_location(const Request& request, uint16_t config_port) {
     auto host = host_named_by(request);
 
     if (host.empty()) {
-        host = config_listen_address;
+        host = config_listen_host;
     }
 
     if (string::npos != host.find(':')) {
@@ -243,7 +237,7 @@ void keep(NodesHandler& nodes_handler, SeekHandler& seek_handler, SearchAnswers&
 // Has server serve until it is stopped, logging why when it stops before.
 void serve(Server& server) {
     try {
-        server.start(backlog);
+        server.start(Server::default_backlog);
     } catch (const exception& error) {
         lErr << "The web server stopped:" << error;
     }

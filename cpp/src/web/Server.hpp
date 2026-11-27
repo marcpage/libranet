@@ -37,6 +37,8 @@ public:
     static constexpr std::chrono::milliseconds default_idle{std::chrono::seconds(60)};
     static constexpr std::size_t default_head_bytes = 64 * types::Kilobyte;
     static constexpr std::size_t default_body_bytes = 1 * types::Megabyte;
+    // For start().
+    static constexpr int default_backlog = 128;
 
     struct Limits {
         // At least one. Those beyond it wait until one closes.

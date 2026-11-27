@@ -11,6 +11,8 @@ constexpr auto Gigabyte = 1024UL * Megabyte;
 
 constexpr std::size_t bits_per_byte = 8;
 
+constexpr std::string_view decimal_digits = "0123456789";
+
 // A node writes hex in lower case, and reads it in either.
 constexpr std::string_view hex_digits = "0123456789abcdef";
 constexpr std::string_view hex_digits_either_case = "0123456789abcdefABCDEF";
@@ -36,5 +38,10 @@ constexpr std::string_view search_path_prefix = "/data/search/";
 constexpr std::string_view search_relays_header = "X-Search-Relays";
 constexpr std::string_view nodes_path = "/data/nodes";
 constexpr std::string_view seek_path = "/data/seek";
+
+// HTTP API §2.3: /config listens at config_listen_host alone.
+constexpr std::string_view config_path = "/config";
+constexpr std::string_view config_api_path = "/config/api";
+constexpr std::string_view config_listen_host = "127.0.0.1";
 
 } // namespace types

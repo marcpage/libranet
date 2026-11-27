@@ -88,11 +88,9 @@ Url host_url_of(string_view authority, string_view address) {
 // Whether host is a name or an IPv4 address, of the characters RFC 3986
 // §2.3 leaves unreserved, as a node list's endpoint names one.
 bool is_host_name(string_view host) {
-    constexpr string_view unreserved = "-._~";
-
-    return !host.empty() && all_of(host.begin(), host.end(), [unreserved](char character) {
+    return !host.empty() && all_of(host.begin(), host.end(), [](char character) {
         return isalnum(static_cast<unsigned char>(character)) != 0
-               || unreserved.find(character) != string_view::npos;
+               || Url::unreserved.find(character) != string_view::npos;
     });
 }
 

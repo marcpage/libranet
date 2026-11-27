@@ -34,13 +34,12 @@ class Service {
 public:
     using Milliseconds = std::chrono::milliseconds;
 
-    // As the Python node's are.
-    static constexpr std::size_t default_search_min_bits = 24;
+    // As the Python node's is.
     static constexpr Milliseconds default_search_cache_ttl{300'000};
 
     struct Settings {
         // storage.search_min_bits
-        std::size_t search_min_bits = default_search_min_bits;
+        std::size_t search_min_bits = storage::SearchAnswers::default_min_bits;
         // storage.search_cache_ttl_seconds
         Milliseconds search_cache_ttl = default_search_cache_ttl;
         // Told to a client asking for content the node will look for.

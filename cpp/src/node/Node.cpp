@@ -35,6 +35,7 @@
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
 #include "node/SettingsFile.hpp"
+#include "peer/Buckets.hpp"
 #include "peer/Connections.hpp"
 #include "peer/Fetch.hpp"
 #include "peer/HandOff.hpp"
@@ -45,6 +46,7 @@
 #include "stats/Recorder.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Manager.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 #include "types/Json.hpp"
 
@@ -60,6 +62,7 @@ using logger::Logger;
 using net::Address;
 using node::Node;
 using node::SettingsFile;
+using peer::Buckets;
 using peer::Connections;
 using peer::Fetch;
 using protocol::NodeList;
@@ -89,6 +92,7 @@ using std::filesystem::path;
 using storage::Identifier;
 using storage::Manager;
 using types::Converter;
+using types::decimal_digits;
 using types::Json;
 
 namespace {
@@ -211,7 +215,7 @@ constexpr auto database_file_name = "libranet.sqlite3";
 constexpr size_t most_search_bits = 256;
 
 // The most bits a bucket's prefix may have, as the Python node allows.
-constexpr size_t most_prefix_bits = 16;
+constexpr size_t most_prefix_bits = Buckets::ExpectedSizes::max_prefix_bits;
 
 // The fewest bytes the lists served may be held to, as the Python node
 // allows, and the most, as the protocol allows (HttpApi §10.6, §10.7.1).
@@ -271,7 +275,7 @@ uintmax_t whole_given(const SettingsFile& settings, const string& name, uintmax_
                                 + " to " + to_string(most) + ", not '" + value + "'");
     };
 
-    if (value.empty() || string::npos != value.find_first_not_of("0123456789")) {
+    if (value.empty() || string::npos != value.find_first_not_of(decimal_digits)) {
         throw refused();
     }
 
@@ -562,7 +566,7 @@ Address::Port listen_port(const SettingsFile& settings) {
     const auto port = text(settings, listen_port_setting, default_listen_port);
 
     if (port.empty() || port.size() > most_digits
-        || string::npos != port.find_first_not_of("0123456789")) {
+        || string::npos != port.find_first_not_of(decimal_digits)) {
         throw invalid_argument(string(listen_port_setting)
                                + ": must be a positive whole number, not '" + port + "'");
     }

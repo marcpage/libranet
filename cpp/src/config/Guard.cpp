@@ -17,6 +17,7 @@
 #include "http/Url.hpp"
 #include "logger/Logger.hpp"
 #include "net/IpAddress.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 #include "web/ConnectionInfo.hpp"
 #include "web/SiteChecks.hpp"
@@ -35,6 +36,8 @@ using std::string;
 using std::string_view;
 using std::to_string;
 using std::vector;
+using types::config_api_path;
+using types::config_path;
 using types::Converter;
 using web::ConnectionInfo;
 using web::SiteChecks;
@@ -43,15 +46,7 @@ namespace {
 
 using Status = http::ResponseCode::Status;
 
-// What a refusal calls what the guard keeps other sites out of.
-constexpr string_view served = "/config";
-
-// /config's endpoints, beneath which the pages of /config are not (HTTP API
-// §2.3).
-constexpr string_view config_api_path = "/config/api";
-
 constexpr string_view referer_header = "Referer";
-constexpr string_view policy_header = "Content-Security-Policy";
 
 // What a browser sends with a page another page of the same site opens in a
 // window of its own (W3C Fetch Metadata Request Headers): a page of the same
@@ -118,7 +113,7 @@ bool names_config_api(string_view uri) {
 // Whether path, percent-decoded, is a page of /config: /config, or a path
 // beneath it outside /config/api (HTTP API §2.5).
 bool is_config_page(const string& path) {
-    const string config(served);
+    const string config(config_path);
 
     return (path == config || 0 == path.rfind(config + '/', 0)) && !is_beneath_api(path);
 }
@@ -233,7 +228,7 @@ void keep_to_own_origin(Response& response) {
         headers.remove(name);
     }
 
-    headers.set(string(policy_header), string(Guard::policy));
+    headers.set(string(Guard::policy_header), string(Guard::policy));
 }
 
 // Answers 403 for a request from a client elsewhere (HTTP API §2.3).
@@ -258,7 +253,7 @@ namespace config {
 
 Guard::Guard(Credential credential, vector<string> hosts)
     : m_credential(std::move(credential))
-    , m_checks(std::move(hosts), string(served)) {}
+    , m_checks(std::move(hosts), string(config_path)) {}
 
 Guard::Handler Guard::in_front_of(Handler handler) const {
     return [guard = *this, handler = std::move(handler)](const Request& request,

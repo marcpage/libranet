@@ -31,6 +31,7 @@
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
+#include "types/Constants.hpp"
 
 using http::Headers;
 using http::Problem;
@@ -61,6 +62,7 @@ using std::thread;
 using std::unique_lock;
 using std::unordered_map;
 using std::vector;
+using types::decimal_digits;
 using web::ConnectionInfo;
 using web::Server;
 using Status = http::ResponseCode::Status;
@@ -204,7 +206,7 @@ optional<Problem> body_length(const Headers& headers, size_t most_bytes, size_t&
         return nullopt;
     }
 
-    if (value->empty() || string_view::npos != value->find_first_not_of("0123456789")) {
+    if (value->empty() || string_view::npos != value->find_first_not_of(decimal_digits)) {
         return unreadable();
     }
 
