@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "ConnectHandler.hpp"
 #include "Credential.hpp"
 #include "Guard.hpp"
 #include "http/Problem.hpp"
@@ -23,11 +24,13 @@
 #include "identity/NodeIdentity.hpp"
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
+#include "peer/PeerConnection.hpp"
 #include "types/Constants.hpp"
 #include "types/Json.hpp"
 #include "web/ConnectionInfo.hpp"
 #include "web/Server.hpp"
 
+using config::ConnectHandler;
 using config::Credential;
 using config::Guard;
 using config::Service;
@@ -37,6 +40,7 @@ using http::Response;
 using identity::MessageSigner;
 using identity::NodeIdentity;
 using net::Address;
+using peer::PeerConnection;
 using std::errc;
 using std::error_code;
 using std::exception;
@@ -83,6 +87,7 @@ struct Endpoint {
 // Each endpoint /config serves.
 constexpr std::array endpoints{
     Endpoint{"GET", config_api_path, "The endpoints /config serves, and what each does"},
+    Endpoint{"POST", ConnectHandler::path, "Connect to a node at an address"},
 };
 
 // The ports /config may listen on, in the order they are tried: port alone
@@ -220,8 +225,9 @@ void serve(Server& server) {
 namespace config {
 
 Service::Service(const NodeIdentity& identity, const std::filesystem::path& data_dir,
-                 Port main_port, optional<Port> port)
-    : m_server(first_free(ports_to_try(main_port, port)))
+                 Port main_port, optional<Port> port, const PeerConnection::Limits& limits)
+    : m_dial_outcomes(limits)
+    , m_server(first_free(ports_to_try(main_port, port)))
     , m_local_address(m_server.local_address()) {
     const Guard guard{Credential(data_dir)};
     const MessageSigner signer(identity);
@@ -238,6 +244,8 @@ Service::Service(const NodeIdentity& identity, const std::filesystem::path& data
                                                                      ConnectionInfo&) {
         answer_index(index, request, response);
     }));
+    m_server.register_handler(ConnectHandler::path,
+                              guarded(guard, signer, ConnectHandler(m_dial_outcomes)));
     lInfo << "/config is at http://" + string(listen_host) + ":"
                  + to_string(m_local_address.port()) + "/config/";
     m_server_thread = thread([this] {
@@ -250,6 +258,9 @@ Service::~Service() {
     // nothing is safe but to end the program, as thread's destructor
     // would.
     try {
+        // A request waiting on a dial would keep its connection's thread as
+        // long as a dial may take, so each is let go first.
+        m_dial_outcomes.stop();
         m_server.stop();
         m_server_thread.join();
     } catch (const exception& error) {

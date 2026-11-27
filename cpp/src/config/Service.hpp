@@ -5,8 +5,10 @@
 #include <string_view>
 #include <thread>
 
+#include "DialOutcomes.hpp"
 #include "identity/NodeIdentity.hpp"
 #include "net/Address.hpp"
+#include "peer/PeerConnection.hpp"
 #include "web/Server.hpp"
 
 namespace config {
@@ -15,7 +17,8 @@ namespace config {
 // apart from the main port, serving nothing outside /config. Every handler is
 // behind a Guard, and every answer is signed as the node, the guard's
 // refusals among them. GET /config/api names each endpoint it serves. It
-// serves from a thread of its own.
+// serves from a thread of its own, and hears what came of the dials it asks
+// peer::Connections for on another.
 // cppcheck-suppress noConstructor
 class Service {
 public:
@@ -28,13 +31,16 @@ public:
     // Listens at listen_host on port, or, when none is named, on the first
     // port free of main_port + port_step, + 2 * port_step, and so on, logging
     // the port it took; port 0 has the system pick one. The credential is kept
-    // in data_dir. identity must outlive this. Throws std::invalid_argument
-    // when no port is named and main_port leaves none port_step above it, and
-    // std::system_error when it cannot listen on the port named, or on any it
-    // tries.
+    // in data_dir. A request to connect to a node waits as long as a dial
+    // within limits, those peer::Connections dials with, may take. identity
+    // must outlive this. Throws std::invalid_argument when no port is named
+    // and main_port leaves none port_step above it, and std::system_error
+    // when it cannot listen on the port named, or on any it tries.
     Service(const identity::NodeIdentity& identity, const std::filesystem::path& data_dir,
-            net::Address::Port main_port, std::optional<net::Address::Port> port);
-    // Ends every connection, and waits for its threads.
+            net::Address::Port main_port, std::optional<net::Address::Port> port,
+            const peer::PeerConnection::Limits& limits);
+    // Lets each request waiting on a dial go, ends every connection, and
+    // waits for its threads.
     ~Service();
 
     // With the port it took.
@@ -47,6 +53,8 @@ public:
     Service& operator=(Service&&) = delete;
 
 private:
+    // Made first, and so let go of last, once no handler waits on it.
+    DialOutcomes m_dial_outcomes;
     web::Server m_server;
     // Mistaken: cppcheck loses the constructors in files `using` the class.
     // cppcheck-suppress uninitMemberVarNoCtor

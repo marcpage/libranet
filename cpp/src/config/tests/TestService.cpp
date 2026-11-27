@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <future>
 #include <iterator>
 #include <memory>
 #include <mutex>
@@ -20,8 +21,13 @@
 #include "identity/NodeIdentity.hpp"
 #include "logger/ILogOutput.hpp"
 #include "logger/Logger.hpp"
+#include "msg/Channel.hpp"
+#include "msg/Message.hpp"
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
+#include "peer/Connections.hpp"
+#include "peer/PeerConnection.hpp"
+#include "storage/Identifier.hpp"
 #include "storage/tests/Fixtures.hpp"
 #include "types/Json.hpp"
 
@@ -30,12 +36,22 @@ using http::BasicCredentials;
 using identity::NodeIdentity;
 using logger::ILogOutput;
 using logger::Logger;
+using msg::Channel;
 using net::Address;
 using net::ISocket;
+using peer::PeerConnection;
 using std::optional;
 using std::string;
 using std::string_view;
+using storage::Identifier;
 using types::Json;
+using AddressDialed = peer::Connections::AddressDialed;
+using DialRequested = peer::Connections::DialRequested;
+
+// The tests take DialRequested, which the service posts from another file,
+// so nothing here would make its message's virtual to_string(), which
+// next<>() casts to.
+template class msg::Message<DialRequested>;
 
 namespace {
 
@@ -61,6 +77,12 @@ constexpr optional<Port> any_port = 0;
 
 constexpr string_view admin = "admin:secret";
 
+// The Python node's, as peer::Connections is given them by default: a
+// request waits 75 seconds for what came of its dial.
+PeerConnection::Limits python_limits() {
+    return {};
+}
+
 // What has a browser ask for a username and password (RFC 7617 §2, §2.1).
 constexpr string_view challenge = R"(Basic realm="Libranet /config", charset="UTF-8")";
 
@@ -84,6 +106,15 @@ string request_of(string_view method, string_view target) {
 
 string get(string_view target) {
     return request_of("GET", target);
+}
+
+// A POST asking for address to be dialed, giving the credential admin.
+string post_address(string_view address) {
+    const auto body = R"({"address": ")" + string(address) + R"("})";
+
+    return "POST /config/api/connections HTTP/1.1\r\n" + authorization(admin)
+           + "Content-Type: application/json\r\nConnection: close\r\nContent-Length: "
+           + std::to_string(body.size()) + "\r\n\r\n" + body;
 }
 
 // Whether answer carries the header name, with value.
@@ -202,7 +233,8 @@ protected:
         Logger::remove_all_outputs();
         Logger::add_output(std::make_unique<LockedOutput>(m_kept));
         Logger::reset_levels(Logger::Level::Info);
-        m_service = std::make_unique<Service>(m_identity, data_dir(), main_port, any_port);
+        m_service =
+            std::make_unique<Service>(m_identity, data_dir(), main_port, any_port, python_limits());
     }
 
     void TearDown() override {
@@ -281,7 +313,7 @@ TEST_F(ConfigServiceTest, LogsWhereConfigIs) {
 
 TEST_F(ConfigServiceTest, ListensOnThePortNamed) {
     const auto port = free_port();
-    const Service named(identity(), data_dir(), main_port, port);
+    const Service named(identity(), data_dir(), main_port, port, python_limits());
 
     EXPECT_EQ(named.local_address().port(), port);
 }
@@ -290,7 +322,7 @@ TEST_F(ConfigServiceTest, ListensOnThePortNamed) {
 // it.
 TEST_F(ConfigServiceTest, TakesTheFirstPortAboveTheMainPortWhenNoneIsNamed) {
     const auto port = free_port();
-    const Service above(identity(), data_dir(), below(port), std::nullopt);
+    const Service above(identity(), data_dir(), below(port), std::nullopt, python_limits());
 
     EXPECT_EQ(above.local_address().port(), port);
 }
@@ -301,7 +333,7 @@ TEST_F(ConfigServiceTest, PassesOverAPortTaken) {
     const auto taken = listening_below_another();
     const auto taken_port = taken->local_address().port();
     const auto main = below(taken_port);
-    const Service above(identity(), data_dir(), main, std::nullopt);
+    const Service above(identity(), data_dir(), main, std::nullopt, python_limits());
     const auto port = above.local_address().port();
 
     EXPECT_GT(port, taken_port);
@@ -317,7 +349,7 @@ TEST_F(ConfigServiceTest, RefusesAPortNamedThatIsTaken) {
     const auto taken = listening();
 
     EXPECT_THROW(const Service refused(identity(), data_dir(), main_port,
-                                       taken->local_address().port()),
+                                       taken->local_address().port(), python_limits()),
                  std::system_error);
 }
 
@@ -325,7 +357,7 @@ TEST_F(ConfigServiceTest, RefusesAMainPortLeavingNoPortAboveIt) {
     constexpr Port above_the_highest_main = highest_port - Service::port_step + 1;
 
     EXPECT_THROW(const Service refused(identity(), data_dir(), above_the_highest_main,
-                                       std::nullopt),
+                                       std::nullopt, python_limits()),
                  std::invalid_argument);
 }
 
@@ -338,10 +370,13 @@ TEST_F(ConfigServiceTest, ListsItsEndpoints) {
 
     const auto endpoints = Json::parse(body_of(answer)).at("endpoints");
 
-    ASSERT_EQ(endpoints.size(), 1U) << answer;
+    ASSERT_EQ(endpoints.size(), 2U) << answer;
     EXPECT_EQ(endpoints.at(0).at("method").string(), "GET");
     EXPECT_EQ(endpoints.at(0).at("path").string(), "/config/api");
     EXPECT_FALSE(endpoints.at(0).at("description").string().empty());
+    EXPECT_EQ(endpoints.at(1).at("method").string(), "POST");
+    EXPECT_EQ(endpoints.at(1).at("path").string(), "/config/api/connections");
+    EXPECT_FALSE(endpoints.at(1).at("description").string().empty());
 }
 
 TEST_F(ConfigServiceTest, ListsItsEndpointsWhateverTheQuery) {
@@ -368,6 +403,59 @@ TEST_F(ConfigServiceTest, ServesNothingElseBeneathConfig) {
         EXPECT_TRUE(has_status(answer, "404 Not Found")) << target << answer;
         EXPECT_TRUE(is_signed_by_node(answer)) << target << answer;
     }
+}
+
+// Answered as peer::Connections answers once its dial is over.
+TEST_F(ConfigServiceTest, ConnectsToANode) {
+    const auto node = Identifier::of({std::byte{'n'}, std::byte{'o'}, std::byte{'d'}});
+    Channel dials(DialRequested::name);
+    auto answer = std::async(std::launch::async, [this] {
+        return answer_to(address(), post_address("http://127.0.0.1:8080"));
+    });
+    const auto dial = dials.next<DialRequested>(wait_timeout).value_or(DialRequested{});
+
+    ASSERT_FALSE(dial.dial_id.empty());
+    EXPECT_EQ(dial.endpoint, "http://127.0.0.1:8080");
+    Channel::post(AddressDialed::name,
+                  AddressDialed{dial.dial_id, AddressDialed::Outcome::Connected, node, ""});
+
+    const auto answered = answer.get();
+
+    ASSERT_TRUE(has_status(answered, "200 OK")) << answered;
+    EXPECT_TRUE(has_header(answered, "Content-Type", "application/json")) << answered;
+    EXPECT_TRUE(is_signed_by_node(answered)) << answered;
+    EXPECT_EQ(Json::parse(body_of(answered)).at("node_id").string(), node.to_string());
+}
+
+TEST_F(ConfigServiceTest, ConnectingIsBehindTheGuard) {
+    Channel dials(DialRequested::name);
+    const auto body = string(R"({"address": "http://127.0.0.1:8080"})");
+    const auto answer = answer_to(
+        address(), "POST /config/api/connections HTTP/1.1\r\nContent-Type: application/json\r\n"
+                   "Connection: close\r\nContent-Length: "
+                       + std::to_string(body.size()) + "\r\n\r\n" + body);
+
+    EXPECT_TRUE(has_status(answer, "401 Unauthorized")) << answer;
+    EXPECT_TRUE(dials.empty());
+}
+
+// A request waits 75 seconds for what came of its dial with the Python
+// node's limits, but is let go at once.
+TEST_F(ConfigServiceTest, StopsWithinFiveSecondsWithARequestWaitingOnADial) {
+    constexpr auto most = std::chrono::seconds(5);
+    Channel dials(DialRequested::name);
+    const auto answer = std::async(std::launch::async, [this] {
+        return answer_to(address(), post_address("http://127.0.0.1:8080"));
+    });
+
+    ASSERT_TRUE(dials.next<DialRequested>(wait_timeout).has_value());
+
+    const auto stopping = std::chrono::steady_clock::now();
+
+    stop();
+
+    EXPECT_LT(std::chrono::steady_clock::now() - stopping, most);
+    answer.wait();
 }
 
 TEST_F(ConfigServiceTest, ServesNothingOutsideConfig) {

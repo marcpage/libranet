@@ -1,4 +1,5 @@
 add_library(libranet_config STATIC
+    ConnectHandler.cpp
     Credential.cpp
     DialOutcomes.cpp
     Guard.cpp
@@ -15,12 +16,14 @@ target_link_libraries(libranet_config PUBLIC
     libranet::msg
     libranet::net
     libranet::peer
+    libranet::protocol
     libranet::types
     libranet::web
 )
 
 if(BUILD_TESTING)
     add_executable(config_tests
+        tests/TestConnectHandler.cpp
         tests/TestCredential.cpp
         tests/TestDialOutcomes.cpp
         tests/TestGuard.cpp
