@@ -70,7 +70,7 @@ std::optional<IMessage::Ptr> Channel::next_message(Milliseconds timeout) {
         return m_message_queue.pop();
     }
 
-    return m_message_queue.pop_ms_timeout(timeout);
+    return m_message_queue.pop(timeout);
 }
 
 void Channel::post_message(const std::string& name, const IMessage::Ptr& message) {
