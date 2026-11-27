@@ -16,9 +16,8 @@ public:
     using Callback = std::function<void(IMessage::Ptr)>;
     using Logger = std::function<void(std::string)>;
 
-    AsyncChannel(const std::string& name, const Callback& callback, const Logger& logger = nullptr);
-    AsyncChannel(std::vector<std::string> names, const Callback& callback,
-                 const Logger& logger = nullptr);
+    AsyncChannel(const std::string& name, Callback callback, Logger logger = nullptr);
+    AsyncChannel(std::vector<std::string> names, Callback callback, Logger logger = nullptr);
     ~AsyncChannel();
 
     void stop();

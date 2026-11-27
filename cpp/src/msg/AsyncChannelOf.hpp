@@ -15,8 +15,7 @@ class AsyncChannelOf : public AsyncChannel {
 public:
     using TypeCallback = std::function<void(Type)>;
 
-    AsyncChannelOf(const std::string& name, TypeCallback callback,
-                   const AsyncChannel::Logger& logger);
+    AsyncChannelOf(const std::string& name, TypeCallback callback, AsyncChannel::Logger logger);
     ~AsyncChannelOf();
 
     // Its callback holds this object, so it is neither copied nor moved.
@@ -33,8 +32,9 @@ private:
 
 template<typename Type>
 AsyncChannelOf<Type>::AsyncChannelOf(const std::string& name, TypeCallback callback,
-                                     const AsyncChannel::Logger& logger)
-    : AsyncChannel(name, [this](const IMessage::Ptr& message) { _handle(message); }, logger)
+                                     AsyncChannel::Logger logger)
+    : AsyncChannel(
+          name, [this](const IMessage::Ptr& message) { _handle(message); }, std::move(logger))
     , m_type_callback(std::move(callback)) {}
 
 template<typename Type>
