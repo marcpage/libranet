@@ -170,7 +170,7 @@ void NodesHandler::operator()(const Request& request, Response& response,
     const auto uri = request.uri();
 
     if (uri.substr(0, uri.find('?')) != nodes_path) {
-        Problem(Status::NotFound, "No resource exists at this path.").answer(response);
+        Problem::answer_not_found(response);
         return;
     }
 

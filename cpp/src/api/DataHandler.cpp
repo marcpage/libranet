@@ -261,7 +261,7 @@ void DataHandler::operator()(const Request& request, Response& response,
     auto path = data_path(request.uri());
 
     if (!path) {
-        Problem(Status::NotFound, "No resource exists at this path.").answer(response);
+        Problem::answer_not_found(response);
         return;
     }
 

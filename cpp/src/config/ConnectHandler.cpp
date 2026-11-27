@@ -155,7 +155,7 @@ ConnectHandler::ConnectHandler(DialOutcomes& outcomes)
 void ConnectHandler::operator()(const Request& request, Response& response,
                                 const ConnectionInfo& connection) const {
     if (!is_connections_path(request.uri())) {
-        Problem(Status::NotFound, "No resource exists at this path.").answer(response);
+        Problem::answer_not_found(response);
         return;
     }
 

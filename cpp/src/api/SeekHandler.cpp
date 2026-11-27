@@ -122,7 +122,7 @@ void SeekHandler::set_list(const SeekList& new_list) {
 void SeekHandler::operator()(const Request& request, Response& response,
                              const ConnectionInfo& connection) const {
     if (!is_seek_path(request.uri())) {
-        Problem(Status::NotFound, "No resource exists at this path.").answer(response);
+        Problem::answer_not_found(response);
         return;
     }
 

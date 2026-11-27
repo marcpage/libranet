@@ -141,6 +141,22 @@ TEST(ProblemTest, AnswerWritesTheProblemAsProblemJson) {
     EXPECT_EQ(Json::parse(response.body()), problem.to_json());
 }
 
+TEST(ProblemTest, NotFoundSaysNoResourceIsAtThePath) {
+    Response response;
+
+    Problem::answer_not_found(response);
+
+    EXPECT_EQ(response.status_code(), 404);
+    EXPECT_EQ(response.reason_phrase(), "Not Found");
+    EXPECT_EQ(response.headers().get("Content-Type"), "application/problem+json");
+    EXPECT_EQ(Json::parse(response.body()), Json::parse(R"({
+        "type": "about:blank",
+        "title": "Not Found",
+        "status": 404,
+        "detail": "No resource exists at this path."
+    })"));
+}
+
 TEST(ProblemTest, MethodNotAllowedNamesTheMethodsThePathTakes) {
     Request request;
     Response response;

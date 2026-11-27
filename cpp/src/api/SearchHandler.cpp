@@ -191,7 +191,7 @@ void SearchHandler::operator()(const Request& request, Response& response,
     const auto path = search_path(request.uri());
 
     if (!path) {
-        Problem(Status::NotFound, "No resource exists at this path.").answer(response);
+        Problem::answer_not_found(response);
         return;
     }
 

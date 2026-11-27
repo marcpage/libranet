@@ -184,7 +184,7 @@ string config_location(const Request& request, Address::Port config_port) {
 // this port would send it with every request to it (HTTP API §2.3).
 void answer_moved_config(Address::Port config_port, const Request& request, Response& response) {
     if (0 == config_port) {
-        Problem(Status::NotFound, "No resource exists at this path.").answer(response);
+        Problem::answer_not_found(response);
         return;
     }
 

@@ -80,7 +80,7 @@ constexpr auto request_path_header = "X-Request-Path";
 
 void file_not_found([[maybe_unused]] const Request& request, Response& response,
                     [[maybe_unused]] ConnectionInfo& connection) {
-    Problem(ResponseCode::Status::NotFound, "No resource exists at this path.").answer(response);
+    Problem::answer_not_found(response);
 }
 
 // Whether the URI is under the path a handler was registered for: it starts

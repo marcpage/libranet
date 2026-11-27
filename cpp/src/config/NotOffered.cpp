@@ -47,7 +47,7 @@ NotOffered::NotOffered(const Feature& feature) noexcept
 void NotOffered::operator()(const Request& request, Response& response,
                             [[maybe_unused]] const ConnectionInfo& connection) const {
     if (!has(m_feature, path_of(request.uri()))) {
-        Problem(Status::NotFound, "No resource exists at this path.").answer(response);
+        Problem::answer_not_found(response);
         return;
     }
 
