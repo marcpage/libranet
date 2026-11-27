@@ -5,6 +5,7 @@
 
 #include "http/Request.hpp"
 #include "http/Response.hpp"
+#include "types/Constants.hpp"
 #include "web/ConnectionInfo.hpp"
 
 namespace config {
@@ -13,6 +14,7 @@ namespace config {
 // applications/config/index.html.
 class Page {
 public:
+    static constexpr std::string_view path = types::config_path;
     static constexpr std::string_view content_type = "text/html; charset=utf-8";
 
     Page();

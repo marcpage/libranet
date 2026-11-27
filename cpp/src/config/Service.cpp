@@ -62,7 +62,6 @@ using std::uint32_t;
 using std::vector;
 using types::config_api_path;
 using types::config_listen_host;
-using types::config_path;
 using types::Json;
 using types::json_content_type;
 using web::ConnectionInfo;
@@ -242,7 +241,7 @@ Service::Service(const NodeIdentity& identity, const std::filesystem::path& data
                                       [](const Request&, Response& response, ConnectionInfo&) {
         answer_not_found(response);
     }));
-    m_server.register_handler(config_path, guarded(guard, signer, Page()));
+    m_server.register_handler(Page::path, guarded(guard, signer, Page()));
     m_server.register_handler(config_api_path,
                               guarded(guard, signer,
                                       [index = index_of_endpoints()](const Request& request,
@@ -265,7 +264,7 @@ Service::Service(const NodeIdentity& identity, const std::filesystem::path& data
     m_server.set_on_every_answer(string(Guard::policy_header), string(Guard::policy));
 
     lInfo << "/config is at http://" + string(config_listen_host) + ":"
-                 + to_string(m_local_address.port()) + "/config/";
+                 + to_string(m_local_address.port()) + string(Page::path) + "/";
     m_server_thread = thread([this] {
         serve(m_server);
     });
