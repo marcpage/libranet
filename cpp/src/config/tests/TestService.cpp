@@ -1,0 +1,437 @@
+#include <gtest/gtest.h>
+#include <algorithm>
+#include <chrono>
+#include <cstddef>
+#include <filesystem>
+#include <iterator>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <thread>
+#include <utility>
+#include <vector>
+
+#include "config/Service.hpp"
+#include "http/BasicCredentials.hpp"
+#include "identity/NodeIdentity.hpp"
+#include "logger/ILogOutput.hpp"
+#include "logger/Logger.hpp"
+#include "net/Address.hpp"
+#include "net/ISocket.hpp"
+#include "storage/tests/Fixtures.hpp"
+#include "types/Json.hpp"
+
+using config::Service;
+using http::BasicCredentials;
+using identity::NodeIdentity;
+using logger::ILogOutput;
+using logger::Logger;
+using net::Address;
+using net::ISocket;
+using std::optional;
+using std::string;
+using std::string_view;
+using types::Json;
+
+namespace {
+
+using Port = Address::Port;
+
+// How long to wait, at most, for the service to listen, and how long between
+// tries. The service binds when it is made, but listens only once its thread
+// has started.
+constexpr auto wait_timeout = std::chrono::seconds(30);
+constexpr auto retry_interval = std::chrono::milliseconds(5);
+
+// How many bytes to read from a connection at a time.
+constexpr std::size_t read_size = 4096;
+
+// A main port for the tests that name /config's port, so that it is not used.
+constexpr Port main_port = 8080;
+
+// The highest port there is.
+constexpr Port highest_port = 65'535;
+
+// Has the system pick /config's port.
+constexpr optional<Port> any_port = 0;
+
+constexpr string_view admin = "admin:secret";
+
+// What has a browser ask for a username and password (RFC 7617 §2, §2.1).
+constexpr string_view challenge = R"(Basic realm="Libranet /config", charset="UTF-8")";
+
+// The Authorization header giving user_pass, ending in CRLF.
+string authorization(string_view user_pass) {
+    return string(BasicCredentials::field_name) + ": "
+           + BasicCredentials(user_pass).to_string() + "\r\n";
+}
+
+// A request for target, by method, with no body, carrying headers, each
+// ending in CRLF, on a connection the service closes once it answers.
+string request_with(string_view method, string_view target, string_view headers) {
+    return string(method) + " " + string(target) + " HTTP/1.1\r\n" + string(headers)
+           + "Connection: close\r\nContent-Length: 0\r\n\r\n";
+}
+
+// A request for target, by method, giving the credential admin.
+string request_of(string_view method, string_view target) {
+    return request_with(method, target, authorization(admin));
+}
+
+string get(string_view target) {
+    return request_of("GET", target);
+}
+
+// Whether answer carries the header name, with value.
+bool has_header(const string& answer, string_view name, string_view value) {
+    return string::npos != answer.find("\r\n" + string(name) + ": " + string(value) + "\r\n");
+}
+
+// A connection to address, once the service there is listening.
+ISocket::Ptr connect_when_listening(const Address& address) {
+    const auto deadline = std::chrono::steady_clock::now() + wait_timeout;
+
+    while (true) {
+        try {
+            return ISocket::connect(address);
+        } catch (const std::system_error&) {
+            if (std::chrono::steady_clock::now() >= deadline) {
+                throw;
+            }
+        }
+
+        std::this_thread::sleep_for(retry_interval);
+    }
+}
+
+// What the service at address answers to request, sent on a connection of
+// its own, until it closes the connection.
+string answer_to(const Address& address, string_view request) {
+    const auto connection = connect_when_listening(address);
+    string answer;
+    std::vector<std::byte> buffer(read_size);
+
+    connection->send_all(request);
+
+    while (connection->receive(buffer)) {
+        std::transform(buffer.begin(), buffer.end(), std::back_inserter(answer),
+                       [](std::byte byte) {
+            return static_cast<char>(std::to_integer<unsigned char>(byte));
+        });
+        buffer.resize(read_size);
+    }
+
+    return answer;
+}
+
+// The body of answer, after its head.
+string body_of(const string& answer) {
+    const auto end_of_head = answer.find("\r\n\r\n");
+
+    return string::npos == end_of_head ? "" : answer.substr(end_of_head + 4);
+}
+
+// Whether answer's status line is HTTP/1.1 and status.
+bool has_status(const string& answer, string_view status) {
+    return 0 == answer.rfind("HTTP/1.1 " + string(status) + "\r\n", 0);
+}
+
+// A socket listening at the loopback address, on a port the system picks.
+ISocket::Ptr listening() {
+    auto socket = ISocket::bind({Service::listen_host, 0});
+
+    socket->listen(1);
+    return socket;
+}
+
+// A socket listening as listening()'s does, on a port with another
+// Service::port_step above it.
+ISocket::Ptr listening_below_another() {
+    auto socket = listening();
+
+    while (socket->local_address().port() > highest_port - Service::port_step) {
+        socket = listening();
+    }
+
+    return socket;
+}
+
+// A port at the loopback address that nothing listens on now.
+Port free_port() {
+    return listening()->local_address().port();
+}
+
+// The port port_step below port.
+Port below(Port port) {
+    return static_cast<Port>(port - Service::port_step);
+}
+
+// The lines the log writes, from any thread.
+struct KeptLines {
+    std::mutex lock;
+    std::vector<string> lines;
+};
+
+// Keeps each line it is given, behind a lock, as the service logs from a
+// thread of its own.
+class LockedOutput : public ILogOutput {
+public:
+    explicit LockedOutput(std::shared_ptr<KeptLines> kept)
+        : m_kept(std::move(kept)) {}
+
+    void log(string_view line) override {
+        const std::scoped_lock guard(m_kept->lock);
+
+        m_kept->lines.emplace_back(line);
+    }
+
+private:
+    std::shared_ptr<KeptLines> m_kept;
+};
+
+// Each test has a data directory, holding the node's key, whose public key
+// is in a store, and a service with a port the system picked. It keeps what
+// is logged.
+class ServiceTest : public testing::Test {
+protected:
+    void SetUp() override {
+        Logger::remove_all_outputs();
+        Logger::add_output(std::make_unique<LockedOutput>(m_kept));
+        Logger::reset_levels(Logger::Level::Info);
+        m_service = std::make_unique<Service>(m_identity, data_dir(), main_port, any_port);
+    }
+
+    void TearDown() override {
+        m_service.reset();
+        Logger::remove_all_outputs();
+    }
+
+    [[nodiscard]] const Address& address() const noexcept {
+        return m_service->local_address();
+    }
+
+    [[nodiscard]] const std::filesystem::path& data_dir() const noexcept {
+        return m_directory.path();
+    }
+
+    [[nodiscard]] const NodeIdentity& identity() const noexcept {
+        return m_identity;
+    }
+
+    [[nodiscard]] bool captured() const {
+        return std::filesystem::exists(data_dir() / "config-credential");
+    }
+
+    // Whether the service signed answer as the node.
+    [[nodiscard]] bool is_signed_by_node(const string& answer) const {
+        return string::npos != answer.find(";keyid=\"" + m_identity.id().to_string() + "\"");
+    }
+
+    // Whether a line the log wrote holds text.
+    [[nodiscard]] bool logged(string_view text) const {
+        const std::scoped_lock guard(m_kept->lock);
+
+        return std::any_of(m_kept->lines.begin(), m_kept->lines.end(),
+                           [text](const string& line) {
+            return string::npos != line.find(text);
+        });
+    }
+
+    // Each line the log wrote, one after another.
+    [[nodiscard]] string log_text() const {
+        const std::scoped_lock guard(m_kept->lock);
+        string text;
+
+        for (const auto& line : m_kept->lines) {
+            text += line + "\n";
+        }
+
+        return text;
+    }
+
+    void stop() noexcept {
+        m_service.reset();
+    }
+
+private:
+    fixtures::ScratchDirectory m_directory;
+    std::shared_ptr<fixtures::MemorySource> m_store = std::make_shared<fixtures::MemorySource>();
+    NodeIdentity m_identity{m_directory.path() / "node-key.pem", *m_store};
+    std::shared_ptr<KeptLines> m_kept = std::make_shared<KeptLines>();
+    std::unique_ptr<Service> m_service;
+};
+
+} // namespace
+
+TEST_F(ServiceTest, ListensAtTheLoopbackAddressAlone) {
+    EXPECT_EQ(address().host(), "127.0.0.1");
+    EXPECT_NE(address().port(), 0);
+}
+
+TEST_F(ServiceTest, LogsWhereConfigIs) {
+    const auto where = "/config is at http://127.0.0.1:" + std::to_string(address().port())
+                       + "/config/";
+
+    EXPECT_TRUE(logged(where)) << log_text();
+}
+
+TEST_F(ServiceTest, ListensOnThePortNamed) {
+    const auto port = free_port();
+    const Service named(identity(), data_dir(), main_port, port);
+
+    EXPECT_EQ(named.local_address().port(), port);
+}
+
+// With no port named, it takes the main port's plus 100 when nothing has
+// it.
+TEST_F(ServiceTest, TakesTheFirstPortAboveTheMainPortWhenNoneIsNamed) {
+    const auto port = free_port();
+    const Service above(identity(), data_dir(), below(port), std::nullopt);
+
+    EXPECT_EQ(above.local_address().port(), port);
+}
+
+// The port 100 above the main port is taken, so it takes one of 200 above,
+// 300 above, and so on.
+TEST_F(ServiceTest, PassesOverAPortTaken) {
+    const auto taken = listening_below_another();
+    const auto taken_port = taken->local_address().port();
+    const auto main = below(taken_port);
+    const Service above(identity(), data_dir(), main, std::nullopt);
+    const auto port = above.local_address().port();
+
+    EXPECT_GT(port, taken_port);
+    EXPECT_EQ((port - main) % Service::port_step, 0);
+    EXPECT_TRUE(logged("Cannot listen for /config on port " + std::to_string(taken_port)))
+        << log_text();
+    EXPECT_TRUE(logged("/config is at http://127.0.0.1:" + std::to_string(port) + "/config/"))
+        << log_text();
+}
+
+// A port named is that port or none.
+TEST_F(ServiceTest, RefusesAPortNamedThatIsTaken) {
+    const auto taken = listening();
+
+    EXPECT_THROW(const Service refused(identity(), data_dir(), main_port,
+                                       taken->local_address().port()),
+                 std::system_error);
+}
+
+TEST_F(ServiceTest, RefusesAMainPortLeavingNoPortAboveIt) {
+    constexpr Port above_the_highest_main = highest_port - Service::port_step + 1;
+
+    EXPECT_THROW(const Service refused(identity(), data_dir(), above_the_highest_main,
+                                       std::nullopt),
+                 std::invalid_argument);
+}
+
+TEST_F(ServiceTest, ListsItsEndpoints) {
+    const auto answer = answer_to(address(), get("/config/api"));
+
+    ASSERT_TRUE(has_status(answer, "200 OK")) << answer;
+    EXPECT_TRUE(has_header(answer, "Content-Type", "application/json")) << answer;
+    EXPECT_TRUE(is_signed_by_node(answer)) << answer;
+
+    const auto endpoints = Json::parse(body_of(answer)).at("endpoints");
+
+    ASSERT_EQ(endpoints.size(), 1U) << answer;
+    EXPECT_EQ(endpoints.at(0).at("method").string(), "GET");
+    EXPECT_EQ(endpoints.at(0).at("path").string(), "/config/api");
+    EXPECT_FALSE(endpoints.at(0).at("description").string().empty());
+}
+
+TEST_F(ServiceTest, ListsItsEndpointsWhateverTheQuery) {
+    const auto answer = answer_to(address(), get("/config/api?x=1"));
+
+    EXPECT_TRUE(has_status(answer, "200 OK")) << answer;
+}
+
+TEST_F(ServiceTest, RefusesAnyOtherMethodOfItsEndpoints) {
+    for (const auto* const method : {"POST", "PUT", "DELETE", "HEAD"}) {
+        const auto answer = answer_to(address(), request_of(method, "/config/api"));
+
+        EXPECT_TRUE(has_status(answer, "405 Method Not Allowed")) << method << answer;
+        EXPECT_TRUE(has_header(answer, "Allow", "GET")) << method << answer;
+        EXPECT_TRUE(is_signed_by_node(answer)) << method << answer;
+    }
+}
+
+// The /config page, and the endpoints beneath /config/api, come later.
+TEST_F(ServiceTest, ServesNothingElseBeneathConfig) {
+    for (const auto* const target : {"/config", "/config/", "/config/api/", "/config/api/node"}) {
+        const auto answer = answer_to(address(), get(target));
+
+        EXPECT_TRUE(has_status(answer, "404 Not Found")) << target << answer;
+        EXPECT_TRUE(is_signed_by_node(answer)) << target << answer;
+    }
+}
+
+TEST_F(ServiceTest, ServesNothingOutsideConfig) {
+    for (const auto* const target : {"/", "/data/nodes", "/data/seek", "/configuration"}) {
+        const auto answer = answer_to(address(), get(target));
+
+        EXPECT_TRUE(has_status(answer, "404 Not Found")) << target << answer;
+        EXPECT_TRUE(is_signed_by_node(answer)) << target << answer;
+    }
+}
+
+TEST_F(ServiceTest, CapturesTheFirstCredentialGiven) {
+    EXPECT_FALSE(captured());
+
+    const auto answer = answer_to(address(), get("/config/api"));
+
+    EXPECT_TRUE(has_status(answer, "200 OK")) << answer;
+    EXPECT_TRUE(captured());
+}
+
+// Every path is behind the guard, those outside /config among them, and its
+// challenge is signed as every answer is.
+TEST_F(ServiceTest, ChallengesARequestWithoutTheCredential) {
+    for (const auto* const target : {"/config/api", "/config/", "/data/nodes"}) {
+        const auto answer = answer_to(address(), request_with("GET", target, ""));
+
+        EXPECT_TRUE(has_status(answer, "401 Unauthorized")) << target << answer;
+        EXPECT_TRUE(has_header(answer, "WWW-Authenticate", challenge)) << target << answer;
+        EXPECT_TRUE(is_signed_by_node(answer)) << target << answer;
+    }
+
+    EXPECT_FALSE(captured());
+}
+
+TEST_F(ServiceTest, ChallengesACredentialThatDoesNotMatch) {
+    (void)answer_to(address(), get("/config/api"));
+
+    const auto answer = answer_to(address(),
+                                  request_with("GET", "/config/api", authorization("admin:other")));
+
+    EXPECT_TRUE(has_status(answer, "401 Unauthorized")) << answer;
+    EXPECT_TRUE(has_header(answer, "WWW-Authenticate", challenge)) << answer;
+}
+
+// With the credential removed, the next one given is taken (HTTP API §2.3.2).
+TEST_F(ServiceTest, CapturesANewCredentialOnceTheFileIsRemoved) {
+    (void)answer_to(address(), get("/config/api"));
+    std::filesystem::remove(data_dir() / "config-credential");
+
+    const auto answer = answer_to(address(),
+                                  request_with("GET", "/config/api", authorization("admin:other")));
+
+    EXPECT_TRUE(has_status(answer, "200 OK")) << answer;
+}
+
+TEST_F(ServiceTest, StopsWithinFiveSecondsWithAClientConnected) {
+    constexpr auto most = std::chrono::seconds(5);
+    const auto client = connect_when_listening(address());
+
+    client->send_all("GET /config/");
+
+    const auto stopping = std::chrono::steady_clock::now();
+
+    stop();
+
+    EXPECT_LT(std::chrono::steady_clock::now() - stopping, most);
+}
