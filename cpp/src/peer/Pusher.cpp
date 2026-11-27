@@ -277,6 +277,17 @@ Pusher::Stored take_waiting(Channel& channel, size_t run_length, const IMessage:
     return stored;
 }
 
+// Has pusher push the new content first announces, and what else is waiting
+// to be pushed behind it on channel, run_length in all at most.
+void push_waiting(const Pusher& pusher, Channel& channel, size_t run_length,
+                  const IMessage::Ptr& first) {
+    const auto stored = take_waiting(channel, run_length, first);
+
+    if (!stored.empty()) {
+        (void)pusher.push(stored);
+    }
+}
+
 } // namespace
 
 namespace peer {
@@ -285,7 +296,10 @@ Pusher::Pusher(IDataSource::Ptr store, GetPeers get_peers, size_t run_length)
     : m_store(checked_store(std::move(store)))
     , m_get_peers(checked_get_peers(std::move(get_peers)))
     , m_run_length(checked_run_length(run_length))
-    , m_channel(DataStored::name, [this](const IMessage::Ptr& message) { _handle(message); },
+    , m_channel(DataStored::name,
+                [this](const IMessage::Ptr& message) {
+                    push_waiting(*this, m_channel, m_run_length, message);
+                },
                 log_error) {}
 
 size_t Pusher::push(const Stored& stored) const {
@@ -305,14 +319,6 @@ size_t Pusher::push(const Stored& stored) const {
     }
 
     return taken;
-}
-
-void Pusher::_handle(const IMessage::Ptr& message) {
-    const auto stored = take_waiting(m_channel, m_run_length, message);
-
-    if (!stored.empty()) {
-        (void)push(stored);
-    }
 }
 
 } // namespace peer

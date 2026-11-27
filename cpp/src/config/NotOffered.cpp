@@ -32,6 +32,11 @@ bool is_beneath(string_view path, string_view parent) {
            && '/' == path.at(parent.size());
 }
 
+// Whether path is feature's.
+bool has(const NotOffered::Feature& feature, string_view path) {
+    return path == feature.path || (feature.beneath && is_beneath(path, feature.path));
+}
+
 } // namespace
 
 namespace config {
@@ -41,18 +46,13 @@ NotOffered::NotOffered(const Feature& feature) noexcept
 
 void NotOffered::operator()(const Request& request, Response& response,
                             [[maybe_unused]] const ConnectionInfo& connection) const {
-    if (!_has(path_of(request.uri()))) {
+    if (!has(m_feature, path_of(request.uri()))) {
         Problem(Status::NotFound, "No resource exists at this path.").answer(response);
         return;
     }
 
     Problem(Status::NotFound, "This node does not offer " + string(m_feature.name) + " yet.")
         .answer(response);
-}
-
-// Whether path is the feature's.
-bool NotOffered::_has(string_view path) const {
-    return path == m_feature.path || (m_feature.beneath && is_beneath(path, m_feature.path));
 }
 
 } // namespace config

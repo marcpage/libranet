@@ -1,14 +1,10 @@
 #pragma once
 
-#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "Credential.hpp"
-#include "http/Request.hpp"
-#include "http/Response.hpp"
-#include "web/ConnectionInfo.hpp"
 #include "web/Server.hpp"
 #include "web/SiteChecks.hpp"
 
@@ -41,12 +37,6 @@ public:
 private:
     Credential m_credential;
     web::SiteChecks m_checks;
-
-    void _serve(const Handler& handler, const http::Request& request, http::Response& response,
-                web::ConnectionInfo& connection) const;
-    [[nodiscard]] std::optional<web::SiteChecks::Refusal>
-    _refusal(const http::Request& request, const web::ConnectionInfo& connection) const;
-    [[nodiscard]] bool _authenticates(const http::Request& request) const;
 };
 
 } // namespace config

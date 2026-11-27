@@ -22,6 +22,7 @@
 #include "web/ConnectionInfo.hpp"
 #include "web/SiteChecks.hpp"
 
+using config::Credential;
 using config::Guard;
 using http::BasicCredentials;
 using http::Headers;
@@ -44,6 +45,7 @@ using web::SiteChecks;
 
 namespace {
 
+using Handler = Guard::Handler;
 using Status = http::ResponseCode::Status;
 
 constexpr string_view referer_header = "Referer";
@@ -247,6 +249,68 @@ void challenge(Response& response) {
                            R"(Basic realm=")" + string(Guard::realm) + R"(", charset="UTF-8")");
 }
 
+// Why request is taken to be another site's page's, as checks say, or no page
+// of /config's when it is beneath /config/api; or nothing, when it is neither
+// (HTTP API §2.3.3, §2.5). A page another page of the same site opens passes
+// the checks the rest must, but for Host's.
+optional<SiteChecks::Refusal> refusal(const SiteChecks& checks, const Request& request,
+                                      const ConnectionInfo& connection) {
+    if (auto refused = checks.host_refusal(request, connection)) {
+        return refused;
+    }
+
+    if (is_opened_from_same_site(request)) {
+        return nullopt;
+    }
+
+    if (auto refused = checks.page_refusal(request)) {
+        return refused;
+    }
+
+    return names_config_api(request.uri()) ? referer_refusal(request) : nullopt;
+}
+
+// Whether request gives credential, capturing it when there is none yet. A
+// field that cannot be read gives none, so that it never captures one.
+bool authenticates(const Credential& credential, const Request& request) {
+    const auto field = request.headers().get(BasicCredentials::field_name);
+
+    if (!field) {
+        return false;
+    }
+
+    const auto credentials = BasicCredentials::parse(*field);
+
+    return credentials && credential.authenticate(credentials->user_pass());
+}
+
+// Has handler answer request, if it is from a client on this machine, from
+// none of another site's pages, as checks say, and gives credential.
+void serve(const Credential& credential, const SiteChecks& checks, const Handler& handler,
+           const Request& request, Response& response, ConnectionInfo& connection) {
+    if (!is_local(connection)) {
+        lDebug << "Refused" << request.method() << request.uri() << "from"
+               << connection.remote_address().to_string() + ":"
+               << "not a client on this machine";
+        refuse_elsewhere(response);
+        return;
+    }
+
+    if (auto refused = refusal(checks, request, connection)) {
+        lWarn << "Refused" << request.method() << request.uri() << "for its" << refused->header
+              << "header:" << refused->reason;
+        Problem(Status::Forbidden, std::move(refused->reason)).answer(response);
+        return;
+    }
+
+    if (!authenticates(credential, request)) {
+        challenge(response);
+        return;
+    }
+
+    handler(request, response, connection);
+}
+
 } // namespace
 
 namespace config {
@@ -256,74 +320,11 @@ Guard::Guard(Credential credential, vector<string> hosts)
     , m_checks(std::move(hosts), string(config_path)) {}
 
 Guard::Handler Guard::in_front_of(Handler handler) const {
-    return [guard = *this, handler = std::move(handler)](const Request& request,
-                                                         Response& response,
-                                                         ConnectionInfo& connection) {
-        guard._serve(handler, request, response, connection);
+    return [credential = m_credential, checks = m_checks, handler = std::move(handler)](
+               const Request& request, Response& response, ConnectionInfo& connection) {
+        serve(credential, checks, handler, request, response, connection);
         keep_to_own_origin(response);
     };
-}
-
-// Has handler answer request, if it is from a client on this machine, from
-// none of another site's pages, and gives the credential.
-void Guard::_serve(const Handler& handler, const Request& request, Response& response,
-                   ConnectionInfo& connection) const {
-    if (!is_local(connection)) {
-        lDebug << "Refused" << request.method() << request.uri() << "from"
-               << connection.remote_address().to_string() + ":"
-               << "not a client on this machine";
-        refuse_elsewhere(response);
-        return;
-    }
-
-    if (auto refused = _refusal(request, connection)) {
-        lWarn << "Refused" << request.method() << request.uri() << "for its" << refused->header
-              << "header:" << refused->reason;
-        Problem(Status::Forbidden, std::move(refused->reason)).answer(response);
-        return;
-    }
-
-    if (!_authenticates(request)) {
-        challenge(response);
-        return;
-    }
-
-    handler(request, response, connection);
-}
-
-// Why request is taken to be another site's page's, or no page of /config's
-// when it is beneath /config/api; or nothing, when it is neither (HTTP API
-// §2.3.3, §2.5). A page another page of the same site opens passes the
-// checks the rest must, but for Host's.
-optional<SiteChecks::Refusal> Guard::_refusal(const Request& request,
-                                              const ConnectionInfo& connection) const {
-    if (auto refused = m_checks.host_refusal(request, connection)) {
-        return refused;
-    }
-
-    if (is_opened_from_same_site(request)) {
-        return nullopt;
-    }
-
-    if (auto refused = m_checks.page_refusal(request)) {
-        return refused;
-    }
-
-    return names_config_api(request.uri()) ? referer_refusal(request) : nullopt;
-}
-
-// Whether request gives the credential, capturing it when there is none yet.
-// A field that cannot be read gives none, so that it never captures one.
-bool Guard::_authenticates(const Request& request) const {
-    const auto field = request.headers().get(BasicCredentials::field_name);
-
-    if (!field) {
-        return false;
-    }
-
-    const auto credentials = BasicCredentials::parse(*field);
-
-    return credentials && m_credential.authenticate(credentials->user_pass());
 }
 
 } // namespace config

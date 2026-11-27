@@ -68,6 +68,29 @@ void make_owner_only(const path& partial) {
     (void)::close(descriptor);
 }
 
+// Writes contents to partial, truncated, so that it keeps the mode it was
+// made with for Access::Owner. Throws std::runtime_error when it cannot.
+void write_partial(const path& partial, string_view contents) {
+    std::ofstream out(partial, std::ios::out | std::ios::binary);
+
+    if (!out.is_open()) {
+        throw std::runtime_error("Failed to open file for writing: " + partial.string());
+    }
+
+    // Empty contents may be at no address, which is not to be copied from.
+    if (!contents.empty()) {
+        out.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+    }
+
+    // Closed, so that all of it is in the file before it is renamed or linked
+    // into place, and a failure to write the last of it is known.
+    out.close();
+
+    if (!out.good()) {
+        throw std::runtime_error("Error occurred while writing to file: " + partial.string());
+    }
+}
+
 } // namespace
 
 namespace io {
@@ -115,31 +138,8 @@ const path& SafeWriteFile::writable_path() const noexcept {
     return m_partial;
 }
 
-// Truncated, so that it keeps the mode it was made with for Access::Owner.
-void SafeWriteFile::_write_partial(string_view contents) const {
-    std::ofstream out(writable_path(), std::ios::out | std::ios::binary);
-
-    if (!out.is_open()) {
-        throw std::runtime_error("Failed to open file for writing: " + writable_path().string());
-    }
-
-    // Empty contents may be at no address, which is not to be copied from.
-    if (!contents.empty()) {
-        out.write(contents.data(), static_cast<std::streamsize>(contents.size()));
-    }
-
-    // Closed, so that all of it is in the file before it is renamed or linked
-    // into place, and a failure to write the last of it is known.
-    out.close();
-
-    if (!out.good()) {
-        throw std::runtime_error("Error occurred while writing to file: "
-                                 + writable_path().string());
-    }
-}
-
 void SafeWriteFile::write(std::string_view contents) {
-    _write_partial(contents);
+    write_partial(writable_path(), contents);
     commit();
 }
 
@@ -149,7 +149,7 @@ void SafeWriteFile::write(const vector<byte>& contents) {
 }
 
 bool SafeWriteFile::write_if_absent(string_view contents) {
-    _write_partial(contents);
+    write_partial(writable_path(), contents);
     return commit_if_absent();
 }
 

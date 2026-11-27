@@ -7,7 +7,6 @@
 
 #include "PeerSession.hpp"
 #include "msg/AsyncChannel.hpp"
-#include "msg/IMessage.hpp"
 #include "storage/DataStored.hpp"
 #include "storage/IDataSource.hpp"
 
@@ -55,8 +54,6 @@ private:
 
     // Made last, and so stopped first.
     msg::AsyncChannel m_channel;
-
-    void _handle(const msg::IMessage::Ptr& message);
 };
 
 } // namespace peer
