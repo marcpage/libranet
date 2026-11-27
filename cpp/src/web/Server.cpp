@@ -175,7 +175,7 @@ bool read_headers(MeteredReader& reader, Received& received) {
         }
 
         try {
-            last_key = Headers::process_header_line(line, last_key, received.request.headers());
+            last_key = Headers::add_header_line(line, last_key, received.request.headers());
         } catch (const runtime_error& error) {
             lDebug << "Refused a request whose headers cannot be read:" << error.what();
             received.refusal = unreadable();

@@ -206,7 +206,7 @@ inline std::optional<Response> Response::read(io::MeteredReader& reader, const L
             break;
         }
 
-        last_key = Headers::process_header_line(*line, last_key, response.m_headers);
+        last_key = Headers::add_header_line(*line, last_key, response.m_headers);
     }
 
     const auto length = response._body_length(limits);

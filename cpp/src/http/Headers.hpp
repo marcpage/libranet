@@ -48,8 +48,8 @@ public:
     static bool is_continuation_line(std::string_view line) noexcept;
     static bool parse_header_line(std::string_view line, std::string& out_key,
                                   std::string& out_value);
-    static std::string process_header_line(std::string_view line,
-                                           const std::string& last_key, Headers& headers);
+    static std::string add_header_line(std::string_view line,
+                                       const std::string& last_key, Headers& headers);
     static std::vector<std::string_view> split_spaces(
         std::string_view text, std::size_t max_fields);
     static void read_body(std::istream& in_stream, std::size_t length, std::string& body);
@@ -192,13 +192,13 @@ inline std::istream& operator>>(std::istream& in_stream, Headers& headers) {
             break; // Successfully finished headers
         }
 
-        last_key = Headers::process_header_line(line, last_key, headers);
+        last_key = Headers::add_header_line(line, last_key, headers);
     }
 
     return in_stream;
 }
 
-inline std::string Headers::process_header_line(
+inline std::string Headers::add_header_line(
     std::string_view line,
     const std::string& last_key,
     Headers& headers) {
