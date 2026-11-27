@@ -695,7 +695,9 @@ Node::Node(const SettingsFile& settings, const vector<string>& seeds)
     , m_connections(m_identity, m_service.own_endpoints(), m_store,
                     MessageVerifier(make_shared<KnownKeys>(m_store), m_settings.service.window),
                     m_settings.connections)
-    , m_config(m_identity, m_data_dir, m_service.local_address().port(), m_config_port)
+    , m_config(m_identity, m_data_dir,
+               Address(m_listen_address.host(), m_service.local_address().port()),
+               m_service.own_endpoints(), m_config_port)
     , m_seeker(m_fetch, sessions_of(m_connections), m_settings.seeker)
     , m_pusher(m_store, sessions_of(m_connections),
                m_settings.connections.fulfiller.pipeline_depth)

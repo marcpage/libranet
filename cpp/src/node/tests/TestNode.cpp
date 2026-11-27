@@ -592,6 +592,35 @@ TEST_F(NodeTest, ServesConfigOnAPortOfItsOwn) {
     EXPECT_TRUE(std::filesystem::is_regular_file(data_dir() / "config-credential"));
 }
 
+// /config says what the node is: the address its main port was set to listen
+// at, with the port it took, and the endpoint it advertises.
+TEST_F(NodeTest, SaysWhatItIsOnConfig) {
+    const auto node = node_of(settings_of(loopback(data_dir())));
+    const auto moved = answer_to(node->local_address(),
+                                 "GET /config/ HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                                 "Connection: close\r\n\r\n");
+    const string location_field = "\r\nLocation: http://127.0.0.1:";
+    const auto location = moved.find(location_field);
+
+    ASSERT_NE(location, string::npos) << moved;
+
+    const auto port_start = location + location_field.size();
+    const auto port = moved.substr(port_start, moved.find('/', port_start) - port_start);
+    const Address config("127.0.0.1", static_cast<Address::Port>(std::stoul(port)));
+    const auto main_port = std::to_string(node->local_address().port());
+    const auto answer = answer_to(config,
+                                  "GET /config/api/node HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                                  "Authorization: Basic YWRtaW46c2VjcmV0\r\n"
+                                  "Connection: close\r\n\r\n");
+
+    EXPECT_EQ(answer.rfind("HTTP/1.1 200 OK\r\n", 0), 0U) << answer;
+    EXPECT_NE(answer.find(R"("listen_address":"127.0.0.1")"), string::npos) << answer;
+    EXPECT_NE(answer.find(R"("listen_port":)" + main_port + ","), string::npos) << answer;
+    EXPECT_NE(answer.find(R"("advertised_endpoint":"http://localhost:)" + main_port + "\""),
+              string::npos)
+        << answer;
+}
+
 // network.config_port may be neither the main port nor, when it is not set,
 // left with no port above the main port to take, which is turned down before
 // the node makes anything.
