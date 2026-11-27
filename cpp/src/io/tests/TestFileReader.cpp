@@ -186,8 +186,6 @@ TEST(FileReaderTest, AMissingFileIsRefused) {
 TEST(FileReaderTest, ADirectoryIsRefused) {
     const ScratchDirectory directory;
 
-    // Mistaken: it is made only to see that making it throws.
-    // cppcheck-suppress unusedScopedObject
     EXPECT_THROW(FileReader(directory.path()), std::runtime_error);
 }
 
