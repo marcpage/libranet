@@ -13,6 +13,7 @@
 #include "http/Request.hpp"
 #include "http/Response.hpp"
 #include "http/ResponseCode.hpp"
+#include "logger/Logger.hpp"
 #include "msg/Channel.hpp"
 #include "storage/DataNotFound.hpp"
 #include "storage/DataRequested.hpp"
@@ -116,12 +117,15 @@ optional<DataPath> data_path(string_view uri) {
     return DataPath{string(algorithm), string(hash)};
 }
 
-// The identifier path names, or nothing when it names none that is valid,
-// having answered 400 saying why (HttpApi §5.4).
-optional<Identifier> identifier_of(DataPath path, Response& response) {
+// The identifier path, of request on connection, names, or nothing when it
+// names none that is valid, having answered 400 saying why (HttpApi §5.4).
+optional<Identifier> identifier_of(DataPath path, const Request& request, Response& response,
+                                   const ConnectionInfo& connection) {
     try {
         return Identifier(std::move(path.algorithm), std::move(path.hash));
     } catch (const invalid_argument& error) {
+        lDebug << "Refused" << request.method() << request.uri() << "from"
+               << connection.remote_address().to_string() + ":" << error.what();
         Problem(Problem::Type::InvalidContentAddress, Status::BadRequest, error.what())
             .answer(response);
         return nullopt;
@@ -266,7 +270,7 @@ void DataHandler::operator()(const Request& request, Response& response,
         return;
     }
 
-    const auto identifier = identifier_of(std::move(*path), response);
+    const auto identifier = identifier_of(std::move(*path), request, response, connection);
 
     if (!identifier) {
         return;

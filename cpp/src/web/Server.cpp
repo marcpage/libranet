@@ -174,10 +174,12 @@ bool read_headers(MeteredReader& reader, Received& received) {
 
         try {
             last_key = Headers::process_header_line(line, last_key, received.request.headers());
-        } catch (const runtime_error&) {
+        } catch (const runtime_error& error) {
+            lDebug << "Refused a request whose headers cannot be read:" << error.what();
             received.refusal = unreadable();
             return true;
-        } catch (const invalid_argument&) {
+        } catch (const invalid_argument& error) {
+            lDebug << "Refused a request whose headers cannot be read:" << error.what();
             received.refusal = unreadable();
             return true;
         }
@@ -522,10 +524,10 @@ void Server::stop() {
         // accept() returns this connection, and start() then sees that it
         // is to stop.
         (void)ISocket::connect(m_wake_address);
+    } catch (const exception& error) {
         // start() may have stopped listening since, which leaves nothing to
         // wake.
-        // NOLINTNEXTLINE(bugprone-empty-catch)
-    } catch (const exception&) {
+        lDebug << "Could not wake the server so that it stops:" << error.what();
     }
 }
 
@@ -591,8 +593,9 @@ void Server::_serve(ISocket::Ptr client) {
 
     try {
         client->set_timeout(m_limits.idle);
+    } catch (const system_error& error) {
         // The client may have gone already.
-    } catch (const system_error&) {
+        lDebug << "Not serving a connection whose timeout cannot be set:" << error.what();
         return;
     }
 
