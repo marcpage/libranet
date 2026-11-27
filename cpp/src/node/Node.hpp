@@ -1,10 +1,12 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "api/Service.hpp"
+#include "config/Service.hpp"
 #include "eviction/Evictor.hpp"
 #include "identity/NodeIdentity.hpp"
 #include "logger/Logger.hpp"
@@ -59,6 +61,8 @@ private:
     logger::Logger::Level m_log_level;
     std::filesystem::path m_data_dir;
     net::Address m_listen_address;
+    // Unset, /config takes the first port free above the main port.
+    std::optional<net::Address::Port> m_config_port;
     PartSettings m_settings;
 
     // What the parts share. The fetch asks the connections for the peers,
@@ -71,6 +75,9 @@ private:
     // Each made after those it uses.
     api::Service m_service;
     peer::Connections m_connections;
+    // Above m_service's port, and answered by m_connections, so stopped
+    // before them.
+    config::Service m_config;
     peer::Seeker m_seeker;
     peer::Pusher m_pusher;
     peer::HandOff m_hand_off;
