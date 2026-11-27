@@ -287,7 +287,10 @@ TEST(DataHandlerTest, ContentNotHeldIsRetriedAfterWholeSeconds) {
 
     for (const auto& [retry_after, told] :
          std::vector<std::pair<DataHandler::Milliseconds, std::string>>{
-             {1ms, "1"}, {1500ms, "2"}, {2000ms, "2"}}) {
+             {1ms, "1"},
+             {1500ms, "2"},
+             {2000ms, "2"},
+         }) {
         const DataHandler handler(store, types::max_decompressed_content_size, retry_after);
 
         const auto response = answer(handler, get(hello_path()));
