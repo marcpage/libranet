@@ -19,6 +19,13 @@ TEST(ConverterTest, BytesOfTextReadBack) {
     EXPECT_EQ(Converter::text_of(Converter::bytes_of(text)), text);
 }
 
+TEST(ConverterTest, Trimmed) {
+    EXPECT_EQ(Converter::trimmed(" \t\n\v\f\rtext with spaces\r\f\v\n\t "), "text with spaces");
+    EXPECT_EQ(Converter::trimmed("untouched"), "untouched");
+    EXPECT_EQ(Converter::trimmed(" \t\r\n"), "");
+    EXPECT_EQ(Converter::trimmed(""), "");
+}
+
 TEST(ConverterTest, IsUtf8) {
     EXPECT_TRUE(Converter::is_utf8(""));
     EXPECT_TRUE(Converter::is_utf8("plain ASCII"));
