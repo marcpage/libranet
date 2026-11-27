@@ -517,6 +517,15 @@ each address its list newly names (Handshake Protocol §3.3). Since the list
 names only addresses that worked (HTTP API §10.6), a node it learns of
 spreads to the nodes connected to each node that reaches it.
 
+So a node joins a network by reaching any one node of it, at an address it
+is given. The reference node reads the addresses of a seed list from its
+configuration while it knows no peers, and its operator may give it one on
+`/config` (HTTP API §2.3) at any time. An address given there is dialed at
+once, even when the node has all the peers it wants (§4.6), and a node
+reached there is a peer like any other dialed: it is listed, and is a
+candidate to dial again, after a restart too. An address where no node was
+reached is not remembered.
+
 #### 4.9.1 Optional Local Discovery (mDNS/DNS-SD)
 
 In addition to the `/data/nodes` exchange above, a node MAY support mDNS/DNS-SD
