@@ -34,8 +34,8 @@ public:
     // case (HttpApi §5.4).
     Identifier(std::string algorithm, std::string hash);
 
-    [[nodiscard]] const std::string& algorithm() const;
-    [[nodiscard]] const std::string& hash() const;
+    [[nodiscard]] const std::string& algorithm() const noexcept;
+    [[nodiscard]] const std::string& hash() const noexcept;
     [[nodiscard]] std::string to_string() const;
     // body itself, when it hashes to this identifier, or what it decompresses
     // to, when that does (HighLevelDesign §4.1.1, HttpApi §8). Nothing when it
@@ -138,11 +138,11 @@ inline Identifier::Identifier(std::string algorithm, std::string hash)
     });
 }
 
-inline const std::string& Identifier::algorithm() const {
+inline const std::string& Identifier::algorithm() const noexcept {
     return m_algorithm;
 }
 
-inline const std::string& Identifier::hash() const {
+inline const std::string& Identifier::hash() const noexcept {
     return m_hash;
 }
 

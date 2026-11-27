@@ -13,7 +13,7 @@ class Message : public IMessage {
 public:
     explicit Message(Type value);
     [[nodiscard]] std::string to_string() const override;
-    [[nodiscard]] const Type& value() const;
+    [[nodiscard]] const Type& value() const noexcept;
 
 private:
     Type m_value;
@@ -44,7 +44,7 @@ std::string Message<Type>::to_string() const {
 }
 
 template<typename Type>
-const Type& Message<Type>::value() const {
+const Type& Message<Type>::value() const noexcept {
     return m_value;
 }
 
