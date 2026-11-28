@@ -29,6 +29,7 @@ using std::optional;
 using std::string;
 using std::string_view;
 using std::to_string;
+using std::uint8_t;
 using std::vector;
 using storage::Identifier;
 
@@ -48,7 +49,7 @@ constexpr array all_sources = {
 };
 
 // The columns addresses_sql() reads, in the order it reads them.
-enum class Column : std::uint8_t {
+enum class Column : uint8_t {
     Endpoint,
     SourceName,
     LastLearned,

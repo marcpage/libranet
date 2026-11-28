@@ -105,12 +105,6 @@ public:
     friend std::ostream& operator<<(std::ostream& out_stream, const Json& value);
     friend std::istream& operator>>(std::istream& in_stream, Json& value);
 
-    Json(const Json&) = default;
-    Json(Json&&) noexcept = default;
-    Json& operator=(const Json&) = default;
-    Json& operator=(Json&&) noexcept = default;
-    ~Json() = default;
-
     // MARK: Internals
 private:
     using VariantType = std::variant<

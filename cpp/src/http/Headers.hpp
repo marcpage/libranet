@@ -55,11 +55,6 @@ public:
     static void read_body(std::istream& in_stream, std::size_t length, std::string& body);
 
     Headers() = default;
-    Headers(const Headers&) = default;
-    Headers(Headers&&) noexcept = default;
-    Headers& operator=(const Headers&) = default;
-    Headers& operator=(Headers&&) noexcept = default;
-    ~Headers() = default;
 
 private:
     std::map<std::string, std::string, CaseInsensitiveLess> m_headers;

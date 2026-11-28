@@ -35,6 +35,7 @@ using std::shared_ptr;
 using std::size_t;
 using std::string;
 using std::string_view;
+using std::unique_ptr;
 using std::vector;
 using storage::HashPrefix;
 using storage::Identifier;
@@ -93,7 +94,7 @@ void check_answer(const MessageVerifier& verifier, PeerSession& session, const R
 
 namespace peer {
 
-PeerSession::PeerSession(std::unique_ptr<PeerConnection> connection, Identifier node_id,
+PeerSession::PeerSession(unique_ptr<PeerConnection> connection, Identifier node_id,
                          MessageSigner signer, MessageVerifier verifier)
     : m_connection(std::move(connection))
     , m_node_id(std::move(node_id))

@@ -34,7 +34,6 @@ public:
 
     ~NodesHandler() = default;
 
-    NodesHandler() = delete;
     NodesHandler(const NodesHandler&) = delete;
     NodesHandler& operator=(const NodesHandler&) = delete;
     NodesHandler(NodesHandler&&) = delete;

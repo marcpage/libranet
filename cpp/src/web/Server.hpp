@@ -71,7 +71,6 @@ public:
 
     ~Server() = default;
 
-    Server() = delete;
     Server(const Server&) = delete;
     Server& operator=(const Server&) = delete;
     Server(Server&&) = delete;

@@ -6,8 +6,6 @@
 #include <string_view>
 #include <vector>
 
-#include "types/Converter.hpp"
-
 namespace crypto {
 
 class IHasher {
@@ -38,18 +36,5 @@ public:
 protected:
     IHasher() = default;
 };
-
-// The digest of what was added, with nothing more.
-inline IHasher::Data IHasher::digest() {
-    return digest(Data());
-}
-
-inline std::string IHasher::hex_digest(const Data& data) {
-    return types::Converter::hex_of(digest(data));
-}
-
-inline std::string IHasher::hex_digest() {
-    return hex_digest(Data());
-}
 
 } // namespace crypto

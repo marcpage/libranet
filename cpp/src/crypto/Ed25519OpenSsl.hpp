@@ -30,6 +30,9 @@ public:
     [[nodiscard]] static ISignKey::Ptr create();
     [[nodiscard]] static ISignKey::Ptr from_pem(std::string_view pem);
 
+    Ed25519OpenSsl();
+    Ed25519OpenSsl(Key key, bool has_private);
+
     [[nodiscard]] Data sign(std::string_view data) const override;
     [[nodiscard]] bool verify(std::string_view data, const Data& signature) const override;
 
@@ -38,12 +41,9 @@ public:
     [[nodiscard]] std::string id() const override;
     [[nodiscard]] bool has_private_key() const noexcept override;
 
-    Ed25519OpenSsl();
-    Ed25519OpenSsl(Key key, bool has_private);
-
+    ~Ed25519OpenSsl() override = default;
     Ed25519OpenSsl(Ed25519OpenSsl&&) noexcept = default;
     Ed25519OpenSsl& operator=(Ed25519OpenSsl&&) noexcept = default;
-    ~Ed25519OpenSsl() override = default;
 
     Ed25519OpenSsl(const Ed25519OpenSsl&) = delete;
     Ed25519OpenSsl& operator=(const Ed25519OpenSsl&) = delete;

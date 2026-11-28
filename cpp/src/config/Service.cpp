@@ -47,6 +47,7 @@ using identity::MessageSigner;
 using identity::NodeIdentity;
 using net::Address;
 using peer::PeerConnection;
+using std::array;
 using std::errc;
 using std::error_code;
 using std::exception;
@@ -87,7 +88,7 @@ struct Endpoint {
 };
 
 // Each endpoint /config serves.
-constexpr std::array endpoints{
+constexpr array endpoints{
     Endpoint{"GET", config_api_path, "The endpoints /config serves, and what each does"},
     Endpoint{"GET", NodeHandler::path, "What this node is and where it listens"},
     Endpoint{"POST", ConnectHandler::path, "Connect to a node at an address"},

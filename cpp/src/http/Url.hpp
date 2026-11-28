@@ -80,11 +80,6 @@ public:
     friend std::ostream& operator<<(std::ostream& out_stream, const Url& url);
 
     Url() = default;
-    ~Url() = default;
-    Url(const Url&) = default;
-    Url& operator=(const Url&) = default;
-    Url(Url&&) noexcept = default;
-    Url& operator=(Url&&) noexcept = default;
 
 private:
     // The characters a username or password keeps unencoded (RFC 3986

@@ -49,19 +49,14 @@ public:
     virtual void shutdown() = 0;
 
     virtual ~ISocket() = default;
+    ISocket(ISocket&&) noexcept = default;
+    ISocket& operator=(ISocket&&) noexcept = default;
 
     ISocket(const ISocket&) = delete;
     ISocket& operator=(const ISocket&) = delete;
-    ISocket(ISocket&&) = delete;
-    ISocket& operator=(ISocket&&) = delete;
 
 protected:
     ISocket() = default;
 };
-
-inline void ISocket::set_timeout(Milliseconds timeout) {
-    set_receive_timeout(timeout);
-    set_send_timeout(timeout);
-}
 
 } // namespace net

@@ -18,9 +18,11 @@
 
 using http::Request;
 using peer::PeerSession;
+using std::exception;
 using std::invalid_argument;
 using std::nullopt;
 using std::optional;
+using std::runtime_error;
 using std::string;
 using std::string_view;
 using storage::IDataSource;
@@ -44,7 +46,7 @@ Request offer_of(const Identifier& identifier, string body) {
 
 // Logs that identifier could not be offered to session's node, and why.
 void report_unoffered(const PeerSession& session, const Identifier& identifier,
-                      const std::exception& error) {
+                      const exception& error) {
     lDebug << "Could not offer" << identifier.to_string() << "to"
            << session.address().to_string() << ":" << error.what();
 }
@@ -64,7 +66,7 @@ bool took(PeerSession& session, const Identifier& identifier, const string& body
 
         lDebug << session.address().to_string() << "did not take" << identifier.to_string()
                << ": it answered" << code.code();
-    } catch (const std::runtime_error& error) {
+    } catch (const runtime_error& error) {
         report_unoffered(session, identifier, error);
     } catch (const invalid_argument& error) {
         report_unoffered(session, identifier, error);

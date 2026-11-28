@@ -30,7 +30,7 @@ public:
 
     // Throws std::runtime_error if it cannot be read, and
     // std::invalid_argument, naming the file, for what parse() refuses.
-    [[nodiscard]] static SettingsFile load(const std::filesystem::path& path);
+    [[nodiscard]] static SettingsFile load(const std::filesystem::path& file);
 
     // In order.
     [[nodiscard]] std::vector<std::string> names() const;

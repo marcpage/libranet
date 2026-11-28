@@ -43,7 +43,6 @@ public:
     DataHandler(DataHandler&&) = default;
     DataHandler& operator=(DataHandler&&) = default;
 
-    DataHandler() = delete;
     DataHandler(const DataHandler&) = delete;
     DataHandler& operator=(const DataHandler&) = delete;
 

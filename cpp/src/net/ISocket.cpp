@@ -17,6 +17,14 @@ using Socket = net::SocketPosix;
 #error "Unsupported Platform"
 #endif
 
+using std::byte;
+using std::runtime_error;
+using std::size_t;
+using std::string;
+using std::string_view;
+using std::vector;
+using types::piece_size;
+
 namespace net {
 
 ISocket::Ptr ISocket::bind(const Address& address) {
@@ -27,15 +35,15 @@ ISocket::Ptr ISocket::connect(const Address& address, Milliseconds timeout) {
     return Socket::connect(address, timeout);
 }
 
-void ISocket::send_all(std::string_view data) {
-    std::size_t total_sent = 0;
+void ISocket::send_all(string_view data) {
+    size_t total_sent = 0;
 
     while (total_sent < data.size()) {
         const auto remaining = data.substr(total_sent);
         const auto sent = send(remaining);
 
         if (0 == sent) {
-            throw std::runtime_error("Connection closed unexpectedly during send_all");
+            throw runtime_error("Connection closed unexpectedly during send_all");
         }
 
         total_sent += sent;
@@ -44,12 +52,12 @@ void ISocket::send_all(std::string_view data) {
 
 // Reads size bytes a piece at a time, so that a size larger than what the
 // peer sends takes no more memory than the peer sends.
-std::vector<std::byte> ISocket::read_exact(std::size_t size) {
-    std::vector<std::byte> total_buffer;
-    std::vector<std::byte> chunk;
+vector<byte> ISocket::read_exact(size_t size) {
+    vector<byte> total_buffer;
+    vector<byte> chunk;
 
     while (total_buffer.size() < size) {
-        chunk.resize(std::min(types::piece_size, size - total_buffer.size()));
+        chunk.resize(std::min(piece_size, size - total_buffer.size()));
 
         const auto success = receive(chunk);
 
@@ -63,16 +71,16 @@ std::vector<std::byte> ISocket::read_exact(std::size_t size) {
     return total_buffer;
 }
 
-std::string ISocket::read_line(char delimiter) {
-    std::string line;
+string ISocket::read_line(char delimiter) {
+    string line;
 
     (void)read_line(line, delimiter);
 
     return line;
 }
 
-bool ISocket::read_line(std::string& line, char delimiter) {
-    std::vector<std::byte> byte_buffer(1);
+bool ISocket::read_line(string& line, char delimiter) {
+    vector<byte> byte_buffer(1);
 
     line.clear();
 
@@ -97,6 +105,11 @@ bool ISocket::read_line(std::string& line, char delimiter) {
     }
 
     return true;
+}
+
+void ISocket::set_timeout(Milliseconds timeout) {
+    set_receive_timeout(timeout);
+    set_send_timeout(timeout);
 }
 
 } // namespace net

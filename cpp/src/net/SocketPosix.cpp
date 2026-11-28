@@ -15,6 +15,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -31,6 +32,25 @@
 #include "Address.hpp"
 #include "ISocket.hpp"
 
+using net::Address;
+using net::ISocket;
+using std::array;
+using std::byte;
+using std::invalid_argument;
+using std::logic_error;
+using std::numeric_limits;
+using std::optional;
+using std::runtime_error;
+using std::size_t;
+using std::string;
+using std::string_view;
+using std::system_error;
+using std::uint8_t;
+using std::unique_ptr;
+using std::vector;
+using std::chrono::milliseconds;
+using std::chrono::steady_clock;
+
 namespace {
 
 #if __APPLE__
@@ -41,16 +61,16 @@ constexpr int send_flags = MSG_NOSIGNAL;
 
 // The most bytes one send() or recv() is asked for: what it returns, a
 // ssize_t, can count no more.
-constexpr auto max_count = std::numeric_limits<ssize_t>::max();
+constexpr auto max_count = numeric_limits<ssize_t>::max();
 
 void assert_socket(bool condition, const char* operation, int error = errno) {
     if (!condition) {
-        throw std::system_error(error, std::generic_category(), operation);
+        throw system_error(error, std::generic_category(), operation);
     }
 }
 
 template<typename Error>
-void assert_condition(bool condition, const std::string& message) {
+void assert_condition(bool condition, const string& message) {
     if (!condition) {
         throw Error(message);
     }
@@ -64,9 +84,9 @@ struct AddrInfoDeleter {
     }
 };
 
-using AddrInfoPtr = std::unique_ptr<addrinfo, AddrInfoDeleter>;
+using AddrInfoPtr = unique_ptr<addrinfo, AddrInfoDeleter>;
 
-AddrInfoPtr resolve_address(const net::Address& address, int flags, int socket_type) {
+AddrInfoPtr resolve_address(const Address& address, int flags, int socket_type) {
     addrinfo hints{};
 
     hints.ai_family = AF_UNSPEC;
@@ -80,8 +100,8 @@ AddrInfoPtr resolve_address(const net::Address& address, int flags, int socket_t
     addrinfo* result = nullptr;
     const auto error = ::getaddrinfo(host, service.c_str(), &hints, &result);
 
-    assert_condition<std::runtime_error>(
-        0 == error, std::string("getaddrinfo: ") + ::gai_strerror(error));
+    assert_condition<runtime_error>(
+        0 == error, string("getaddrinfo: ") + ::gai_strerror(error));
 
     return AddrInfoPtr(result);
 }
@@ -115,50 +135,50 @@ int create_socket(const addrinfo& info) {
     return socket_fd;
 }
 
-net::Address address_from_sockaddr(const sockaddr* address, socklen_t length) {
-    std::array<char, NI_MAXHOST> host{};
-    std::array<char, NI_MAXSERV> service{};
+Address address_from_sockaddr(const sockaddr* address, socklen_t length) {
+    array<char, NI_MAXHOST> host{};
+    array<char, NI_MAXSERV> service{};
 
     const auto error = ::getnameinfo(address, length,
                                      host.data(), static_cast<socklen_t>(host.size()),
                                      service.data(), static_cast<socklen_t>(service.size()),
                                      NI_NUMERICHOST | NI_NUMERICSERV);
 
-    assert_condition<std::runtime_error>(
-        0 == error, std::string("getnameinfo: ") + ::gai_strerror(error));
+    assert_condition<runtime_error>(
+        0 == error, string("getnameinfo: ") + ::gai_strerror(error));
 
     const auto port = std::stoul(service.data());
 
-    assert_condition<std::runtime_error>(
-        port <= std::numeric_limits<net::Address::Port>::max(),
+    assert_condition<runtime_error>(
+        port <= numeric_limits<Address::Port>::max(),
         "Socket returned an invalid port");
 
-    return {host.data(), static_cast<net::Address::Port>(port)};
+    return {host.data(), static_cast<Address::Port>(port)};
 }
 
-using Clock = std::chrono::steady_clock;
+using Clock = steady_clock;
 
 // How long poll() is to wait, in milliseconds, until deadline: -1, as long
 // as it takes, where there is none.
-int poll_wait(const std::optional<Clock::time_point>& deadline) {
+int poll_wait(const optional<Clock::time_point>& deadline) {
     if (!deadline) {
         return -1;
     }
 
-    const auto left = std::chrono::ceil<std::chrono::milliseconds>(*deadline - Clock::now());
+    const auto left = std::chrono::ceil<milliseconds>(*deadline - Clock::now());
 
-    return static_cast<int>(std::clamp<std::chrono::milliseconds::rep>(
-        left.count(), 0, std::numeric_limits<int>::max()));
+    return static_cast<int>(std::clamp<milliseconds::rep>(
+        left.count(), 0, numeric_limits<int>::max()));
 }
 
 // Waits for the connect() under way on socket_fd to end, for at most
 // timeout, or as long as it takes for zero. Returns 0 once it has
 // connected, or the error it failed with: ETIMEDOUT once timeout passed.
-int wait_connected(int socket_fd, net::ISocket::Milliseconds timeout) {
+int wait_connected(int socket_fd, ISocket::Milliseconds timeout) {
     // No longer than poll() can wait at once, about 24 days, so that the
     // deadline cannot overflow the clock.
-    constexpr net::ISocket::Milliseconds longest{std::numeric_limits<int>::max()};
-    std::optional<Clock::time_point> deadline;
+    constexpr ISocket::Milliseconds longest{numeric_limits<int>::max()};
+    optional<Clock::time_point> deadline;
     pollfd waiting{socket_fd, POLLOUT, 0};
     int error = 0;
     socklen_t length = sizeof(error);
@@ -193,7 +213,7 @@ int wait_connected(int socket_fd, net::ISocket::Milliseconds timeout) {
 // or as long as it takes for zero. Returns 0 once it has connected, or the
 // error it failed with. The socket does not block while it connects, so
 // that it can stop waiting, and blocks again once connected.
-int connect_within(int socket_fd, const addrinfo& info, net::ISocket::Milliseconds timeout) {
+int connect_within(int socket_fd, const addrinfo& info, ISocket::Milliseconds timeout) {
     // fcntl() is the POSIX call that sets a descriptor's flags, an int, and
     // it takes variable arguments; there is no other form.
     // NOLINTBEGIN(cppcoreguidelines-pro-type-vararg,hicpp-vararg,*-signed-bitwise)
@@ -218,12 +238,12 @@ int connect_within(int socket_fd, const addrinfo& info, net::ISocket::Millisecon
     return error;
 }
 
-enum class Direction : std::uint8_t {
+enum class Direction : uint8_t {
     Send,
     Receive,
 };
 
-int set_timeout(int socket_fd, Direction direction, net::ISocket::Milliseconds timeout) {
+int set_timeout(int socket_fd, Direction direction, ISocket::Milliseconds timeout) {
     const auto direction_flag = Direction::Send == direction ? SO_SNDTIMEO : SO_RCVTIMEO;
     timeval timeout_value{};
 
@@ -241,8 +261,8 @@ int set_timeout(int socket_fd, Direction direction, net::ISocket::Milliseconds t
 }
 
 template<typename Function>
-net::Address query_socket_address(int socket_fd, Function socket_call,
-                                  const char* operation_name) {
+Address query_socket_address(int socket_fd, Function socket_call,
+                             const char* operation_name) {
     sockaddr_storage storage{};
     socklen_t length = sizeof(storage);
 
@@ -277,7 +297,7 @@ ISocket::Ptr SocketPosix::bind(const Address& address) {
         }
 
         if (0 == ::bind(socket_fd, current->ai_addr, current->ai_addrlen)) {
-            return std::unique_ptr<SocketPosix>(new SocketPosix(socket_fd));
+            return unique_ptr<SocketPosix>(new SocketPosix(socket_fd));
         }
 
         last_error = errno;
@@ -306,7 +326,7 @@ ISocket::Ptr SocketPosix::connect(const Address& address, ISocket::Milliseconds 
         last_error = connect_within(socket_fd, *current, timeout);
 
         if (0 == last_error) {
-            return std::unique_ptr<SocketPosix>(new SocketPosix(socket_fd));
+            return unique_ptr<SocketPosix>(new SocketPosix(socket_fd));
         }
 
         (void)::close(socket_fd);
@@ -328,13 +348,13 @@ SocketPosix::~SocketPosix() {
 }
 
 void SocketPosix::listen(int backlog) {
-    assert_condition<std::logic_error>(is_open(), "Cannot listen on a closed socket");
-    assert_condition<std::logic_error>(backlog >= 0, "listen backlog cannot be negative");
+    assert_condition<logic_error>(is_open(), "Cannot listen on a closed socket");
+    assert_condition<logic_error>(backlog >= 0, "listen backlog cannot be negative");
     assert_socket(0 == ::listen(m_socket_fd, backlog), "listen");
 }
 
 ISocket::Ptr SocketPosix::accept() {
-    assert_condition<std::logic_error>(is_open(), "Cannot accept on a closed socket");
+    assert_condition<logic_error>(is_open(), "Cannot accept on a closed socket");
 
     int accepted_fd = -1;
 
@@ -359,19 +379,19 @@ ISocket::Ptr SocketPosix::accept() {
     (void)::fcntl(accepted_fd, F_SETFD, FD_CLOEXEC);
 #endif
 
-    return std::unique_ptr<ISocket>(new SocketPosix(accepted_fd));
+    return unique_ptr<ISocket>(new SocketPosix(accepted_fd));
 }
 
-std::size_t SocketPosix::send(std::string_view data) {
-    assert_condition<std::logic_error>(is_open(), "Cannot send on a closed socket");
+size_t SocketPosix::send(string_view data) {
+    assert_condition<logic_error>(is_open(), "Cannot send on a closed socket");
 
     if (data.empty()) {
         return 0;
     }
 
-    const std::size_t count = data.size() > static_cast<std::size_t>(max_count)
-                                  ? static_cast<std::size_t>(max_count)
-                                  : data.size();
+    const size_t count = data.size() > static_cast<size_t>(max_count)
+                             ? static_cast<size_t>(max_count)
+                             : data.size();
     ssize_t byte_count = -1;
 
     do {
@@ -379,18 +399,18 @@ std::size_t SocketPosix::send(std::string_view data) {
     } while (byte_count < 0 && EINTR == errno);
 
     assert_socket(byte_count >= 0, "send");
-    return static_cast<std::size_t>(byte_count);
+    return static_cast<size_t>(byte_count);
 }
 
-bool SocketPosix::receive(std::vector<std::byte>& buffer) {
-    assert_condition<std::logic_error>(is_open(), "Cannot receive on a closed socket");
+bool SocketPosix::receive(vector<byte>& buffer) {
+    assert_condition<logic_error>(is_open(), "Cannot receive on a closed socket");
 
     if (buffer.empty()) {
         return false;
     }
 
-    const auto count = buffer.size() > static_cast<std::size_t>(max_count)
-                           ? static_cast<std::size_t>(max_count)
+    const auto count = buffer.size() > static_cast<size_t>(max_count)
+                           ? static_cast<size_t>(max_count)
                            : buffer.size();
 
     ssize_t byte_count = -1;
@@ -401,7 +421,7 @@ bool SocketPosix::receive(std::vector<std::byte>& buffer) {
 
     assert_socket(byte_count >= 0, "recv");
 
-    const auto received_size = static_cast<std::size_t>(byte_count);
+    const auto received_size = static_cast<size_t>(byte_count);
     buffer.resize(received_size);
 
     // Returns true if bytes were read, false if EOF (0 bytes) was hit
@@ -409,14 +429,14 @@ bool SocketPosix::receive(std::vector<std::byte>& buffer) {
 }
 
 Address SocketPosix::local_address() const {
-    assert_condition<std::logic_error>(is_open(),
-                                       "Cannot query the address of a closed socket");
+    assert_condition<logic_error>(is_open(),
+                                  "Cannot query the address of a closed socket");
     return query_socket_address(m_socket_fd, ::getsockname, "getsockname");
 }
 
 Address SocketPosix::remote_address() const {
-    assert_condition<std::logic_error>(is_open(),
-                                       "Cannot query the address of a closed socket");
+    assert_condition<logic_error>(is_open(),
+                                  "Cannot query the address of a closed socket");
     return query_socket_address(m_socket_fd, ::getpeername, "getpeername");
 }
 
@@ -425,25 +445,25 @@ bool SocketPosix::is_open() const noexcept {
 }
 
 void SocketPosix::set_receive_timeout(ISocket::Milliseconds timeout) {
-    assert_condition<std::logic_error>(is_open(),
-                                       "Cannot set timeout on a closed socket");
-    assert_condition<std::invalid_argument>(timeout.count() >= 0,
-                                            "timeout cannot be negative");
+    assert_condition<logic_error>(is_open(),
+                                  "Cannot set timeout on a closed socket");
+    assert_condition<invalid_argument>(timeout.count() >= 0,
+                                       "timeout cannot be negative");
     assert_socket(0 == ::set_timeout(m_socket_fd, Direction::Receive, timeout),
                   "setsockopt(SO_RCVTIMEO)");
 }
 
 void SocketPosix::set_send_timeout(ISocket::Milliseconds timeout) {
-    assert_condition<std::logic_error>(is_open(),
-                                       "Cannot set timeout on a closed socket");
-    assert_condition<std::invalid_argument>(timeout.count() >= 0,
-                                            "timeout cannot be negative");
+    assert_condition<logic_error>(is_open(),
+                                  "Cannot set timeout on a closed socket");
+    assert_condition<invalid_argument>(timeout.count() >= 0,
+                                       "timeout cannot be negative");
     assert_socket(0 == ::set_timeout(m_socket_fd, Direction::Send, timeout),
                   "setsockopt(SO_SNDTIMEO)");
 }
 
 void SocketPosix::shutdown() {
-    assert_condition<std::logic_error>(is_open(), "Cannot shut down a closed socket");
+    assert_condition<logic_error>(is_open(), "Cannot shut down a closed socket");
     // ENOTCONN: the peer has gone already, which ends the connection too.
     assert_socket(0 == ::shutdown(m_socket_fd, SHUT_RDWR) || ENOTCONN == errno, "shutdown");
 }

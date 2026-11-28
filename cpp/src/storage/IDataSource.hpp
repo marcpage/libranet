@@ -32,11 +32,11 @@ public:
     [[nodiscard]] virtual Identifiers starting_with(const HashPrefix& prefix) const = 0;
 
     virtual ~IDataSource() = default;
+    IDataSource(IDataSource&&) noexcept = default;
+    IDataSource& operator=(IDataSource&&) noexcept = default;
 
     IDataSource(const IDataSource&) = delete;
     IDataSource& operator=(const IDataSource&) = delete;
-    IDataSource(IDataSource&&) = delete;
-    IDataSource& operator=(IDataSource&&) = delete;
 
 protected:
     IDataSource() = default;

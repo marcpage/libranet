@@ -30,6 +30,7 @@ using http::Request;
 using http::Response;
 using http::ResponseCode;
 using msg::Channel;
+using std::array;
 using std::invalid_argument;
 using std::nullopt;
 using std::optional;
@@ -65,7 +66,7 @@ constexpr string_view allowed_methods = "GET, PUT";
 
 // The names of the endpoints beneath /data, which are never hash algorithms
 // (HttpApi §5), as the Python node lists them.
-constexpr std::array endpoint_names{
+constexpr array endpoint_names{
     "search"sv,
     "nodes"sv,
     "seek"sv,

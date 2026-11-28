@@ -47,11 +47,6 @@ public:
     [[nodiscard]] static bool is_supported(std::string_view algorithm) noexcept;
 
     Identifier() = default;
-    ~Identifier() = default;
-    Identifier(const Identifier&) = default;
-    Identifier& operator=(const Identifier&) = default;
-    Identifier(Identifier&&) = default;
-    Identifier& operator=(Identifier&&) = default;
 
 private:
     // HttpApi §5.4 refuses any other. The algorithm names a directory in a

@@ -19,6 +19,7 @@ target_link_libraries(libranet_api PUBLIC
     libranet::storage
     libranet::types
     libranet::web
+    Threads::Threads
 )
 
 if(BUILD_TESTING)

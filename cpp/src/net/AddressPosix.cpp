@@ -16,10 +16,17 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+using net::Address;
+using std::array;
+using std::runtime_error;
+using std::string;
+using std::string_view;
+using std::vector;
+
 namespace {
 
-[[nodiscard]] addrinfo* fetch_address_info(const std::string& host,
-                                           net::Address::Port port) {
+[[nodiscard]] addrinfo* fetch_address_info(const string& host,
+                                           Address::Port port) {
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC; // Allow IPv4 or IPv6
     hints.ai_socktype = SOCK_STREAM;
@@ -30,15 +37,15 @@ namespace {
     const auto status = ::getaddrinfo(host.c_str(), port_text.c_str(), &hints, &result);
 
     if (status != 0) {
-        throw std::runtime_error(std::string("Failed to resolve host: ")
-                                 + gai_strerror(status));
+        throw runtime_error(string("Failed to resolve host: ")
+                            + gai_strerror(status));
     }
 
     return result;
 }
 
-[[nodiscard]] std::string numeric_ip_of(const addrinfo* info) {
-    std::array<char, NI_MAXHOST> ip_text{};
+[[nodiscard]] string numeric_ip_of(const addrinfo* info) {
+    array<char, NI_MAXHOST> ip_text{};
     const int error = getnameinfo(info->ai_addr, info->ai_addrlen,
                                   ip_text.data(), static_cast<socklen_t>(ip_text.size()),
                                   nullptr, 0, NI_NUMERICHOST);
@@ -50,15 +57,15 @@ namespace {
     return {};
 }
 
-[[nodiscard]] std::string reverse_dns_name_of(const addrinfo* info,
-                                              const std::string& numeric_ip) {
-    std::array<char, NI_MAXHOST> host_text{};
+[[nodiscard]] string reverse_dns_name_of(const addrinfo* info,
+                                         const string& numeric_ip) {
+    array<char, NI_MAXHOST> host_text{};
     const int error = getnameinfo(info->ai_addr, info->ai_addrlen,
                                   host_text.data(), static_cast<socklen_t>(host_text.size()),
                                   nullptr, 0, 0);
 
     if (0 == error) {
-        std::string dns_name = host_text.data();
+        string dns_name = host_text.data();
 
         if (!dns_name.empty() && dns_name != numeric_ip) {
             return dns_name;
@@ -68,7 +75,7 @@ namespace {
     return {};
 }
 
-void add_unique(std::string_view value, std::vector<std::string>& results) {
+void add_unique(string_view value, vector<string>& results) {
     if (!value.empty() && std::find(results.begin(), results.end(), value) == results.end()) {
         results.emplace_back(value);
     }
@@ -78,7 +85,7 @@ void add_unique(std::string_view value, std::vector<std::string>& results) {
     ifaddrs* interfaces = nullptr;
 
     if (-1 == ::getifaddrs(&interfaces)) {
-        throw std::runtime_error("Failed to retrieve local network interfaces");
+        throw runtime_error("Failed to retrieve local network interfaces");
     }
 
     return interfaces;
@@ -92,14 +99,14 @@ void add_unique(std::string_view value, std::vector<std::string>& results) {
     return (AF_INET == family) ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
 }
 
-[[nodiscard]] std::string extract_interface_ip(const ifaddrs* interface_entry) {
+[[nodiscard]] string extract_interface_ip(const ifaddrs* interface_entry) {
     const int family = interface_entry->ifa_addr->sa_family;
 
     if (!is_supported_socket_family(family)) {
         return {};
     }
 
-    std::array<char, NI_MAXHOST> host{};
+    array<char, NI_MAXHOST> host{};
     const socklen_t length = sockaddr_length_of(family);
 
     const int error = getnameinfo(interface_entry->ifa_addr, length, host.data(),
@@ -114,17 +121,17 @@ void add_unique(std::string_view value, std::vector<std::string>& results) {
     }
 
     // Strip IPv6 interface scope IDs (e.g., "%en0")
-    const std::string_view address = host.data();
+    const string_view address = host.data();
 
-    return std::string(address.substr(0, address.find('%')));
+    return string(address.substr(0, address.find('%')));
 }
 
 } // namespace
 
 namespace net {
 
-std::vector<std::string> Address::resolve() const {
-    std::vector<std::string> results;
+vector<string> Address::resolve() const {
+    vector<string> results;
     addrinfo* result = fetch_address_info(m_host, m_port);
 
     for (const addrinfo* entry = result; entry != nullptr; entry = entry->ai_next) {
@@ -138,9 +145,9 @@ std::vector<std::string> Address::resolve() const {
     return results;
 }
 
-std::vector<std::string> Address::local_addresses() {
+vector<string> Address::local_addresses() {
     ifaddrs* interfaces = fetch_interface_addresses();
-    std::vector<std::string> addresses;
+    vector<string> addresses;
 
     for (const ifaddrs* interface_entry = interfaces;
          interface_entry != nullptr;
