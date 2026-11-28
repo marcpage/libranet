@@ -12,24 +12,33 @@
 
 #include "IMessage.hpp"
 
+using std::invalid_argument;
+using std::map;
+using std::mutex;
+using std::optional;
+using std::scoped_lock;
+using std::size_t;
+using std::string;
+using std::vector;
+
 namespace msg {
 
-std::map<std::string, std::vector<Channel*>> Channel::m_channels;
-std::mutex Channel::m_channel_lock;
+map<string, vector<Channel*>> Channel::m_channels;
+mutex Channel::m_channel_lock;
 
-Channel::Channel(const std::string& name)
-    : Channel(std::vector<std::string>{name}) {}
+Channel::Channel(const string& name)
+    : Channel(vector<string>{name}) {}
 
-Channel::Channel(std::vector<std::string> names)
+Channel::Channel(vector<string> names)
     : m_names(std::move(names)) {
     if (m_names.empty()) {
-        throw std::invalid_argument("A channel must listen on at least one name");
+        throw invalid_argument("A channel must listen on at least one name");
     }
 
     std::sort(m_names.begin(), m_names.end());
     m_names.erase(std::unique(m_names.begin(), m_names.end()), m_names.end());
 
-    const std::scoped_lock lock(m_channel_lock);
+    const scoped_lock lock(m_channel_lock);
 
     for (const auto& name : m_names) {
         m_channels[name].push_back(this);
@@ -37,7 +46,7 @@ Channel::Channel(std::vector<std::string> names)
 }
 
 Channel::~Channel() {
-    const std::scoped_lock lock(m_channel_lock);
+    const scoped_lock lock(m_channel_lock);
 
     for (const auto& name : m_names) {
         const auto entry = m_channels.find(name);
@@ -65,7 +74,7 @@ size_t Channel::size() const {
     return m_message_queue.size();
 }
 
-std::optional<IMessage::Ptr> Channel::next_message(Milliseconds timeout) {
+optional<IMessage::Ptr> Channel::next_message(Milliseconds timeout) {
     if (timeout <= wait_forever) {
         return m_message_queue.pop();
     }
@@ -73,8 +82,8 @@ std::optional<IMessage::Ptr> Channel::next_message(Milliseconds timeout) {
     return m_message_queue.pop(timeout);
 }
 
-void Channel::post_message(const std::string& name, const IMessage::Ptr& message) {
-    const std::scoped_lock lock(m_channel_lock);
+void Channel::post_message(const string& name, const IMessage::Ptr& message) {
+    const scoped_lock lock(m_channel_lock);
     const auto entry = m_channels.find(name);
 
     if (entry == m_channels.end()) {

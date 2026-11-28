@@ -33,11 +33,6 @@ public:
     friend std::ostream& operator<<(std::ostream& out_stream, const Query& query);
 
     Query() = default;
-    ~Query() = default;
-    Query(const Query&) = default;
-    Query& operator=(const Query&) = default;
-    Query(Query&&) noexcept = default;
-    Query& operator=(Query&&) noexcept = default;
 
 private:
     std::vector<std::pair<std::string, std::string>> m_parameters;

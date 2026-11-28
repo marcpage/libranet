@@ -31,6 +31,7 @@ using http::Request;
 using http::Response;
 using http::Url;
 using net::IpAddress;
+using std::array;
 using std::nullopt;
 using std::optional;
 using std::string;
@@ -65,7 +66,7 @@ constexpr string_view document = "document";
 // The headers that grant another origin's page a request of /config (the
 // WHATWG Fetch Standard's CORS protocol, and W3C Private Network Access),
 // none of which a /config answer carries (HTTP API §2.3.3).
-constexpr std::array cross_origin_grants{
+constexpr array cross_origin_grants{
     "Access-Control-Allow-Origin",
     "Access-Control-Allow-Credentials",
     "Access-Control-Allow-Methods",

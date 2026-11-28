@@ -113,7 +113,7 @@ void check_bound(int result) {
                            "Every parameter of the statement is bound already");
     validate<logic_error>(SQLITE_MISUSE != result,
                           "Cannot bind a value to statement that has stepped until it is reset");
-    throw db::SqliteError(string("Cannot bind the value: ") + sqlite3_errstr(result));
+    throw SqliteError(string("Cannot bind the value: ") + sqlite3_errstr(result));
 }
 
 // The kind of value column holds in the row statement is on, as

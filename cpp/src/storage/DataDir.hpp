@@ -43,7 +43,6 @@ public:
 
     ~DataDir() override = default;
 
-    DataDir() = delete;
     DataDir(const DataDir&) = delete;
     DataDir& operator=(const DataDir&) = delete;
     DataDir(DataDir&&) = delete;

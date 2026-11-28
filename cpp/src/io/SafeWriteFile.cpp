@@ -19,10 +19,14 @@
 
 using io::SafeWriteFile;
 using std::byte;
+using std::errc;
 using std::error_code;
+using std::ios;
 using std::logic_error;
+using std::ofstream;
 using std::random_device;
 using std::runtime_error;
+using std::streamsize;
 using std::string;
 using std::string_view;
 using std::to_string;
@@ -71,15 +75,15 @@ void make_owner_only(const path& partial) {
 // Writes contents to partial, truncated, so that it keeps the mode it was
 // made with for Access::Owner. Throws std::runtime_error when it cannot.
 void write_partial(const path& partial, string_view contents) {
-    std::ofstream out(partial, std::ios::out | std::ios::binary);
+    ofstream out(partial, ios::out | ios::binary);
 
     if (!out.is_open()) {
-        throw std::runtime_error("Failed to open file for writing: " + partial.string());
+        throw runtime_error("Failed to open file for writing: " + partial.string());
     }
 
     // Empty contents may be at no address, which is not to be copied from.
     if (!contents.empty()) {
-        out.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+        out.write(contents.data(), static_cast<streamsize>(contents.size()));
     }
 
     // Closed, so that all of it is in the file before it is renamed or linked
@@ -87,7 +91,7 @@ void write_partial(const path& partial, string_view contents) {
     out.close();
 
     if (!out.good()) {
-        throw std::runtime_error("Error occurred while writing to file: " + partial.string());
+        throw runtime_error("Error occurred while writing to file: " + partial.string());
     }
 }
 
@@ -138,7 +142,7 @@ const path& SafeWriteFile::writable_path() const noexcept {
     return m_partial;
 }
 
-void SafeWriteFile::write(std::string_view contents) {
+void SafeWriteFile::write(string_view contents) {
     write_partial(writable_path(), contents);
     commit();
 }
@@ -180,7 +184,7 @@ bool SafeWriteFile::commit_if_absent() {
 
     create_hard_link(writable_path(), m_file, error);
 
-    if (std::errc::file_exists == error) {
+    if (errc::file_exists == error) {
         return false;
     }
 

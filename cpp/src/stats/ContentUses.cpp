@@ -22,6 +22,7 @@ using std::nullopt;
 using std::optional;
 using std::size_t;
 using std::string_view;
+using std::uint8_t;
 using std::vector;
 using storage::Identifier;
 
@@ -33,7 +34,7 @@ using Uses = ContentUses::Uses;
 
 // The columns uses_sql and held_sql read, in the order they read them:
 // held_sql reads the identifier after the rest.
-enum class Column : std::uint8_t {
+enum class Column : uint8_t {
     Size,
     LastStored,
     LastRequested,

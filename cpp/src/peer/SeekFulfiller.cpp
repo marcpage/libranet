@@ -38,12 +38,14 @@ using protocol::SeekList;
 using std::exception;
 using std::future;
 using std::invalid_argument;
+using std::map;
 using std::min;
 using std::nullopt;
 using std::optional;
 using std::ptrdiff_t;
 using std::scoped_lock;
 using std::set;
+using std::shared_ptr;
 using std::size_t;
 using std::string;
 using std::to_string;
@@ -62,7 +64,7 @@ using Status = http::ResponseCode::Status;
 
 namespace {
 
-using Matches = std::map<string, vector<Identifier>>; // By prefix
+using Matches = map<string, vector<Identifier>>; // By prefix
 
 // store, once it is known to be one. Throws invalid_argument for none.
 IDataSource::Ptr checked(IDataSource::Ptr store) {
@@ -236,7 +238,7 @@ size_t SeekFulfiller::refresh(const Sessions& sessions) {
 
     reads.reserve(due.size());
     std::transform(due.begin(), due.end(), std::back_inserter(reads),
-                   [this](const std::shared_ptr<PeerSession>& session) {
+                   [this](const shared_ptr<PeerSession>& session) {
         return std::async(std::launch::async, [this, session] { return _refresh(*session); });
     });
 
@@ -446,7 +448,7 @@ void SeekFulfiller::_note_pushed(const string& node_id, const vector<Identifier>
 SeekFulfiller::Matches SeekFulfiller::_unnamed(const string& node_id, const Matches& matches) {
     const scoped_lock lock(m_mutex);
     const auto served = m_served.find(node_id);
-    std::map<string, set<string>> named;
+    map<string, set<string>> named;
     Matches unnamed;
 
     if (m_served.end() == served) {

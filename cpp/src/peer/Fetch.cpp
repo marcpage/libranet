@@ -36,17 +36,23 @@ using http::ResponseCode;
 using msg::Channel;
 using peer::Fetch;
 using peer::PeerSession;
+using std::exception;
 using std::function;
 using std::invalid_argument;
 using std::map;
 using std::nullopt;
 using std::optional;
+using std::runtime_error;
+using std::scoped_lock;
 using std::set;
 using std::size_t;
 using std::string;
 using std::string_view;
 using std::to_string;
+using std::uint64_t;
+using std::unique_lock;
 using std::vector;
+using std::chrono::hours;
 using storage::DataStored;
 using storage::IDataSource;
 using storage::Identifier;
@@ -64,7 +70,7 @@ using Until = map<string, Clock::time_point>;
 
 // The longest a peer's Retry-After holds it off: a search is over well
 // within it, and a longer one could overflow a time.
-constexpr std::chrono::seconds longest_retry_after = std::chrono::hours(24);
+constexpr std::chrono::seconds longest_retry_after = hours(24);
 
 // Calls end as it goes, however the scope it is in ends.
 class AtEnd {
@@ -76,7 +82,7 @@ public:
     ~AtEnd() {
         try {
             m_end();
-        } catch (const std::exception& error) {
+        } catch (const exception& error) {
             lFatal << "Could not end a search:" << error.what();
         } catch (...) {
             std::terminate();
@@ -133,7 +139,7 @@ void let_go(Until& until, Clock::time_point now) {
 // for none, or for the HTTP date RFC 9110 §10.2.3 also allows, as the
 // Python node reads it.
 optional<Milliseconds> retry_after_of(const Response& answer) {
-    constexpr std::uint64_t decimal_base = 10;
+    constexpr uint64_t decimal_base = 10;
     const auto header = answer.headers().get("Retry-After");
     const auto text = header ? Headers::trim_whitespace(*header) : string_view();
 
@@ -141,12 +147,12 @@ optional<Milliseconds> retry_after_of(const Response& answer) {
         return nullopt;
     }
 
-    std::uint64_t seconds = 0;
+    uint64_t seconds = 0;
 
     for (const char digit : text) {
         seconds = (seconds * decimal_base) + decimal_digits.find(digit);
 
-        if (seconds >= static_cast<std::uint64_t>(longest_retry_after.count())) {
+        if (seconds >= static_cast<uint64_t>(longest_retry_after.count())) {
             return longest_retry_after;
         }
     }
@@ -165,7 +171,7 @@ Request request_for(const Identifier& identifier) {
 
 // Logs that session's node could not be asked for identifier, and why.
 void report_unasked(const PeerSession& session, const Identifier& identifier,
-                    const std::exception& error) {
+                    const exception& error) {
     lDebug << "Could not ask" << session.address().to_string() << "for"
            << identifier.to_string() << ":" << error.what();
 }
@@ -179,7 +185,7 @@ optional<Response> answer_of(PeerSession& session, const Identifier& identifier)
         auto answers = session.exchange({request_for(identifier)});
 
         return std::move(answers.at(0));
-    } catch (const std::runtime_error& error) {
+    } catch (const runtime_error& error) {
         report_unasked(session, identifier, error);
     } catch (const invalid_argument& error) {
         report_unasked(session, identifier, error);
@@ -342,7 +348,7 @@ Fetch::Outcome Fetch::fetch(const Identifier& identifier) {
 }
 
 bool Fetch::is_held_off(const Identifier& identifier) const {
-    const std::scoped_lock lock(m_mutex);
+    const scoped_lock lock(m_mutex);
     const auto held = m_held.find(identifier.to_string());
 
     return held != m_held.end() && m_clock() < held->second;
@@ -350,7 +356,7 @@ bool Fetch::is_held_off(const Identifier& identifier) const {
 
 void Fetch::stop() {
     {
-        const std::scoped_lock lock(m_mutex);
+        const scoped_lock lock(m_mutex);
 
         m_stopped = true;
     }
@@ -361,7 +367,7 @@ void Fetch::stop() {
 // Marks a search for identifier under way, and gives nothing; or, when none
 // may start, why not.
 optional<Fetch::Outcome> Fetch::_start(const Identifier& identifier) {
-    const std::scoped_lock lock(m_mutex);
+    const scoped_lock lock(m_mutex);
     auto key = identifier.to_string();
 
     if (m_stopped) {
@@ -420,28 +426,28 @@ Fetch::Outcome Fetch::_search(const Identifier& identifier) {
 }
 
 bool Fetch::_is_stopped() const {
-    const std::scoped_lock lock(m_mutex);
+    const scoped_lock lock(m_mutex);
 
     return m_stopped;
 }
 
 // Waits until until, or until stop() is called.
 void Fetch::_wait_until(Clock::time_point until) {
-    std::unique_lock lock(m_mutex);
+    unique_lock lock(m_mutex);
 
     m_stopping.wait_for(lock, until - m_clock(), [this] { return m_stopped; });
 }
 
 // Holds off a new search for identifier for the failed search hold.
 void Fetch::_hold_off(const Identifier& identifier) {
-    const std::scoped_lock lock(m_mutex);
+    const scoped_lock lock(m_mutex);
 
     m_held[identifier.to_string()] = m_clock() + m_settings.failed_search_hold;
 }
 
 // Lets a new search for identifier start, as this one has ended.
 void Fetch::_end(const Identifier& identifier) {
-    const std::scoped_lock lock(m_mutex);
+    const scoped_lock lock(m_mutex);
 
     m_under_way.erase(identifier.to_string());
 }

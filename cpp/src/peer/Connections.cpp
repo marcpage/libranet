@@ -59,6 +59,7 @@ using std::function;
 using std::future;
 using std::future_status;
 using std::invalid_argument;
+using std::list;
 using std::make_shared;
 using std::make_unique;
 using std::nullopt;
@@ -204,7 +205,7 @@ Connections::~Connections() {
 
     // No job starts once it is stopping, so those taken are all there are.
     // Each connection is closed first, so that a job waiting on one ends.
-    std::list<future<void>> jobs;
+    list<future<void>> jobs;
 
     {
         const scoped_lock lock(m_mutex);

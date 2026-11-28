@@ -60,6 +60,7 @@ using std::string;
 using std::string_view;
 using std::system_error;
 using std::thread;
+using std::uint8_t;
 using std::unique_lock;
 using std::unordered_map;
 using std::vector;
@@ -103,7 +104,7 @@ bool is_under(string_view uri, string_view path) {
 }
 
 // How reading a line ended.
-enum class Line : std::uint8_t {
+enum class Line : uint8_t {
     Read,    // At its end
     Ended,   // The connection ended first
     TooLong, // Before its end, as the limit ran out
@@ -279,7 +280,7 @@ optional<Received> read_request(MeteredReader& reader, const Server::Limits& lim
     return received;
 }
 
-bool header_equals(std::string_view left, std::string_view right) {
+bool header_equals(string_view left, string_view right) {
     const Headers::CaseInsensitiveLess less;
 
     // NOLINTNEXTLINE(readability-suspicious-call-argument)
@@ -487,7 +488,7 @@ Server::Server(Address address)
 Server::Server(Address address, const Limits& limits)
     : m_address(std::move(address))
     , m_limits(checked(limits))
-    , m_listener(net::ISocket::bind(m_address))
+    , m_listener(ISocket::bind(m_address))
     , m_wake_address(wake_address(m_listener)) {}
 
 void Server::register_handler(string_view path, RequestHandler handler) {

@@ -75,6 +75,7 @@ using std::find;
 using std::generic_category;
 using std::invalid_argument;
 using std::make_shared;
+using std::nullopt;
 using std::numeric_limits;
 using std::optional;
 using std::out_of_range;
@@ -85,6 +86,7 @@ using std::string;
 using std::string_view;
 using std::system_error;
 using std::to_string;
+using std::uint8_t;
 using std::uintmax_t;
 using std::vector;
 using std::filesystem::create_directories;
@@ -309,7 +311,7 @@ Number whole(const SettingsFile& settings, const string& name, Number fallback, 
 }
 
 // Whether a duration may be zero, or must be more.
-enum class Zero : std::uint8_t {
+enum class Zero : uint8_t {
     Allowed,
     Refused,
 };
@@ -607,7 +609,7 @@ optional<Address::Port> config_port(const SettingsFile& settings, Address::Port 
                                    + " above it for /config");
         }
 
-        return std::nullopt;
+        return nullopt;
     }
 
     const auto port =

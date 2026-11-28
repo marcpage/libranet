@@ -24,29 +24,44 @@
 #include "io/FileReader.hpp"
 #include "types/Converter.hpp"
 
+using io::FileReader;
+using node::SettingsFile;
+using std::domain_error;
+using std::invalid_argument;
+using std::map;
+using std::out_of_range;
+using std::runtime_error;
+using std::set;
+using std::size_t;
+using std::string;
+using std::string_view;
+using std::vector;
+using std::filesystem::path;
+using types::Converter;
+
 namespace {
 
-using List = node::SettingsFile::List;
-using Value = node::SettingsFile::Value;
-using Settings = std::map<std::string, Value>;
+using List = SettingsFile::List;
+using Value = SettingsFile::Value;
+using Settings = map<string, Value>;
 
 // The text of a scalar. yaml-cpp keeps bytes that are not UTF-8 as they are
 // read, but writes them as U+FFFD, so such text would not be written back as
 // it was read.
-std::string text_of(const YAML::Node& scalar) {
-    if (!types::Converter::is_utf8(scalar.Scalar())) {
-        throw std::invalid_argument("Settings must be text in UTF-8");
+string text_of(const YAML::Node& scalar) {
+    if (!Converter::is_utf8(scalar.Scalar())) {
+        throw invalid_argument("Settings must be text in UTF-8");
     }
 
     return scalar.Scalar();
 }
 
-// The text of the file at path.
-std::string read_file(const std::filesystem::path& path) {
+// The text of file.
+string read_file(const path& file) {
     try {
-        return io::FileReader(path).read_all();
-    } catch (const std::runtime_error&) {
-        throw std::runtime_error("Cannot read the settings file: " + path.string());
+        return FileReader(file).read_all();
+    } catch (const runtime_error&) {
+        throw runtime_error("Cannot read the settings file: " + file.string());
     }
 }
 
@@ -54,17 +69,17 @@ std::string read_file(const std::filesystem::path& path) {
 // YAML::Node, is deduced: CodeQL reads the code without yaml-cpp's headers,
 // and takes a declaration that starts with YAML::Node for a variable named
 // YAML.
-auto only_document(std::string_view text) {
-    std::vector<YAML::Node> documents;
+auto only_document(string_view text) {
+    vector<YAML::Node> documents;
 
     try {
-        documents = YAML::LoadAll(std::string(text));
+        documents = YAML::LoadAll(string(text));
     } catch (const YAML::Exception& error) {
-        throw std::invalid_argument(std::string("Settings are not YAML: ") + error.what());
+        throw invalid_argument(string("Settings are not YAML: ") + error.what());
     }
 
     if (documents.size() > 1) {
-        throw std::invalid_argument("Settings must be one YAML document");
+        throw invalid_argument("Settings must be one YAML document");
     }
 
     return documents.empty() ? YAML::Node() : documents.front();
@@ -72,39 +87,39 @@ auto only_document(std::string_view text) {
 
 // The name a key gives a section or a setting. A dot would make a setting's
 // name read as if it were in another section.
-std::string name_of(const YAML::Node& key) {
+string name_of(const YAML::Node& key) {
     if (!key.IsScalar()) {
-        throw std::invalid_argument("A section or setting must be named with text");
+        throw invalid_argument("A section or setting must be named with text");
     }
 
     auto name = text_of(key);
 
     if (name.empty()) {
-        throw std::invalid_argument("A section or setting must not have an empty name");
+        throw invalid_argument("A section or setting must not have an empty name");
     }
 
-    if (std::string::npos != name.find('.')) {
-        throw std::invalid_argument("A section's or setting's name must not hold a dot: " + name);
+    if (string::npos != name.find('.')) {
+        throw invalid_argument("A section's or setting's name must not hold a dot: " + name);
     }
 
     return name;
 }
 
 // The value, or the list of values, a setting gives.
-Value value_of(const YAML::Node& setting, const std::string& name) {
+Value value_of(const YAML::Node& setting, const string& name) {
     if (setting.IsScalar()) {
         return text_of(setting);
     }
 
     if (!setting.IsSequence()) {
-        throw std::invalid_argument("A setting must be a value or a list of values: " + name);
+        throw invalid_argument("A setting must be a value or a list of values: " + name);
     }
 
     List list;
 
     for (const auto& item : setting) {
         if (!item.IsScalar()) {
-            throw std::invalid_argument("A setting's list must hold only values: " + name);
+            throw invalid_argument("A setting's list must hold only values: " + name);
         }
 
         list.push_back(text_of(item));
@@ -114,7 +129,7 @@ Value value_of(const YAML::Node& setting, const std::string& name) {
 }
 
 // How many values a setting gives: one, or each in its list.
-std::size_t count_of(const Value& value) {
+size_t count_of(const Value& value) {
     const auto* list = std::get_if<List>(&value);
 
     return nullptr == list ? 1 : list->size();
@@ -124,7 +139,7 @@ std::size_t count_of(const Value& value) {
 // value: CodeQL reads the code without yaml-cpp's headers, and takes a
 // declaration whose first parameter starts with YAML:: for a variable.
 void write_value(const Value& value, YAML::Emitter& out) {
-    if (const auto* text = std::get_if<std::string>(&value); nullptr != text) {
+    if (const auto* text = std::get_if<string>(&value); nullptr != text) {
         out << *text;
         return;
     }
@@ -147,21 +162,21 @@ public:
 
 private:
     Settings m_settings;
-    std::set<std::string> m_sections;
-    std::size_t m_values{0};
+    set<string> m_sections;
+    size_t m_values{0};
 
-    void _add(const std::string& name, const YAML::Node& setting);
+    void _add(const string& name, const YAML::Node& setting);
 };
 
 void SectionReader::read(const YAML::Node& key, const YAML::Node& section) {
     const auto section_name = name_of(key);
 
     if (!m_sections.insert(section_name).second) {
-        throw std::invalid_argument("A section is given twice: " + section_name);
+        throw invalid_argument("A section is given twice: " + section_name);
     }
 
     if (!section.IsMap()) {
-        throw std::invalid_argument("A section must be a mapping of settings: " + section_name);
+        throw invalid_argument("A section must be a mapping of settings: " + section_name);
     }
 
     for (const auto& setting : section) {
@@ -173,28 +188,28 @@ const Settings& SectionReader::settings() const noexcept {
     return m_settings;
 }
 
-void SectionReader::_add(const std::string& name, const YAML::Node& setting) {
+void SectionReader::_add(const string& name, const YAML::Node& setting) {
     const auto [entry, is_new] = m_settings.try_emplace(name, value_of(setting, name));
 
     if (!is_new) {
-        throw std::invalid_argument("A setting is given twice: " + name);
+        throw invalid_argument("A setting is given twice: " + name);
     }
 
     m_values += count_of(entry->second);
 
-    if (m_values > node::SettingsFile::max_values) {
-        throw std::invalid_argument("Settings must hold no more than "
-                                    + std::to_string(node::SettingsFile::max_values) + " values");
+    if (m_values > SettingsFile::max_values) {
+        throw invalid_argument("Settings must hold no more than "
+                               + std::to_string(SettingsFile::max_values) + " values");
     }
 }
 
 // The value of the setting in settings named name. Throws std::out_of_range
 // when there is none.
-const Value& setting_at(const Settings& settings, const std::string& name) {
+const Value& setting_at(const Settings& settings, const string& name) {
     const auto found = settings.find(name);
 
     if (found == settings.end()) {
-        throw std::out_of_range("No such setting: " + name);
+        throw out_of_range("No such setting: " + name);
     }
 
     return found->second;
@@ -204,7 +219,7 @@ const Value& setting_at(const Settings& settings, const std::string& name) {
 
 namespace node {
 
-SettingsFile SettingsFile::parse(std::string_view text) {
+SettingsFile SettingsFile::parse(string_view text) {
     const auto document = only_document(text);
 
     if (document.IsNull()) {
@@ -212,7 +227,7 @@ SettingsFile SettingsFile::parse(std::string_view text) {
     }
 
     if (!document.IsMap()) {
-        throw std::invalid_argument("Settings must be a mapping of sections");
+        throw invalid_argument("Settings must be a mapping of sections");
     }
 
     SectionReader reader{};
@@ -224,22 +239,22 @@ SettingsFile SettingsFile::parse(std::string_view text) {
     return SettingsFile(reader.settings());
 }
 
-SettingsFile SettingsFile::load(const std::filesystem::path& path) {
-    const auto text = read_file(path);
+SettingsFile SettingsFile::load(const path& file) {
+    const auto text = read_file(file);
 
     try {
         return parse(text);
-    } catch (const std::invalid_argument& error) {
-        throw std::invalid_argument("Cannot read the settings in " + path.string() + ": "
-                                    + error.what());
+    } catch (const invalid_argument& error) {
+        throw invalid_argument("Cannot read the settings in " + file.string() + ": "
+                               + error.what());
     }
 }
 
-SettingsFile::SettingsFile(std::map<std::string, Value> settings)
+SettingsFile::SettingsFile(map<string, Value> settings)
     : m_settings(std::move(settings)) {}
 
-std::vector<std::string> SettingsFile::names() const {
-    std::vector<std::string> result;
+vector<string> SettingsFile::names() const {
+    vector<string> result;
 
     result.reserve(m_settings.size());
     std::transform(m_settings.begin(), m_settings.end(), std::back_inserter(result),
@@ -247,25 +262,25 @@ std::vector<std::string> SettingsFile::names() const {
     return result;
 }
 
-bool SettingsFile::has(const std::string& name) const {
+bool SettingsFile::has(const string& name) const {
     return m_settings.find(name) != m_settings.end();
 }
 
-const std::string& SettingsFile::value(const std::string& name) const {
-    const auto* text = std::get_if<std::string>(&setting_at(m_settings, name));
+const string& SettingsFile::value(const string& name) const {
+    const auto* text = std::get_if<string>(&setting_at(m_settings, name));
 
     if (nullptr == text) {
-        throw std::domain_error("Setting is a list, not a value: " + name);
+        throw domain_error("Setting is a list, not a value: " + name);
     }
 
     return *text;
 }
 
-const SettingsFile::List& SettingsFile::list(const std::string& name) const {
+const SettingsFile::List& SettingsFile::list(const string& name) const {
     const auto* list = std::get_if<List>(&setting_at(m_settings, name));
 
     if (nullptr == list) {
-        throw std::domain_error("Setting is a value, not a list: " + name);
+        throw domain_error("Setting is a value, not a list: " + name);
     }
 
     return *list;
@@ -273,9 +288,9 @@ const SettingsFile::List& SettingsFile::list(const std::string& name) const {
 
 // Each section is written once, with all its settings: their names are in
 // order, so those of a section, which start alike, come together.
-std::string SettingsFile::to_string() const {
+string SettingsFile::to_string() const {
     YAML::Emitter out;
-    std::string section; // The one being written
+    string section; // The one being written
 
     out << YAML::BeginMap;
 

@@ -40,10 +40,16 @@ using io::SocketReader;
 using net::Address;
 using net::ISocket;
 using peer::PeerConnection;
+using std::byte;
+using std::deque;
+using std::errc;
+using std::exception;
 using std::exception_ptr;
+using std::function;
 using std::future;
 using std::invalid_argument;
 using std::make_exception_ptr;
+using std::mutex;
 using std::nullopt;
 using std::optional;
 using std::promise;
@@ -206,7 +212,7 @@ optional<Response> read_final(MeteredReader& reader, const Response::Limits& lim
 // Whether a socket's call failed only as its timeout passed. EAGAIN and
 // EWOULDBLOCK are the same error on Linux and macOS.
 bool is_timeout(const system_error& error) {
-    return error.code() == std::errc::resource_unavailable_try_again;
+    return error.code() == errc::resource_unavailable_try_again;
 }
 
 // What failure says went wrong.
@@ -215,7 +221,7 @@ string reason(const exception_ptr& failure) {
 
     try {
         std::rethrow_exception(failure);
-    } catch (const std::exception& error) {
+    } catch (const exception& error) {
         what = error.what();
     }
 
@@ -225,12 +231,12 @@ string reason(const exception_ptr& failure) {
 // Reads with a function, as a connection reads with a method of its own.
 class FunctionReader final : public IReader {
 public:
-    using Read = std::function<optional<size_t>(std::byte* data, size_t size)>;
+    using Read = function<optional<size_t>(byte* data, size_t size)>;
 
     explicit FunctionReader(Read read)
         : m_read(std::move(read)) {}
 
-    [[nodiscard]] optional<size_t> read_some(std::byte* data, size_t size) override {
+    [[nodiscard]] optional<size_t> read_some(byte* data, size_t size) override {
         return m_read(data, size);
     }
 
@@ -245,7 +251,7 @@ void end_connection(ISocket& socket) noexcept {
         socket.shutdown();
         // The node may have ended it already.
         // NOLINTNEXTLINE(bugprone-empty-catch)
-    } catch (const std::exception&) {
+    } catch (const exception&) {
     }
 }
 
@@ -278,7 +284,7 @@ PeerConnection::~PeerConnection() {
     // nothing is safe but to end the program, as their destructors would.
     try {
         close();
-    } catch (const std::exception& error) {
+    } catch (const exception& error) {
         lFatal << "Could not close a connection to a peer:" << error.what();
     } catch (...) {
         std::terminate();
@@ -352,7 +358,7 @@ void PeerConnection::_send_all() {
             m_socket->send_all(*text);
             _progressed();
         }
-    } catch (const std::exception& error) {
+    } catch (const exception& error) {
         lDebug << "Could not send to" << m_address.to_string() + ":" << error.what();
         _close_for(std::current_exception());
     }
@@ -361,7 +367,7 @@ void PeerConnection::_send_all() {
 // The next request to send, once one is queued, or nothing once the
 // connection has closed.
 optional<string> PeerConnection::_next_to_send() {
-    unique_lock<std::mutex> lock(m_mutex);
+    unique_lock<mutex> lock(m_mutex);
 
     m_sending.wait(lock, [this] {
         return m_closed || !m_unsent.empty();
@@ -381,7 +387,7 @@ optional<string> PeerConnection::_next_to_send() {
 // to close; then closes it, and fails the requests still waiting.
 void PeerConnection::_read_all() {
     try {
-        auto receiver = std::make_unique<FunctionReader>([this](std::byte* data, size_t size) {
+        auto receiver = std::make_unique<FunctionReader>([this](byte* data, size_t size) {
             return _receive(data, size);
         });
         // One reader for the connection, whose buffer keeps what was sent
@@ -393,7 +399,7 @@ void PeerConnection::_read_all() {
         }
 
         _close_for(make_exception_ptr(Closed(m_address.to_string() + " closed the connection")));
-    } catch (const std::exception& error) {
+    } catch (const exception& error) {
         lDebug << "Could not read from" << m_address.to_string() + ":" << error.what();
         _close_for(std::current_exception());
     }
@@ -433,7 +439,7 @@ bool PeerConnection::_read_answer(MeteredReader& reader) {
 // once it has closed the connection. While no request waits, it waits as
 // long as the node sends nothing; while one does, it throws system_error
 // once the node has made no progress for the request timeout.
-optional<size_t> PeerConnection::_receive(std::byte* data, size_t size) {
+optional<size_t> PeerConnection::_receive(byte* data, size_t size) {
     SocketReader socket(*m_socket);
 
     while (true) {
@@ -467,7 +473,7 @@ PeerConnection::Milliseconds PeerConnection::_time_left() const {
     const auto left = m_limits.request_timeout - waited;
 
     if (left.count() <= 0) {
-        throw system_error(std::make_error_code(std::errc::timed_out),
+        throw system_error(std::make_error_code(errc::timed_out),
                            m_address.to_string() + " made no progress for "
                                + to_string(m_limits.request_timeout.count()) + " ms");
     }
@@ -521,7 +527,7 @@ void PeerConnection::_close_for(const exception_ptr& failure, bool turned_away) 
 // each: the oldest with what closed the connection, and the others with
 // Closed, saying so.
 void PeerConnection::_fail_waiting() {
-    std::deque<Waiting> waiting;
+    deque<Waiting> waiting;
     exception_ptr failure;
 
     {

@@ -27,7 +27,6 @@ public:
     SearchHandler(SearchHandler&&) = default;
     SearchHandler& operator=(SearchHandler&&) = default;
 
-    SearchHandler() = delete;
     SearchHandler(const SearchHandler&) = delete;
     SearchHandler& operator=(const SearchHandler&) = delete;
 

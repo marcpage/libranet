@@ -35,6 +35,7 @@ using std::function;
 using std::future;
 using std::future_status;
 using std::invalid_argument;
+using std::list;
 using std::nullopt;
 using std::optional;
 using std::scoped_lock;
@@ -113,7 +114,7 @@ Seeker::~Seeker() {
     m_fetch->stop();
 
     // No job starts once it is stopping, so those taken are all there are.
-    std::list<future<void>> jobs;
+    list<future<void>> jobs;
 
     {
         const scoped_lock lock(m_mutex);

@@ -31,7 +31,6 @@ public:
     void shutdown() override;
     void close() override;
 
-    SocketPosix() = delete;
     SocketPosix(const SocketPosix&) = delete;
     SocketPosix& operator=(const SocketPosix&) = delete;
     SocketPosix(SocketPosix&&) = delete;

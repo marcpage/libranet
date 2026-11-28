@@ -16,6 +16,7 @@ using io::FileReader;
 using std::byte;
 using std::error_code;
 using std::ifstream;
+using std::ios;
 using std::nullopt;
 using std::optional;
 using std::runtime_error;
@@ -53,7 +54,7 @@ FileReader::FileReader(path file)
         throw runtime_error("Cannot read a directory as a file: " + m_file.string());
     }
 
-    m_stream.open(m_file, std::ios::binary);
+    m_stream.open(m_file, ios::binary);
 
     if (!m_stream.is_open()) {
         throw runtime_error("Cannot open the file: " + m_file.string());

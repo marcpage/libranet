@@ -79,11 +79,6 @@ public:
     friend std::istream& operator>>(std::istream& in_stream, Integer& value);
 
     Integer() = default;
-    Integer(const Integer&) = default;
-    Integer(Integer&&) noexcept = default;
-    Integer& operator=(const Integer&) = default;
-    Integer& operator=(Integer&&) noexcept = default;
-    ~Integer() = default;
 
 private:
     static constexpr word_t decimal_base = 10;

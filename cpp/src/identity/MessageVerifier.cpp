@@ -31,13 +31,16 @@ using identity::KnownKeys;
 using identity::MessageVerifier;
 using identity::SignatureBase;
 using std::get_if;
+using std::int64_t;
 using std::invalid_argument;
 using std::nullopt;
 using std::optional;
+using std::shared_ptr;
 using std::string;
 using std::string_view;
 using std::vector;
 using storage::Identifier;
+using types::Json;
 
 namespace {
 
@@ -189,7 +192,7 @@ optional<Moment> time_parameter(const InnerList& signature_params, string_view n
         return nullopt;
     }
 
-    const auto* const seconds = get_if<std::int64_t>(&*value);
+    const auto* const seconds = get_if<int64_t>(&*value);
 
     if (nullptr == seconds) {
         throw invalid_argument("A signature gives its " + string(name) + " time as an integer");
@@ -209,7 +212,7 @@ Identifier node_id_of(const InnerList& signature_params) {
         throw invalid_argument("A signature names its signer with a keyid string");
     }
 
-    auto node_id = Identifier::from_json(types::Json(*text));
+    auto node_id = Identifier::from_json(Json(*text));
 
     if (!node_id) {
         throw invalid_argument("A signature's keyid is not a node id: " + *text);
@@ -332,7 +335,7 @@ optional<Signer> signer_of(const Message& message, vector<string_view> component
 
 namespace identity {
 
-MessageVerifier::MessageVerifier(std::shared_ptr<KnownKeys> keys, Window window,
+MessageVerifier::MessageVerifier(shared_ptr<KnownKeys> keys, Window window,
                                  ClockFunction clock)
     : m_keys(std::move(keys))
     , m_window(window)
