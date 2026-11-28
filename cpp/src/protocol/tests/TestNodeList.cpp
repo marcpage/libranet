@@ -443,7 +443,7 @@ TEST(NodeListTest, ListOverOneMibIsSentCompressed) {
 // entries least worth naming are.
 TEST(NodeListTest, WhatDoesNotFitIsLeftOutFromTheEnd) {
     constexpr std::size_t entry_count = 200;
-    constexpr std::size_t limit = 4096;
+    constexpr std::size_t limit = 4'096;
     NodeList list(node(0), {"http://localhost:8080", "http://localhost:4300"});
 
     for (std::size_t index = 1; index <= entry_count; ++index) {

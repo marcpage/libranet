@@ -52,6 +52,7 @@ TEST(AsyncChannelOfTest, ConstructionAndCallback) {
                 const std::scoped_lock lock(mutex);
                 received.push_back(value);
             }
+
             condition.notify_one();
         }, nullptr);
 
@@ -81,6 +82,7 @@ TEST(AsyncChannelOfTest, MultipleMessagesFifoOrder) {
                 const std::scoped_lock lock(mutex);
                 received.push_back(value);
             }
+
             condition.notify_one();
         }, nullptr);
 
@@ -115,6 +117,7 @@ TEST(AsyncChannelOfTest, BroadcastToMultipleAsyncChannels) {
                 const std::scoped_lock lock(mutex);
                 received_a.push_back(value);
             }
+
             condition.notify_one();
         }, nullptr);
 
@@ -123,6 +126,7 @@ TEST(AsyncChannelOfTest, BroadcastToMultipleAsyncChannels) {
                 const std::scoped_lock lock(mutex);
                 received_b.push_back(value);
             }
+
             condition.notify_one();
         }, nullptr);
 
@@ -151,6 +155,7 @@ TEST(AsyncChannelOfTest, UnexpectedMessageTypeLogging) {
                 const std::scoped_lock lock(mutex);
                 logged.push_back(std::move(message));
             }
+
             condition.notify_one();
         };
         const AsyncChannelOf<int> channel("test.asyncof.unexpected", [](int) {}, log);

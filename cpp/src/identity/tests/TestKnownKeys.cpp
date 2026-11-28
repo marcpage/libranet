@@ -82,7 +82,8 @@ public:
         return m_data.size();
     }
 
-    [[nodiscard]] Identifiers starting_with(const storage::HashPrefix& /*prefix*/) const override {
+    [[nodiscard]] Identifiers starting_with(
+        [[maybe_unused]] const storage::HashPrefix& prefix) const override {
         return {};
     }
 

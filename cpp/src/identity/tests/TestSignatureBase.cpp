@@ -486,7 +486,7 @@ TEST(SignatureBaseTest, TargetWithoutPathIsRefused) {
 }
 
 TEST(SignatureBaseTest, StatusOfOtherThanThreeDigitsIsRefused) {
-    constexpr std::uint16_t four_digits = 1000;
+    constexpr std::uint16_t four_digits = 1'000;
     constexpr std::uint16_t two_digits = 99;
     Response response;
 

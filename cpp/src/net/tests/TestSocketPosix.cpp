@@ -312,7 +312,7 @@ TEST(SocketPosixTest, ConnectWhereNoneListensIsRefused) {
 
 // Connected with a timeout, the socket waits for what it reads as any does.
 TEST(SocketPosixTest, ConnectWithinATimeout) {
-    constexpr auto timeout = 10000ms;
+    constexpr auto timeout = 10'000ms;
     auto [server, address] = bind_ephemeral();
 
     server->listen(1);
@@ -370,7 +370,7 @@ TEST(SocketPosixTest, ReceiveWithNoRoomReadsNothing) {
 // A timeout of 0 waits forever; the others are seconds and milliseconds.
 TEST(SocketPosixTest, Timeouts) {
     constexpr auto both = 250ms;
-    constexpr auto receive = 1500ms;
+    constexpr auto receive = 1'500ms;
     const auto connection = connect_ephemeral();
 
     EXPECT_NO_THROW(connection.client->set_timeout(both));

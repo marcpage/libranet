@@ -289,7 +289,7 @@ TEST(SeekListTest, WhatIsWrittenReadsBack) {
 // A list whose JSON would not fit is sent compressed, whole where it fits.
 TEST(SeekListTest, CompressedWhereJsonWouldNotFit) {
     constexpr std::size_t count = 100;
-    constexpr std::size_t limit = 1000;
+    constexpr std::size_t limit = 1'000;
     // The same identifier, many times over, compresses to little.
     const SeekList list(std::vector<Identifier>(count, Identifier("sha256", hello_hash)), {});
 
@@ -307,7 +307,7 @@ TEST(SeekListTest, CompressedWhereJsonWouldNotFit) {
 // and as many as fit: one more of each would not.
 TEST(SeekListTest, WhatDoesNotFitIsLeftOutFromTheEnd) {
     constexpr std::size_t count = 100;
-    constexpr std::size_t limit = 2000;
+    constexpr std::size_t limit = 2'000;
     const SeekList list(identifiers(count), prefixes(count));
 
     const auto body = list.body(limit);
@@ -329,7 +329,7 @@ TEST(SeekListTest, WhatDoesNotFitIsLeftOutFromTheEnd) {
 TEST(SeekListTest, KindWithFewerIsKeptWhole) {
     constexpr std::size_t count = 100;
     constexpr std::size_t fewer = 2;
-    constexpr std::size_t limit = 2000;
+    constexpr std::size_t limit = 2'000;
     const SeekList list(identifiers(count), prefixes(fewer));
 
     const auto reread = SeekList::from_body(list.body(limit).text, decompressed_limit);
@@ -359,7 +359,7 @@ TEST(SeekListTest, WrittenInLessThanOneMebibyte) {
     const auto body = list.body();
     const auto reread = SeekList::from_body(body.text, decompressed_limit);
 
-    EXPECT_EQ(SeekList::max_size, 1048576U);
+    EXPECT_EQ(SeekList::max_size, 1'048'576U);
     EXPECT_LT(body.text.size(), SeekList::max_size);
     EXPECT_TRUE(body.compressed);
     EXPECT_TRUE(Zlib::decompress(Converter::bytes_of(body.text), decompressed_limit).has_value());

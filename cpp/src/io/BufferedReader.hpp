@@ -18,7 +18,7 @@ namespace io {
 class BufferedReader final : public IReader {
 public:
     // Most requests' line and headers come in one read.
-    static constexpr std::size_t default_buffer_size = 4096;
+    static constexpr std::size_t default_buffer_size = 4'096;
 
     explicit BufferedReader(IReader::Ptr upstream,
                             std::size_t buffer_size = default_buffer_size);

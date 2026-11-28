@@ -228,6 +228,7 @@ void Connections::_handle(const IMessage::Ptr& message) {
             const scoped_lock lock(m_mutex);
             m_candidates = candidates->candidates;
         }
+
         _maintain();
     } else if (const auto* const nodes = value_of<NodesUpdated>(message)) {
         _take_nodes(nodes->nodes, nodes->added);
@@ -543,7 +544,8 @@ bool Connections::_reach(const string& endpoint, const optional<Identifier>& exp
     }
 
     const auto admitted = Outcome::Connected
-                          == _admit(make_shared<PeerSession>(std::move(contact->session)), endpoint);
+                          == _admit(make_shared<PeerSession>(std::move(contact->session)),
+                                    endpoint);
 
     return admitted || was_expected;
 }

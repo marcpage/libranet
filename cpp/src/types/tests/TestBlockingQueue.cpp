@@ -114,7 +114,7 @@ TEST(BlockingQueueTest, CapacityAndTimeouts) {
 TEST(BlockingQueueTest, UnboundedConstant) {
     BlockingQueue<int> unbounded_queue(BlockingQueue<int>::unbounded);
     BlockingQueue<int> default_queue; // same as unbounded
-    constexpr int item_count = 1000;
+    constexpr int item_count = 1'000;
 
     for (int index = 0; index < item_count; ++index) {
         unbounded_queue.push(index);
@@ -197,7 +197,7 @@ TEST(BlockingQueueTest, ProducerConsumer) {
 // count as branches, put it over this check's limit.
 // NOLINTBEGIN(readability-function-cognitive-complexity)
 TEST(BlockingQueueTest, MultipleProducersConsumers) {
-    constexpr int items_per_producer = 2000;
+    constexpr int items_per_producer = 2'000;
     constexpr int producer_count = 4;
     constexpr int consumer_count = 4;
     constexpr int total = items_per_producer * producer_count;

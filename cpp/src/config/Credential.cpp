@@ -45,7 +45,7 @@ constexpr size_t most_file_size = 1 * Kilobyte;
 // RFC 9106 §4. Any hash is checked at the costs it names, so these can be
 // raised without stranding a credential captured under them.
 IPasswordHasher::Ptr password_hasher() {
-    constexpr uint32_t memory_cost_kib = 19U * 1024U;
+    constexpr uint32_t memory_cost_kib = 19U * 1'024U;
     constexpr uint32_t passes = 2;
     constexpr uint32_t lanes = 1;
     constexpr size_t salt_length = 16;

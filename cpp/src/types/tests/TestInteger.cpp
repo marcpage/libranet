@@ -200,7 +200,7 @@ TEST(IntegerTest, BitwiseNegativeOperands) {
 
 TEST(IntegerTest, StreamsAndLiterals) {
     // Stream Output[cite: 1]
-    constexpr auto output_value = 987654321987654321LL;
+    constexpr auto output_value = 987'654'321'987'654'321LL;
     const Integer test_out(output_value);
     std::ostringstream out_stream;
     out_stream << test_out;

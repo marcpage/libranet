@@ -286,7 +286,7 @@ TEST(StructuredFieldTest, ItemsThatCannotBeReadAreRefused) {
 // RFC 9651 asks a parser to take at least 1024 members, 256 items in an
 // inner list, and 256 parameters (§3.2, §3.1.1, §3.1.2).
 TEST(StructuredFieldTest, HoldsWhatRfc9651AsksAParserToTake) {
-    constexpr std::size_t members = 1024;
+    constexpr std::size_t members = 1'024;
     constexpr std::size_t items = 256;
     constexpr std::size_t parameter_count = 256;
 

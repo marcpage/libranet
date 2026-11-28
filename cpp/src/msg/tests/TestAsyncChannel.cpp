@@ -81,6 +81,7 @@ TEST(AsyncChannelTest, ConstructionAndCallback) {
                 const std::scoped_lock lock(mutex);
                 received.push_back(message->to_string());
             }
+
             condition.notify_one();
         });
 
@@ -110,6 +111,7 @@ TEST(AsyncChannelTest, MultipleMessagesFifoOrder) {
                 const std::scoped_lock lock(mutex);
                 received.push_back(message->to_string());
             }
+
             condition.notify_one();
         });
 
@@ -144,6 +146,7 @@ TEST(AsyncChannelTest, BroadcastToMultipleAsyncChannels) {
                 const std::scoped_lock lock(mutex);
                 received_a.push_back(std::stoi(message->to_string()));
             }
+
             condition.notify_one();
         });
 
@@ -152,6 +155,7 @@ TEST(AsyncChannelTest, BroadcastToMultipleAsyncChannels) {
                 const std::scoped_lock lock(mutex);
                 received_b.push_back(std::stoi(message->to_string()));
             }
+
             condition.notify_one();
         });
 
@@ -187,12 +191,14 @@ TEST(AsyncChannelTest, CallbackExceptionDoesNotStopProcessing) {
                 const std::scoped_lock lock(mutex);
                 received.push_back(value);
             }
+
             condition.notify_one();
         }, [&](std::string message) {
             {
                 const std::scoped_lock lock(mutex);
                 logged.push_back(std::move(message));
             }
+
             condition.notify_one();
         });
 

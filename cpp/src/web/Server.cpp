@@ -79,8 +79,8 @@ using HeaderValues = vector<pair<string, string>>;
 // The header that names the request an answer answers.
 constexpr auto request_path_header = "X-Request-Path";
 
-void file_not_found([[maybe_unused]] const Request& request, Response& response,
-                    [[maybe_unused]] ConnectionInfo& connection) {
+void file_not_found(const Request& /*request*/, Response& response,
+                    ConnectionInfo& /*connection*/) {
     Problem::answer_not_found(response);
 }
 

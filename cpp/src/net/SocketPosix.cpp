@@ -55,7 +55,7 @@ namespace {
 
 #if __APPLE__
 constexpr int send_flags = 0;
-#elif defined(__linux__)
+#elif __linux__
 constexpr int send_flags = MSG_NOSIGNAL;
 #endif
 
@@ -248,8 +248,8 @@ int set_timeout(int socket_fd, Direction direction, ISocket::Milliseconds timeou
     timeval timeout_value{};
 
     if (timeout.count() > 0) {
-        constexpr auto milliseconds_per_second = 1000;
-        constexpr auto microseconds_per_millisecond = 1000;
+        constexpr auto milliseconds_per_second = 1'000;
+        constexpr auto microseconds_per_millisecond = 1'000;
 
         timeout_value.tv_sec = static_cast<time_t>(timeout.count() / milliseconds_per_second);
         timeout_value.tv_usec = static_cast<suseconds_t>(
@@ -365,7 +365,7 @@ ISocket::Ptr SocketPosix::accept() {
         // macOS has no accept4(), so close-on-exec is set once accepted.
         // NOLINTNEXTLINE(android-cloexec-accept)
         accepted_fd = ::accept(m_socket_fd, nullptr, nullptr);
-#elif defined(__linux__)
+#elif __linux__
         accepted_fd = ::accept4(m_socket_fd, nullptr, nullptr, SOCK_CLOEXEC);
 #endif
     } while (accepted_fd < 0 && EINTR == errno);
@@ -476,8 +476,8 @@ void SocketPosix::close() {
     const auto socket_fd = m_socket_fd;
 
     m_socket_fd = -1;
-    // Do not retry close() after EINTR: on Linux the descriptor is released.
 
+    // Do not retry close() after EINTR: on Linux the descriptor is released.
     assert_socket(0 == ::close(socket_fd) || EINTR == errno, "close");
 }
 

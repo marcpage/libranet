@@ -33,7 +33,7 @@ constexpr std::string_view in_memory = ":memory:";
 constexpr auto start = Clock::time_point(1'700'000'000s);
 
 // A time between two milliseconds, which the table keeps as the first.
-constexpr auto between_milliseconds = 1500us;
+constexpr auto between_milliseconds = 1'500us;
 
 // Sizes of content as stored.
 constexpr std::size_t small = 5;

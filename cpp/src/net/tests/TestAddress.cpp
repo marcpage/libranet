@@ -12,8 +12,8 @@ namespace {
 // Ports the tests make addresses with.
 constexpr auto ssh_port = 22;
 constexpr auto http_port = 80;
-constexpr auto development_port = 3000;
-constexpr auto alternate_http_port = 8080;
+constexpr auto development_port = 3'000;
+constexpr auto alternate_http_port = 8'080;
 constexpr auto highest_port = 65'535;
 
 } // namespace
@@ -38,7 +38,7 @@ TEST(AddressTest, ConstructorsAndGetters) {
 TEST(AddressTest, ParsingIpv4AndHostnames) {
     const Address first = Address::parse("192.168.1.1:8080");
     EXPECT_EQ(first.host(), "192.168.1.1");
-    EXPECT_EQ(first.port(), 8080);
+    EXPECT_EQ(first.port(), 8'080);
 
     const Address second = Address::parse("example.com:443");
     EXPECT_EQ(second.host(), "example.com");
@@ -58,7 +58,7 @@ TEST(AddressTest, ParsingIpv6) {
     // Full IPv6 address with brackets
     const Address second = Address::parse("[2001:db8::1]:8080");
     EXPECT_EQ(second.host(), "2001:db8::1");
-    EXPECT_EQ(second.port(), 8080);
+    EXPECT_EQ(second.port(), 8'080);
 }
 
 TEST(AddressTest, FormattingToString) {

@@ -30,7 +30,7 @@ public:
     static constexpr std::size_t min_provisional_trust_attempts = 2;
     // Signers whose keys are not held yet whose requests are counted, as the
     // Python node counts them; the one seen least recently is forgotten first.
-    static constexpr std::size_t default_tracked_signers = 4096;
+    static constexpr std::size_t default_tracked_signers = 4'096;
 
     // Throws std::invalid_argument for provisional_trust_attempts less than
     // min_provisional_trust_attempts, or no tracked_signers.

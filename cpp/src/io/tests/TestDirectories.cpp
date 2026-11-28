@@ -143,4 +143,4 @@ TEST(DirectoriesTest, XdgVariablesKeptApart) {
 
     EXPECT_EQ(Directories::user_config(), path(home) / ".config");
 }
-#endif
+#endif // __APPLE__

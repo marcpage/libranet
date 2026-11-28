@@ -57,7 +57,7 @@ constexpr auto retry_interval = std::chrono::milliseconds(5);
 constexpr auto answer_timeout = std::chrono::seconds(10);
 
 // How many bytes to read from a connection at a time.
-constexpr std::size_t read_size = 4096;
+constexpr std::size_t read_size = 4'096;
 
 // The problem details (HTTP API §17) the server answers with: to a request
 // it cannot read, for a path with no handler, when a handler throws, to a

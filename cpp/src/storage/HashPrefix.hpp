@@ -31,15 +31,15 @@ public:
     [[nodiscard]] const std::string& to_string() const noexcept;
 
 private:
-    static constexpr unsigned top_bit = 0x8U;
+    static constexpr unsigned int top_bit = 0x8U;
 
     std::string m_hex;
 
     explicit HashPrefix(std::string hex);
 
     [[nodiscard]] std::size_t _matching_bits(std::string_view hash) const;
-    [[nodiscard]] static unsigned _value(char digit);
-    [[nodiscard]] static std::size_t _leading_clear_bits(unsigned digit);
+    [[nodiscard]] static unsigned int _value(char digit);
+    [[nodiscard]] static std::size_t _leading_clear_bits(unsigned int digit);
 };
 
 inline HashPrefix HashPrefix::parse(std::string_view text) {
@@ -91,17 +91,17 @@ inline std::size_t HashPrefix::_matching_bits(std::string_view hash) const {
 }
 
 // The value of a lower-case hex digit.
-inline unsigned HashPrefix::_value(char digit) {
-    return static_cast<unsigned>(types::hex_digits.find(digit));
+inline unsigned int HashPrefix::_value(char digit) {
+    return static_cast<unsigned int>(types::hex_digits.find(digit));
 }
 
 // How many of a digit's four bits are clear, from the top, before the first
 // that is set.
-inline std::size_t HashPrefix::_leading_clear_bits(unsigned digit) {
+inline std::size_t HashPrefix::_leading_clear_bits(unsigned int digit) {
     std::size_t clear_bits = 0;
 
-    for (unsigned mask = top_bit; clear_bits < types::bits_per_hex_digit && 0U == (digit & mask);
-         mask >>= 1U) {
+    for (unsigned int mask = top_bit;
+         clear_bits < types::bits_per_hex_digit && 0U == (digit & mask); mask >>= 1U) {
         ++clear_bits;
     }
 

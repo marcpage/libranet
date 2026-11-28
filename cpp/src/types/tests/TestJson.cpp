@@ -49,7 +49,7 @@ TEST(JsonTest, ConstructorsAndTypes) {
 
     // Numeric constructors (integers and floating point)
     constexpr auto int_value = 42;
-    constexpr int64_t int64_value = -9223372036854775807LL;
+    constexpr int64_t int64_value = -9'223'372'036'854'775'807LL;
     constexpr auto double_value = 3.14159;
     const Json int_json(int_value);
     const Json int64_json(int64_value);
@@ -190,7 +190,7 @@ TEST(JsonTest, ExceptionsAndTypeSafety) {
 // NOLINTEND(readability-function-cognitive-complexity)
 
 TEST(JsonTest, SerializationAndStreams) {
-    constexpr auto user_id = 1001;
+    constexpr auto user_id = 1'001;
     const Json user = {
         {"id", user_id},
         {"active", true},

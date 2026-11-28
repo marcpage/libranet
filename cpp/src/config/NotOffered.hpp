@@ -36,7 +36,7 @@ public:
     explicit NotOffered(const Feature& feature) noexcept;
 
     void operator()(const http::Request& request, http::Response& response,
-                    const web::ConnectionInfo& connection) const;
+                    const web::ConnectionInfo& /*connection*/) const;
 
 private:
     Feature m_feature;

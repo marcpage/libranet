@@ -12,7 +12,7 @@ using http::Url;
 // NOLINTBEGIN(bugprone-unchecked-optional-access)
 
 TEST(UrlTest, ConstructorsAndBasicAccessors) {
-    constexpr auto port = 8080;
+    constexpr auto port = 8'080;
 
     // Default constructor (empty state)
     Url url;
@@ -56,7 +56,7 @@ TEST(UrlTest, UrlParsing) {
     EXPECT_EQ(url.username(), "john");
     EXPECT_EQ(url.password(), "doe");
     EXPECT_EQ(url.host(), "sub.example.com");
-    EXPECT_EQ(url.port().value(), 9000);
+    EXPECT_EQ(url.port().value(), 9'000);
     EXPECT_TRUE(url.port().has_value());
     EXPECT_EQ(url.path(), "/path/to/page");
     EXPECT_EQ(url.fragment(), "anchor");
