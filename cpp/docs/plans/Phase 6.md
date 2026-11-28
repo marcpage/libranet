@@ -22,8 +22,10 @@ What it takes:
   ([HTTP API §11.3](../../../docs/specs/HttpApi.md#113-a-persons-identity)
   and [§11.4](../../../docs/specs/HttpApi.md#114-signing-in)), with the
   costly derivation of a key from a password.
-- Signing as a person, `/data/signed`
+- Signing as a person, `POST /data/signed`
   ([§11.5](../../../docs/specs/HttpApi.md#115-signing-as-a-person)).
+  Checking signed content, `GET /data/signed`, comes in
+  [Phase 3](Phase%203.md).
 - Encrypted blocks, `/data/encrypted`
   ([§11.6](../../../docs/specs/HttpApi.md#116-encrypting-a-block) and
   [Bundle Specification §8](../../../docs/specs/BundleSpecification.md#8-encryption-for-a-person)).
