@@ -33,12 +33,13 @@ public:
 
     [[nodiscard]] static std::string encode(std::string_view value,
                                             EncodeContext context = EncodeContext::FormUrl);
-    [[nodiscard]] static std::string encode(std::string_view value, std::string_view allowed_chars,
+    [[nodiscard]] static std::string encode(std::string_view value,
+                                            std::string_view allowed_characters,
                                             bool space_to_plus);
 
     [[nodiscard]] static std::string decode(std::string_view value,
                                             EncodeContext context = EncodeContext::FormUrl);
-    [[nodiscard]] static std::string decode(std::string_view value, bool decode_plus_as_space);
+    [[nodiscard]] static std::string decode(std::string_view value, bool plus_to_space);
 
     [[nodiscard]] std::string_view scheme() const noexcept;
     [[nodiscard]] std::string username() const;
@@ -112,7 +113,7 @@ private:
     [[nodiscard]] static bool _is_hex_digit(char character) noexcept;
 };
 
-inline std::string Url::encode(std::string_view value, std::string_view allowed_chars,
+inline std::string Url::encode(std::string_view value, std::string_view allowed_characters,
                                bool space_to_plus) {
     std::ostringstream escaped;
 
@@ -132,7 +133,7 @@ inline std::string Url::encode(std::string_view value, std::string_view allowed_
                 escaped << "%20";
             }
         } else if (std::isalnum(byte) != 0
-                   || allowed_chars.find(character) != std::string_view::npos) {
+                   || allowed_characters.find(character) != std::string_view::npos) {
             // Keep character as-is if it's alphanumeric or explicitly allowed
             escaped << character;
         } else {
@@ -154,14 +155,14 @@ inline bool Url::_is_hex_digit(char character) noexcept {
     return std::isxdigit(static_cast<unsigned char>(character)) != 0;
 }
 
-inline std::string Url::decode(std::string_view value, bool decode_plus_as_space) {
+inline std::string Url::decode(std::string_view value, bool plus_to_space) {
     std::string decoded;
     decoded.reserve(value.size());
 
     std::size_t character_index = 0;
 
     while (character_index < value.size()) {
-        if (decode_plus_as_space && '+' == value.at(character_index)) {
+        if (plus_to_space && '+' == value.at(character_index)) {
             decoded += ' ';
             ++character_index;
         } else if ('%' == value.at(character_index) && character_index + 2 < value.size()
@@ -521,21 +522,21 @@ inline void Url::append(std::string_view relative_url) {
     }
 
     // 2. Extract fragment if present in the relative reference
-    std::string rel_fragment;
+    std::string relative_fragment;
 
-    _extract_fragment(relative_url, rel_fragment);
+    _extract_fragment(relative_url, relative_fragment);
 
-    if (!rel_fragment.empty()) {
-        m_fragment = std::move(rel_fragment);
+    if (!relative_fragment.empty()) {
+        m_fragment = std::move(relative_fragment);
     }
 
     // 3. Extract query if present in the relative reference
-    Query rel_query;
+    Query relative_query;
 
-    _extract_query(relative_url, rel_query);
+    _extract_query(relative_url, relative_query);
 
-    if (!rel_query.empty()) {
-        m_query = std::move(rel_query);
+    if (!relative_query.empty()) {
+        m_query = std::move(relative_query);
     }
 
     if (relative_url.empty()) {

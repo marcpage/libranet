@@ -207,12 +207,12 @@ TEST(HeadersTest, WrittenToAStream) {
     EXPECT_EQ(out_stream.str(), "Host: localhost\r\n\r\n");
 }
 
-TEST(HeadersTest, ProcessHeaderLine) {
+TEST(HeadersTest, AddsEachLineToTheHeaderItBelongsTo) {
     Headers headers;
 
-    EXPECT_EQ(Headers::process_header_line("", "Host", headers), "");
-    EXPECT_EQ(Headers::process_header_line("Host: localhost", "", headers), "Host");
-    EXPECT_EQ(Headers::process_header_line(" more", "Host", headers), "Host");
+    EXPECT_EQ(Headers::add_header_line("", "Host", headers), "");
+    EXPECT_EQ(Headers::add_header_line("Host: localhost", "", headers), "Host");
+    EXPECT_EQ(Headers::add_header_line(" more", "Host", headers), "Host");
     EXPECT_EQ(headers.get("host"), "localhost more");
 }
 
@@ -220,7 +220,7 @@ TEST(HeadersTest, ProcessHeaderLine) {
 TEST(HeadersTest, ContinuationOfAMissingHeaderIsRefused) {
     Headers headers;
 
-    EXPECT_THROW((void)Headers::process_header_line(" more", "Host", headers),
+    EXPECT_THROW((void)Headers::add_header_line(" more", "Host", headers),
                  std::invalid_argument);
 }
 

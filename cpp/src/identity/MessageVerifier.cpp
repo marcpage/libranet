@@ -221,10 +221,10 @@ Identifier node_id_of(const InnerList& signature_params) {
 // Throws std::invalid_argument for an alg parameter that names an algorithm
 // other than the one a node's key signs with (RFC 9421 §3.2).
 void check_algorithm(const InnerList& signature_params) {
-    const auto alg = parameter(signature_params, alg_parameter);
-    const auto* const name = alg ? get_if<string>(&*alg) : nullptr;
+    const auto algorithm = parameter(signature_params, alg_parameter);
+    const auto* const name = algorithm ? get_if<string>(&*algorithm) : nullptr;
 
-    if (alg && (nullptr == name || ed25519_algorithm != *name)) {
+    if (algorithm && (nullptr == name || ed25519_algorithm != *name)) {
         throw invalid_argument("A node signs with " + string(ed25519_algorithm) + " alone");
     }
 }

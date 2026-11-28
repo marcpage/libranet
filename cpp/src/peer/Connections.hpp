@@ -182,7 +182,7 @@ private:
     [[nodiscard]] AddressDialed::Outcome _admit(const std::shared_ptr<PeerSession>& session,
                                                 const std::string& endpoint);
     void _post_connected() const;
-    [[nodiscard]] std::vector<std::shared_ptr<PeerSession>> _open() const;
+    [[nodiscard]] std::vector<std::shared_ptr<PeerSession>> _open_sessions() const;
 };
 
 } // namespace peer

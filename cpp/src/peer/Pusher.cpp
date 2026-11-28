@@ -74,14 +74,14 @@ IDataSource::Ptr checked_store(IDataSource::Ptr store) {
     return store;
 }
 
-// get_peers, once it is known to be a function. Throws invalid_argument when
+// peers, once it is known to be a function. Throws invalid_argument when
 // it is not.
-Pusher::GetPeers checked_get_peers(Pusher::GetPeers get_peers) {
-    if (!get_peers) {
+Pusher::Peers checked_peers(Pusher::Peers peers) {
+    if (!peers) {
         throw invalid_argument("A pusher needs the peers to push to");
     }
 
-    return get_peers;
+    return peers;
 }
 
 // run_length, once it is known to be more than zero. Throws invalid_argument
@@ -292,9 +292,9 @@ void push_waiting(const Pusher& pusher, Channel& channel, size_t run_length,
 
 namespace peer {
 
-Pusher::Pusher(IDataSource::Ptr store, GetPeers get_peers, size_t run_length)
+Pusher::Pusher(IDataSource::Ptr store, Peers peers, size_t run_length)
     : m_store(checked_store(std::move(store)))
-    , m_get_peers(checked_get_peers(std::move(get_peers)))
+    , m_peers(checked_peers(std::move(peers)))
     , m_run_length(checked_run_length(run_length))
     , m_channel(DataStored::name,
                 [this](const IMessage::Ptr& message) {
@@ -303,7 +303,7 @@ Pusher::Pusher(IDataSource::Ptr store, GetPeers get_peers, size_t run_length)
                 log_error) {}
 
 size_t Pusher::push(const Stored& stored) const {
-    const auto bound = bound_for(stored, m_get_peers());
+    const auto bound = bound_for(stored, m_peers());
     vector<future<size_t>> pushes;
     size_t taken = 0;
 

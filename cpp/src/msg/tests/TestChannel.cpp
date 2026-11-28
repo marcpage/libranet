@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <atomic>
-#include <chrono>
+#include <chrono> // IWYU pragma: keep (the ms literals)
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -10,14 +10,6 @@
 
 using msg::Channel;
 using namespace std::chrono_literals;
-
-namespace {
-
-void sleep_ms(int duration_ms) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(duration_ms));
-}
-
-} // namespace
 
 // The tests read optionals after ASSERT_TRUE(x.has_value()), which this
 // check does not follow, or with value(), whose exception gtest reports as
@@ -135,11 +127,11 @@ TEST(ChannelTest, DestructorRemovesSubscriber) {
 TEST(ChannelTest, WaitForeverAndConcurrentProducer) {
     Channel channel("test.concurrent");
     std::atomic<bool> producer_done{false};
-    constexpr auto block_wait_ms = 30;
+    constexpr auto block_wait = 30ms;
     constexpr auto posted_value = 55;
 
     std::thread producer([&] {
-        sleep_ms(block_wait_ms); // give the consumer a moment to block
+        std::this_thread::sleep_for(block_wait); // give the consumer a moment to block
         Channel::post("test.concurrent", posted_value);
         producer_done = true;
     });

@@ -21,15 +21,15 @@ class Pusher {
 public:
     using Session = std::shared_ptr<PeerSession>;
     // Called from its own thread, and from those calling push().
-    using GetPeers = std::function<std::vector<Session>()>;
+    using Peers = std::function<std::vector<Session>()>;
     using Stored = std::vector<storage::DataStored>;
 
     // As the Python node's peers.pipeline_depth.
     static constexpr std::size_t default_run_length = 8;
 
     // run_length is peers.pipeline_depth. Throws std::invalid_argument for no
-    // store, get_peers with no function, or a run length of zero.
-    Pusher(storage::IDataSource::Ptr store, GetPeers get_peers,
+    // store, peers with no function, or a run length of zero.
+    Pusher(storage::IDataSource::Ptr store, Peers peers,
            std::size_t run_length = default_run_length);
 
     // Waits for every answer, and gives how many a peer accepted. A failure is
@@ -47,7 +47,7 @@ public:
 
 private:
     storage::IDataSource::Ptr m_store;
-    GetPeers m_get_peers;
+    Peers m_peers;
     // Mistaken: cppcheck loses the constructors in files `using` the class.
     // cppcheck-suppress uninitMemberVarNoCtor
     std::size_t m_run_length;

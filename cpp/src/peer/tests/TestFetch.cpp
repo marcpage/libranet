@@ -230,7 +230,7 @@ class Connected {
 public:
     explicit Connected(std::vector<Session> sessions = {});
 
-    [[nodiscard]] Fetch::GetPeers get_peers();
+    [[nodiscard]] Fetch::Peers peers();
 
 private:
     std::mutex m_mutex;
@@ -240,7 +240,7 @@ private:
 Connected::Connected(std::vector<Session> sessions)
     : m_sessions(std::move(sessions)) {}
 
-Fetch::GetPeers Connected::get_peers() {
+Fetch::Peers Connected::peers() {
     return [this] {
         const std::scoped_lock lock(m_mutex);
 
@@ -338,7 +338,7 @@ protected:
     // store().
     [[nodiscard]] Fetch fetch_from(Connected& connected, const Fetch::Settings& settings = quick(),
                                    Fetch::ClockFunction clock = &Clock::now) const {
-        return {m_store, connected.get_peers(), settings, std::move(clock)};
+        return {m_store, connected.peers(), settings, std::move(clock)};
     }
 
     // peer's public key, as the content its id names.
@@ -394,7 +394,7 @@ Identifier content_id() {
 bool refused(const Fetch::Settings& settings) {
     try {
         Connected connected;
-        const Fetch fetch(std::make_shared<fixtures::MemorySource>(), connected.get_peers(),
+        const Fetch fetch(std::make_shared<fixtures::MemorySource>(), connected.peers(),
                           settings);
     } catch (const std::invalid_argument&) {
         return true;
@@ -561,11 +561,11 @@ TEST_F(FetchTest, PeerThatConnectsDuringTheSearchIsAsked) {
     const StandInNode second_peer(sending(MessageSigner(second()), content_text));
     const auto first_session = session_with(first_peer, first());
     const auto second_session = session_with(second_peer, second());
-    const Fetch::GetPeers get_peers = [&] {
+    const Fetch::Peers peers = [&] {
         return answered ? std::vector<Session>{first_session, second_session}
                         : std::vector<Session>{first_session};
     };
-    Fetch fetch(store(), get_peers, quick());
+    Fetch fetch(store(), peers, quick());
 
     EXPECT_EQ(fetch.fetch(content_id()), Outcome::Found);
     EXPECT_EQ(first_peer.asked(), 1U);
@@ -652,8 +652,8 @@ TEST_F(FetchTest, SettingsThatCannotBeUsedAreRefused) {
 TEST_F(FetchTest, NeedsAStorePeersAndTheTime) {
     Connected connected;
 
-    EXPECT_THROW((void)Fetch(nullptr, connected.get_peers(), quick()), std::invalid_argument);
+    EXPECT_THROW((void)Fetch(nullptr, connected.peers(), quick()), std::invalid_argument);
     EXPECT_THROW((void)Fetch(store(), nullptr, quick()), std::invalid_argument);
-    EXPECT_THROW((void)Fetch(store(), connected.get_peers(), quick(), nullptr),
+    EXPECT_THROW((void)Fetch(store(), connected.peers(), quick(), nullptr),
                  std::invalid_argument);
 }
