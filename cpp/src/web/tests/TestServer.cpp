@@ -724,7 +724,10 @@ TEST_F(ServerTest, HeadersPastTheLimitAreTooLarge) {
 
 // A connection that sends nothing for the idle limit is closed.
 TEST_F(ServerTest, IdleConnectionIsClosed) {
-    constexpr auto idle = std::chrono::milliseconds(100);
+    // The limit times the wait for the first request as well as for the
+    // next, so it is long enough for a machine as slow as one running
+    // ThreadSanitizer to send the request before the server stops waiting.
+    constexpr auto idle = std::chrono::seconds(1);
     Server::Limits limits;
 
     limits.idle = idle;
