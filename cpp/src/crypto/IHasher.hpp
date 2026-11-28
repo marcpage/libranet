@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-#include "types/Constants.hpp"
+#include "types/Converter.hpp"
 
 namespace crypto {
 
@@ -45,19 +45,7 @@ inline IHasher::Data IHasher::digest() {
 }
 
 inline std::string IHasher::hex_digest(const Data& data) {
-    const Data raw = digest(data);
-    std::string hex;
-
-    hex.reserve(raw.size() * 2);
-
-    for (const std::byte byte : raw) {
-        const auto value = std::to_integer<unsigned int>(byte);
-
-        hex.push_back(types::hex_digits.at(value >> types::bits_per_hex_digit));
-        hex.push_back(types::hex_digits.at(value & types::hex_digit_mask));
-    }
-
-    return hex;
+    return types::Converter::hex_of(digest(data));
 }
 
 inline std::string IHasher::hex_digest() {

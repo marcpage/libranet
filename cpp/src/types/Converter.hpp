@@ -21,6 +21,8 @@ public:
     [[nodiscard]] static std::string lower_case(std::string_view text);
     [[nodiscard]] static Bytes bytes_of(std::string_view text);
     [[nodiscard]] static std::string text_of(const Bytes& bytes);
+    // In lower case, two digits a byte.
+    [[nodiscard]] static std::string hex_of(const Bytes& bytes);
     [[nodiscard]] static std::uint64_t hex_digit_value(char hex_digit);
     [[nodiscard]] static std::uint64_t parse_hex(std::string_view hex_text);
     // text without the whitespace around it.
@@ -91,6 +93,21 @@ inline std::string Converter::text_of(const Converter::Bytes& bytes) {
     std::transform(bytes.begin(), bytes.end(), text.begin(),
                    [](std::byte byte) { return static_cast<char>(byte); });
     return text;
+}
+
+inline std::string Converter::hex_of(const Converter::Bytes& bytes) {
+    std::string hex;
+
+    hex.reserve(bytes.size() * 2);
+
+    for (const std::byte byte : bytes) {
+        const auto value = std::to_integer<unsigned int>(byte);
+
+        hex.push_back(hex_digits.at(value >> bits_per_hex_digit));
+        hex.push_back(hex_digits.at(value & hex_digit_mask));
+    }
+
+    return hex;
 }
 
 inline std::uint64_t Converter::hex_digit_value(char hex_digit) {

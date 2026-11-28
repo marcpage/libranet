@@ -8,9 +8,11 @@
 #include "Fixtures.hpp"
 #include "crypto/Pem.hpp"
 #include "crypto/RsaDer.hpp"
+#include "types/Converter.hpp"
 
 using crypto::Pem;
 using crypto::RsaDer;
+using types::Converter;
 
 namespace {
 
@@ -100,7 +102,7 @@ TEST(RsaDerTest, RefusesWhatIsNoSubjectPublicKeyInfo) {
              bytes({0x30, 0x85, 0x01, 0x00, 0x00, 0x00, 0x00}),
          }) {
         EXPECT_THROW((void)RsaDer::pkcs1_from_spki(malformed), std::invalid_argument)
-            << fixtures::hex(malformed);
+            << Converter::hex_of(malformed);
     }
 }
 
@@ -135,7 +137,7 @@ TEST(RsaDerTest, RefusesWhatIsNoPkcs8) {
                  "-----END PRIVATE KEY-----\n"),
          }) {
         EXPECT_THROW((void)RsaDer::pkcs1_from_pkcs8(malformed), std::invalid_argument)
-            << fixtures::hex(malformed);
+            << Converter::hex_of(malformed);
     }
 }
 // NOLINTEND(readability-function-cognitive-complexity)

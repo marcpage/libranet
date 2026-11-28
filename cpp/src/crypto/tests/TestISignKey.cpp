@@ -10,8 +10,10 @@
 #include "Fixtures.hpp"
 #include "crypto/ISignKey.hpp"
 #include "crypto/Pem.hpp"
+#include "types/Converter.hpp"
 
 using crypto::ISignKey;
+using types::Converter;
 
 namespace {
 
@@ -136,7 +138,7 @@ TEST(ISignKeyTest, Ed25519Rfc8032Vector) {
     const auto verifier = ISignKey::from_pem(rfc_8032_public_pem);
     const auto signature = signer->sign("");
 
-    EXPECT_EQ(fixtures::hex(signature), rfc_8032_signature);
+    EXPECT_EQ(Converter::hex_of(signature), rfc_8032_signature);
     EXPECT_TRUE(verifier->verify("", signature));
     EXPECT_FALSE(verifier->verify("x", signature));
 }
