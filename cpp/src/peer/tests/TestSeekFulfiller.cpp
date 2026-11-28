@@ -726,7 +726,7 @@ TEST_F(SeekFulfillerTest, PipelineDepthIsGiven) {
 }
 
 TEST_F(SeekFulfillerTest, ListBytesIsGiven) {
-    constexpr std::size_t list_bytes = 1000;
+    constexpr std::size_t list_bytes = 1'000;
     SeekFulfiller::Settings settings;
 
     settings.list_bytes = list_bytes;

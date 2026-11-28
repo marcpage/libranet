@@ -9,14 +9,14 @@ namespace {
 
 // RFC 9106's second recommended setting, which the Python node uses: 64 MiB
 // in 3 passes, over 4 lanes.
-constexpr auto memory_cost_kib = 65536U;
+constexpr auto memory_cost_kib = 65'536U;
 constexpr auto iterations = 3U;
 constexpr auto parallelism = 4U;
 constexpr auto salt_length = 16U;
 constexpr auto hash_length = 32U;
 
 // Costs low enough for tests that hash many times.
-constexpr auto quick_memory_cost_kib = 1024U;
+constexpr auto quick_memory_cost_kib = 1'024U;
 constexpr auto quick_iterations = 2U;
 
 // Hashes Python's cryptography package made, with

@@ -83,7 +83,7 @@ constexpr auto listen_timeout = seconds(30);
 constexpr auto retry_interval = milliseconds(5);
 
 // How many bytes to read from a connection at a time.
-constexpr std::size_t read_size = 4096;
+constexpr std::size_t read_size = 4'096;
 
 // A directory of the running test's own, made under the system's directory
 // for temporary files, and removed with all it holds when this is destroyed.

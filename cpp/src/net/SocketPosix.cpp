@@ -248,8 +248,8 @@ int set_timeout(int socket_fd, Direction direction, ISocket::Milliseconds timeou
     timeval timeout_value{};
 
     if (timeout.count() > 0) {
-        constexpr auto milliseconds_per_second = 1000;
-        constexpr auto microseconds_per_millisecond = 1000;
+        constexpr auto milliseconds_per_second = 1'000;
+        constexpr auto microseconds_per_millisecond = 1'000;
 
         timeout_value.tv_sec = static_cast<time_t>(timeout.count() / milliseconds_per_second);
         timeout_value.tv_usec = static_cast<suseconds_t>(

@@ -78,7 +78,7 @@ constexpr string_view test_2_message = "r";
 // The most a key file may hold, in bytes, and the size of an RSA key to
 // refuse.
 constexpr std::size_t most_key_file_size = 64 * Kilobyte;
-constexpr std::size_t rsa_key_bits = 2048;
+constexpr std::size_t rsa_key_bits = 2'048;
 
 // What only its owner may do with a key file.
 constexpr auto owner_only = perms::owner_read | perms::owner_write;

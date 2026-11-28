@@ -110,7 +110,7 @@ Request post_address(string_view address) {
 // this machine.
 Response answer_to(DialOutcomes& outcomes, const Request& request) {
     constexpr Address::Port client_port = 50'000;
-    constexpr Address::Port config_port = 8180;
+    constexpr Address::Port config_port = 8'180;
     const ConnectionInfo connection(Address("127.0.0.1", client_port),
                                     Address("127.0.0.1", config_port));
     const ConnectHandler handler(outcomes);

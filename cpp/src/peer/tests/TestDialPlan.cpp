@@ -122,7 +122,7 @@ TEST(DialPlanTest, DefaultsAreThePythonNodes) {
     const DialPlan::Rests rests;
 
     EXPECT_EQ(rests.retry_delay, 60s);
-    EXPECT_EQ(rests.turned_away_rest, 3600s);
+    EXPECT_EQ(rests.turned_away_rest, 3'600s);
 }
 
 TEST(DialPlanTest, TheFirstCandidateInEachEmptyBucketIsDialed) {

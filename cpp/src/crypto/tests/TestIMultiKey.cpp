@@ -19,7 +19,7 @@ using crypto::RsaOpenSsl;
 
 namespace {
 
-constexpr auto rsa_key_bits = 2048;
+constexpr auto rsa_key_bits = 2'048;
 
 // The RSA a test runs on: how it makes a key, and how it reads one.
 struct Rsa {

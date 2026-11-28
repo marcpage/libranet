@@ -21,7 +21,7 @@ TEST(MessageTest, ConstructionAndValue) {
     EXPECT_EQ(int_message.value(), int_value);
     EXPECT_EQ(int_message.to_string(), "42");
 
-    constexpr auto long_long_value = -9876543210LL;
+    constexpr auto long_long_value = -9'876'543'210LL;
     // NOLINTNEXTLINE(google-runtime-int)
     const Message<long long> long_long_message(long_long_value);
     EXPECT_EQ(long_long_message.value(), long_long_value);
@@ -101,7 +101,7 @@ TEST(MessageTest, EdgeCases) {
     EXPECT_TRUE(empty.value().empty());
 
     // Large number
-    constexpr auto largest = 9223372036854775807LL; // LLONG_MAX
+    constexpr auto largest = 9'223'372'036'854'775'807LL; // LLONG_MAX
     // NOLINTNEXTLINE(google-runtime-int)
     const Message<long long> big(largest);
     EXPECT_EQ(big.to_string(), "9223372036854775807");

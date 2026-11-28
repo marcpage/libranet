@@ -58,7 +58,7 @@ constexpr auto wait_timeout = std::chrono::seconds(30);
 constexpr auto retry_interval = std::chrono::milliseconds(5);
 
 // How many bytes to read from a connection at a time.
-constexpr std::size_t read_size = 4096;
+constexpr std::size_t read_size = 4'096;
 
 // A node whose endpoint the node list may name: an address set aside for
 // documentation (RFC 5737), and the SHA-256 of nothing as its id.
@@ -116,7 +116,7 @@ std::string request_with(std::string_view method, std::string_view target,
 }
 
 // The port the tests tell the service /config is served on.
-constexpr std::uint16_t config_port = 8180;
+constexpr std::uint16_t config_port = 8'180;
 
 // Whether answer carries the header name, with value.
 bool has_header(const std::string& answer, std::string_view name, std::string_view value) {

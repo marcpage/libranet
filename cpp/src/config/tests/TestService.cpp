@@ -72,10 +72,10 @@ constexpr auto wait_timeout = std::chrono::seconds(30);
 constexpr auto retry_interval = std::chrono::milliseconds(5);
 
 // How many bytes to read from a connection at a time.
-constexpr std::size_t read_size = 4096;
+constexpr std::size_t read_size = 4'096;
 
 // A main port for the tests that name /config's port, so that it is not used.
-constexpr Port main_port = 8080;
+constexpr Port main_port = 8'080;
 
 // Where the main port listens: every interface.
 constexpr string_view main_host = "::";

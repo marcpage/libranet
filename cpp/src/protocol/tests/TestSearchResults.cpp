@@ -44,7 +44,7 @@ constexpr std::string_view python_compressed_anything = "789c4bccab2cc9c8cc4b070
 constexpr std::string_view python_compressed_object = "789cabae0500017500f9";
 
 // Enough for a test's answer to decompress to.
-constexpr std::size_t enough = 1024;
+constexpr std::size_t enough = 1'024;
 
 // HttpApi §6.1: an answer is less than 1 MiB as sent.
 constexpr std::size_t max_body_size = 1 * Megabyte;

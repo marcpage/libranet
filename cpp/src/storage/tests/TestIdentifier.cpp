@@ -28,7 +28,7 @@ using types::Json;
 namespace {
 
 // Enough for a test's content to decompress to.
-constexpr std::size_t enough = 1024;
+constexpr std::size_t enough = 1'024;
 
 // data as a zlib stream, compressed as much as zlib can.
 Identifier::Data zlib_of(const Identifier::Data& data) {

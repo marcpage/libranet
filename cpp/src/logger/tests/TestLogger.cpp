@@ -173,7 +173,7 @@ TEST_F(LoggerTest, LineWithNoTextIsNotWritten) {
 }
 
 TEST_F(LoggerTest, ValuesArePadded) {
-    constexpr auto port = 8080;
+    constexpr auto port = 8'080;
 
     lInfo << "Listening on" << port;
 
@@ -181,7 +181,7 @@ TEST_F(LoggerTest, ValuesArePadded) {
 }
 
 TEST_F(LoggerTest, ValuesAsIs) {
-    constexpr auto port = 8080;
+    constexpr auto port = 8'080;
 
     Logger::set_inserter_spacing(Logger::InserterSpacing::AsIs);
     lInfo << "port=" << port;

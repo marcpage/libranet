@@ -234,7 +234,7 @@ constexpr Milliseconds idle_timeout{60'000};
 // The longest a duration may be, in seconds: far longer than any setting
 // needs, and short enough that no clock overflows reaching it.
 constexpr double most_seconds = 1e9;
-constexpr double milliseconds_per_second = 1000.0;
+constexpr double milliseconds_per_second = 1'000.0;
 
 // The option of the command line that names seeds.
 constexpr auto seed_option = "--seed";

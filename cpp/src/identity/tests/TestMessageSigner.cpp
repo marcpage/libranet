@@ -295,7 +295,7 @@ TEST_F(MessageSignerTest, NoClockIsRefused) {
 }
 
 TEST_F(MessageSignerTest, UnsignableMessageIsRefused) {
-    constexpr std::uint16_t four_digits = 1000;
+    constexpr std::uint16_t four_digits = 1'000;
     const auto identity = rfc_identity();
     const auto signer = python_signer(identity);
     Request request;

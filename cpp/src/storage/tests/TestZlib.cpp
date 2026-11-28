@@ -27,7 +27,7 @@ constexpr auto hello_level_0 = "7801010500faff68656c6c6f062c0215";
 constexpr auto hello_gzip = "1f8b08000000000002ffcb48cdc9c9070086a6103605000000";
 
 // Enough for a test's content to decompress to.
-constexpr std::size_t enough = 1024;
+constexpr std::size_t enough = 1'024;
 
 // The bytes that lowercase hex names.
 Zlib::Data bytes(std::string_view text) {
