@@ -12,7 +12,6 @@
 #include "storage/Identifier.hpp"
 #include "types/Converter.hpp"
 
-using crypto::Ed25519OpenSsl;
 using identity::KnownKeys;
 using std::invalid_argument;
 using std::map;
@@ -48,7 +47,7 @@ IDataSource::Data content_of(const Identifier& node_id, const IDataSource::Data&
 // Throws std::invalid_argument for content that is not one, as a private key
 // is not, or that is one of small order, which anyone can sign for.
 Key public_key_of(const IDataSource::Data& content) {
-    Key key = Ed25519OpenSsl::from_pem(Converter::text_of(content));
+    Key key = crypto::Ed25519OpenSsl::from_pem(Converter::text_of(content));
 
     if (key->has_private_key()) {
         throw invalid_argument("A private key, not a public key");
