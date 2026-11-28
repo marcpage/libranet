@@ -11,13 +11,14 @@
 #include <iterator>
 
 #include "storage/Zlib.hpp"
+#include "types/Constants.hpp"
 
 using storage::Zlib;
 
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     // Far more than what the fuzzer's inputs, of a few KiB, hold, but little
     // enough that a stream that expands far does not take its memory.
-    constexpr std::size_t limit = 1024UL * 1024UL;
+    constexpr std::size_t limit = 1 * types::Megabyte;
     Zlib::Data input(size);
     std::transform(data, std::next(data, static_cast<std::ptrdiff_t>(size)), input.begin(),
                    [](std::uint8_t byte) { return static_cast<std::byte>(byte); });

@@ -15,6 +15,7 @@
 #include <CommonCrypto/CommonCryptor.h>
 
 #include "IEncryptKey.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 
 namespace crypto {
@@ -193,11 +194,10 @@ inline std::size_t AesMacos::_process_ctr(CCOperation operation, std::string_vie
 // The low 64 bits of the counter block, big-endian.
 inline std::uint64_t AesMacos::_low_count(const InitializationVector& counter) {
     constexpr std::size_t half = kCCBlockSizeAES128 / 2;
-    constexpr auto byte_bits = 8U;
     std::uint64_t low = 0;
 
     for (std::size_t index = half; index < kCCBlockSizeAES128; ++index) {
-        low = (low << byte_bits) | std::to_integer<std::uint64_t>(counter.at(index));
+        low = (low << types::bits_per_byte) | std::to_integer<std::uint64_t>(counter.at(index));
     }
 
     return low;

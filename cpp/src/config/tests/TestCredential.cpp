@@ -18,6 +18,7 @@
 #include "config/Credential.hpp"
 #include "logger/ILogOutput.hpp"
 #include "logger/Logger.hpp"
+#include "types/Constants.hpp"
 
 using config::Credential;
 using logger::ILogOutput;
@@ -29,6 +30,7 @@ using std::string_view;
 using std::vector;
 using std::filesystem::path;
 using std::filesystem::perms;
+using types::Kilobyte;
 
 namespace {
 
@@ -282,7 +284,7 @@ TEST_F(CredentialTest, AFileHoldingNoHashMatchesNothing) {
 }
 
 TEST_F(CredentialTest, AFileFarLargerThanAHashIsRefused) {
-    constexpr std::size_t large = 64UL * 1024UL;
+    constexpr std::size_t large = 64 * Kilobyte;
 
     write_file(file(), string(large, '$'));
 

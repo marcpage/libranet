@@ -52,6 +52,7 @@ using std::vector;
 using storage::Identifier;
 using types::config_listen_host;
 using types::Json;
+using types::Kilobyte;
 using AddressDialed = peer::Connections::AddressDialed;
 using DialRequested = peer::Connections::DialRequested;
 
@@ -792,7 +793,7 @@ TEST_F(ConfigServiceTest, EveryAnswerCarriesThePolicyAndGrantsNoOtherOrigin) {
 // and when the guard throws, here for a credential file far larger than a
 // hash.
 TEST_F(ConfigServiceTest, TheServersOwnAnswersCarryThePolicy) {
-    constexpr std::size_t large = 64UL * 1024UL;
+    constexpr std::size_t large = 64 * Kilobyte;
 
     fixtures::write_file(data_dir() / "config-credential", string(large, '$'));
 

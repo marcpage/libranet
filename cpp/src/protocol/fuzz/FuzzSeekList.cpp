@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "protocol/SeekList.hpp"
+#include "types/Constants.hpp"
 
 using protocol::SeekList;
 
@@ -40,7 +41,7 @@ bool same(const SeekList& left, const SeekList& right) {
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     // Far more than the fuzzer's inputs, of a few KiB, hold, but little
     // enough that a list read is never too long to be written whole.
-    constexpr std::size_t decompressed_limit = 64UL * 1024UL;
+    constexpr std::size_t decompressed_limit = 64 * types::Kilobyte;
     SeekList::Data input(size);
     std::transform(data, std::next(data, static_cast<std::ptrdiff_t>(size)), input.begin(),
                    [](std::uint8_t byte) { return static_cast<std::byte>(byte); });

@@ -7,10 +7,12 @@
 #include <vector>
 
 #include "storage/Zlib.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 
 using storage::Zlib;
 using types::Converter;
+using types::Megabyte;
 
 namespace {
 
@@ -126,8 +128,8 @@ TEST(ZlibTest, NoLimitReadsBack) {
 // A small stream that expands to far more than its limit is stopped there,
 // rather than expanded whole.
 TEST(ZlibTest, StreamThatExpandsPastTheLimitIsRefused) {
-    constexpr std::size_t size = 16UL * 1024UL * 1024UL;
-    constexpr std::size_t limit = 1024UL * 1024UL;
+    constexpr std::size_t size = 16 * Megabyte;
+    constexpr std::size_t limit = 1 * Megabyte;
     const Zlib::Data zeros(size);
     const auto compressed = Zlib::compress(zeros, Zlib::max_level);
 

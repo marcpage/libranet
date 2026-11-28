@@ -17,6 +17,7 @@
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 
 using logger::ILogOutput;
@@ -26,6 +27,7 @@ using storage::HashPrefix;
 using storage::Identifier;
 using storage::Zlib;
 using types::Converter;
+using types::Megabyte;
 
 namespace {
 
@@ -35,7 +37,7 @@ constexpr auto empty_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca49
 
 // More than any list here holds once decompressed, as the Python node's
 // storage.max_decompressed_list_bytes is.
-constexpr std::size_t decompressed_limit = 4UL * 1024UL * 1024UL;
+constexpr std::size_t decompressed_limit = 4 * Megabyte;
 
 // The text of the SHA-256 identifier of hash.
 std::string sha256(std::string_view hash) {

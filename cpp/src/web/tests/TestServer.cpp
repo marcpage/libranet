@@ -22,6 +22,7 @@
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 #include "web/ConnectionInfo.hpp"
 #include "web/Server.hpp"
@@ -35,6 +36,7 @@ using net::Address;
 using net::ISocket;
 using storage::Identifier;
 using types::Converter;
+using types::Megabyte;
 using web::ConnectionInfo;
 using web::Server;
 
@@ -895,7 +897,7 @@ TEST_F(ServerTest, EveryAnswerCarriesTheHeaderSetOnIt) {
 TEST_F(ServerTest, ClientThatLeavesBeforeItsAnswerDoesNotStopTheServer) {
     // More than a connection holds unsent, so sending it fails once the
     // client is gone.
-    constexpr std::size_t large_body_bytes = 16UL * 1024UL * 1024UL;
+    constexpr std::size_t large_body_bytes = 16 * Megabyte;
     std::promise<void> client_left;
     const auto left = client_left.get_future().share();
 

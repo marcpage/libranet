@@ -16,6 +16,7 @@
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 
 using fixtures::hello;
@@ -29,6 +30,7 @@ using storage::HashPrefix;
 using storage::Identifier;
 using storage::Zlib;
 using types::Converter;
+using types::Megabyte;
 
 namespace {
 
@@ -49,7 +51,7 @@ constexpr auto beside_hello_hash =
 constexpr auto empty_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 // The most a body may be, as stored (HighLevelDesign §4.3).
-constexpr std::size_t mebibyte = 1024UL * 1024UL;
+constexpr std::size_t most_body_size = 1 * Megabyte;
 
 // The hashes identifiers name, in order.
 std::vector<std::string> hashes_of(const DataDir::Identifiers& identifiers) {
@@ -163,7 +165,7 @@ TEST(DataDirTest, PutKeepsACompressedBodyAsItIs) {
 TEST(DataDirTest, ContentOverAMebibyteIsKeptCompressed) {
     const ScratchDirectory directory;
     const DataDir store(directory.path());
-    const DataDir::Data content(2 * mebibyte, std::byte{0});
+    const DataDir::Data content(2 * most_body_size, std::byte{0});
     const auto identifier = Identifier::of(content);
     const auto body = Zlib::compress(content, Zlib::max_level);
     const auto path = directory.path() / "sha256" / identifier.hash().substr(0, 3)
@@ -171,7 +173,7 @@ TEST(DataDirTest, ContentOverAMebibyteIsKeptCompressed) {
 
     store.put(identifier, body);
 
-    EXPECT_LT(body.size(), mebibyte);
+    EXPECT_LT(body.size(), most_body_size);
     EXPECT_EQ(std::filesystem::file_size(path), body.size());
     EXPECT_EQ(store.get(identifier), body);
 }
