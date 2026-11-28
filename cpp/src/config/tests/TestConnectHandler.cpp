@@ -140,7 +140,8 @@ public:
         : m_outcome(outcome)
         , m_node_id(std::move(node_id))
         , m_detail(std::move(detail))
-        , m_channel(DialRequested::name, [this](const IMessage::Ptr& message) { _answer(message); }) {
+        , m_channel(DialRequested::name,
+                    [this](const IMessage::Ptr& message) { _answer(message); }) {
     }
 
     // Each endpoint asked for, in the order asked.
@@ -273,6 +274,7 @@ TEST(ConnectHandlerTest, RefusalOfABodyNotSaidToBeJsonSaysWhy) {
     EXPECT_EQ(detail_of(answer_to(outcomes, post("text/plain; charset=utf-8", "{}"))),
               "A request body's Content-Type must be application/json, not text/plain; "
               "charset=utf-8");
+
     for (const auto content_type : {optional<string_view>(), optional<string_view>(" ")}) {
         EXPECT_EQ(detail_of(answer_to(outcomes, post(content_type, "{}"))),
                   "A request body's Content-Type must be application/json, and this request "

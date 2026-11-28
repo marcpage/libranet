@@ -70,7 +70,7 @@ bool Channel::empty() const {
     return m_message_queue.empty();
 }
 
-size_t Channel::size() const {
+std::size_t Channel::size() const {
     return m_message_queue.size();
 }
 

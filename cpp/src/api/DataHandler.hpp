@@ -26,9 +26,9 @@ public:
     static constexpr Milliseconds default_retry_after = std::chrono::seconds(5);
 
     // With no is_held_off, no search is held off. Retry-After carries whole
-    // seconds, so a client is told retry_after rounded up to the second. Throws
-    // std::invalid_argument for a negative retry_after, or body_bytes of zero
-    // or more than max_body_bytes.
+    // seconds, so a client is told retry_after rounded up to the second.
+    // Throws std::invalid_argument for a negative retry_after, or body_bytes
+    // of zero or more than max_body_bytes.
     explicit DataHandler(storage::IDataSource::Ptr store,
                          std::size_t content_bytes = types::max_decompressed_content_size,
                          Milliseconds retry_after = default_retry_after,

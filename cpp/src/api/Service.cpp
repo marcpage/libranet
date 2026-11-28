@@ -283,7 +283,7 @@ Service::Service(const Address& address, const IDataSource::Ptr& store,
     // signature it carries, or none.
     m_server.register_handler(config_path,
                               [this](const Request& request, Response& response,
-                                     [[maybe_unused]] ConnectionInfo& connection) {
+                                     ConnectionInfo& /*connection*/) {
         answer_moved_config(m_config_port.load(), request, response);
         sign_answer(m_signer, request, response);
     });

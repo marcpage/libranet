@@ -25,7 +25,7 @@ public:
     using word_t = std::uint32_t;
     using double_word_t = std::uint64_t;
 #endif
-    static constexpr unsigned word_bits = std::numeric_limits<word_t>::digits;
+    static constexpr unsigned int word_bits = std::numeric_limits<word_t>::digits;
 
     // Integer converts implicitly from the built-in integers, as they convert
     // to each other.
@@ -106,9 +106,9 @@ private:
                                           const std::vector<word_t>& denominator,
                                           std::vector<word_t>& quotient,
                                           std::vector<word_t>& remainder);
-    static void _shift_left_magnitude(std::vector<word_t>& value, unsigned shift);
-    static void _shift_right_magnitude(std::vector<word_t>& value, unsigned shift);
-    static unsigned _normalization_shift(word_t high_word) noexcept;
+    static void _shift_left_magnitude(std::vector<word_t>& value, unsigned int shift);
+    static void _shift_right_magnitude(std::vector<word_t>& value, unsigned int shift);
+    static unsigned int _normalization_shift(word_t high_word) noexcept;
     static double_word_t _calculate_estimated_quotient(
         const std::vector<word_t>& remainder,
         std::size_t divisor_size,
@@ -222,8 +222,8 @@ Integer::_multiply_magnitudes(const std::vector<word_t>& left,
     return result;
 }
 
-inline unsigned Integer::_normalization_shift(word_t high_word) noexcept {
-    unsigned shift = 0;
+inline unsigned int Integer::_normalization_shift(word_t high_word) noexcept {
+    unsigned int shift = 0;
 
     while (0 == (high_word & (static_cast<word_t>(1) << (word_bits - 1)))) {
         high_word <<= 1U;
@@ -332,13 +332,13 @@ inline void Integer::_divide_modulo_magnitudes(const std::vector<word_t>& numera
     }
 }
 
-inline void Integer::_shift_left_magnitude(std::vector<word_t>& value, unsigned shift) {
+inline void Integer::_shift_left_magnitude(std::vector<word_t>& value, unsigned int shift) {
     if (0 == shift || value.empty()) {
         return;
     }
 
-    const unsigned word_shift = shift / word_bits;
-    const unsigned bit_shift = shift % word_bits;
+    const unsigned int word_shift = shift / word_bits;
+    const unsigned int bit_shift = shift % word_bits;
 
     if (word_shift != 0U) {
         value.insert(value.begin(), word_shift, 0);
@@ -360,13 +360,13 @@ inline void Integer::_shift_left_magnitude(std::vector<word_t>& value, unsigned 
     }
 }
 
-inline void Integer::_shift_right_magnitude(std::vector<word_t>& value, unsigned shift) {
+inline void Integer::_shift_right_magnitude(std::vector<word_t>& value, unsigned int shift) {
     if (0 == shift || value.empty()) {
         return;
     }
 
-    const unsigned word_shift = shift / word_bits;
-    const unsigned bit_shift = shift % word_bits;
+    const unsigned int word_shift = shift / word_bits;
+    const unsigned int bit_shift = shift % word_bits;
 
     if (word_shift != 0U) {
         if (word_shift >= value.size()) {
@@ -622,7 +622,7 @@ inline Integer& Integer::operator<<=(std::size_t shift) {
     }
 
     const auto word_shift = shift / word_bits;
-    const auto bit_shift = static_cast<unsigned>(shift % word_bits);
+    const auto bit_shift = static_cast<unsigned int>(shift % word_bits);
 
     if (word_shift != 0U) {
         m_magnitude.insert(m_magnitude.begin(), word_shift, 0);
@@ -655,7 +655,7 @@ inline Integer& Integer::operator>>=(std::size_t shift) {
     }
 
     const auto word_shift = shift / word_bits;
-    const auto bit_shift = static_cast<unsigned>(shift % word_bits);
+    const auto bit_shift = static_cast<unsigned int>(shift % word_bits);
 
     if (word_shift >= m_magnitude.size()) {
         m_magnitude.clear();

@@ -37,7 +37,7 @@ constexpr std::size_t most_bits = 16;
 
 // A hex digit is four bits, the top one first.
 constexpr std::size_t bits_per_digit = 4;
-constexpr unsigned top_bit = 0x8U;
+constexpr unsigned int top_bit = 0x8U;
 
 // The largest an object may be (HighLevelDesign §4.3), and twice that.
 constexpr std::size_t largest = types::Megabyte;
@@ -72,7 +72,7 @@ Identifier sharing(std::size_t bits) {
     constexpr std::string_view digits = "0123456789abcdef";
     std::string hash(node_hash);
     auto& digit = hash.at(bits / bits_per_digit);
-    const auto value = static_cast<unsigned>(digits.find(digit))
+    const auto value = static_cast<unsigned int>(digits.find(digit))
                        ^ (top_bit >> (bits % bits_per_digit));
 
     digit = digits.at(value);

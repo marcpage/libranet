@@ -69,6 +69,7 @@ TEST(StreamOutputTest, StreamThatCannotBeWrittenThrows) {
         const auto made = open_stream(file, "we");
         ASSERT_NE(made, nullptr);
     }
+
     auto stream = open_stream(file, "re");
     ASSERT_NE(stream, nullptr);
     StreamOutput output(stream.release(), "read-only file", StreamOutput::Closing::Close);

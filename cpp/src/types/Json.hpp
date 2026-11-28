@@ -500,8 +500,8 @@ inline void Json::_escape_string(const std::string& text, std::ostringstream& ou
             case '\t': out_stream << "\\t"; break;
             default:
                 // Control characters, those below a space, are escaped.
-                constexpr unsigned first_unescaped = 0x20;
-                const unsigned code = static_cast<unsigned char>(character);
+                constexpr unsigned int first_unescaped = 0x20;
+                const unsigned int code = static_cast<unsigned char>(character);
 
                 if (code < first_unescaped) {
                     out_stream << "\\u00"
@@ -904,7 +904,7 @@ inline std::uint32_t Json::Parser::_parse_code_point() {
     constexpr std::uint32_t low_first = 0xDC00;
     constexpr std::uint32_t low_end = 0xE000;
     constexpr std::uint32_t pair_base = 0x10000;
-    constexpr unsigned pair_shift = 10;
+    constexpr unsigned int pair_shift = 10;
 
     const std::uint32_t first = _parse_hex4();
 
@@ -935,10 +935,10 @@ inline void Json::Parser::_append_utf8(std::uint32_t code_point, std::string& te
     constexpr std::uint32_t four_byte_lead = 0xF0;
     constexpr std::uint32_t continuation_lead = 0x80;
     constexpr std::uint32_t continuation_mask = 0x3F;
-    constexpr unsigned continuation_bits = 6;
+    constexpr unsigned int continuation_bits = 6;
 
     const auto byte = [&text](std::uint32_t value) { text += static_cast<char>(value); };
-    const auto continuation = [&byte, code_point](unsigned shift) {
+    const auto continuation = [&byte, code_point](unsigned int shift) {
         byte(continuation_lead | ((code_point >> shift) & continuation_mask));
     };
 
