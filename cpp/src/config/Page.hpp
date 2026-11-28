@@ -20,7 +20,7 @@ public:
     Page();
 
     void operator()(const http::Request& request, http::Response& response,
-                    const web::ConnectionInfo& connection) const;
+                    const web::ConnectionInfo& /*connection*/) const;
 
 private:
     std::string m_html;

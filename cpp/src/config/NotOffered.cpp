@@ -40,8 +40,7 @@ NotOffered::NotOffered(const Feature& feature) noexcept
     : m_feature(feature) {}
 
 void NotOffered::operator()(const Request& request, Response& response,
-                            const ConnectionInfo& connection) const {
-    (void)connection;
+                            const ConnectionInfo& /*connection*/) const {
     if (!has(m_feature, request.path())) {
         Problem::answer_not_found(response);
         return;

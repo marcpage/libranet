@@ -24,7 +24,7 @@ public:
                 const std::vector<std::string>& own_endpoints);
 
     void operator()(const http::Request& request, http::Response& response,
-                    const web::ConnectionInfo& connection) const;
+                    const web::ConnectionInfo& /*connection*/) const;
 
 private:
     std::string m_body;

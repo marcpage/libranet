@@ -26,8 +26,7 @@ Page::Page()
     : m_html(_built_html()) {}
 
 void Page::operator()(const Request& request, Response& response,
-                      const ConnectionInfo& connection) const {
-    (void)connection;
+                      const ConnectionInfo& /*connection*/) const {
     if ("GET" != request.method()) {
         Problem::answer_method_not_allowed(request, "GET", response);
         return;
