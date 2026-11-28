@@ -22,7 +22,6 @@
 #include "stats/Recorder.hpp"
 #include "storage/Identifier.hpp"
 #include "types/Constants.hpp"
-#include "types/Converter.hpp"
 #include "web/ConnectionInfo.hpp"
 
 using http::Problem;
@@ -45,7 +44,6 @@ using std::string;
 using std::string_view;
 using std::vector;
 using storage::Identifier;
-using types::Converter;
 using types::json_content_type;
 using types::nodes_path;
 using web::ConnectionInfo;
@@ -60,7 +58,7 @@ constexpr string_view allowed_methods = "GET, POST";
 
 // list, as it is sent, in fewer than limit bytes.
 string body_of(const NodeList& list, size_t limit) {
-    return Converter::text_of(list.body(limit));
+    return list.body(limit).text;
 }
 
 // The list the body of request, on connection, names, decompressed to no
@@ -69,7 +67,7 @@ string body_of(const NodeList& list, size_t limit) {
 optional<NodeList> list_in(const Request& request, Response& response,
                            const ConnectionInfo& connection, size_t list_bytes) {
     try {
-        return NodeList::from_body(Converter::bytes_of(request.body()), list_bytes);
+        return NodeList::from_body(request.body(), list_bytes);
     } catch (const invalid_argument& error) {
         lDebug << "Refused the node list from" << connection.remote_address().to_string() + ":"
                << error.what();

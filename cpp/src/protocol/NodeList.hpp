@@ -6,6 +6,7 @@
 #include <string_view>
 #include <vector>
 
+#include "Body.hpp"
 #include "storage/Identifier.hpp"
 #include "types/Constants.hpp"
 
@@ -15,8 +16,6 @@ namespace protocol {
 // first entry.
 class NodeList {
 public:
-    using Data = std::vector<std::byte>;
-
     struct Entry {
         std::string endpoint;
         storage::Identifier node_id;
@@ -27,14 +26,11 @@ public:
     // As it is sent, compressed or not (HttpApi §10.6).
     static constexpr std::size_t max_size = 1 * types::Megabyte;
 
-    // An entry that is not valid is left out. Throws std::invalid_argument
-    // for text that is not a JSON object holding a "nodes" object.
-    [[nodiscard]] static NodeList parse(std::string_view text);
     // JSON, or zlib-compressed JSON of no more than decompressed_limit bytes.
-    // Throws as parse() does, or std::invalid_argument for a body that is
-    // neither.
+    // An entry that is not valid is left out. Throws std::invalid_argument
+    // for a body that is neither, or not an object holding a "nodes" object.
     [[nodiscard]] static NodeList from_body(
-        const Data& body, std::size_t decompressed_limit = types::max_decompressed_list_size);
+        std::string_view body, std::size_t decompressed_limit = types::max_decompressed_list_size);
 
     // Names own_endpoints first. Throws std::invalid_argument for an endpoint
     // that is not one.
@@ -55,7 +51,7 @@ public:
     // Less than limit bytes: compressed only when too large, and leaving out
     // the entries at its end that do not fit even then. Throws
     // std::invalid_argument for a limit too small for an empty list.
-    [[nodiscard]] Data body(std::size_t limit = max_size) const;
+    [[nodiscard]] Body body(std::size_t limit = max_size) const;
 
     NodeList() = default;
 

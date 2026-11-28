@@ -451,7 +451,7 @@ std::vector<NodeList> lists_posted(const StandInNode& node) {
 
     for (const auto& request : node.requests()) {
         if ("POST /data/nodes" == line_of(request)) {
-            lists.push_back(NodeList::from_body(Converter::bytes_of(request.body())));
+            lists.push_back(NodeList::from_body(request.body()));
         }
     }
 

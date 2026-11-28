@@ -15,7 +15,6 @@
 #include "logger/Logger.hpp"
 #include "protocol/SeekList.hpp"
 #include "types/Constants.hpp"
-#include "types/Converter.hpp"
 #include "web/ConnectionInfo.hpp"
 
 using http::Problem;
@@ -31,7 +30,6 @@ using std::scoped_lock;
 using std::size_t;
 using std::string;
 using std::string_view;
-using types::Converter;
 using types::json_content_type;
 using types::seek_path;
 using web::ConnectionInfo;
@@ -45,7 +43,7 @@ constexpr string_view allowed_methods = "GET, POST";
 
 // The list as it is sent, in fewer than limit bytes, as text.
 string body_of(const SeekList& list, size_t limit) {
-    return Converter::text_of(list.body(limit));
+    return list.body(limit).text;
 }
 
 // The list the body of request, on connection, holds, decompressed to no
@@ -54,7 +52,7 @@ string body_of(const SeekList& list, size_t limit) {
 optional<SeekList> posted_list(const Request& request, size_t list_bytes, Response& response,
                                const ConnectionInfo& connection) {
     try {
-        return SeekList::from_body(Converter::bytes_of(request.body()), list_bytes);
+        return SeekList::from_body(request.body(), list_bytes);
     } catch (const invalid_argument& error) {
         lDebug << "Refused the seek list from" << connection.remote_address().to_string() + ":"
                << error.what();

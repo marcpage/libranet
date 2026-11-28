@@ -39,6 +39,11 @@ constexpr auto empty_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca49
 // storage.max_decompressed_list_bytes is.
 constexpr std::size_t decompressed_limit = 4 * Megabyte;
 
+// text as one zlib stream.
+std::string compressed(std::string_view text) {
+    return Converter::text_of(Zlib::compress(Converter::bytes_of(text), Zlib::max_level));
+}
+
 // The text of the SHA-256 identifier of hash.
 std::string sha256(std::string_view hash) {
     return "sha256/" + std::string(hash);
@@ -51,11 +56,11 @@ std::string quoted(std::string_view hash) {
 
 // The list text holds, as JSON.
 SeekList read_text(std::string_view text) {
-    return SeekList::from_body(Converter::bytes_of(text), decompressed_limit);
+    return SeekList::from_body(text, decompressed_limit);
 }
 
 // Whether SeekList::from_body() turns down body as not a seek list.
-bool refused(const SeekList::Data& body) {
+bool refused(std::string_view body) {
     try {
         (void)SeekList::from_body(body, decompressed_limit);
     } catch (const std::invalid_argument&) {
@@ -63,11 +68,6 @@ bool refused(const SeekList::Data& body) {
     }
 
     return false;
-}
-
-// Whether SeekList::from_body() turns down text, as JSON, as not a seek list.
-bool refused(std::string_view text) {
-    return refused(Converter::bytes_of(text));
 }
 
 // The text of each entry.
@@ -161,7 +161,7 @@ TEST(SeekListTest, DefaultIsEmpty) {
 
     EXPECT_TRUE(list.data().empty());
     EXPECT_TRUE(list.search().empty());
-    EXPECT_EQ(Converter::text_of(list.body()), R"({"data":[],"search":[]})");
+    EXPECT_EQ(list.body().text, R"({"data":[],"search":[]})");
 }
 
 // A kind the list does not name is none sought, and a member HttpApi
@@ -234,11 +234,9 @@ TEST(SeekListDeathTest, NothingLeftOutIsNotLogged) {
 
 // A list may be sent zlib-compressed (HttpApi §10.7.1).
 TEST(SeekListTest, ZlibCompressedIsRead) {
-    const auto json = Converter::bytes_of(R"({"data": [)" + quoted(hello_hash)
-                                          + R"(], "search": ["2cf2"]})");
+    const auto json = R"({"data": [)" + quoted(hello_hash) + R"(], "search": ["2cf2"]})";
 
-    const auto list = SeekList::from_body(Zlib::compress(json, Zlib::max_level),
-                                          decompressed_limit);
+    const auto list = SeekList::from_body(compressed(json), decompressed_limit);
 
     EXPECT_EQ(texts(list.data()), std::vector<std::string>{sha256(hello_hash)});
     EXPECT_EQ(texts(list.search()), std::vector<std::string>{"2cf2"});
@@ -247,29 +245,28 @@ TEST(SeekListTest, ZlibCompressedIsRead) {
 // A small body could expand without bound, so one that holds more than the
 // limit once decompressed is refused.
 TEST(SeekListTest, MoreThanTheLimitDecompressedIsRefused) {
-    const auto json = Converter::bytes_of(R"({"data":[],"search":[]})");
-    const auto body = Zlib::compress(json, Zlib::max_level);
+    constexpr std::string_view json = R"({"data":[],"search":[]})";
+    const auto body = compressed(json);
 
     EXPECT_NO_THROW((void)SeekList::from_body(body, json.size()));
     EXPECT_THROW((void)SeekList::from_body(body, json.size() - 1), std::invalid_argument);
 }
 
 TEST(SeekListTest, CompressedNotASeekListIsRefused) {
-    auto truncated = Zlib::compress(Converter::bytes_of("{}"), Zlib::max_level);
+    auto truncated = compressed("{}");
 
     truncated.pop_back();
 
-    EXPECT_TRUE(refused(Zlib::compress(Converter::bytes_of("not JSON"), Zlib::max_level)));
-    EXPECT_TRUE(refused(Zlib::compress(Converter::bytes_of("[]"), Zlib::max_level)));
-    EXPECT_TRUE(refused(Zlib::compress(Converter::bytes_of(R"({"data": 1})"), Zlib::max_level)));
+    EXPECT_TRUE(refused(compressed("not JSON")));
+    EXPECT_TRUE(refused(compressed("[]")));
+    EXPECT_TRUE(refused(compressed(R"({"data": 1})")));
     EXPECT_TRUE(refused(truncated));
 }
 
 TEST(SeekListTest, WrittenAsCompactJson) {
     const SeekList list({Identifier("sha256", hello_hash)}, {HashPrefix::parse("2CF2")});
 
-    EXPECT_EQ(Converter::text_of(list.body()),
-              R"({"data":[)" + quoted(hello_hash) + R"(],"search":["2cf2"]})");
+    EXPECT_EQ(list.body().text, R"({"data":[)" + quoted(hello_hash) + R"(],"search":["2cf2"]})");
 }
 
 // Mistaken: cppcheck takes the prefixes given to SeekList's constructor for
@@ -283,7 +280,7 @@ TEST(SeekListTest, WhatIsWrittenReadsBack) {
     constexpr std::size_t count = 10;
     const SeekList list(identifiers(count), prefixes(count));
 
-    const auto reread = SeekList::from_body(list.body(), decompressed_limit);
+    const auto reread = SeekList::from_body(list.body().text, decompressed_limit);
 
     EXPECT_EQ(texts(reread.data()), texts(list.data()));
     EXPECT_EQ(texts(reread.search()), texts(list.search()));
@@ -297,10 +294,11 @@ TEST(SeekListTest, CompressedWhereJsonWouldNotFit) {
     const SeekList list(std::vector<Identifier>(count, Identifier("sha256", hello_hash)), {});
 
     const auto body = list.body(limit);
-    const auto reread = SeekList::from_body(body, decompressed_limit);
+    const auto reread = SeekList::from_body(body.text, decompressed_limit);
 
-    EXPECT_LT(body.size(), limit);
-    EXPECT_TRUE(Zlib::decompress(body, decompressed_limit).has_value());
+    EXPECT_LT(body.text.size(), limit);
+    EXPECT_TRUE(body.compressed);
+    EXPECT_TRUE(Zlib::decompress(Converter::bytes_of(body.text), decompressed_limit).has_value());
     EXPECT_EQ(texts(reread.data()), texts(list.data()));
 }
 
@@ -313,16 +311,17 @@ TEST(SeekListTest, WhatDoesNotFitIsLeftOutFromTheEnd) {
     const SeekList list(identifiers(count), prefixes(count));
 
     const auto body = list.body(limit);
-    const auto reread = SeekList::from_body(body, decompressed_limit);
+    const auto reread = SeekList::from_body(body.text, decompressed_limit);
     const auto kept = reread.data().size();
     const SeekList one_more(first(list.data(), kept + 1), first(list.search(), kept + 1));
 
-    EXPECT_LT(body.size(), limit);
+    EXPECT_LT(body.text.size(), limit);
     EXPECT_GT(kept, 0U);
     EXPECT_LT(kept, count);
     EXPECT_EQ(texts(reread.data()), texts(first(list.data(), kept)));
     EXPECT_EQ(texts(reread.search()), texts(first(list.search(), kept)));
-    EXPECT_EQ(SeekList::from_body(one_more.body(limit), decompressed_limit).data().size(), kept);
+    EXPECT_EQ(SeekList::from_body(one_more.body(limit).text, decompressed_limit).data().size(),
+              kept);
 }
 
 // A kind with fewer than fit is kept whole, and the other has the room it
@@ -333,7 +332,7 @@ TEST(SeekListTest, KindWithFewerIsKeptWhole) {
     constexpr std::size_t limit = 2000;
     const SeekList list(identifiers(count), prefixes(fewer));
 
-    const auto reread = SeekList::from_body(list.body(limit), decompressed_limit);
+    const auto reread = SeekList::from_body(list.body(limit).text, decompressed_limit);
 
     EXPECT_GT(reread.data().size(), fewer);
     EXPECT_LT(reread.data().size(), count);
@@ -346,7 +345,7 @@ TEST(SeekListTest, LimitTooSmallForAnEmptyListIsRefused) {
     const SeekList list(identifiers(1), prefixes(1));
 
     EXPECT_THROW((void)list.body(empty_list_size), std::invalid_argument);
-    EXPECT_EQ(Converter::text_of(list.body(empty_list_size + 1)), R"({"data":[],"search":[]})");
+    EXPECT_EQ(list.body(empty_list_size + 1).text, R"({"data":[],"search":[]})");
 }
 
 // cppcheck-suppress-end danglingTemporaryLifetime
@@ -358,10 +357,11 @@ TEST(SeekListTest, WrittenInLessThanOneMebibyte) {
     const SeekList list(identifiers(count), {});
 
     const auto body = list.body();
-    const auto reread = SeekList::from_body(body, decompressed_limit);
+    const auto reread = SeekList::from_body(body.text, decompressed_limit);
 
     EXPECT_EQ(SeekList::max_size, 1048576U);
-    EXPECT_LT(body.size(), SeekList::max_size);
-    EXPECT_TRUE(Zlib::decompress(body, decompressed_limit).has_value());
+    EXPECT_LT(body.text.size(), SeekList::max_size);
+    EXPECT_TRUE(body.compressed);
+    EXPECT_TRUE(Zlib::decompress(Converter::bytes_of(body.text), decompressed_limit).has_value());
     EXPECT_EQ(texts(reread.data()), texts(list.data()));
 }
