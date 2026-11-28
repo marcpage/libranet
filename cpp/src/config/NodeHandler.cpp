@@ -65,7 +65,8 @@ NodeHandler::NodeHandler(const Identifier& own_id, const Address& main_address,
     : m_body(description_of(own_id, main_address, own_endpoints)) {}
 
 void NodeHandler::operator()(const Request& request, Response& response,
-                             const ConnectionInfo& /*connection*/) const {
+                             ConnectionInfo& connection) const {
+    (void)connection;
     if (request.path() != path) {
         Problem::answer_not_found(response);
         return;
