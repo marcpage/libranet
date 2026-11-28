@@ -15,6 +15,7 @@
 
 #include "protocol/SearchResults.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 
 using protocol::SearchResults;
 using storage::Identifier;
@@ -23,7 +24,7 @@ namespace {
 
 // Far more than what the fuzzer's inputs, of a few KiB, hold, but little
 // enough that a body that expands far does not take its memory.
-constexpr std::size_t decompressed_limit = 1024UL * 1024UL;
+constexpr std::size_t decompressed_limit = 1 * types::Megabyte;
 
 // The answer body is, or nothing when from_body() turns it down.
 std::optional<SearchResults> parsed(const std::string& body) {

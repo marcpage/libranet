@@ -17,7 +17,7 @@
 #include "ISignKey.hpp"
 #include "OpenSsl.hpp"
 #include "Pem.hpp"
-#include "types/Constants.hpp"
+#include "types/Converter.hpp"
 
 namespace crypto {
 
@@ -126,21 +126,17 @@ inline Ed25519OpenSsl::Key Ed25519OpenSsl::_generate() {
 }
 
 inline bool Ed25519OpenSsl::_has_small_order(const EVP_PKEY* key) {
-    std::array<unsigned char, raw_key_size> raw{};
+    Data raw(raw_key_size);
     auto length = raw.size();
-    std::string hex;
 
-    if (EVP_PKEY_get_raw_public_key(key, raw.data(), &length) != 1 || length != raw.size()) {
+    if (EVP_PKEY_get_raw_public_key(key, OpenSslBytes::of(raw), &length) != 1
+        || length != raw.size()) {
         throw OpenSslError("Failed to read an Ed25519 public key");
     }
 
-    raw.back() &= y_mask;
-    hex.reserve(raw.size() * 2);
+    raw.back() &= std::byte{y_mask};
 
-    for (const unsigned int value : raw) {
-        hex.push_back(types::hex_digits.at(value >> types::bits_per_hex_digit));
-        hex.push_back(types::hex_digits.at(value & types::hex_digit_mask));
-    }
+    const auto hex = types::Converter::hex_of(raw);
 
     return std::find(small_order_keys.begin(), small_order_keys.end(), hex)
            != small_order_keys.end();

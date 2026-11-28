@@ -25,6 +25,7 @@
 #include "storage/HashPrefix.hpp"
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 
 using crypto::IMultiKey;
@@ -45,6 +46,7 @@ using storage::HashPrefix;
 using storage::IDataSource;
 using storage::Identifier;
 using types::Converter;
+using types::Kilobyte;
 
 namespace {
 
@@ -75,7 +77,7 @@ constexpr string_view test_2_message = "r";
 
 // The most a key file may hold, in bytes, and the size of an RSA key to
 // refuse.
-constexpr std::size_t most_key_file_size = 64UL * 1024UL;
+constexpr std::size_t most_key_file_size = 64 * Kilobyte;
 constexpr std::size_t rsa_key_bits = 2048;
 
 // What only its owner may do with a key file.

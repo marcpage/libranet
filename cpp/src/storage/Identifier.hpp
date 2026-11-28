@@ -1,8 +1,6 @@
 #pragma once
 
-#include <algorithm>
 #include <atomic>
-#include <cctype>
 #include <cstddef>
 #include <optional>
 #include <stdexcept>
@@ -15,6 +13,7 @@
 #include "logger/Logger.hpp"
 #include "storage/Zlib.hpp"
 #include "types/Constants.hpp"
+#include "types/Converter.hpp"
 #include "types/Json.hpp"
 
 namespace storage {
@@ -133,9 +132,7 @@ inline Identifier::Identifier(std::string algorithm, std::string hash)
                                     "as the algorithm's digest has");
     }
 
-    std::transform(m_hash.begin(), m_hash.end(), m_hash.begin(), [](char digit) {
-        return static_cast<char>(std::tolower(static_cast<unsigned char>(digit)));
-    });
+    m_hash = types::Converter::lower_case(m_hash);
 }
 
 inline const std::string& Identifier::algorithm() const noexcept {

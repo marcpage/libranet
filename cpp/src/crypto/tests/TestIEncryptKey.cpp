@@ -5,10 +5,11 @@
 #include <stdexcept>
 #include <string>
 
-#include "Fixtures.hpp"
 #include "crypto/IEncryptKey.hpp"
+#include "types/Converter.hpp"
 
 using crypto::IEncryptKey;
+using types::Converter;
 using AesMode = crypto::IEncryptKey::AesMode;
 using AesPadding = crypto::IEncryptKey::AesPadding;
 
@@ -81,7 +82,7 @@ TEST_P(IEncryptKeyTest, AesCbcPkcs7Roundtrip) {
     const auto aes = GetParam()(key, AesMode::Cbc, AesPadding::Pkcs7);
     const auto ciphertext = aes->encrypt(cbc_plaintext, initialization_vector);
 
-    EXPECT_EQ(fixtures::hex(ciphertext), cbc_256_ciphertext);
+    EXPECT_EQ(Converter::hex_of(ciphertext), cbc_256_ciphertext);
     EXPECT_EQ(aes->decrypt(ciphertext, initialization_vector), cbc_plaintext);
 }
 
@@ -90,7 +91,7 @@ TEST_P(IEncryptKeyTest, AesCbcEmptyIvIsZeros) {
     const auto aes = GetParam()(key, AesMode::Cbc, AesPadding::Pkcs7);
     const auto ciphertext = aes->encrypt(cbc_plaintext, {});
 
-    EXPECT_EQ(fixtures::hex(ciphertext), cbc_256_zero_iv_ciphertext);
+    EXPECT_EQ(Converter::hex_of(ciphertext), cbc_256_zero_iv_ciphertext);
     EXPECT_EQ(aes->decrypt(ciphertext, {}), cbc_plaintext);
 }
 
@@ -100,7 +101,7 @@ TEST_P(IEncryptKeyTest, AesCbcWithoutPadding) {
     const auto aes = GetParam()(key, AesMode::Cbc, AesPadding::None);
     const auto ciphertext = aes->encrypt(cbc_unpadded_plaintext, initialization_vector);
 
-    EXPECT_EQ(fixtures::hex(ciphertext), cbc_128_unpadded_ciphertext);
+    EXPECT_EQ(Converter::hex_of(ciphertext), cbc_128_unpadded_ciphertext);
     EXPECT_EQ(aes->decrypt(ciphertext, initialization_vector), cbc_unpadded_plaintext);
     // Without padding, CBC takes only whole blocks.
     EXPECT_THROW((void)aes->encrypt("Not a whole block", initialization_vector),
@@ -145,7 +146,7 @@ TEST_P(IEncryptKeyTest, AesCtrNoPaddingRoundtrip) {
     const auto aes = GetParam()(key, AesMode::Ctr, AesPadding::None);
     const auto ciphertext = aes->encrypt(ctr_plaintext, initialization_vector);
 
-    EXPECT_EQ(fixtures::hex(ciphertext), ctr_128_ciphertext);
+    EXPECT_EQ(Converter::hex_of(ciphertext), ctr_128_ciphertext);
     EXPECT_EQ(aes->decrypt(ciphertext, initialization_vector), ctr_plaintext);
 }
 
@@ -157,7 +158,7 @@ TEST_P(IEncryptKeyTest, AesCtrCounterWraps) {
     const auto aes = GetParam()(key, AesMode::Ctr, AesPadding::None);
     const auto ciphertext = aes->encrypt(ctr_wrapping_plaintext, initialization_vector);
 
-    EXPECT_EQ(fixtures::hex(ciphertext), ctr_192_wrapping_ciphertext);
+    EXPECT_EQ(Converter::hex_of(ciphertext), ctr_192_wrapping_ciphertext);
     EXPECT_EQ(aes->decrypt(ciphertext, initialization_vector), ctr_wrapping_plaintext);
 }
 
@@ -177,7 +178,7 @@ TEST_P(IEncryptKeyTest, AesCtrCarriesIntoHighHalf) {
     const auto aes = GetParam()(key, AesMode::Ctr, AesPadding::None);
     const auto ciphertext = aes->encrypt(ctr_carrying_plaintext, initialization_vector);
 
-    EXPECT_EQ(fixtures::hex(ciphertext), ctr_256_carrying_ciphertext);
+    EXPECT_EQ(Converter::hex_of(ciphertext), ctr_256_carrying_ciphertext);
     EXPECT_EQ(aes->decrypt(ciphertext, initialization_vector), ctr_carrying_plaintext);
 }
 

@@ -17,6 +17,8 @@
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Constants.hpp"
+#include "types/Converter.hpp"
 
 using logger::ILogOutput;
 using logger::Logger;
@@ -24,6 +26,8 @@ using protocol::SeekList;
 using storage::HashPrefix;
 using storage::Identifier;
 using storage::Zlib;
+using types::Converter;
+using types::Megabyte;
 
 namespace {
 
@@ -33,29 +37,11 @@ constexpr auto empty_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca49
 
 // More than any list here holds once decompressed, as the Python node's
 // storage.max_decompressed_list_bytes is.
-constexpr std::size_t decompressed_limit = 4UL * 1024UL * 1024UL;
-
-// The bytes of text, a byte for each char.
-std::vector<std::byte> bytes_of(std::string_view text) {
-    std::vector<std::byte> bytes(text.size());
-
-    std::transform(text.begin(), text.end(), bytes.begin(),
-                   [](char character) { return static_cast<std::byte>(character); });
-    return bytes;
-}
-
-// The text of bytes, a char for each byte.
-std::string text_of(const std::vector<std::byte>& bytes) {
-    std::string text(bytes.size(), '\0');
-
-    std::transform(bytes.begin(), bytes.end(), text.begin(),
-                   [](std::byte byte) { return static_cast<char>(byte); });
-    return text;
-}
+constexpr std::size_t decompressed_limit = 4 * Megabyte;
 
 // text as one zlib stream.
 std::string compressed(std::string_view text) {
-    return text_of(Zlib::compress(bytes_of(text), Zlib::max_level));
+    return Converter::text_of(Zlib::compress(Converter::bytes_of(text), Zlib::max_level));
 }
 
 // The text of the SHA-256 identifier of hash.
@@ -106,7 +92,7 @@ std::vector<Identifier> identifiers(std::size_t count) {
     result.reserve(count);
 
     for (std::size_t index = 0; index < count; ++index) {
-        result.push_back(Identifier::of(bytes_of(std::to_string(index))));
+        result.push_back(Identifier::of(Converter::bytes_of(std::to_string(index))));
     }
 
     return result;
@@ -312,7 +298,7 @@ TEST(SeekListTest, CompressedWhereJsonWouldNotFit) {
 
     EXPECT_LT(body.text.size(), limit);
     EXPECT_TRUE(body.compressed);
-    EXPECT_TRUE(Zlib::decompress(bytes_of(body.text), decompressed_limit).has_value());
+    EXPECT_TRUE(Zlib::decompress(Converter::bytes_of(body.text), decompressed_limit).has_value());
     EXPECT_EQ(texts(reread.data()), texts(list.data()));
 }
 
@@ -376,6 +362,6 @@ TEST(SeekListTest, WrittenInLessThanOneMebibyte) {
     EXPECT_EQ(SeekList::max_size, 1048576U);
     EXPECT_LT(body.text.size(), SeekList::max_size);
     EXPECT_TRUE(body.compressed);
-    EXPECT_TRUE(Zlib::decompress(bytes_of(body.text), decompressed_limit).has_value());
+    EXPECT_TRUE(Zlib::decompress(Converter::bytes_of(body.text), decompressed_limit).has_value());
     EXPECT_EQ(texts(reread.data()), texts(list.data()));
 }

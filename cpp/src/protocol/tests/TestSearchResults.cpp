@@ -11,9 +11,11 @@
 #include "http/ResponseCode.hpp"
 #include "protocol/SearchResults.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
 
 using protocol::SearchResults;
 using storage::Identifier;
+using types::Megabyte;
 
 namespace {
 
@@ -45,7 +47,7 @@ constexpr std::string_view python_compressed_object = "789cabae0500017500f9";
 constexpr std::size_t enough = 1024;
 
 // HttpApi §6.1: an answer is less than 1 MiB as sent.
-constexpr std::size_t max_body_size = 1024UL * 1024UL;
+constexpr std::size_t max_body_size = 1 * Megabyte;
 
 // The text that lowercase hex names, a char for each byte.
 std::string text_of_hex(std::string_view hex) {

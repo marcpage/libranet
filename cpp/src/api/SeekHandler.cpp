@@ -41,11 +41,6 @@ using Status = ResponseCode::Status;
 // The methods /data/seek takes, as Allow names them.
 constexpr string_view allowed_methods = "GET, POST";
 
-// Whether uri's path, less any query, is /data/seek.
-bool is_seek_path(string_view uri) {
-    return seek_path == uri.substr(0, uri.find('?'));
-}
-
 // The list as it is sent, in fewer than limit bytes, as text.
 string body_of(const SeekList& list, size_t limit) {
     return list.body(limit).text;
@@ -119,8 +114,8 @@ void SeekHandler::set_list(const SeekList& new_list) {
 
 void SeekHandler::operator()(const Request& request, Response& response,
                              const ConnectionInfo& connection) const {
-    if (!is_seek_path(request.uri())) {
-        Problem(Status::NotFound, "No resource exists at this path.").answer(response);
+    if (request.path() != seek_path) {
+        Problem::answer_not_found(response);
         return;
     }
 

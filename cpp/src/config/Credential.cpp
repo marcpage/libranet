@@ -13,6 +13,7 @@
 #include "io/FileReader.hpp"
 #include "io/SafeWriteFile.hpp"
 #include "logger/Logger.hpp"
+#include "types/Constants.hpp"
 #include "types/Converter.hpp"
 
 using crypto::IPasswordHasher;
@@ -29,6 +30,7 @@ using std::uint32_t;
 using std::vector;
 using std::filesystem::path;
 using types::Converter;
+using types::Kilobyte;
 
 namespace {
 
@@ -36,7 +38,7 @@ constexpr string_view file_name = "config-credential";
 
 // A hash under the costs password_hasher() sets is under 100 bytes, so a
 // file of more than this holds none, and is not read into memory.
-constexpr size_t most_file_size = 1024;
+constexpr size_t most_file_size = 1 * Kilobyte;
 
 // Argon2id at 19 MiB and 2 passes, in one lane, the least OWASP's Password
 // Storage Cheat Sheet asks of it, with the 16-byte salt and 32-byte hash of

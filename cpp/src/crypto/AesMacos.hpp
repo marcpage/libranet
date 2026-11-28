@@ -2,7 +2,6 @@
 
 #if __APPLE__
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -16,6 +15,8 @@
 #include <CommonCrypto/CommonCryptor.h>
 
 #include "IEncryptKey.hpp"
+#include "types/Constants.hpp"
+#include "types/Converter.hpp"
 
 namespace crypto {
 
@@ -86,16 +87,9 @@ inline IEncryptKey::Data AesMacos::encrypt(std::string_view plaintext,
 
 inline std::string AesMacos::decrypt(const Data& ciphertext,
                                      const InitializationVector& vector) const {
-    const auto as_char = [](std::byte byte) { return static_cast<char>(byte); };
-    std::string input(ciphertext.size(), '\0');
+    const auto input = types::Converter::text_of(ciphertext);
 
-    std::transform(ciphertext.begin(), ciphertext.end(), input.begin(), as_char);
-
-    const auto output = _process(kCCDecrypt, input, vector);
-    std::string text(output.size(), '\0');
-
-    std::transform(output.begin(), output.end(), text.begin(), as_char);
-    return text;
+    return types::Converter::text_of(_process(kCCDecrypt, input, vector));
 }
 
 inline IEncryptKey::Data AesMacos::_process(CCOperation operation, std::string_view input,
@@ -200,11 +194,10 @@ inline std::size_t AesMacos::_process_ctr(CCOperation operation, std::string_vie
 // The low 64 bits of the counter block, big-endian.
 inline std::uint64_t AesMacos::_low_count(const InitializationVector& counter) {
     constexpr std::size_t half = kCCBlockSizeAES128 / 2;
-    constexpr auto byte_bits = 8U;
     std::uint64_t low = 0;
 
     for (std::size_t index = half; index < kCCBlockSizeAES128; ++index) {
-        low = (low << byte_bits) | std::to_integer<std::uint64_t>(counter.at(index));
+        low = (low << types::bits_per_byte) | std::to_integer<std::uint64_t>(counter.at(index));
     }
 
     return low;

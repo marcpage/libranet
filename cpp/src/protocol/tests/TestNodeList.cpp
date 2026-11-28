@@ -15,12 +15,14 @@
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
 #include "types/Constants.hpp"
+#include "types/Converter.hpp"
 
 using logger::ILogOutput;
 using logger::Logger;
 using protocol::NodeList;
 using storage::Identifier;
 using storage::Zlib;
+using types::Converter;
 
 namespace {
 
@@ -44,24 +46,6 @@ constexpr std::string_view python_list_compressed =
     "76ee9aad5c63ae9d234430d9ac51c80747ad939cb5f85ea13028058d5ca9345f935252ac18507dc35e0e21af"
     "078330074a1c6b8a24e6f51b08d88245642b9485e19fc9f37c01bf95399c";
 
-// The bytes of text, a byte for each char.
-std::vector<std::byte> bytes_of(std::string_view text) {
-    std::vector<std::byte> bytes(text.size());
-
-    std::transform(text.begin(), text.end(), bytes.begin(),
-                   [](char character) { return static_cast<std::byte>(character); });
-    return bytes;
-}
-
-// The text of bytes, a char for each byte.
-std::string text_of(const std::vector<std::byte>& bytes) {
-    std::string text(bytes.size(), '\0');
-
-    std::transform(bytes.begin(), bytes.end(), text.begin(),
-                   [](std::byte byte) { return static_cast<char>(byte); });
-    return text;
-}
-
 // The text that lowercase hex names, a char for each byte.
 std::string text_of_hex(std::string_view hex) {
     constexpr std::string_view digits = "0123456789abcdef";
@@ -80,12 +64,12 @@ std::string text_of_hex(std::string_view hex) {
 
 // text as one zlib stream.
 std::string compressed(std::string_view text) {
-    return text_of(Zlib::compress(bytes_of(text), Zlib::max_level));
+    return Converter::text_of(Zlib::compress(Converter::bytes_of(text), Zlib::max_level));
 }
 
 // A node's id of its own for each number.
 Identifier node(std::size_t number) {
-    return Identifier::of(bytes_of("node " + std::to_string(number)));
+    return Identifier::of(Converter::bytes_of("node " + std::to_string(number)));
 }
 
 // The endpoints list names, in order.

@@ -19,6 +19,7 @@
 #include "logger/Logger.hpp"
 #include "net/Address.hpp"
 #include "storage/tests/Fixtures.hpp"
+#include "types/Constants.hpp"
 #include "types/Json.hpp"
 #include "web/ConnectionInfo.hpp"
 
@@ -33,6 +34,7 @@ using std::string;
 using std::string_view;
 using std::vector;
 using types::Json;
+using types::Kilobyte;
 using web::ConnectionInfo;
 
 namespace {
@@ -336,7 +338,7 @@ TEST_F(GuardTest, RefusesASourceThatIsNoIpAddress) {
 }
 
 TEST_F(GuardTest, ThrowsWhatTheCredentialThrows) {
-    constexpr std::size_t far_larger_than_a_hash = 64UL * 1024UL;
+    constexpr std::size_t far_larger_than_a_hash = 64 * Kilobyte;
 
     fixtures::write_file(credential().file(), string(far_larger_than_a_hash, '$'));
 

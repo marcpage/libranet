@@ -32,6 +32,7 @@
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
 #include "types/Constants.hpp"
+#include "types/Converter.hpp"
 
 using http::Headers;
 using http::Problem;
@@ -62,6 +63,7 @@ using std::thread;
 using std::unique_lock;
 using std::unordered_map;
 using std::vector;
+using types::Converter;
 using types::decimal_digits;
 using web::ConnectionInfo;
 using web::Server;
@@ -78,7 +80,7 @@ constexpr auto request_path_header = "X-Request-Path";
 
 void file_not_found([[maybe_unused]] const Request& request, Response& response,
                     [[maybe_unused]] ConnectionInfo& connection) {
-    Problem(ResponseCode::Status::NotFound, "No resource exists at this path.").answer(response);
+    Problem::answer_not_found(response);
 }
 
 // Whether the URI is under the path a handler was registered for: it starts
@@ -273,8 +275,7 @@ optional<Received> read_request(MeteredReader& reader, const Server::Limits& lim
         return nullopt;
     }
 
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-    received.request.set_body(string(reinterpret_cast<const char*>(body.data()), body.size()));
+    received.request.set_body(Converter::text_of(body));
     return received;
 }
 

@@ -25,6 +25,7 @@
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
 #include "peer/PeerConnection.hpp"
+#include "types/Converter.hpp"
 
 using http::Request;
 using http::Response;
@@ -33,6 +34,7 @@ using logger::Logger;
 using net::Address;
 using net::ISocket;
 using peer::PeerConnection;
+using types::Converter;
 using std::chrono_literals::operator""ms;
 
 namespace {
@@ -49,16 +51,6 @@ constexpr auto short_timeout = 100ms;
 // The header that gives a body's length, as a line of a request's head.
 constexpr std::string_view length_line = "Content-Length: ";
 
-// The bytes as text, a char for each.
-std::string as_text(const std::vector<std::byte>& bytes) {
-    std::string text;
-
-    std::transform(bytes.begin(), bytes.end(), std::back_inserter(text), [](std::byte byte) {
-        return static_cast<char>(std::to_integer<unsigned char>(byte));
-    });
-    return text;
-}
-
 // The next request on socket, as sent: its line and headers, each ended
 // with a CRLF, and its body, as long as its Content-Length gives.
 std::string read_request(ISocket& socket) {
@@ -74,7 +66,7 @@ std::string read_request(ISocket& socket) {
         }
     }
 
-    return text + "\r\n" + as_text(socket.read_exact(length));
+    return text + "\r\n" + Converter::text_of(socket.read_exact(length));
 }
 
 // An answer of 200 OK with the body, and the headers, each ended with a

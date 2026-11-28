@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <future>
 #include <initializer_list>
-#include <iterator>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -23,6 +22,8 @@
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
 #include "storage/Identifier.hpp"
+#include "types/Constants.hpp"
+#include "types/Converter.hpp"
 #include "web/ConnectionInfo.hpp"
 #include "web/Server.hpp"
 
@@ -34,6 +35,8 @@ using logger::Logger;
 using net::Address;
 using net::ISocket;
 using storage::Identifier;
+using types::Converter;
+using types::Megabyte;
 using web::ConnectionInfo;
 using web::Server;
 
@@ -113,19 +116,13 @@ ISocket::Ptr connect_when_listening(const Address& address) {
     }
 }
 
-void append(std::string& text, const std::vector<std::byte>& bytes) {
-    std::transform(bytes.begin(), bytes.end(), std::back_inserter(text), [](std::byte byte) {
-        return static_cast<char>(std::to_integer<unsigned char>(byte));
-    });
-}
-
 // All the server sends on connection, until it closes it.
 std::string read_all(ISocket& connection) {
     std::string text;
     std::vector<std::byte> buffer(read_size);
 
     while (connection.receive(buffer)) {
-        append(text, buffer);
+        text += Converter::text_of(buffer);
         buffer.resize(read_size);
     }
 
@@ -157,7 +154,9 @@ std::string read_answer(ISocket& connection) {
     const auto found = text.find(length_header);
 
     if (std::string::npos != found) {
-        append(text, connection.read_exact(std::stoul(text.substr(found + length_header.size()))));
+        const auto length = std::stoul(text.substr(found + length_header.size()));
+
+        text += Converter::text_of(connection.read_exact(length));
     }
 
     return text;
@@ -901,7 +900,7 @@ TEST_F(ServerTest, EveryAnswerCarriesTheHeaderSetOnIt) {
 TEST_F(ServerTest, ClientThatLeavesBeforeItsAnswerDoesNotStopTheServer) {
     // More than a connection holds unsent, so sending it fails once the
     // client is gone.
-    constexpr std::size_t large_body_bytes = 16UL * 1024UL * 1024UL;
+    constexpr std::size_t large_body_bytes = 16 * Megabyte;
     std::promise<void> client_left;
     const auto left = client_left.get_future().share();
 

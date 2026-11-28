@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
@@ -17,6 +18,18 @@ TEST(ConverterTest, BytesOfTextReadBack) {
 
     EXPECT_EQ(Converter::bytes_of(text).size(), text.size());
     EXPECT_EQ(Converter::text_of(Converter::bytes_of(text)), text);
+}
+
+TEST(ConverterTest, HexOfBytes) {
+    const Converter::Bytes bytes{
+        std::byte{0x00},
+        std::byte{0x0F},
+        std::byte{0xA5},
+        std::byte{0xFF},
+    };
+
+    EXPECT_EQ(Converter::hex_of(bytes), "000fa5ff");
+    EXPECT_EQ(Converter::hex_of(Converter::Bytes{}), "");
 }
 
 TEST(ConverterTest, Trimmed) {

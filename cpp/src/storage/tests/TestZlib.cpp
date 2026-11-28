@@ -6,11 +6,13 @@
 #include <string_view>
 #include <vector>
 
-#include "Fixtures.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Constants.hpp"
+#include "types/Converter.hpp"
 
-using fixtures::bytes_of;
 using storage::Zlib;
+using types::Converter;
+using types::Megabyte;
 
 namespace {
 
@@ -65,13 +67,13 @@ bool refused(const Zlib::Data& data, std::size_t limit = enough) {
 } // namespace
 
 TEST(ZlibTest, DecompressesWhatPythonCompressed) {
-    EXPECT_EQ(Zlib::decompress(bytes(hello_level_9), enough), bytes_of("hello"));
-    EXPECT_EQ(Zlib::decompress(bytes(hello_level_0), enough), bytes_of("hello"));
+    EXPECT_EQ(Zlib::decompress(bytes(hello_level_9), enough), Converter::bytes_of("hello"));
+    EXPECT_EQ(Zlib::decompress(bytes(hello_level_0), enough), Converter::bytes_of("hello"));
 }
 
 TEST(ZlibTest, CompressesAsPythonDoes) {
-    EXPECT_EQ(Zlib::compress(bytes_of("hello"), Zlib::max_level), bytes(hello_level_9));
-    EXPECT_EQ(Zlib::compress(bytes_of("hello"), Zlib::min_level), bytes(hello_level_0));
+    EXPECT_EQ(Zlib::compress(Converter::bytes_of("hello"), Zlib::max_level), bytes(hello_level_9));
+    EXPECT_EQ(Zlib::compress(Converter::bytes_of("hello"), Zlib::min_level), bytes(hello_level_0));
 }
 
 TEST(ZlibTest, EachLevelReadsBack) {
@@ -96,7 +98,7 @@ TEST(ZlibTest, RepeatedContentCompresses) {
 }
 
 TEST(ZlibTest, LevelOutsideZlibsIsRefused) {
-    const auto content = bytes_of("hello");
+    const auto content = Converter::bytes_of("hello");
 
     EXPECT_THROW((void)Zlib::compress(content, Zlib::min_level - 1), std::invalid_argument);
     EXPECT_THROW((void)Zlib::compress(content, Zlib::max_level + 1), std::invalid_argument);
@@ -126,8 +128,8 @@ TEST(ZlibTest, NoLimitReadsBack) {
 // A small stream that expands to far more than its limit is stopped there,
 // rather than expanded whole.
 TEST(ZlibTest, StreamThatExpandsPastTheLimitIsRefused) {
-    constexpr std::size_t size = 16UL * 1024UL * 1024UL;
-    constexpr std::size_t limit = 1024UL * 1024UL;
+    constexpr std::size_t size = 16 * Megabyte;
+    constexpr std::size_t limit = 1 * Megabyte;
     const Zlib::Data zeros(size);
     const auto compressed = Zlib::compress(zeros, Zlib::max_level);
 
@@ -137,7 +139,7 @@ TEST(ZlibTest, StreamThatExpandsPastTheLimitIsRefused) {
 
 TEST(ZlibTest, WhatIsNotAZlibStreamIsRefused) {
     EXPECT_TRUE(refused(Zlib::Data{}));
-    EXPECT_TRUE(refused(bytes_of("hello")));
+    EXPECT_TRUE(refused(Converter::bytes_of("hello")));
     EXPECT_TRUE(refused(bytes(hello_gzip)));
 }
 

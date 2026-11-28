@@ -545,7 +545,7 @@ TEST_F(FirstContactTest, HeldContentThePeerSeeksIsPut) {
     const Identifier hello("sha256", fixtures::hello_hash);
     auto answers = peer_answers();
 
-    store()->put(hello, fixtures::bytes_of(fixtures::hello));
+    store()->put(hello, Converter::bytes_of(fixtures::hello));
     answers["PUT " + data_path(hello)] = signed_by(peer_signer(), answer(Status::Created));
 
     const StandInNode node(std::move(answers));
@@ -565,7 +565,7 @@ TEST_F(FirstContactTest, HeldContentThePeerSeeksIsPut) {
 TEST_F(FirstContactTest, ContentThisNodeSeeksIsAskedForAndKept) {
     hold_peer_key();
 
-    const auto world = Identifier::of(fixtures::bytes_of("world"));
+    const auto world = Identifier::of(Converter::bytes_of("world"));
     auto answers = peer_answers();
 
     answers["GET " + data_path(world)] = signed_by(peer_signer(), answer(Status::Ok, "world"));
@@ -576,7 +576,7 @@ TEST_F(FirstContactTest, ContentThisNodeSeeksIsAskedForAndKept) {
     const auto posted = stored.next<DataStored>(0ms);
 
     EXPECT_EQ(node.asked().back(), "GET " + data_path(world));
-    EXPECT_EQ(store()->get(world), fixtures::bytes_of("world"));
+    EXPECT_EQ(store()->get(world), Converter::bytes_of("world"));
     ASSERT_TRUE(posted.has_value());
     EXPECT_EQ(posted->identifier.to_string(), world.to_string());
     ASSERT_TRUE(posted->node.has_value());
@@ -590,9 +590,9 @@ TEST_F(FirstContactTest, ContentThisNodeSeeksIsAskedForAndKept) {
 TEST_F(FirstContactTest, ContentThisNodeHoldsIsNotAskedFor) {
     hold_peer_key();
 
-    const auto world = Identifier::of(fixtures::bytes_of("world"));
+    const auto world = Identifier::of(Converter::bytes_of("world"));
 
-    store()->put(world, fixtures::bytes_of("world"));
+    store()->put(world, Converter::bytes_of("world"));
 
     const StandInNode node(peer_answers());
     const auto contact = contact_at(node.address(), SeekList({world}, {}));
@@ -606,8 +606,8 @@ TEST_F(FirstContactTest, ContentThisNodeHoldsIsNotAskedFor) {
 TEST_F(FirstContactTest, ContentNotSentIsNotKept) {
     hold_peer_key();
 
-    const auto world = Identifier::of(fixtures::bytes_of("world"));
-    const auto there = Identifier::of(fixtures::bytes_of("there"));
+    const auto world = Identifier::of(Converter::bytes_of("world"));
+    const auto there = Identifier::of(Converter::bytes_of("there"));
     auto answers = peer_answers();
 
     answers["GET " + data_path(world)] = signed_by(peer_signer(), answer(Status::Ok, "jello"));
@@ -630,7 +630,7 @@ TEST_F(FirstContactTest, ContentNotSentIsNotKept) {
 TEST_F(FirstContactTest, ContentTooLargeOnceDecompressedIsNotKept) {
     hold_peer_key();
 
-    const auto world = fixtures::bytes_of("world");
+    const auto world = Converter::bytes_of("world");
     const auto identifier = Identifier::of(world);
     const auto compressed = Converter::text_of(Zlib::compress(world, Zlib::max_level));
     auto answers = peer_answers();
@@ -663,14 +663,14 @@ TEST_F(FirstContactTest, PeerTurningThisNodeAwayWhileFulfilledIsTold) {
     hold_peer_key();
 
     const Identifier hello("sha256", fixtures::hello_hash);
-    const auto world = Identifier::of(fixtures::bytes_of("world"));
-    const auto there = Identifier::of(fixtures::bytes_of("there"));
+    const auto world = Identifier::of(Converter::bytes_of("world"));
+    const auto there = Identifier::of(Converter::bytes_of("there"));
     const SeekList sought({hello, world}, {});
     auto answers = peer_answers();
     auto closing = answer(Status::Created);
 
-    store()->put(hello, fixtures::bytes_of(fixtures::hello));
-    store()->put(world, fixtures::bytes_of("world"));
+    store()->put(hello, Converter::bytes_of(fixtures::hello));
+    store()->put(world, Converter::bytes_of("world"));
     closing.headers().set("Connection", "close");
     answers["GET /data/seek"] =
         signed_by(peer_signer(), answer(Status::Ok, sought.body().text));

@@ -164,17 +164,11 @@ string index_of_endpoints() {
     return Json(Json::Object{{"endpoints", Json(std::move(listed))}}).dump();
 }
 
-void answer_not_found(Response& response) {
-    Problem(Status::NotFound, "No resource exists at this path.").answer(response);
-}
-
 // Answers request, for /config/api or a path beneath it, with index, the
 // endpoints /config serves, for a GET of /config/api itself.
 void answer_index(const string& index, const Request& request, Response& response) {
-    const auto uri = request.uri();
-
-    if (uri.substr(0, uri.find('?')) != config_api_path) {
-        answer_not_found(response);
+    if (request.path() != config_api_path) {
+        Problem::answer_not_found(response);
         return;
     }
 
@@ -239,7 +233,7 @@ Service::Service(const NodeIdentity& identity, const std::filesystem::path& data
     m_server.register_handler(every_path,
                               guarded(guard, signer,
                                       [](const Request&, Response& response, ConnectionInfo&) {
-        answer_not_found(response);
+        Problem::answer_not_found(response);
     }));
     m_server.register_handler(Page::path, guarded(guard, signer, Page()));
     m_server.register_handler(config_api_path,

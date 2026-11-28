@@ -2,7 +2,6 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
-#include <iterator>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -14,24 +13,15 @@
 #include "io/SocketReader.hpp"
 #include "net/Address.hpp"
 #include "net/ISocket.hpp"
+#include "types/Converter.hpp"
 
 using io::IReader;
 using io::SocketReader;
 using net::Address;
 using net::ISocket;
+using types::Converter;
 
 namespace {
-
-// The bytes as text, a char for each.
-std::string as_text(const std::vector<std::byte>& bytes) {
-    std::string text;
-
-    text.reserve(bytes.size());
-    std::transform(bytes.begin(), bytes.end(), std::back_inserter(text), [](std::byte byte) {
-        return static_cast<char>(std::to_integer<unsigned char>(byte));
-    });
-    return text;
-}
 
 // A socket that reads the text it is given, at most chunk_limit bytes a
 // read. It cannot listen, accept, or say its addresses, and sends nothing.
@@ -98,7 +88,7 @@ TEST(SocketReaderTest, ReadExactReadsAcrossPartialReceives) {
     ScriptedSocket socket("abcdef", 2);
     SocketReader reader(socket);
 
-    EXPECT_EQ(as_text(reader.read_exact(size)), "abcde");
+    EXPECT_EQ(Converter::text_of(reader.read_exact(size)), "abcde");
 }
 
 TEST(SocketReaderTest, ReadExactStopsAtEof) {
@@ -107,7 +97,7 @@ TEST(SocketReaderTest, ReadExactStopsAtEof) {
     ScriptedSocket socket("hi", chunk_limit);
     SocketReader reader(socket);
 
-    EXPECT_EQ(as_text(reader.read_exact(size)), "hi");
+    EXPECT_EQ(Converter::text_of(reader.read_exact(size)), "hi");
 }
 
 // A size far larger than what is sent takes no more memory than is sent.
@@ -115,7 +105,9 @@ TEST(SocketReaderTest, ReadExactOfAnyLengthStopsAtEof) {
     ScriptedSocket socket("partial", 4);
     SocketReader reader(socket);
 
-    EXPECT_EQ(as_text(reader.read_exact(std::numeric_limits<std::size_t>::max())), "partial");
+    const auto read = reader.read_exact(std::numeric_limits<std::size_t>::max());
+
+    EXPECT_EQ(Converter::text_of(read), "partial");
 }
 
 TEST(SocketReaderTest, ReadUntilStopsAtDelimiter) {

@@ -1,10 +1,8 @@
 #pragma once
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
-#include <iterator>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -16,6 +14,7 @@
 #include "io/IReader.hpp"
 #include "io/MeteredReader.hpp"
 #include "types/Constants.hpp"
+#include "types/Converter.hpp"
 
 namespace http {
 
@@ -219,11 +218,7 @@ inline std::optional<Response> Response::read(io::MeteredReader& reader, const L
         return std::nullopt;
     }
 
-    response.m_body.reserve(length);
-    std::transform(body.begin(), body.end(), std::back_inserter(response.m_body),
-                   [](std::byte byte) {
-        return static_cast<char>(std::to_integer<unsigned char>(byte));
-    });
+    response.m_body = types::Converter::text_of(body);
     return response;
 }
 

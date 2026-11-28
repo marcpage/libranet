@@ -104,12 +104,9 @@ bool is_beneath_api(const string& path) {
     return path == api || 0 == path.rfind(api + '/', 0);
 }
 
-// Whether uri names /config/api, or what is beneath it, as a request's target
-// gives it.
-bool names_config_api(string_view uri) {
-    const auto path = uri.substr(0, uri.find('?'));
-
-    return is_beneath_api(Url::decode(path, Url::EncodeContext::UriComponent));
+// Whether request names /config/api, or what is beneath it.
+bool names_config_api(const Request& request) {
+    return is_beneath_api(Url::decode(request.path(), Url::EncodeContext::UriComponent));
 }
 
 // Whether path, percent-decoded, is a page of /config: /config, or a path
@@ -133,7 +130,7 @@ bool says(const Request& request, string_view name, string_view value) {
 // GET outside /config/api (HTTP API §2.3.3). The page that opens it is of
 // another origin, which can neither read it nor drive it.
 bool is_opened_from_same_site(const Request& request) {
-    return "GET" == request.method() && !names_config_api(request.uri())
+    return "GET" == request.method() && !names_config_api(request)
            && says(request, SiteChecks::site_header, same_site)
            && says(request, fetch_mode_header, navigate)
            && says(request, fetch_dest_header, document);
@@ -267,7 +264,7 @@ optional<SiteChecks::Refusal> refusal(const SiteChecks& checks, const Request& r
         return refused;
     }
 
-    return names_config_api(request.uri()) ? referer_refusal(request) : nullopt;
+    return names_config_api(request) ? referer_refusal(request) : nullopt;
 }
 
 // Whether request gives credential, capturing it when there is none yet. A

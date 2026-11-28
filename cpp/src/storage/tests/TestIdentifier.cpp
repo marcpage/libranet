@@ -14,14 +14,15 @@
 #include "logger/Logger.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Converter.hpp"
 #include "types/Json.hpp"
 
-using fixtures::bytes_of;
 using fixtures::hello_hash;
 using fixtures::KeepingOutput;
 using logger::Logger;
 using storage::Identifier;
 using storage::Zlib;
+using types::Converter;
 using types::Json;
 
 namespace {
@@ -259,7 +260,7 @@ TEST(IdentifierTest, JsonTextThatNamesNoIdentifierIsNothing) {
 
 // The SHA-256 digests are those `shasum -a 256` gives for the same bytes.
 TEST(IdentifierTest, FromDataIsItsSha256) {
-    const auto identifier = Identifier::of(bytes_of("hello"));
+    const auto identifier = Identifier::of(Converter::bytes_of("hello"));
     const auto empty = Identifier::of(Identifier::Data{});
 
     EXPECT_EQ(identifier.to_string(),
@@ -273,7 +274,9 @@ TEST(IdentifierTest, ContentAsItIsIsGivenBack) {
     const Identifier identifier("sha256", hello_hash);
     const auto empty = Identifier::of(Identifier::Data{});
 
-    EXPECT_EQ(identifier.content_of(bytes_of("hello"), enough), bytes_of("hello"));
+    const auto content = Converter::bytes_of("hello");
+
+    EXPECT_EQ(identifier.content_of(content, enough), content);
     EXPECT_EQ(empty.content_of(Identifier::Data{}, enough), Identifier::Data{});
 }
 
@@ -283,9 +286,9 @@ TEST(IdentifierTest, CompressedContentIsGivenBackDecompressed) {
     const auto empty = Identifier::of(Identifier::Data{});
 
     for (auto level = Zlib::min_level; level <= Zlib::max_level; ++level) {
-        const auto compressed = Zlib::compress(bytes_of("hello"), level);
+        const auto compressed = Zlib::compress(Converter::bytes_of("hello"), level);
 
-        EXPECT_EQ(identifier.content_of(compressed, enough), bytes_of("hello")) << level;
+        EXPECT_EQ(identifier.content_of(compressed, enough), Converter::bytes_of("hello")) << level;
     }
 
     EXPECT_EQ(empty.content_of(zlib_of(Identifier::Data{}), 0), Identifier::Data{});
@@ -294,7 +297,7 @@ TEST(IdentifierTest, CompressedContentIsGivenBackDecompressed) {
 // Content that is itself a zlib stream is named by the hash of the stream,
 // and is given back as it is, not decompressed.
 TEST(IdentifierTest, ContentThatIsAZlibStreamIsGivenBackAsItIs) {
-    const auto compressed = zlib_of(bytes_of("hello"));
+    const auto compressed = zlib_of(Converter::bytes_of("hello"));
     const auto identifier = Identifier::of(compressed);
 
     EXPECT_EQ(identifier.content_of(compressed, enough), compressed);
@@ -304,11 +307,11 @@ TEST(IdentifierTest, ContentThatIsAZlibStreamIsGivenBackAsItIs) {
 TEST(IdentifierTest, ContentAsItIsIsNotLimited) {
     const Identifier identifier("sha256", hello_hash);
 
-    EXPECT_EQ(identifier.content_of(bytes_of("hello"), 0), bytes_of("hello"));
+    EXPECT_EQ(identifier.content_of(Converter::bytes_of("hello"), 0), Converter::bytes_of("hello"));
 }
 
 TEST(IdentifierTest, CompressedContentPastTheLimitIsNothing) {
-    const auto content = bytes_of(std::string(enough, 'x'));
+    const auto content = Converter::bytes_of(std::string(enough, 'x'));
     const auto identifier = Identifier::of(content);
     const auto compressed = zlib_of(content);
 
@@ -321,15 +324,15 @@ TEST(IdentifierTest, CompressedContentPastTheLimitIsNothing) {
 // not it.
 TEST(IdentifierTest, OtherContentIsNothing) {
     const Identifier identifier("sha256", hello_hash);
-    const auto compressed = zlib_of(bytes_of("hello"));
+    const auto compressed = zlib_of(Converter::bytes_of("hello"));
     auto with_more = compressed;
 
     with_more.push_back(std::byte{0});
 
-    EXPECT_TRUE(finds_nothing(identifier, bytes_of("world")));
-    EXPECT_TRUE(finds_nothing(identifier, bytes_of("hello!")));
+    EXPECT_TRUE(finds_nothing(identifier, Converter::bytes_of("world")));
+    EXPECT_TRUE(finds_nothing(identifier, Converter::bytes_of("hello!")));
     EXPECT_TRUE(finds_nothing(identifier, Identifier::Data{}));
-    EXPECT_TRUE(finds_nothing(identifier, zlib_of(bytes_of("world"))));
+    EXPECT_TRUE(finds_nothing(identifier, zlib_of(Converter::bytes_of("world"))));
     EXPECT_TRUE(finds_nothing(identifier, with_more));
     EXPECT_TRUE(finds_nothing(identifier, zlib_of(compressed)));
 }

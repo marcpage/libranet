@@ -324,7 +324,7 @@ protected:
 
     // This node holds body, as the content identifier names.
     void hold(const Identifier& identifier, std::string_view body = "content") const {
-        m_store->put(identifier, fixtures::bytes_of(body));
+        m_store->put(identifier, Converter::bytes_of(body));
     }
 
     // Whether request was signed by this node, with its key.

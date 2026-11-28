@@ -2,7 +2,6 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -12,22 +11,13 @@
 
 #include "io/BufferedReader.hpp"
 #include "io/IReader.hpp"
+#include "types/Converter.hpp"
 
 using io::BufferedReader;
 using io::IReader;
+using types::Converter;
 
 namespace {
-
-// The bytes as text, a char for each.
-std::string as_text(const std::vector<std::byte>& bytes) {
-    std::string text;
-
-    text.reserve(bytes.size());
-    std::transform(bytes.begin(), bytes.end(), std::back_inserter(text), [](std::byte byte) {
-        return static_cast<char>(std::to_integer<unsigned char>(byte));
-    });
-    return text;
-}
 
 // A reader of the text it is given, at most max_chunk bytes a read, which
 // counts its reads.
@@ -87,10 +77,10 @@ TEST(BufferedReaderTest, BuffersUpstreamReadsAndTracksBufferedBytes) {
     const auto* raw_upstream = upstream.get();
     BufferedReader reader(std::move(upstream), buffer_size);
 
-    EXPECT_EQ(as_text(reader.read_exact(first_size)), "hello");
+    EXPECT_EQ(Converter::text_of(reader.read_exact(first_size)), "hello");
     EXPECT_EQ(raw_upstream->reads(), 1U);
     EXPECT_EQ(reader.buffered_bytes(), 6U);
-    EXPECT_EQ(as_text(reader.read_exact(second_size)), " world");
+    EXPECT_EQ(Converter::text_of(reader.read_exact(second_size)), " world");
     EXPECT_EQ(reader.buffered_bytes(), 0U);
 }
 
@@ -133,7 +123,7 @@ TEST(BufferedReaderTest, ReadAsLargeAsTheBufferIsNotBuffered) {
     const auto* raw_upstream = upstream.get();
     BufferedReader reader(std::move(upstream), buffer_size);
 
-    EXPECT_EQ(as_text(reader.read_exact(size)), "abcdef");
+    EXPECT_EQ(Converter::text_of(reader.read_exact(size)), "abcdef");
     EXPECT_EQ(raw_upstream->reads(), 1U);
     EXPECT_EQ(reader.buffered_bytes(), 0U);
 }

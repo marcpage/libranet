@@ -49,12 +49,6 @@ constexpr string_view allowed_methods = "POST";
 // Why no node was reached, when the dial does not say.
 constexpr string_view no_reason = "no reason was given";
 
-// Whether uri's path, less any query, is the handler's own, and not one
-// beneath it.
-bool is_connections_path(string_view uri) {
-    return ConnectHandler::path == uri.substr(0, uri.find('?'));
-}
-
 // Whether request says its body is JSON: its Content-Type is
 // application/json, in any case, whatever parameters follow it, such as a
 // charset.
@@ -154,8 +148,8 @@ ConnectHandler::ConnectHandler(DialOutcomes& outcomes)
 
 void ConnectHandler::operator()(const Request& request, Response& response,
                                 const ConnectionInfo& connection) const {
-    if (!is_connections_path(request.uri())) {
-        Problem(Status::NotFound, "No resource exists at this path.").answer(response);
+    if (request.path() != path) {
+        Problem::answer_not_found(response);
         return;
     }
 

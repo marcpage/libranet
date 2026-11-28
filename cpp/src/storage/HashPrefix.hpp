@@ -1,7 +1,6 @@
 #pragma once
 
 #include <algorithm>
-#include <cctype>
 #include <cstddef>
 #include <iterator>
 #include <stdexcept>
@@ -11,6 +10,7 @@
 
 #include "Identifier.hpp"
 #include "types/Constants.hpp"
+#include "types/Converter.hpp"
 
 namespace storage {
 
@@ -71,9 +71,7 @@ inline HashPrefix::HashPrefix(std::string hex)
                                     + " hex digits");
     }
 
-    std::transform(m_hex.begin(), m_hex.end(), m_hex.begin(), [](char digit) {
-        return static_cast<char>(std::tolower(static_cast<unsigned char>(digit)));
-    });
+    m_hex = types::Converter::lower_case(m_hex);
 }
 
 // How many leading bits this shares with a hash in lower-case hex: four for

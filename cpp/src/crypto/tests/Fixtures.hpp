@@ -10,23 +10,6 @@
 // uses it, signed and encrypted with the key.
 namespace fixtures {
 
-// The bytes in lowercase hex.
-inline std::string hex(const std::vector<std::byte>& data) {
-    constexpr std::string_view digits = "0123456789abcdef";
-    constexpr auto nibble_bits = 4U;
-    constexpr auto nibble_mask = 0x0FU;
-    std::string text;
-
-    for (const auto byte : data) {
-        const auto value = std::to_integer<unsigned int>(byte);
-
-        text.push_back(digits.at(value >> nibble_bits));
-        text.push_back(digits.at(value & nibble_mask));
-    }
-
-    return text;
-}
-
 // The bytes that lowercase hex names.
 inline std::vector<std::byte> bytes(std::string_view text) {
     constexpr std::string_view digits = "0123456789abcdef";

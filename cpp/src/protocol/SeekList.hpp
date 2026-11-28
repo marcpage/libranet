@@ -16,6 +16,7 @@
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
 #include "types/Constants.hpp"
+#include "types/Converter.hpp"
 #include "types/Json.hpp"
 
 namespace protocol {
@@ -69,8 +70,6 @@ private:
     template<typename Entry>
     [[nodiscard]] static types::Json::Array _texts(const std::vector<Entry>& entries,
                                                    std::size_t count);
-    [[nodiscard]] static storage::Zlib::Data _bytes(std::string_view text);
-    [[nodiscard]] static std::string _text(const storage::Zlib::Data& bytes);
 };
 
 inline SeekList SeekList::from_body(std::string_view body, std::size_t decompressed_limit) {
@@ -119,7 +118,8 @@ inline types::Json SeekList::_decode(std::string_view body, std::size_t decompre
         return std::move(*json);
     }
 
-    const auto decompressed = storage::Zlib::decompress(_bytes(body), decompressed_limit);
+    const auto decompressed = storage::Zlib::decompress(types::Converter::bytes_of(body),
+                                                        decompressed_limit);
 
     if (!decompressed) {
         throw std::invalid_argument(
@@ -127,7 +127,7 @@ inline types::Json SeekList::_decode(std::string_view body, std::size_t decompre
             + std::to_string(decompressed_limit) + " bytes");
     }
 
-    return types::Json::parse(_text(*decompressed));
+    return types::Json::parse(types::Converter::text_of(*decompressed));
 }
 
 // The JSON text is, or nothing when it is not JSON, as a compressed list is
@@ -238,7 +238,10 @@ inline Body SeekList::_body(std::size_t count, std::size_t limit) const {
         return {std::move(json), false};
     }
 
-    return {_text(storage::Zlib::compress(_bytes(json), compression_level)), true};
+    const auto compressed = storage::Zlib::compress(types::Converter::bytes_of(json),
+                                                    compression_level);
+
+    return {types::Converter::text_of(compressed), true};
 }
 
 // The first count of each kind, as HttpApi §10.7.1 lists them.
@@ -260,24 +263,6 @@ inline types::Json::Array SeekList::_texts(const std::vector<Entry>& entries,
     std::transform(entries.begin(), kept, std::back_inserter(texts),
                    [](const Entry& entry) { return types::Json(entry.to_string()); });
     return texts;
-}
-
-// The bytes of text, a byte for each char.
-inline storage::Zlib::Data SeekList::_bytes(std::string_view text) {
-    storage::Zlib::Data bytes(text.size());
-
-    std::transform(text.begin(), text.end(), bytes.begin(),
-                   [](char character) { return static_cast<std::byte>(character); });
-    return bytes;
-}
-
-// The text of bytes, a char for each byte.
-inline std::string SeekList::_text(const storage::Zlib::Data& bytes) {
-    std::string text(bytes.size(), '\0');
-
-    std::transform(bytes.begin(), bytes.end(), text.begin(),
-                   [](std::byte byte) { return static_cast<char>(byte); });
-    return text;
 }
 
 } // namespace protocol

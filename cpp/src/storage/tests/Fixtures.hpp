@@ -1,12 +1,9 @@
 #pragma once
 
 #include <gtest/gtest.h>
-#include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <iterator>
 #include <map>
 #include <memory>
 #include <optional>
@@ -22,26 +19,15 @@
 #include "storage/IDataSource.hpp"
 #include "storage/Identifier.hpp"
 
-// What more than one of the storage tests uses: some data and its hash, bytes
-// written as text, a directory of a test's own to store them in, a source of
-// data that keeps it in memory, and a log output that keeps what is logged.
+// What more than one of the storage tests uses: some data and its hash, a
+// directory of a test's own to store them in, a source of data that keeps it
+// in memory, and a log output that keeps what is logged.
 namespace fixtures {
 
 // "hello", and its SHA-256 digest, as `shasum -a 256` gives it.
 inline constexpr auto hello = "hello";
 inline constexpr auto hello_hash =
     "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
-
-// The bytes of text, a byte for each char.
-inline std::vector<std::byte> bytes_of(std::string_view text) {
-    std::vector<std::byte> bytes;
-
-    bytes.reserve(text.size());
-    std::transform(text.begin(), text.end(), std::back_inserter(bytes), [](char character) {
-        return static_cast<std::byte>(character);
-    });
-    return bytes;
-}
 
 // The file at path, with text in it, and the directories it is in.
 inline void write_file(const std::filesystem::path& path, std::string_view text) {

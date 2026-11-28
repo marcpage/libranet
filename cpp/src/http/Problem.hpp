@@ -53,6 +53,8 @@ public:
     [[nodiscard]] types::Json to_json() const;
     void answer(Response& response) const;
 
+    // With 404, for a path no resource is at.
+    static void answer_not_found(Response& response);
     // With 405, naming in Allow the methods the path does take, as "GET, PUT"
     // (HTTP API §4, RFC 9110 §15.5.6).
     static void answer_method_not_allowed(const Request& request, std::string_view allowed,
@@ -130,6 +132,10 @@ inline void Problem::answer(Response& response) const {
     response.set_status_code(m_status);
     response.headers().set("Content-Type", std::string(content_type));
     response.set_body(to_json().dump());
+}
+
+inline void Problem::answer_not_found(Response& response) {
+    Problem(ResponseCode::Status::NotFound, "No resource exists at this path.").answer(response);
 }
 
 inline void Problem::answer_method_not_allowed(const Request& request, std::string_view allowed,

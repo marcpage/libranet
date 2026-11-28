@@ -1,6 +1,5 @@
 #pragma once
 
-#include <algorithm>
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
@@ -16,6 +15,7 @@
 #include <utility>
 
 #include "Query.hpp"
+#include "types/Converter.hpp"
 
 namespace http {
 
@@ -108,7 +108,6 @@ private:
     static void _parse_authority(std::string_view authority, std::string& username,
                                  std::string& password, std::string& host,
                                  std::optional<std::uint16_t>& port);
-    static std::string _to_lower_copy(std::string_view text);
     static std::optional<std::uint16_t> _parse_port(std::string_view text);
     [[nodiscard]] static bool _is_hex_digit(char character) noexcept;
 };
@@ -217,7 +216,7 @@ inline std::optional<std::uint16_t> Url::effective_port() const {
     constexpr std::uint16_t http_port = 80;
     constexpr std::uint16_t https_port = 443;
     constexpr std::uint16_t ftp_port = 21;
-    const std::string lower_scheme = _to_lower_copy(m_scheme);
+    const std::string lower_scheme = types::Converter::lower_case(m_scheme);
 
     if ("http" == lower_scheme || "ws" == lower_scheme) {
         return http_port;
@@ -563,21 +562,13 @@ inline void Url::append(std::string_view relative_url) {
     m_path = std::move(new_path);
 }
 
-inline std::string Url::_to_lower_copy(std::string_view text) {
-    std::string result(text);
-
-    std::transform(result.begin(), result.end(), result.begin(), [](char character) {
-        return static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
-    });
-
-    return result;
-}
-
 inline bool operator==(const Url& left, const Url& right) {
-    return Url::_to_lower_copy(left.m_scheme) == Url::_to_lower_copy(right.m_scheme)
+    using types::Converter;
+
+    return Converter::lower_case(left.m_scheme) == Converter::lower_case(right.m_scheme)
            && left.m_username == right.m_username
            && left.m_password == right.m_password
-           && Url::_to_lower_copy(left.m_host) == Url::_to_lower_copy(right.m_host)
+           && Converter::lower_case(left.m_host) == Converter::lower_case(right.m_host)
            && left.m_port == right.m_port
            && left.m_path == right.m_path
            && left.m_query.to_string() == right.m_query.to_string()
@@ -589,8 +580,8 @@ inline bool operator!=(const Url& left, const Url& right) {
 }
 
 inline bool operator<(const Url& left, const Url& right) {
-    const auto left_scheme = Url::_to_lower_copy(left.m_scheme);
-    const auto right_scheme = Url::_to_lower_copy(right.m_scheme);
+    const auto left_scheme = types::Converter::lower_case(left.m_scheme);
+    const auto right_scheme = types::Converter::lower_case(right.m_scheme);
 
     if (left_scheme != right_scheme) {
         return left_scheme < right_scheme;
@@ -604,8 +595,8 @@ inline bool operator<(const Url& left, const Url& right) {
         return left.m_password < right.m_password;
     }
 
-    const auto left_host = Url::_to_lower_copy(left.m_host);
-    const auto right_host = Url::_to_lower_copy(right.m_host);
+    const auto left_host = types::Converter::lower_case(left.m_host);
+    const auto right_host = types::Converter::lower_case(right.m_host);
 
     if (left_host != right_host) {
         return left_host < right_host;

@@ -16,8 +16,9 @@
 #include "storage/HashPrefix.hpp"
 #include "storage/Identifier.hpp"
 #include "storage/Zlib.hpp"
+#include "types/Constants.hpp"
+#include "types/Converter.hpp"
 
-using fixtures::bytes_of;
 using fixtures::hello;
 using fixtures::hello_hash;
 using fixtures::KeepingOutput;
@@ -28,6 +29,8 @@ using storage::DataDir;
 using storage::HashPrefix;
 using storage::Identifier;
 using storage::Zlib;
+using types::Converter;
+using types::Megabyte;
 
 namespace {
 
@@ -48,7 +51,7 @@ constexpr auto beside_hello_hash =
 constexpr auto empty_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 // The most a body may be, as stored (HighLevelDesign §4.3).
-constexpr std::size_t mebibyte = 1024UL * 1024UL;
+constexpr std::size_t most_body_size = 1 * Megabyte;
 
 // The hashes identifiers name, in order.
 std::vector<std::string> hashes_of(const DataDir::Identifiers& identifiers) {
@@ -105,7 +108,7 @@ TEST(DataDirTest, HasAndGetReadTheFileTheIdentifierNames) {
     write_file(directory.path() / "sha256" / "2cf" / hello_hash, hello);
 
     EXPECT_TRUE(store.has(identifier));
-    EXPECT_EQ(store.get(identifier), bytes_of(hello));
+    EXPECT_EQ(store.get(identifier), Converter::bytes_of(hello));
 }
 
 TEST(DataDirTest, MissingDataIsNotThere) {
@@ -136,11 +139,11 @@ TEST(DataDirTest, PutStoresTheBodyUnderTheIdentifier) {
     const DataDir store(directory.path());
     const Identifier identifier("sha256", hello_hash);
 
-    store.put(identifier, bytes_of(hello));
+    store.put(identifier, Converter::bytes_of(hello));
 
     EXPECT_EQ(names_in(directory.path() / "sha256" / "2cf"), std::vector<std::string>{hello_hash});
     EXPECT_TRUE(store.has(identifier));
-    EXPECT_EQ(store.get(identifier), bytes_of(hello));
+    EXPECT_EQ(store.get(identifier), Converter::bytes_of(hello));
 }
 
 // A body is kept as it was received, under the identifier of its content,
@@ -149,7 +152,7 @@ TEST(DataDirTest, PutKeepsACompressedBodyAsItIs) {
     const ScratchDirectory directory;
     const DataDir store(directory.path());
     const Identifier identifier("sha256", hello_hash);
-    const auto body = Zlib::compress(bytes_of(hello), Zlib::max_level);
+    const auto body = Zlib::compress(Converter::bytes_of(hello), Zlib::max_level);
 
     store.put(identifier, body);
 
@@ -162,7 +165,7 @@ TEST(DataDirTest, PutKeepsACompressedBodyAsItIs) {
 TEST(DataDirTest, ContentOverAMebibyteIsKeptCompressed) {
     const ScratchDirectory directory;
     const DataDir store(directory.path());
-    const DataDir::Data content(2 * mebibyte, std::byte{0});
+    const DataDir::Data content(2 * most_body_size, std::byte{0});
     const auto identifier = Identifier::of(content);
     const auto body = Zlib::compress(content, Zlib::max_level);
     const auto path = directory.path() / "sha256" / identifier.hash().substr(0, 3)
@@ -170,7 +173,7 @@ TEST(DataDirTest, ContentOverAMebibyteIsKeptCompressed) {
 
     store.put(identifier, body);
 
-    EXPECT_LT(body.size(), mebibyte);
+    EXPECT_LT(body.size(), most_body_size);
     EXPECT_EQ(std::filesystem::file_size(path), body.size());
     EXPECT_EQ(store.get(identifier), body);
 }
@@ -180,10 +183,10 @@ TEST(DataDirTest, PutMakesTheStoreDirectoryWhenItIsNotThere) {
     const DataDir store(directory.path() / "missing" / "store");
     const Identifier identifier("sha256", hello_hash);
 
-    store.put(identifier, bytes_of(hello));
+    store.put(identifier, Converter::bytes_of(hello));
 
     EXPECT_TRUE(store.has(identifier));
-    EXPECT_EQ(store.get(identifier), bytes_of(hello));
+    EXPECT_EQ(store.get(identifier), Converter::bytes_of(hello));
 }
 
 TEST(DataDirTest, PutNothingStoresAnEmptyFile) {
@@ -204,11 +207,11 @@ TEST(DataDirTest, PutReplacesTheBodyStoredBefore) {
     const DataDir store(directory.path());
     const Identifier identifier("sha256", hello_hash);
 
-    store.put(identifier, Zlib::compress(bytes_of(hello), Zlib::max_level));
-    store.put(identifier, bytes_of(hello));
+    store.put(identifier, Zlib::compress(Converter::bytes_of(hello), Zlib::max_level));
+    store.put(identifier, Converter::bytes_of(hello));
 
     EXPECT_EQ(names_in(directory.path() / "sha256" / "2cf"), std::vector<std::string>{hello_hash});
-    EXPECT_EQ(store.get(identifier), bytes_of(hello));
+    EXPECT_EQ(store.get(identifier), Converter::bytes_of(hello));
 }
 
 // A regular file where the directory should be: no file can be made in it.
@@ -220,7 +223,7 @@ TEST(DataDirTest, PutWhereNoFileCanBeMadeIsRefused) {
 
     write_file(not_a_directory, hello);
 
-    EXPECT_THROW(store.put(identifier, bytes_of(hello)), std::runtime_error);
+    EXPECT_THROW(store.put(identifier, Converter::bytes_of(hello)), std::runtime_error);
 }
 
 // A directory where the body goes: the body is written beside it, but
@@ -232,7 +235,7 @@ TEST(DataDirTest, PutOverADirectoryIsRefusedAndLeavesNothingWritten) {
 
     std::filesystem::create_directories(directory.path() / "sha256" / "2cf" / hello_hash);
 
-    EXPECT_THROW(store.put(identifier, bytes_of(hello)), std::runtime_error);
+    EXPECT_THROW(store.put(identifier, Converter::bytes_of(hello)), std::runtime_error);
     EXPECT_EQ(names_in(directory.path() / "sha256" / "2cf"), std::vector<std::string>{hello_hash});
 }
 
@@ -241,7 +244,7 @@ TEST(DataDirTest, RemoveTakesTheBodyAway) {
     const DataDir store(directory.path());
     const Identifier identifier("sha256", hello_hash);
 
-    store.put(identifier, bytes_of(hello));
+    store.put(identifier, Converter::bytes_of(hello));
 
     EXPECT_TRUE(store.remove(identifier));
     EXPECT_FALSE(store.has(identifier));
@@ -264,9 +267,9 @@ TEST(DataDirTest, SizeIsTheBytesOfEveryBodyHeld) {
     const ScratchDirectory directory;
     const DataDir store(directory.path());
 
-    store.put(Identifier("sha256", hello_hash), bytes_of(hello));
-    store.put(Identifier("sha256", beside_hello_hash), bytes_of(beside_hello));
-    store.put(Identifier("sha256", world_hash), bytes_of(world));
+    store.put(Identifier("sha256", hello_hash), Converter::bytes_of(hello));
+    store.put(Identifier("sha256", beside_hello_hash), Converter::bytes_of(beside_hello));
+    store.put(Identifier("sha256", world_hash), Converter::bytes_of(world));
 
     EXPECT_EQ(store.size(), 13U);
 }
@@ -288,7 +291,7 @@ TEST(DataDirTest, SizeLeavesOutWhatIsNotABodyHeld) {
     const auto sha256 = directory.path() / "sha256";
     std::uintmax_t size = 0;
 
-    store.put(Identifier("sha256", hello_hash), bytes_of(hello));
+    store.put(Identifier("sha256", hello_hash), Converter::bytes_of(hello));
     write_file(sha256 / "2cf" / ("." + std::string(hello_hash) + ".1.partial"), "partial");
     write_file(directory.path() / "md5" / "2cf" / hello_hash, hello);
     write_file(sha256 / "2cf" / "notes", "notes");
@@ -314,9 +317,9 @@ TEST(DataDirTest, StartingWithListsWhatBeginsWithThePrefix) {
     const DataDir store(directory.path());
     const std::vector<std::string> only_hello{hello_hash};
 
-    store.put(Identifier("sha256", hello_hash), bytes_of(hello));
-    store.put(Identifier("sha256", beside_hello_hash), bytes_of(beside_hello));
-    store.put(Identifier("sha256", world_hash), bytes_of(world));
+    store.put(Identifier("sha256", hello_hash), Converter::bytes_of(hello));
+    store.put(Identifier("sha256", beside_hello_hash), Converter::bytes_of(beside_hello));
+    store.put(Identifier("sha256", world_hash), Converter::bytes_of(world));
 
     EXPECT_EQ(hashes_of(store.starting_with(HashPrefix::parse("2c"))),
               (std::vector<std::string>{beside_hello_hash, hello_hash}));
@@ -343,7 +346,7 @@ TEST(DataDirTest, StartingWithLeavesOutWhatIsNotABodyHeld) {
     const auto hello_directory = directory.path() / "sha256" / "2cf";
     DataDir::Identifiers found;
 
-    store.put(Identifier("sha256", hello_hash), bytes_of(hello));
+    store.put(Identifier("sha256", hello_hash), Converter::bytes_of(hello));
     write_file(hello_directory / ("." + std::string(hello_hash) + ".1.partial"), "partial");
     write_file(hello_directory / "notes", "notes");
     write_file(hello_directory / "2cf24dba5f.txt", "notes");

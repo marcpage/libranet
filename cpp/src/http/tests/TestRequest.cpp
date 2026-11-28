@@ -32,6 +32,21 @@ TEST(RequestTest, ConstructorsAndAccessors) {
     EXPECT_EQ(request.headers().get("content-type"), "text/plain");
 }
 
+TEST(RequestTest, PathLeavesOutTheQuery) {
+    Request request;
+
+    EXPECT_EQ(request.path(), "");
+
+    request.set_uri("/data/seek");
+    EXPECT_EQ(request.path(), "/data/seek");
+
+    request.set_uri("/data/seek?a=1?b=2");
+    EXPECT_EQ(request.path(), "/data/seek");
+
+    request.set_uri("/config%2Fapi?");
+    EXPECT_EQ(request.path(), "/config%2Fapi");
+}
+
 TEST(RequestTest, ParseRequestLine) {
     Request request;
 
